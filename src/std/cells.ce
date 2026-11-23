@@ -6,6 +6,7 @@
     changes by writing them in the file. *)
 use std/bug
 use std/cesia
+use std/columns as col
 use std/date
 use std/debug
 use std/dict
@@ -1076,8 +1077,10 @@ defn Run(session, cell, width = 640)
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, or the graph's own width when it is less, as high as the shape of its own size asks: plot.Scene with its height missing) and Key, which
       Scene draws again at another width, for an animation of plot.Frames, Frames and Fps, and Scene its first frame,
-      and for a 3D graph View, [az, el], the view of its code; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
-      of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      and for a 3D graph View, [az, el], the view of its code; "text", and Text; "table", a frame, a list of maps or structs, a row
+      for each, its columns the keys of the first, or a struct of at most 20 fields as a row of field and value for each, an Ok
+      of a struct as that struct, with Columns, Rows (the first 20, as texts), Count and Key, which Rows reads again a
+      screen at a time; or "array", with Shape and Rows (the first 10 by 10, as texts), and for a matrix Key too. Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
   runWith(session, cell, width, false)
@@ -1121,24 +1124,55 @@ defn Variables(session)
   result.Ok(answered(session)?.Rows)
 end
 
-defn Rows(session, name, first, last)
-  (** Rows first to last, from 1, of a frame, a matrix or a list that a name of the session holds, as texts, in an Ok of a
-      struct with Columns (the names of a frame's columns, or the numbers of a matrix's), Rows and Count, its number of
-      rows: a viewer reads a large value a screen at a time. An Err for a name that holds none of these. *)
-  ask(session, {Do: "rows", Name: name, First: first, Last: last})?
+defn Rows(session, name, first, last, sort = missing, filter = missing, find = missing)
+  (** Rows first to last, from 1, of a table of the session, as texts, in an Ok of a struct with Columns (the names of a
+      frame's columns, the keys of the first of a list of maps or structs, the numbers of a matrix's columns, "1" for a
+      list, or "field" and "value" for a struct), Rows, Count, the number of rows it shows, Total, the number of rows of
+      the value, and Positions, the place of each row given in the value, from 1: a viewer reads a large value a screen
+      at a time, and a frame never crosses whole. The table is the value of a name, or the Key of a table that Run
+      showed, which the session keeps with the last 64 graphs. sort, {Column, Descending}, orders the rows by a column
+      of Columns, increasing, or decreasing with Descending true: numbers as numbers, then texts by their bytes, then the
+      other values by their text, NaN and missing last whichever the way, equal values in their order. filter, a text,
+      keeps the rows that hold each of its words, apart at spaces, in one cell or another: the text of a cell as the
+      table shows it, in which a word is found as it is, its ASCII letters in either case, never read as a pattern;
+      Count then says how many. Both are done in the session, which keeps the order for the next ask of the same table:
+      a screen after the first costs its rows. find, a position of the value, gives Found too: where its row stands in
+      this order, from 1, or missing when the filter leaves it out. An ask gives at most 1,000 rows, fewer for a table of
+      more than 20 columns, at most 20,000 cells, and at most 256 columns; a cell is cut at 200 characters. An Err for a
+      name that holds no table, or a sort or a filter it doesn't take. *)
+  command = {Do: "rows", Name: name, First: first, Last: last}
+  if values.IsSome(sort)
+    command.Sort = sort
+  end
+  if values.IsSome(filter)
+    command.Filter = filter
+  end
+  if values.IsSome(find)
+    command.Find = find
+  end
+  ask(session, command)?
   got = answered(session)?
-  if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
+  if dict.Has("Error", got)
+    return result.Err({Kind: "cells", Message: got.Error})
+  end
+  out = {Columns: got.Columns, Rows: got.Rows, Count: got.Count, Total: dict.GetOr("Total", got.Count, got), Positions: dict.GetOr("Positions", [], got)}
+  result.Ok(if values.IsSome(find) dict.Put("Found", dict.Get("Found", got), out) else out end)
 end
 
-defn Scene(session, key, width, frame = 1, view = missing)
+defn Scene(session, key, width, frame = 1, view = missing, mark = missing)
   (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, at most its own,
       and the height of its own shape, as Run draws it:
       for a pane that changed its width, for another frame of an animation, frame from 1, or for a 3D graph turned to
-      view, [az, el] in degrees, as Cemacs turns it when it is dragged. plot.Scene draws it in the session, one at a time,
-      so that an animation never crosses whole and a surface crosses as the places of its points on the screen. The
-      session keeps the last 64 graphs that its runs showed; an Err for an older one, for a frame the graph doesn't have, or for a
-      view of a graph that is no 3D graph. *)
-  ask(session, {Do: "scene", Key: key, Width: width, Frame: frame, View: view})?
+      view, [az, el] in degrees, as Cemacs turns it when it is dragged; mark, [i, n], rings the point i of each layer of
+      n points, as row i of a table of n rows, and gives the Points of those layers, as plot.Scene does. plot.Scene draws
+      it in the session, one at a time, so that an animation never crosses whole and a surface crosses as the places of
+      its points on the screen. The session keeps the last 64 graphs and tables that its runs showed; an Err for an older one, for a frame the graph doesn't have, for a
+      view of a graph that is no 3D graph, or for a mark that is no [i, n]. *)
+  command = {Do: "scene", Key: key, Width: width, Frame: frame, View: view}
+  if values.IsSome(mark)
+    command.Mark = mark
+  end
+  ask(session, command)?
   got = answered(session)?
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
 end
@@ -1223,8 +1257,24 @@ defn colored(code)
   text.Join("\n", out)
 end
 
-(** The rows of a table, in HTML. *)
-cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$tag>" for x in row]))</tr>\n" for row in rows])
+(** Is the text of a cell a number, as a table shows one: 12, -0.833, 1e-7, nan or inf? *)
+isNumberText(t) = values.IsSome(text.Number(t)) or t in ["nan", "inf", "-inf"]
+
+(** The part of the text of a number from its decimal point, or "" for one without. *)
+fractionOf(t) = (at -> if values.IsMissing(at) "" else text.ByteSlice(at, text.ByteLength(t), t) end)(text.ByteFind(".", 1, t))
+
+defn tableHtml(columns, rows)
+  (** A table in HTML, its header the columns, or none when there are none: each text escaped, a number on the right
+      of its cell, its decimal point under those of its column, as figure spaces as wide as a digit fill the fraction
+      of the shorter ones, and a text on the left; the header of a column of numbers on the right too. *)
+  n = list.Max([values.Len(r) for r in list.Prepend(columns, rows)])
+  wide = [list.Max(list.Prepend(0, [text.ByteLength(fractionOf(r[j])) for r in rows if j <= values.Len(r) and isNumberText(r[j])])) for j in 1..n]
+  numeric = [list.All([j > values.Len(r) or r[j] == "" or isNumberText(r[j]) for r in rows]) and values.Len(rows) > 0 for j in 1..n]
+  cell = (t, j) -> if isNumberText(t) "<td class=\"n\">$(escape(t))$(text.Repeat(wide[j] - text.ByteLength(fractionOf(t)), "&#8199;"))</td>" else "<td>$(escape(t))</td>" end
+  head = if values.Len(columns) == 0 "" else "<thead><tr>$(text.Join("", [if numeric[j] "<th class=\"n\">$(escape(columns[j]))</th>" else "<th>$(escape(columns[j]))</th>" end for j in 1..values.Len(columns)]))</tr></thead>\n" end
+  body = text.Join("", ["<tr>$(text.Join("", [cell(r[j], j) for j in 1..values.Len(r)]))</tr>\n" for r in rows])
+  "<table$(if values.Len(columns) == 0 " class=\"array\"" else "" end)>\n$(head)<tbody>\n$(body)</tbody>\n</table>\n"
+end
 
 (** The tags of an SVG as std/plot writes it, as the browser reads them, in small letters. *)
 svgTags = ["svg", "g", "path", "rect", "circle", "clippath", "defs", "text", "title", "style"]
@@ -1272,7 +1322,7 @@ defn valueHtml(v, i)
     ""
   else if v.Kind == "table"
     more = if v.Count > values.Len(v.Rows) "<p class=\"count\">$(values.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
-    "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
+    "$(tableHtml(v.Columns, v.Rows))$more"
   else if v.Kind == "graph" and not plotSvg(dict.GetOr("Svg", missing, v))
     "<pre class=\"value\">A graph whose SVG is not one std/plot writes: left out.</pre>\n"
   else if v.Kind == "graph" and dict.Has("Frames", v)
@@ -1280,7 +1330,7 @@ defn valueHtml(v, i)
   else if v.Kind == "graph"
     "<div class=\"graph\">$(v.Svg)</div>\n"
   else if v.Kind == "array"
-    "<p class=\"count\">$(text.Join(" × ", ["$k" for k in v.Shape]))</p>\n<table class=\"array\">\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n"
+    "<p class=\"count\">$(text.Join(" × ", ["$k" for k in v.Shape]))</p>\n$(tableHtml([], v.Rows))"
   else
     "<pre class=\"value\">$(escape(v.Text))</pre>\n"
   end
@@ -1299,9 +1349,10 @@ section { margin: 0 0 28px; }
 h2 { font-size: 18px; margin: 0 0 8px; }
 pre.output, pre.value { background: none; border-left: 3px solid var(--edge); border-radius: 0; }
 pre.error { background: none; border-left: 3px solid var(--bad); border-radius: 0; color: var(--bad); }
-table { border-collapse: collapse; margin: 0 0 8px; display: block; overflow-x: auto; }
-th, td { border: 1px solid var(--edge); padding: 2px 8px; text-align: right; white-space: nowrap; }
-th { color: var(--muted); font-weight: 600; }
+table { border-collapse: collapse; margin: 0 0 8px; display: block; overflow-x: auto; width: max-content; max-width: 100%; border: 1px solid var(--ink); }
+th, td { padding: 2px 8px; text-align: left; white-space: pre; }
+th + th, td + td { border-left: 1px solid var(--edge); } tbody tr + tr td { border-top: 1px solid var(--edge); }
+th { font-weight: 700; border-bottom: 1px solid var(--ink); } th.n, td.n { text-align: right; }
 .count { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
 .graph { margin: 0 0 8px; overflow-x: auto; } .graph svg { max-width: 100%; height: auto; }
 .anim label { font-size: 14px; color: var(--muted); } .anim svg { display: block; margin-top: 4px; }
@@ -1424,16 +1475,16 @@ end
 (** Is this value a frame of std/frame? *)
 isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and values.IsArray(v.Names)
 
-defn drawn(v, width, svg, frame = 1, view = missing)
-  (** The scene of a struct that is a graph of std/plot, its frame of an animation or its view of a 3D graph, or its SVG
-      with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing for a struct that is no graph.
-      std/plot loads here, in the session, the first time: a program that only reads cells never pays for it. *)
+defn drawn(v, width, svg, frame = 1, view = missing, mark = missing)
+  (** The scene of a struct that is a graph of std/plot, its frame of an animation, its view of a 3D graph or its mark,
+      or its SVG with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing for a struct that is
+      no graph. std/plot loads here, in the session, the first time: a program that only reads cells never pays for it. *)
   f = evalCell(if svg "use std/plot\nplot.Svg" else "use std/plot\nplot.Scene" end, 0)
   if result.IsErr(f)
     return missing
   end
   (* The scene keeps the shape of the graph's own size, at the width of the pane or its own when that is less. *)
-  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), missing, frame = frame, view = view) end
+  r = if svg f.Value(v) else if values.IsMissing(mark) f.Value(v, list.Max(100, width), missing, frame = frame, view = view) else f.Value(v, list.Max(100, width), missing, frame = frame, view = view, mark = mark) end
   if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
     return missing
   end
@@ -1481,16 +1532,16 @@ defn shown(v, width = 640, svg = false, key = 0)
   else if values.IsStruct(v) and values.Len(dict.Fields(v)) <= 20
     (* A struct of at most 20 fields: a table of its fields and their values, one row each. *)
     fs = dict.Fields(v)
-    {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: values.Len(fs)}
-  else if isFrame(v)
-    count = if values.Len(v.Names) == 0 0 else values.Len(v.Columns[v.Names[1]]) end
-    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[values.Text(v.Columns[name][i], 80) for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
+    {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: values.Len(fs), Key: key}
+  else if isFrame(v) or isRecords(v)
+    t = tableOf(v)
+    {Kind: "table", Columns: t.Columns, Rows: [[values.Text(cellOf(t, i, j), 80) for j in 1..values.Len(t.Columns)] for i in 1..list.Min(20, t.Count)], Count: t.Count, Key: key}
   else if values.IsArray(v) and values.Len(values.Size(v)) == 2
     shape = values.Size(v)
     if shape[1] == 1
       {Kind: "array", Shape: shape, Rows: [[values.Text(v[j], 80) for j in 1..list.Min(10, shape[2])]]}
     else
-      {Kind: "array", Shape: shape, Rows: [[values.Text(v[i, j], 80) for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
+      {Kind: "array", Shape: shape, Rows: [[values.Text(v[i, j], 80) for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])], Key: key}
     end
   else
     {Kind: "text", Text: brief(v, 20000)}
@@ -1506,8 +1557,9 @@ defn errorLine(path, e)
   text.Number(text.Split(":", text.Slice(values.Len(path) + 2, values.Len(first), first))[1])
 end
 
-(* The run of a cell in the session, for Show in the cell's code: {Width, Svg, Key, Count, Graphs, Token}, Count the values
-   shown so far, Graphs a channel of those that are graphs, {Key, Value}, and Token that of the messages of the session.
+(* The run of a cell in the session, for Show in the cell's code: {Width, Svg, Key, Count, Kept, Token}, Count the values
+   shown so far, Kept a channel of those that have a Key, graphs and tables, {Key, Value}, and Token that of the messages
+   of the session.
    A channel of one holds it, so that Show reads and changes it; it is empty out of a run, and out of a session. *)
 running = fiber.Channel(size = 1)
 
@@ -1529,8 +1581,8 @@ defn Show(x)
   if values.IsMissing(v)
     return x
   end
-  if v.Kind == "graph"
-    fiber.Send({Key: key, Value: x}, run.Graphs)
+  if dict.Has("Key", v)
+    fiber.Send({Key: key, Value: x}, run.Kept)
   end
   send(run.Token, {Kind: "shown", Value: v})
   x
@@ -1548,8 +1600,8 @@ defn taken(ch)
 end
 
 defn ran(c, key, token)
-  (** Runs the code of a cell and sends its answer; gives the graphs it showed, which the session keeps, each {Key,
-      Value}: those of Show, then its value when it shows as a graph. std/random starts again first, from the seed of the
+  (** Runs the code of a cell and sends its answer; gives the graphs and the tables it showed, which the session keeps,
+      each {Key, Value}: those of Show, then its value when it shows as one. std/random starts again first, from the seed of the
       session and the title of the cell, as cesia test does for each test: a cell run again draws the same numbers,
       whatever ran before it. *)
   start = sys.Now()
@@ -1559,7 +1611,7 @@ defn ran(c, key, token)
   graphs = fiber.Channel()
   (* A run that a stop ended left its own. *)
   _ = taken(running)
-  fiber.Send({Width: dict.GetOr("Width", 640, c), Svg: dict.GetOr("Svg", false, c), Key: key, Count: 0, Graphs: graphs, Token: token}, running)
+  fiber.Send({Width: dict.GetOr("Width", 640, c), Svg: dict.GetOr("Svg", false, c), Key: key, Count: 0, Kept: graphs, Token: token}, running)
   r = evalCell(c.Code, c.Line)
   _ = taken(running)
   seconds = sys.Now() - start
@@ -1575,11 +1627,11 @@ defn ran(c, key, token)
     return shows
   end
   send(token, {Kind: "answer", Value: v, Seconds: seconds})
-  if values.IsSome(v) and v.Kind == "graph" list.Append({Key: "$key", Value: r.Value}, shows) else shows end
+  if values.IsSome(v) and dict.Has("Key", v) list.Append({Key: "$key", Value: r.Value}, shows) else shows end
 end
 
 defn kept(task, key, graphs)
-  (** The graphs of the session once a run ended: those it showed, under their keys, and the last 64. *)
+  (** The graphs and the tables of the session once a run ended: those it showed, under their keys, and the last 64. *)
   if values.IsMissing(task)
     return graphs
   end
@@ -1600,10 +1652,10 @@ end
 defn rescened(c, graphs)
   (** The answer to a scene: the graph of a key drawn at a width. *)
   g = dict.Get("$(c.Key)", graphs)
-  if values.IsMissing(g)
+  r = if values.IsMissing(g) missing else drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c), mark = dict.GetOr("Mark", missing, c)) end
+  if values.IsMissing(r)
     return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds the last 64 that its runs showed."}
   end
-  r = drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c))
   if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end
 end
 
@@ -1647,25 +1699,226 @@ defn rows(names)
   out
 end
 
-defn slice(name, first, last)
-  (** Rows first to last of the value of a name, as texts, for Rows. *)
-  got = valueOf(name)
-  if result.IsErr(got)
-    return {Kind: "rows", Error: "Name \"$name\" isn't in the session."}
-  end
-  v = got.Value
+(* -- Tables: a frame, a matrix, a list of maps or structs, or a struct, read a screen at a time, sorted and filtered here,
+   in the session, so that a large value never crosses whole. *)
+
+(** The most rows of an answer to rows, and the most cells: a wide table gives fewer rows. *)
+mostRows = 1000
+mostCells = 20000
+
+(** The most columns a table shows: those past it are left out. *)
+mostColumns = 256
+
+defn isRecord(x)
+  (** Is a value a map or a struct with public fields, a row of a list of records? *)
+  values.IsDict(x) and not isFrame(x) or values.IsStruct(x) and values.Len(dict.Fields(x)) > 0
+end
+
+(** Is a value a list whose first element is a map or a struct with public fields: a list of records, one row each? *)
+isRecords(v) = values.IsArray(v) and values.Len(values.Size(v)) == 2 and values.Size(v)[1] == 1 and values.Size(v)[2] > 0 and isRecord(v[1])
+
+(** The fields of a record, a map or a struct, as a map. *)
+fieldsOf(x) = if values.IsStruct(x) dict.Fields(x) else x end
+
+defn tableOf(v)
+  (** The table a value shows as, {Kind, Of, Columns, Count}, or missing for a value that is none: a frame, its columns; a
+      list of records, the keys of its first; a matrix, the numbers of its columns; a list, one column "1"; a struct, or
+      an Ok of one, its fields and their values. *)
   if isFrame(v)
     count = if values.Len(v.Names) == 0 0 else values.Len(v.Columns[v.Names[1]]) end
-    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[values.Text(v.Columns[c][i], 200) for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
+    return {Kind: "frame", Of: v, Columns: list.Take(mostColumns, ["$n" for n in v.Names]), Names: list.Take(mostColumns, v.Names), Count: count}
+  end
+  if isRecords(v)
+    names = list.Take(mostColumns, dict.Keys(fieldsOf(v[1])))
+    return {Kind: "records", Of: v, Columns: ["$n" for n in names], Names: names, Count: values.Len(v)}
   end
   if values.IsArray(v) and values.Len(values.Size(v)) == 2
     shape = values.Size(v)
     if shape[1] == 1
-      return {Kind: "rows", Columns: ["1"], Rows: [[values.Text(v[i], 200)] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
+      return {Kind: "list", Of: v, Columns: ["1"], Count: shape[2]}
     end
-    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[values.Text(v[i, j], 200) for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
+    return {Kind: "matrix", Of: v, Columns: ["$j" for j in 1..list.Min(mostColumns, shape[2])], Count: shape[1]}
   end
-  {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}
+  if values.IsStruct(v) and result.IsOk(v) and values.IsStruct(v.Value)
+    return tableOf(v.Value)
+  end
+  if values.IsStruct(v) and values.Len(dict.Fields(v)) > 0
+    fs = dict.Fields(v)
+    return {Kind: "fields", Of: [[k, fs[k]] for k in dict.Keys(fs)], Columns: ["field", "value"], Count: values.Len(fs)}
+  end
+  missing
+end
+
+defn cellOf(t, i, j)
+  (** The value of row i, column j of a table. *)
+  v = t.Of
+  match t.Kind
+    "frame" -> v.Columns[t.Names[j]][i]
+    "records" -> dict.GetOr(t.Names[j], missing, fieldsOf(v[i]))
+    "matrix" -> v[i, j]
+    "list" -> v[i]
+    else -> v[i][j]
+  end
+end
+
+defn columnOf(t, j)
+  (** The values of column j of a table, as an array. *)
+  if t.Kind == "frame" t.Of.Columns[t.Names[j]] else [cellOf(t, i, j) for i in 1..t.Count] end
+end
+
+(** The text of a cell as a table shows it: at most 200 characters, and a struct of a field as brief cuts it. *)
+cellText(t, i, j) = if t.Kind == "fields" and j == 2 brief(cellOf(t, i, j), 200) else values.Text(cellOf(t, i, j), 200) end
+
+defn backward(xs)
+  (** The positions, from 1, that put the elements of xs in decreasing order, equal ones in their order, as list.Order
+      puts them in increasing order: the order of the list read backward, read backward. *)
+  n = values.Len(xs)
+  (n + 1) - list.Reverse(list.Order(list.Reverse(xs)))
+end
+
+defn numbered(xs, descending)
+  (** The positions that order an array of numbers, increasing or decreasing, equal ones in their order, NaN last: the
+      decreasing order is the increasing order of their opposites. *)
+  ks = list.Order(if descending 0 - xs else xs end)
+  (* list.Order puts NaN first, below every number. *)
+  nans = values.Len(col.Positions(xs != xs))
+  if nans == 0 ks else list.Concat(ks[nans + 1..values.Len(ks)], ks[1..nans]) end
+end
+
+defn ordered(xs, descending)
+  (** The positions, from 1, that order the values of a column, increasing or decreasing, as a table sorts them: numbers
+      as numbers, then texts by their bytes, then the other values by their text; NaN and missing last, whichever the
+      way; equal values in their order. *)
+  if values.Len(xs) == 0 or col.Kind(xs) != "value"
+    return numbered(xs, descending)
+  end
+  numbers = []
+  texts = []
+  others = []
+  gone = []
+  for i in 1..values.Len(xs)
+    x = xs[i]
+    if values.IsNumber(x) and x == x
+      numbers = list.Append(i, numbers)
+    else if values.IsText(x)
+      texts = list.Append(i, texts)
+    else if values.IsMissing(x) or values.IsNumber(x)
+      gone = list.Append(i, gone)
+    else
+      others = list.Append(i, others)
+    end
+  end
+  by = (ps, keys) -> col.Pick(if descending backward(keys) else list.Order(keys) end, ps)
+  groups = [by(numbers, col.Pick(numbers, xs)), by(texts, col.Pick(texts, xs)), by(others, [values.Text(xs[i], 200) for i in others])]
+  list.Concat(list.Flatten(if descending list.Reverse(groups) else groups end), gone)
+end
+
+defn wordsOf(filter)
+  (** The words of the text of a filter, apart at spaces, tabs and ends of line. *)
+  out = []
+  for w in text.Split(" ", text.Replace("\n", " ", text.Replace("\t", " ", filter)))
+    if w != ""
+      out = list.Append(w, out)
+    end
+  end
+  out
+end
+
+(** Can a word be part of the text of a number, as 1.5e-07, -inf or nan? *)
+numberish(w) = values.IsMissing(text.ByteFindAny("0123456789.-+eEinfaINFA", 1, w, not = true))
+
+defn matching(t, words, ps)
+  (** The positions of ps whose row holds every word, in one of its cells or another: the text of a cell as the table
+      shows it, in which each word is found as it is, its ASCII letters in either case, never read as a pattern. Each
+      word reads only the rows that the words before it kept, and a column of numbers only for a word that can be part
+      of a number. *)
+  out = ps
+  for w in words
+    hits = list.Fill(0, values.Len(out))
+    for j in 1..values.Len(t.Columns)
+      if t.Kind == "frame" and (col.Kind(t.Of.Columns[t.Names[j]]) == "value" or numberish(w))
+        hits = hits + [if values.IsSome(text.ByteFind(w, 1, values.Text(x, 200), fold = true)) 1 else 0 end for x in col.Pick(out, t.Of.Columns[t.Names[j]])]
+      else if t.Kind != "frame"
+        hits = hits + [if values.IsSome(text.ByteFind(w, 1, cellText(t, p, j), fold = true)) 1 else 0 end for p in out]
+      end
+    end
+    out = col.Pick(col.Positions(hits > 0), out)
+  end
+  out
+end
+
+defn viewed(t, sort, filter, seen)
+  (** The positions of the rows of a table in the order it shows them, for a sort, {Column, Descending}, and a filter,
+      its text; seen is what the last ask of this table kept, {Sort, Filter, Matched, Order}, which the same sort and
+      filter take again, and a filter that goes on with the last one's text reads only the rows that matched it. *)
+  if values.IsSome(seen) and values.Equal(seen.Sort, sort) and seen.Filter == filter
+    return seen
+  end
+  words = wordsOf(filter)
+  matched = if values.Len(words) == 0
+    missing
+  else if values.IsSome(seen) and seen.Filter == filter
+    seen.Matched
+  else if values.IsSome(seen) and values.IsSome(seen.Matched) and text.StartsWith(seen.Filter, filter)
+    matching(t, words, seen.Matched)
+  else
+    matching(t, words, 1..t.Count)
+  end
+  order = matched
+  if values.IsSome(sort)
+    xs = columnOf(t, list.IndexOf(sort.Column, t.Columns))
+    order = if values.IsMissing(matched) ordered(xs, sort.Descending) else col.Pick(ordered(col.Pick(matched, xs), sort.Descending), matched) end
+  end
+  {Sort: sort, Filter: filter, Matched: matched, Order: order}
+end
+
+(** Is a text the key of a graph or a table that a run showed, as 12 or 12.3, which no name can be? *)
+isKey(k) = values.IsSome(text.ByteFindAny("0123456789", 1, text.ByteSlice(1, 1, k)))
+
+defn slice(c, kept, views)
+  (** The answer to rows: rows First to Last, from 1, of the value of a name of the session, or of a table a run showed,
+      by its key, as texts, sorted and filtered, with the position of each in the value; and the views kept for the next
+      ask, by name. *)
+  name = "$(dict.GetOr("Name", "", c))"
+  v = dict.Get(name, kept)
+  if values.IsMissing(v)
+    got = valueOf(name)
+    if result.IsErr(got)
+      return {Answer: {Kind: "rows", Error: "Name \"$name\" isn't in the session."}, Views: views}
+    end
+    v = got.Value
+  end
+  t = tableOf(v)
+  if values.IsMissing(t)
+    return {Answer: {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}, Views: views}
+  end
+  sort = dict.GetOr("Sort", missing, c)
+  if values.IsSome(sort) and not (values.IsDict(sort) and dict.GetOr("Column", missing, sort) in t.Columns and values.IsBool(dict.GetOr("Descending", missing, sort)))
+    return {Answer: {Kind: "rows", Error: "A sort is {Column, Descending}: a column of \"$name\", $(text.Join(", ", t.Columns)), and true or false."}, Views: views}
+  end
+  sort = if values.IsMissing(sort) missing else {Column: sort.Column, Descending: sort.Descending} end
+  filter = dict.GetOr("Filter", missing, c)
+  if values.IsSome(filter) and not values.IsText(filter)
+    return {Answer: {Kind: "rows", Error: "A filter is a text: the words that a row holds."}, Views: views}
+  end
+  filter = if values.IsMissing(filter) "" else filter end
+  first = dict.GetOr("First", 1, c)
+  last = dict.GetOr("Last", 0, c)
+  if not (values.IsInt(first) and values.IsInt(last))
+    return {Answer: {Kind: "rows", Error: "Rows are asked from a first to a last, whole numbers from 1."}, Views: views}
+  end
+  seen = if values.IsMissing(sort) and filter == "" missing else viewed(t, sort, filter, dict.GetOr(name, missing, views)) end
+  order = if values.IsMissing(seen) missing else seen.Order end
+  count = if values.IsMissing(order) t.Count else values.Len(order) end
+  first = list.Max(1, first)
+  last = list.Min(list.Min(last, count), first - 1 + list.Min(mostRows, math.Div(mostCells, list.Max(1, values.Len(t.Columns)))))
+  ps = if values.IsMissing(order) list.Range(first, last) else (if last < first [] else order[first..last] end) end
+  out = {Kind: "rows", Columns: t.Columns, Rows: [[cellText(t, p, j) for j in 1..values.Len(t.Columns)] for p in ps], Count: count, Total: t.Count, Positions: ps}
+  find = dict.GetOr("Find", missing, c)
+  if values.IsInt(find)
+    out.Found = if values.IsMissing(order) (if find >= 1 and find <= t.Count find else missing end) else list.IndexOf(find, order) end
+  end
+  {Answer: out, Views: if values.IsMissing(seen) views else dict.Put(name, seen, views) end}
 end
 
 defn setTo(c)
@@ -1733,6 +1986,7 @@ defn serve()
   task = missing
   key = 0
   graphs = {}
+  views = {}
   known = []
   line = debug.ReadLine()
   while not values.IsMissing(line)
@@ -1744,6 +1998,9 @@ defn serve()
       graphs = kept(task, key, graphs)
       task = missing
     end
+    (* The views of a table that the session no longer keeps go, and those of the names once a cell may change them. *)
+    changes = c.Do in ["run", "set", "forget"]
+    views = dict.Dict([{Key: k, Value: views[k]} for k in dict.Keys(views) if dict.Has(k, graphs) or not (changes or isKey(k))])
     if c.Do == "run"
       defs = cesia.Definitions(c.Code)
       names = if result.IsOk(defs) [d.Name for d in defs.Value if d.Kind in shared and d.Kind != "use"] else [] end
@@ -1770,7 +2027,9 @@ defn serve()
     else if c.Do == "variables"
       send(token, {Kind: "variables", Rows: rows(known)})
     else if c.Do == "rows"
-      send(token, slice(c.Name, c.First, c.Last))
+      got = slice(c, graphs, views)
+      views = got.Views
+      send(token, got.Answer)
     else if c.Do == "scene"
       send(token, rescened(c, graphs))
     else if c.Do == "set"

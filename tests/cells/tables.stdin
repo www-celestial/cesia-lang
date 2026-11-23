@@ -1,0 +1,29 @@
+{"Do":"run","Code":"use std/frame","Line":1,"Path":"tables.ce"}
+{"Do":"run","Code":"nan = 0.0 / 0.0\ndf = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, nan, 24.35, 9.99, 28.66], name: [\"Jun a\", \"dec b\", \"Jun c\", \"x\", \"jun\", \"B\"]})","Line":4,"Path":"tables.ce"}
+{"Do":"run","Code":"df","Line":6,"Path":"tables.ce"}
+{"Do":"rows","Name":"df","First":1,"Last":10}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Sort":{"Column":"elevation","Descending":false}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Sort":{"Column":"elevation","Descending":true}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"jun"}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"jun 9.9","Sort":{"Column":"hour","Descending":true}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"JUN  9.99"}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"(.*"}
+{"Do":"rows","Name":"3","First":2,"Last":3,"Sort":{"Column":"name","Descending":false},"Find":5}
+{"Do":"rows","Name":"3","First":1,"Last":2,"Filter":"jun","Find":2}
+{"Do":"run","Code":"people = [{name: \"Ana\", age: 31}, {name: \"Bo\", age: 25}, {name: \"Cy\", age: 31, town: \"Lyon\"}]\npeople","Line":7,"Path":"tables.ce"}
+{"Do":"rows","Name":"people","First":1,"Last":10,"Sort":{"Column":"age","Descending":true}}
+{"Do":"run","Code":"mixed = [3, \"b\", missing, 1.5, true, \"a\", nan, 1]","Line":9,"Path":"tables.ce"}
+{"Do":"rows","Name":"mixed","First":1,"Last":10,"Sort":{"Column":"1","Descending":false}}
+{"Do":"rows","Name":"mixed","First":1,"Last":10,"Sort":{"Column":"1","Descending":true}}
+{"Do":"run","Code":"m = [1, 2, 3; 4, 5, 6]\nm","Line":10,"Path":"tables.ce"}
+{"Do":"rows","Name":"m","First":1,"Last":10,"Sort":{"Column":"2","Descending":true}}
+{"Do":"run","Code":"use std/date\ndate.Date(2026, 11, 23)","Line":11,"Path":"tables.ce"}
+{"Do":"rows","Name":"7","First":1,"Last":10,"Sort":{"Column":"field","Descending":false}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Sort":{"Column":"nope","Descending":true}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Sort":{"Column":"hour"}}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":3}
+{"Do":"rows","Name":"df","First":"a","Last":10}
+{"Do":"rows","Name":"99","First":1,"Last":10}
+{"Do":"run","Code":"df = frame.Of({hour: [1, 2]})","Line":12,"Path":"tables.ce"}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"1"}
+{"Do":"rows","Name":"3","First":1,"Last":10,"Filter":"1"}

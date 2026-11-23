@@ -1,0 +1,31 @@
+@token TOKEN
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"table","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["8","9.99","dec b"],["9","nan","Jun c"],["10","24.35","x"],["11","9.99","jun"],["12","28.66","B"]],"Count":6,"Key":3},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["8","9.99","dec b"],["9","nan","Jun c"],["10","24.35","x"],["11","9.99","jun"],["12","28.66","B"]],"Count":6,"Total":6,"Positions":[1,2,3,4,5,6],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["8","9.99","dec b"],["11","9.99","jun"],["10","24.35","x"],["12","28.66","B"],["9","nan","Jun c"]],"Count":6,"Total":6,"Positions":[1,2,5,4,6,3],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["12","28.66","B"],["10","24.35","x"],["8","9.99","dec b"],["11","9.99","jun"],["7","0.48","Jun a"],["9","nan","Jun c"]],"Count":6,"Total":6,"Positions":[6,4,2,5,1,3],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["9","nan","Jun c"],["11","9.99","jun"]],"Count":3,"Total":6,"Positions":[1,3,5],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["11","9.99","jun"]],"Count":1,"Total":6,"Positions":[5],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["11","9.99","jun"]],"Count":1,"Total":6,"Positions":[5],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[],"Count":0,"Total":6,"Positions":[],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["9","nan","Jun c"]],"Count":6,"Total":6,"Positions":[1,3],"Found":5,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["7","0.48","Jun a"],["9","nan","Jun c"]],"Count":3,"Total":6,"Positions":[1,3],"Found":null,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"table","Columns":["name","age"],"Rows":[["Ana","31"],["Bo","25"],["Cy","31"]],"Count":3,"Key":4},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["name","age"],"Rows":[["Ana","31"],["Cy","31"],["Bo","25"]],"Count":3,"Total":3,"Positions":[1,3,2],"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["1"],"Rows":[["1"],["1.5"],["3"],["a"],["b"],["true"],["missing"],["nan"]],"Count":8,"Total":8,"Positions":[8,4,1,6,2,5,3,7],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["1"],"Rows":[["true"],["b"],["a"],["3"],["1.5"],["1"],["missing"],["nan"]],"Count":8,"Total":8,"Positions":[5,2,6,1,4,8,3,7],"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[2,3],"Rows":[["1","2","3"],["4","5","6"]],"Key":6},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["1","2","3"],"Rows":[["4","5","6"],["1","2","3"]],"Count":2,"Total":2,"Positions":[2,1],"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"table","Columns":["field","value"],"Rows":[["Year","2026"],["Month","11"],["Day","23"],["Hour","0"],["Minute","0"],["Second","0"],["Offset","0"]],"Count":7,"Key":7},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["field","value"],"Rows":[["Day","23"],["Hour","0"],["Minute","0"],["Month","11"],["Offset","0"],["Second","0"],["Year","2026"]],"Count":7,"Total":7,"Positions":[3,4,5,2,7,6,1],"Mark":"TOKEN"}
+@{"Kind":"rows","Error":"A sort is {Column, Descending}: a column of \"df\", hour, elevation, name, and true or false.","Mark":"TOKEN"}
+@{"Kind":"rows","Error":"A sort is {Column, Descending}: a column of \"df\", hour, elevation, name, and true or false.","Mark":"TOKEN"}
+@{"Kind":"rows","Error":"A filter is a text: the words that a row holds.","Mark":"TOKEN"}
+@{"Kind":"rows","Error":"Rows are asked from a first to a last, whole numbers from 1.","Mark":"TOKEN"}
+@{"Kind":"rows","Error":"Name \"99\" isn't in the session.","Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour"],"Rows":[["1"]],"Count":1,"Total":2,"Positions":[1],"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name"],"Rows":[["10","24.35","x"],["11","9.99","jun"],["12","28.66","B"]],"Count":3,"Total":6,"Positions":[4,5,6],"Mark":"TOKEN"}
+exit 0

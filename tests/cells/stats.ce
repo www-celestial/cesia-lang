@@ -28,7 +28,8 @@ defn Main()
   mc = cells.Run(s, cs[7])?.Value
   cells.Run(s, cs[2])?
   again2 = cells.Run(s, cs[7])?.Value
-  io.Print("same estimate: $(value.Equal(mc, again2))", mc.Kind, mc.Columns, [r[1] for r in mc.Rows])
+  (* Each table has the key of its run, as a graph has: the rows are what is the same. *)
+  io.Print("same estimate: $(value.Equal(mc.Rows, again2.Rows) and mc.Key != again2.Key)", mc.Kind, mc.Columns, [r[1] for r in mc.Rows])
   result.Ok(missing)
 end
 

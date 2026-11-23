@@ -1,0 +1,3 @@
+(* The file of a session of tables: cesia run --cells runs none of it, and the commands of tables.stdin read a frame, a
+   list of maps, a list of values, a matrix and a struct a screen at a time, sorted and filtered in the session. *)
+use std/frame

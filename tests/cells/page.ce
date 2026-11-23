@@ -36,3 +36,6 @@ cells.Show(plot.Frames([plot.Line([1, 2], [k, 2 * k]) for k in 1..2], fps = 4))
 io.Print("then")
 cells.Show(9)
 plot.Line([1, 2], [2, 1])
+
+(* %% Table *)
+frame.Of({"place <b>": ["Lyon", "<script>alert(1)</script>", "a & \"b\""], "elevation": [-0.833, 9.99, 28.5]})
