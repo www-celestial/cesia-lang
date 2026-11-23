@@ -991,8 +991,8 @@ A package read from its entry in the [cache of loaded packages](#the-cache-of-lo
 statements of a file, its functions and its other arrays were each made of their first item, young, and a file of more
 than 256 of them paid a minor collection for each, every tree read so far copied out, then a major cycle. Since
 2026-11-23, an array that long is read in pieces of 256, young, which `Array.concat` joins in the major heap with no
-collection: the cells of Cemacs, past 256 functions, load with none, and its first frame takes 31.5 ms instead of 33.0,
-the 31.2 it took before them, the medians of 11 runs, alternated.
+collection: the cells of Cemacs, past 256 functions, load with none, and its first frame takes 30.84 ms instead of
+32.96, the 30.86 it took before them, the medians of 21 runs, alternated.
 
 The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints,
 before each large allocation, and at each megabyte of a text that values are written into, as by `value.Text`,

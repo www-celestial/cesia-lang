@@ -128,7 +128,7 @@
 - A file of more than 256 statements or functions loads from the cache of loaded packages with no young collection:
   each of its arrays that long was made of a young value, which OCaml moves out first by a collection that promoted all
   that was read, three of them at each load and then a major cycle. Cemacs, whose cells passed 256 functions, reaches
-  its first frame in 31.5 ms instead of 33.0, as fast as before them (31.2), medians of 11 runs, alternated.
+  its first frame in 30.84 ms instead of 32.96, as fast as before them (30.86), medians of 21 runs, alternated.
 
 ### Fixes
 

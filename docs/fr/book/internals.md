@@ -1117,7 +1117,7 @@ les instructions d'un fichier, ses fonctions et ses autres arrays étaient chacu
 un fichier de plus de 256 d'entre eux payait une minor collection pour chacun, chaque arbre lu jusque-là copié dehors,
 puis un cycle majeur. Depuis le 2026-11-23, un array aussi long est lu en morceaux de 256, jeunes, que `Array.concat`
 joint dans le major heap sans collection : les cells de Cemacs, passées au-delà de 256 fonctions, se chargent sans
-aucune, et sa première frame prend 31,5 ms au lieu de 33,0, les 31,2 qu'elle prenait avant elles, les médianes de 11
+aucune, et sa première frame prend 30,84 ms au lieu de 32,96, les 30,86 qu'elle prenait avant elles, les médianes de 21
 lancements, alternés.
 
 La limite de mémoire, 80 % de la mémoire de la machine sauf si `--limit memory=` dit autre chose, est vérifiée aux
