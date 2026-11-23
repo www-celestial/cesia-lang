@@ -158,14 +158,14 @@ defn Analyse(cells)
   n = values.Len(cells)
   scans = [scanned(c) for c in cells]
   alias = if n == 0 missing else cellsAlias(cells[1]) end
-  sliders = [inputsOf(cells[i], i, alias) for i in 1..n]
+  inputs = [inputsOf(cells[i], i, alias) for i in 1..n]
   owners = {}
   for i in 1..n
     for d in scans[i].Defs
       owners = dict.Put(d.Name, list.Append(i, dict.GetOr(d.Name, [], owners)), owners)
     end
   end
-  errors = [list.Concat(if values.IsMissing(scans[i].Error) [] else [scans[i].Error] end, sliders[i].Errors) for i in 1..n]
+  errors = [list.Concat(if values.IsMissing(scans[i].Error) [] else [scans[i].Error] end, inputs[i].Errors) for i in 1..n]
   (* R1: one cell for a name. *)
   for i in 1..n
     for d in scans[i].Defs
@@ -220,7 +220,7 @@ defn Analyse(cells)
       errors[m.Cell] = list.Append(fault(m.Read.Line, m.Read.Column, message), errors[m.Cell])
     end
   end
-  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i]), Sliders: sliders[i].Sliders, Inputs: sliders[i].Inputs} for i in 1..n]
+  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i]), Sliders: inputs[i].Sliders, Inputs: inputs[i].Inputs} for i in 1..n]
 end
 
 defn ToRun(analysis, changed)
