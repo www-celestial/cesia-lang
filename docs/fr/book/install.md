@@ -33,7 +33,7 @@ la main. Vérifiez que tout marche :
 cesia version
 ```
 
-La commande affiche la version, par exemple `cesia 1.2.0`. Plus tard, `cesia upgrade` montre les notes de la dernière
+La commande affiche la version, par exemple `cesia 1.2.1`. Plus tard, `cesia upgrade` montre les notes de la dernière
 release et demande votre accord avant de l'installer ; elle vérifie de la même façon le fingerprint BLAKE2b de ce
 qu'elle télécharge.
 
