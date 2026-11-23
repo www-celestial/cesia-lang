@@ -1,0 +1,19 @@
+use std/io
+
+(** A self tail call that gives the argument its first call left to its default is a call, in a frame of its own: a
+    limit of depth counts it, and names it, as the interpreter does. *)
+defn count(n, acc = 0)
+  if n == 0
+    return acc
+  end
+  count(n - 1, acc + 1)
+end
+
+defn down(d)
+  if d == 0
+    return count(50)
+  end
+  1 + down(d - 1)
+end
+
+io.Print(down(3))
