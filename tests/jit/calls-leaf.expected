@@ -3,10 +3,10 @@ off:
 2668.5
 3007
 9997
-calls-leaf.ce:9:5: Limit "steps" reached.
-  9 |     fib(n - 1) + fib(n - 2)
-    |     ^
-  in fib (calls-leaf.ce:9)
+calls-leaf.ce:5:1: Limit "steps" reached.
+  5 | defn fib(n)
+    | ^
+  in fib (calls-leaf.ce:5)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -19,10 +19,10 @@ calls-leaf.ce:9:5: Limit "steps" reached.
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
-calls-leaf.ce:9:5: Limit "steps" reached.
-  9 |     fib(n - 1) + fib(n - 2)
-    |     ^
-  in fib (calls-leaf.ce:9)
+calls-leaf.ce:5:1: Limit "steps" reached.
+  5 | defn fib(n)
+    | ^
+  in fib (calls-leaf.ce:5)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -39,10 +39,10 @@ calls-leaf.ce:9:5: Limit "steps" reached.
 46368
 2668.5
 3007
-calls-leaf.ce:23:5: Limit "depth" reached.
-  23 |     down(n - 1) + 1
-     |     ^
-  in down (calls-leaf.ce:23)
+calls-leaf.ce:19:1: Limit "depth" reached.
+  19 | defn down(n)
+     | ^
+  in down (calls-leaf.ce:19)
   called from down (calls-leaf.ce:23)
   called from down (calls-leaf.ce:23)
   called from down (calls-leaf.ce:23)
@@ -58,10 +58,10 @@ always:
 2668.5
 3007
 9997
-calls-leaf.ce:9:5: Limit "steps" reached.
-  9 |     fib(n - 1) + fib(n - 2)
-    |     ^
-  in fib (calls-leaf.ce:9)
+calls-leaf.ce:5:1: Limit "steps" reached.
+  5 | defn fib(n)
+    | ^
+  in fib (calls-leaf.ce:5)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -74,10 +74,10 @@ calls-leaf.ce:9:5: Limit "steps" reached.
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
-calls-leaf.ce:9:5: Limit "steps" reached.
-  9 |     fib(n - 1) + fib(n - 2)
-    |     ^
-  in fib (calls-leaf.ce:9)
+calls-leaf.ce:5:1: Limit "steps" reached.
+  5 | defn fib(n)
+    | ^
+  in fib (calls-leaf.ce:5)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -94,10 +94,10 @@ calls-leaf.ce:9:5: Limit "steps" reached.
 46368
 2668.5
 3007
-calls-leaf.ce:23:5: Limit "depth" reached.
-  23 |     down(n - 1) + 1
-     |     ^
-  in down (calls-leaf.ce:23)
+calls-leaf.ce:19:1: Limit "depth" reached.
+  19 | defn down(n)
+     | ^
+  in down (calls-leaf.ce:19)
   called from down (calls-leaf.ce:23)
   called from down (calls-leaf.ce:23)
   called from down (calls-leaf.ce:23)

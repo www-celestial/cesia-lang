@@ -106,17 +106,20 @@ let grow_young () = if not !grown then (grown := true; Gc.set { (Gc.get ()) with
 
 (* The checkpoint, with the top of the v stack still in use. A call adds a single frame and counts one step: at depth
    d, the limit can't fall before max_depth - d steps. Bounding fuel this way makes the limit exact without adding
-   anything to a call; the price, counting d frames, only matters very close to the limit. The limit of steps names
-   [at], the site of the step that reached it, never the last site written: native code writes none of those, so the
-   two engines name the same. At -1, a frame's own step, it names the call that made the frame, as the limit of depth. *)
+   anything to a call; the price, counting d frames, only matters very close to the limit. A limit of steps or of depth
+   names [at], the site of the step that reached it, never the last site written: native code writes none of those, so
+   the two engines name the same. A frame's own step names the frame entered, its function at its line; at -1, a site
+   unknown, the call that made the frame. *)
+let named ctx at = if at >= 0 then at else ctx.i.(ctx.b + 1)
+
 let[@inline never] checkpoint ctx top at =
   let w = ctx.w in
   grow_young ();
   let spent = ctx.refill - ctx.fuel in
   if w.steps_left <> max_int then w.steps_left <- w.steps_left - spent;
-  if w.steps_left < 0 then limit "steps" (if at >= 0 then at else ctx.i.(ctx.b + 1));
+  if w.steps_left < 0 then limit "steps" (named ctx at);
   let d = frames ctx in
-  if d > ctx.max_depth then limit "depth" ctx.i.(ctx.b + 1);
+  if d > ctx.max_depth then limit "depth" (named ctx at);
   ctx.until <- ctx.until - spent;
   if ctx.until <= 0 then begin
     ctx.until <- w.period;

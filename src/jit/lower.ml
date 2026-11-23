@@ -275,11 +275,11 @@ let point st l = Vec.push st.resumes l
 (* A tick can leave the run only in no loop of the function, or as the tick of a loop in no other. *)
 let outer st = st.loops = []
 
-(* The site of the step of a callee's frame entered by a call at [pos], its inlined frames [chain]: named as that call,
-   in the caller, as the interpreter's step of a call names it. *)
-let call_step st chain pos =
+(* The site of the step of a frame's own, of version [v], its inlined frames [chain]: its function at the line that
+   defines it, as the interpreter names the frame entered. *)
+let entry_step st chain (v : version) =
   Vec.add_last st.chains chain;
-  Vec.push st.sites (pos, st.ver, Bytes.empty, true)
+  Vec.push st.sites (v.owner.func.fpos, v, Bytes.empty, chain <> [] || st.index > 0)
 
 (* A tick, then on to [l]; the run comes back at [resume], [l] unless a block outside the loop says the same. [at]: the
    site of its step, as [Ir.Tick]'s. *)
@@ -872,8 +872,9 @@ and inline_args st (e : expr) (v : version) args vout =
   let callsite = site st e.pos in
   let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
   let vb = reg st Kint in
+  let entry = entry_step st ((vb, base, callsite) :: st.inl) v in
   emit st (Frame (vb, base));
-  emit st (Enter (vb, base, callsite, back st));
+  emit st (Enter (vb, base, callsite, entry, back st));
   let f = v.owner.func in
   (* A result of no kind takes the kind of the first value the body gives. *)
   let res = if vout = None && (v.ret == TI || v.ret == TF) then reg st (kind_of v.ret) else -1 and cont = block st in
@@ -916,7 +917,7 @@ and inline_args st (e : expr) (v : version) args vout =
          child.vecs.(j) <- Some { slot = k; n = x.vn; rows = x.vr; cols = x.vc; vslot = -1; ro = false })
     args;
   (* The callee's step, as its frame's entry counts one. *)
-  emit child (Ir.Tick (-1, false, call_step st child.inl e.pos));
+  emit child (Ir.Tick (-1, false, entry));
   tail_block child (Lazy.force f.body);
   st.cur <- cont;
   st.ncalls <- child.ncalls + 1;
@@ -1076,12 +1077,13 @@ and record st e =
 (* The step and frame of a call of a struct's own function at [pos], after its arguments: then its struct, of this
    constant. The step is the callee's, in its frame, as the interpreter's. *)
 and frame_of_struct st pos (proto : proto) sname sfields =
-  note st (Infer.version_for st.w proto (Array.make proto.arity TA));
+  let v = Infer.version_for st.w proto (Array.make proto.arity TA) in
+  note st v;
   let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
   let vb = reg st Kint in
   emit st (Frame (vb, base));
   emit st (Enter_or_bail (vb, bail st));
-  emit st (Ir.Tick (-1, false, call_step st ((vb, base, site st pos) :: st.inl) pos));
+  emit st (Ir.Tick (-1, false, entry_step st ((vb, base, site st pos) :: st.inl) v));
   let shape = Value.shape_of st.w ?sname ~m:st.w.modules.(proto.pm).host (Array.map fst sfields) in
   const st (Struct { shape; fields = Trie.no_vals; r_owned = false })
 
@@ -1139,7 +1141,9 @@ and call_value st e (call : call) f =
 and native_call st e (v : version) args =
   st.ncalls <- st.ncalls + 1;
   let back = back st in
-  let call () = fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, back)) in
+  let call () =
+    fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back))
+  in
   let f = v.owner.func in
   let np = Array.length f.params in
   let rec simple (x : expr) = match x.e with Lint _ | Lfloat _ -> true | Var { b = Local i; _ } -> i < np | _ -> false
@@ -1583,8 +1587,9 @@ and inline_test st (e : expr) (v : version) args body yes no =
   let callsite = site st e.pos in
   let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
   let vb = reg st Kint in
+  let entry = entry_step st ((vb, base, callsite) :: st.inl) v in
   emit st (Frame (vb, base));
-  emit st (Enter (vb, base, callsite, back st));
+  emit st (Enter (vb, base, callsite, entry, back st));
   let f = v.owner.func in
   let child =
     { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); spec = Array.make f.nvars false;
@@ -1598,7 +1603,7 @@ and inline_test st (e : expr) (v : version) args body yes no =
        child.regs.(j) <- r;
        emit child (Move (r, convert child (Vec.get st.kinds r) (x, xk))))
     args;
-  emit child (Ir.Tick (-1, false, call_step st child.inl e.pos));
+  emit child (Ir.Tick (-1, false, entry));
   cond child body yes no;
   st.ncalls <- child.ncalls + 1
 
@@ -2290,7 +2295,7 @@ and tail st (e : expr) =
         args
     in
     Array.iteri (fun j r -> emit st (Move (ps.(j), Reg r))) tmp;
-    emit st (Ir.Tick (point st st.body, outer st, -1));
+    emit st (Ir.Tick (point st st.body, outer st, entry_step st st.inl st.ver));
     close st (Jump st.body)
   | _ when st.vret <> None -> vgive st (vexpr st e)
   | _ -> result st (expr st e)
@@ -2344,7 +2349,7 @@ let rec func st name =
   st.cur <- entry;
   let body = block st in
   st.body <- body;
-  ignore (tick st body (-1));
+  ignore (tick st body (entry_step st st.inl ver));
   tail_block st (Lazy.force f.body);
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)

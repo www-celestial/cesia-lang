@@ -3,7 +3,7 @@ open Types
 (* Each unit gets its own names: MIR's exported names are global. *)
 let units = ref 0
 
-type text = { text : string; entry : string; points : int array; ticks : int array array }
+type text = { text : string; entry : string; points : int array; ticks : int array array; entries : (int, int) Hashtbl.t }
 
 (* A Cesia integer as a register holds it: 2n, which needs 64 bits. *)
 let doubled n = Int64.to_string (Int64.mul 2L (Int64.of_int n))
@@ -46,8 +46,9 @@ let args_of ~nested (fn : Ir.func) =
 
 (* Each function is written twice: [f], the outermost frame, which the interpreter enters and which can leave and come
    back at a resume point; and [g], a nested frame, which only another native frame calls: no resume point, no slot
-   written, a frame of 2 slots 2 above its caller's base. [points] and [ticks]: as [text]'s, the first only of [f]. *)
-let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
+   written, a frame of 2 slots 2 above its caller's base. [points], [ticks] and [entries]: as [text]'s, the first only
+   of [f]. *)
+let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
   let pr fmt = Printf.bprintf b fmt in
   let name = if nested then "g" ^ String.sub fn.name 1 (String.length fn.name - 1) else fn.name in
   (* MIR's labels belong to the module: each function gets its own. *)
@@ -203,8 +204,10 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
   in
   (* A frame about to be entered at [at], above the limit: the stack is short, the interpreter's frames would want a longer
      one under a limit of memory, or the limit of depth is reached; for the last two, the frame entered at the site, as the
-     interpreter's is when it stops. *)
-  let deep_stub at caller site =
+     interpreter's is when it stops, the limit of depth naming the site [entry] of the frame, found from the call's in
+     [entries]: native code writes neither. *)
+  let deep_stub at caller site entry =
+    Hashtbl.replace entries fn.sites.(site) fn.sites.(entry);
     stub (fun s ->
         links s site;
         base_in s "x6" caller;
@@ -215,8 +218,8 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
   let again back = bail_to back in
   (* A frame at [at] above the limit, for a call that can bail: past the stack, or where the interpreter's frames would want
      a longer one, bail; else the limit of depth. *)
-  let short at caller site back =
-    let g = again back and deep = deep_stub at caller site in
+  let short at caller site entry back =
+    let g = again back and deep = deep_stub at caller site entry in
     stub (fun s ->
         Printf.bprintf s "  mov x0, %s\n  bgt %s, %s, x0\n  mov x0, %s\n  bgt %s, %s, x0\n  jmp %s\n" (cx Ir.io_cap2) g at
           (cx Ir.io_mem) g at deep)
@@ -239,9 +242,9 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
   in
   let rec ins = function
     | Ir.Frame (r, _) -> pr "  add r%d, b, %d\n" r (offset r)
-    | Enter (r, base, site, back) ->
+    | Enter (r, base, site, entry, back) ->
       let at = "r" ^ string_of_int r in
-      let slow = if back < 0 then deep_stub at base site else short at base site back in
+      let slow = if back < 0 then deep_stub at base site entry else short at base site entry back in
       pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) slow r
     | Enter_or_bail (r, k) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) (bail_to k) r
     | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (operand v)
@@ -331,11 +334,11 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
       pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  lsh r%d, x1, 1\n  jmp %s\n" v word v r over;
       pr "%s:\n  add x1, %s, 256\n  lsh r%d, x1, 1\n%s:\n" word v r over
     | Keep (f, sp, q) -> pr "  mov r%d, fuel\n  mov r%d, %s\n  mov r%d, %s\n" f sp (cx Ir.io_spent) q (cx Ir.io_quantum)
-    | Call (r, k, args, site, back) ->
+    | Call (r, k, args, site, entry, back) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       let nb = offset (frame_of site) + callee_of site in
       pr "  add nb, b, %d\n" nb;
-      let slow = if back < 0 then deep_stub "nb" (frame_of site) site else short "nb" (frame_of site) site back in
+      let slow = if back < 0 then deep_stub "nb" (frame_of site) site entry else short "nb" (frame_of site) site entry back in
       let again () = again back in
       let up =
         let unwind =
@@ -783,14 +786,14 @@ let emit (fns : Ir.func array) =
   let called = Array.make (Array.length fns) false in
   Array.iter
     (fun (fn : Ir.func) ->
-       Array.iter (fun (bk : Ir.block) -> List.iter (function Ir.Call (_, k, _, _, _) -> called.(k) <- true | _ -> ()) bk.ins) fn.blocks)
+       Array.iter (fun (bk : Ir.block) -> List.iter (function Ir.Call (_, k, _, _, _, _) -> called.(k) <- true | _ -> ()) bk.ins) fn.blocks)
     fns;
   let nested = List.filter (fun k -> called.(k)) (List.init (Array.length fns) Fun.id) in
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));
   let moved_at = Ir.moved_at fns.(0) in
-  let points = Array.make (Array.length fns.(0).resumes) (-1) and ticks = Vec.create () in
-  func b ~prefix ~nested:false ~moved_at ~points ~ticks fns.(0);
-  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at ~points ~ticks fns.(k)) nested;
+  let points = Array.make (Array.length fns.(0).resumes) (-1) and ticks = Vec.create () and entries = Hashtbl.create 8 in
+  func b ~prefix ~nested:false ~moved_at ~points ~ticks ~entries fns.(0);
+  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at ~points ~ticks ~entries fns.(k)) nested;
   let f0 = fns.(0) in
   pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
@@ -810,4 +813,4 @@ let emit (fns : Ir.func array) =
    | Kint | Kval -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
    | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));
   pr "  mov %s, fuel\n  ret 0\n%sX:\n  mov x0, %s\n  ret x0\n  endfunc\n  endmodule\n" (cx Ir.io_fuel) prefix (cx Ir.io_status);
-  { text = Buffer.contents b; entry = prefix ^ "e"; points; ticks = Vec.to_array ticks }
+  { text = Buffer.contents b; entry = prefix ^ "e"; points; ticks = Vec.to_array ticks; entries }

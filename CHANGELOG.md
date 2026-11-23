@@ -191,6 +191,10 @@
   in `cesia doc`, `cesia.Doc` and `cesia.Definitions`, as `X = 1` does: only one space on each side was read as a value.
 - `cesia test` of a file that doesn't parse, or of a folder that holds one, prints its error as `cesia run` does and ends
   with the code 1, even when the file has nothing to run, which it only reads: it said `0 passed, 0 failed` with the code 0.
+- A limit of steps or of depth reached at a call's own step names the function called, at the line that defines it, then
+  the call that made its frame, as Python names the frame being entered, in the interpreter and in machine code alike:
+  for `f(x) = x + 1` on line 1 of `a.ce` and `run() = f(2)` on line 2, the trace says `in f (a.ce:1)` then `called from
+  run (a.ce:2)`, where it said `in run (a.ce:2)` then `called from run (a.ce:2)`, the caller twice.
 
 ## 1.2.0
 

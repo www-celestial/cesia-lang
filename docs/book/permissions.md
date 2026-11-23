@@ -127,14 +127,15 @@ cesia run --limit memory=512M,steps=10000000 program.ce
 | Limit | Stops the program when |
 |---|---|
 | `memory=512M` | it holds more memory than that: `K`, `M` and `G` are its units |
-| `steps=1000000` | it has run that many steps, as a loop that never ends: a step is a call or a turn of a loop, and a native counts about one step per 16 values it makes. The message names the step past the limit: the loop, the call or the native |
+| `steps=1000000` | it has run that many steps, as a loop that never ends: a step is a call or a turn of a loop, and a native counts about one step per 16 values it makes. The message names the step past the limit: the loop, the native, or the function a call enters, at its line, then the call |
 | `depth=10000` | calls inside calls go deeper than that: the default is 10,000 |
 | `nesting=600` | code, JSON or values are nested deeper than that: the default is 600 |
 
 ### The defaults
 
 Without `--limit memory`, a program may take at most 80% of the machine's memory, so that one large array can't freeze it.
-A function that calls itself forever stops at the depth limit, with the line of the call:
+A function that calls itself forever stops at the depth limit, with the function it enters, at its line, then the calls
+that led there, as Python names the frame being entered:
 
 ```cesia fails
 forever(n) = forever(n + 1) + 1

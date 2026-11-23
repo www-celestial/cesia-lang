@@ -43,17 +43,18 @@ type ins =
   | Dim of int * int * int  (** [Dim (r, a, d)]: the size of dimension [d], from 0, of an array that takes an index per dimension *)
   | Elem of int * int * value * int  (** the destination, the array, the index from 1, the site *)
   | Set_elem of int * value * value * int  (** the array, the index from 1, the value, the site *)
-  | Call of int * int * value array * int * int
-      (** the destination, the function of the unit, the arguments, the site, and the statement of a region's loop that
-          the run bails to, its fuel as at its start, when the call wants a longer stack, or -1: the run then stops *)
+  | Call of int * int * value array * int * int * int
+      (** the destination, the function of the unit, the arguments, the site, the site of the callee's entry, which the
+          limit of depth reached there names, and the statement of a region's loop that the run bails to, its fuel as at
+          its start, when the call wants a longer stack, or -1: the run then stops *)
   | Tick of int * bool * int
       (** one step of fuel. When it runs out at a tick that can leave (outside any loop, or that of a loop in no other), the
           run leaves and comes back at the resume point; inside an inner loop, or in a nested frame, it takes another
           quantum, and when a full checkpoint is due it asks the next tick that can leave to do so: a full checkpoint then
           waits at most for that inner loop. The last, the site of the step, which the limit of steps reached there names
-          as the interpreter's does: a loop's, an operation's, or the call of an inlined frame, whose inlined frames end
-          with the one whose step it is; or -1 for a step of the function's own frame that names the call that made it,
-          its entry's or a self tail call's *)
+          as the interpreter's does: a loop's, an operation's, or a frame's own, at its entry or a self tail call, which
+          names its function at its line, its inlined frames ending with the one whose step it is; -1 names the call that
+          made the frame *)
   | Try of op * int * value * value * int  (** [Add], [Sub] or [Mul] that goes to the block on overflow, raising nothing *)
   | Elem_at of int * int * int * int
       (** the destination, the array, a register of its index from 1, doubled as every integer register, and a number of
@@ -71,10 +72,10 @@ type ins =
   | Frame of int * int
       (** [Frame (r, base)]: [r], a raw integer, the base a callee of the frame at [base] takes: a register of a raw base,
           or -1 for the function's own frame *)
-  | Enter of int * int * int * int
-      (** [Enter (r, base, site, k)]: an inlined callee enters its frame at [r], called at [site] from the frame at
-          [base]: the depth and the stack are checked as for a call, and where the stack would be short, the run bails
-          to statement [k] as [Call] does, or stops at -1 *)
+  | Enter of int * int * int * int * int
+      (** [Enter (r, base, site, entry, k)]: an inlined callee enters its frame at [r], called at [site] from the frame at
+          [base]: the depth and the stack are checked as for a call, the limit of depth naming the site [entry], and
+          where the stack would be short, the run bails to statement [k] as [Call] does, or stops at -1 *)
   | Enter_or_bail of int * int
       (** [Enter_or_bail (r, k)]: the same, for a struct's function; when it can't, the run bails before statement [k],
           and the interpreter makes the call *)

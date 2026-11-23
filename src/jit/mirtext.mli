@@ -10,6 +10,9 @@ type text = {
   ticks : int array array;
       (** for each number that a tick stops with at the limit of steps, in [Ir.io_code], the sites of its steps, in order:
           several when [Ir.Steps] folded them *)
+  entries : (int, int) Hashtbl.t;
+      (** for each site of a call where the limit of depth can stop, which [Ir.io_point] gives, the site of the entry
+          of the frame it enters, which that limit names *)
 }
 
 val emit : Ir.func array -> text

@@ -1,6 +1,6 @@
-depth-default.ce:3:12: Limit "depth" reached.
+depth-default.ce:3:1: Limit "depth" reached.
   3 | f(n) = 1 + f(n + 1)
-    |            ^
+    | ^
   in f (depth-default.ce:3)
   called from f (depth-default.ce:3)
   called from f (depth-default.ce:3)

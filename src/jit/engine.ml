@@ -30,6 +30,7 @@ type code = {
   cells : (int * int * t) array;  (* the variables of modules that any function of the unit took as constants *)
   points : int array;  (* the sites a limit of steps names, as [Mirtext.text]'s: at a tick that leaves *)
   ticks : int array array;  (* at one that stops *)
+  entries : (int, int) Hashtbl.t;  (* the site a limit of depth names, by the site of the call, as [Mirtext.text]'s *)
   last : t array;  (* the values of [fn.moving] that the last run took *)
 }
 
@@ -98,11 +99,11 @@ let make (w : world) (ver : version) fns start loops =
     if calls && (not pure) && fns.(0).loose then None
     else begin
       match
-        let { Mirtext.text; entry; points; ticks } = Mirtext.emit fns in
+        let { Mirtext.text; entry; points; ticks; entries } = Mirtext.emit fns in
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
-        (text, entry, points, ticks, Jit.load text [| entry |] 1)
+        (text, entry, points, ticks, entries, Jit.load text [| entry |] 1)
       with
-      | text, entry, points, ticks, [| mir; addr |] ->
+      | text, entry, points, ticks, entries, [| mir; addr |] ->
         let fn = fns.(0) in
         let written = List.filter_map (fun (s, wr, _, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
@@ -115,7 +116,7 @@ let make (w : world) (ver : version) fns start loops =
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
             need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; worth;
             cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
-            last = Array.make (Array.length fn.moving) Missing; points; ticks }
+            last = Array.make (Array.length fn.moving) Missing; points; ticks; entries }
         in
         Gc.finalise release code;
         Some code
@@ -384,7 +385,8 @@ let go (ctx : ctx) code entry =
     else if st = Ir.error then fail ctx
     else if st = Ir.too_deep then begin
       ctx.b <- io.(Ir.io_frame);
-      Runtime.limit "depth" io.(Ir.io_point)
+      let at = io.(Ir.io_point) in
+      Runtime.limit "depth" (Option.value (Hashtbl.find_opt code.entries at) ~default:at)
     end
     else if st = Ir.too_long then begin
       ctx.b <- io.(Ir.io_frame);

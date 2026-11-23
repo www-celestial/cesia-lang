@@ -149,7 +149,8 @@ cesia run --limit memory=512M,steps=10000000 program.ce
 
 Sans `--limit memory`, un programme peut prendre au plus 80 % de la mémoire de la machine, pour qu'un seul grand array
 (une liste de valeurs rangées par position) ne puisse pas la figer. Une fonction qui s'appelle elle-même sans fin
-s'arrête à la limite de profondeur, avec la ligne de l'appel :
+s'arrête à la limite de profondeur, avec la fonction dans laquelle elle entre, à sa ligne, puis les appels qui y ont
+mené, comme Python nomme la frame (le cadre d'un appel en cours) dans laquelle il entre :
 
 ```cesia fails
 forever(n) = forever(n + 1) + 1

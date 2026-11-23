@@ -39,8 +39,8 @@ val grow_young : unit -> unit
 
 (** The checkpoint: refills [fuel], flushes the output, looks at the memory, calls [on_checkpoint]. The second
     argument is the top of the v stack still in use: beyond it, everything is dead. The third is the site of the step
-    that ran out of fuel, which the limit of steps names: a loop's or a native's; or -1 for a frame's own step, the
-    call that made it, read from the frame's link. *)
+    that ran out of fuel, which the limits of steps and of depth name: a loop's, a native's, or a frame's own, its
+    function at its line; -1 for a site unknown names the call that made the frame, read from its link. *)
 val checkpoint : ctx -> int -> int -> unit
 
 (** Counts the last steps of a fiber that ends; the limit of steps, reached there, names the site that spawned it. *)

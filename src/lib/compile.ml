@@ -62,12 +62,27 @@ let site c pos =
   Vec.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live; shidden = false };
   Vec.length s - 1
 
-(* One step of a frame's own, at its entry or a self tail call. [off]: beyond b + off, the v stack is dead. The limit of
-   steps reached there names the call that made the frame, from its link (-1): a call keeps no register for it. *)
-let[@inline] tick ctx off =
+(* The site of a frame's own step, at its entry or at a self tail call: its function, at the line that defines it, as
+   Python names the frame being entered; the trace then names the call that made the frame. Made once for the version,
+   at the first checkpoint that falls on such a step. *)
+let entry_site w (ver : version) =
+  if ver.entry < 0 then begin
+    Vec.add_last w.sites
+      { sfile = ver.owner.file; spos = ver.owner.func.fpos; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
+        slive = Bytes.empty; shidden = false };
+    ver.entry <- Vec.length w.sites - 1
+  end;
+  ver.entry
+
+(* The checkpoint at a step of a frame's own, of version [ver]: beyond b + its frame, the v stack is dead. A limit
+   reached there names the frame entered. *)
+let[@inline never] own_out ctx (ver : version) = Runtime.checkpoint ctx (ctx.b + ver.frame) (entry_site ctx.w ver)
+
+(* One step of a frame's own, at its entry or a self tail call: [ver] is read only when it runs out. *)
+let[@inline] own_step ctx ver =
   let f = ctx.fuel - 1 in
   ctx.fuel <- f;
-  if f < 0 then Runtime.checkpoint ctx (ctx.b + off) (-1)
+  if f < 0 then own_out ctx ver
 
 (* The checkpoint at a turn of a loop, whose site [at] the limit of steps names; beyond b + the site's offset, the v
    stack is dead. A loop keeps only its site for its turns, as it kept only its offset. *)
@@ -190,7 +205,7 @@ let[@inline] enter_fast (ctx : ctx) (i : int array) b nb s (ver : version) =
     ctx.site <- s;
     Runtime.grow ctx need
   end;
-  tick ctx ver.frame
+  own_step ctx ver
 
 let[@inline] enter (ctx : ctx) nb s (ver : version) = enter_fast ctx ctx.i ctx.b nb s ver
 
@@ -751,8 +766,8 @@ let[@inline] fa_get (ctx : ctx) slot k s =
   | Array { store = F d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Float.Array.get d (k - 1)
   | x -> fa_slow1 ctx x k s
 
-let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -> 'a) -> ctx -> 'a =
-  fun f frame prologue unbox body ->
+let wrap : 'a. func -> version -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -> 'a) -> ctx -> 'a =
+  fun f ver prologue unbox body ->
   let once = match prologue with None -> body | Some p -> fun ctx -> p ctx; body ctx in
   let guarded = if f.has_return then (fun ctx -> try once ctx with Return_value v -> unbox ctx v) else once in
   if not f.has_self_tail then guarded
@@ -761,8 +776,8 @@ let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -
       let r = guarded ctx in
       if ctx.again then begin
         ctx.again <- false;
-        (* The step of a self tail call, which goes on in the frame: as a call's, it names the call that made it. *)
-        tick ctx frame;
+        (* The step of a self tail call, which goes on in the frame: as a call's, it names the frame entered. *)
+        own_step ctx ver;
         loop ctx
       end else r
     in
@@ -858,21 +873,21 @@ let rec compile_version (ctx : ctx) (ver : version) =
    | TI ->
      let body = ci_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> to_i ctx (check ctx (Int (body ctx))) | None -> body in
-     let entry = wrap f ver.frame prologue to_i body in
+     let entry = wrap f ver prologue to_i body in
      ver.ri <- entry;
      ver.rv <- (fun ctx -> Int (entry ctx));
      ver.rf <- (fun ctx -> float_of_int (entry ctx))
    | TF ->
      let body = cf_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> to_f ctx (check ctx (Float (body ctx))) | None -> body in
-     let entry = wrap f ver.frame prologue to_f body in
+     let entry = wrap f ver prologue to_f body in
      ver.rf <- entry;
      ver.rv <- (fun ctx -> Float (entry ctx));
      ver.ri <- (fun ctx -> to_i ctx (Float (entry ctx)))
    | _ ->
      let body = ctail_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> check ctx (body ctx) | None -> body in
-     let entry = wrap f ver.frame prologue (fun _ v -> v) body in
+     let entry = wrap f ver prologue (fun _ v -> v) body in
      ver.rv <- entry;
      ver.ri <- (fun ctx -> to_i ctx (entry ctx));
      ver.rf <- (fun ctx -> to_f ctx (entry ctx)));

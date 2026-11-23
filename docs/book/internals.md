@@ -174,9 +174,10 @@ Under `--watch`, a full checkpoint comes every 100,000 steps, so that a changed 
 is a subtraction and a test at each call and turn of a loop; the depth of the calls is counted only at a checkpoint, each
 frame once, so a call costs no more for the depth limit. A limit is exact all the same: the steps between two checkpoints
 are bounded by what is left before the limit. Each step carries its *site*, the place in the code that it names: a turn
-of a loop names the loop, the first step of a frame the call that made it, a native its call. The `steps` limit names
-the site of the step that went past it, and machine code names the same as the interpreter: it writes no site as it
-runs, and the JIT finds that of the step from the place where the code stopped, only then.
+of a loop names the loop, a native its call, and the first step of a frame its function, at the line that defines it, as
+Python names the frame being entered; the trace then names the call that made the frame. The `steps` and `depth` limits
+name the site of the step that went past them, and machine code names the same as the interpreter: it writes no site as
+it runs, and the JIT finds that of the step from the place where the code stopped, only then.
 
 ### Caches at each site
 

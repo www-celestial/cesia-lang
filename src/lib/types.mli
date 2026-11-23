@@ -142,6 +142,9 @@ and version = {
   mutable seen : (int * proto list ref) list;
       (** each call of a function held in a value in its code, by the node of the call: the functions it reached, the
           last first, at most [Compile.seen_most], on which the JIT bets *)
+  mutable entry : int;
+      (** the site of its frame's own step, its function at its line, which a limit reached there names: made by
+          the interpreter at the first checkpoint that falls there, -1 before *)
 }
 
 and slot = {

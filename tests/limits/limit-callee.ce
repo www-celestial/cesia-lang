@@ -1,0 +1,12 @@
+(* At a call's own step, a limit of steps or of depth names the function called, at its line, then the call that made
+   it, as Python names the frame being entered: in f, called from run. A self tail call, whose step stays in its frame,
+   names its function too. *)
+f(x) = x + 1
+defn count(n)
+  if n == 0
+    return 0
+  end
+  count(n - 1)
+end
+run() = f(2) + count(3)
+run()
