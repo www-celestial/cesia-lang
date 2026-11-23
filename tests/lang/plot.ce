@@ -194,6 +194,15 @@ defn isPolarDefaults()
   sc = scene(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), 500, 500)
   text.StartsWith("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" height=\"500\"", s) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "xlabel"), ["0°", "30°", "60°", "90°", "120°", "150°", "180°", "210°", "240°", "270°", "300°", "330°"]) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "ylabel")[1], "0") and value.Len(role(sc, "frame")) == 1
 end
+defn isPolarEndsPastRim()
+  (* Lines that end on the rim, on its right, are named past the labels of the rim: no name covers a label of an angle. *)
+  s = scene(plot.Of([plot.Line([300, 180, a], [0, 50, 0], label = "ends at $a") for a in [60, 75, 90, 120]], polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), legend = "ends"), 600, 500)
+  names = [box(x) for x in role(s, "legend")]
+  angles = [box(x) for x in role(s, "xlabel")]
+  meets = (a, b) -> a.X < b.X + b.W and b.X < a.X + a.W and a.Y < b.Y + b.H and b.Y < a.Y + a.H
+  inImage = (b) -> b.X >= -0.01 and b.Y >= -0.01 and b.X + b.W <= s.Width + 0.01 and b.Y + b.H <= s.Height + 0.01
+  value.Len(names) == 4 and not list.Any([list.Any([meets(n, a) for a in angles]) for n in names]) and list.All([inImage(box(x)) for x in s.Items if x.Kind == "text"])
+end
 isPolarAngles() = value.Equal(texts(plot.Of([plot.Line([0, 1], [1, 2])], polar = true, xticks = [0, 90, 360, 450]), "xlabel"), ["0°", "90°"])
 
 (* A scene without a height keeps the shape of the graph's own size, at most its own width, as an editor fits it to a pane. *)

@@ -2560,7 +2560,7 @@ defn drawPolar(g, ps, ox, oy, w, h, footnote)
     m = {Cx: math.Floor((left + right) / 2.0) + 0.5, Cy: math.Floor((top + bottom) / 2.0) + 0.5, R: rad, C0: range[1], C1: range[2]}
     over = 0.0
     if value.Len(named) > 0
-      tags = polarEnds(named, m, m.Cy - m.R, m.Cy + m.R)
+      tags = polarEnds(named, m, m.Cy - m.R, m.Cy + m.R, reachX)
       for t in tags
         over = list.Max(over, t.X + t.W - (ox + w - outer))
       end
@@ -2630,8 +2630,10 @@ defn drawPolar(g, ps, ox, oy, w, h, footnote)
   result.Ok({Items: items, Dropped: dropped})
 end
 
-defn polarEnds(ps, m, top, bottom)
-  (** The labels of legend = "ends" in a polar graph: right of the last point of each line inside the disc, apart. *)
+defn polarEnds(ps, m, top, bottom, reach)
+  (** The labels of legend = "ends" in a polar graph: right of the last point of each line inside the disc, apart; a line
+      that ends on the rim, on its right half, is named past the labels of the rim, reach pixels beyond it, so that no
+      label covers another. *)
   tags = []
   for p in ps
     at = polarAt(m, p.X, p.Y)
@@ -2640,7 +2642,12 @@ defn polarEnds(ps, m, top, bottom)
       k -= 1
     end
     if k >= 1
-      tags = list.Append({Text: p.Label, X: at.X[k] + 6.0, Y: at.Y[k] + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
+      x = at.X[k] + 6.0
+      if at.R[k] >= m.R - 1.0 and at.X[k] > m.Cx
+        dy = at.Y[k] - m.Cy
+        x = list.Max(x, m.Cx + math.Sqrt(list.Max(0.0, (m.R + reach) * (m.R + reach) - dy * dy)) + 4.0)
+      end
+      tags = list.Append({Text: p.Label, X: x, Y: at.Y[k] + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
     end
   end
   placed(list.SortBy(t -> t.Y, tags), tickSize * lineRatio, top + tickSize * ascent, bottom - tickSize * (lineRatio - ascent))
