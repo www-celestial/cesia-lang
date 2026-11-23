@@ -8,6 +8,7 @@ use std/dict
 use std/list
 use std/math
 use std/result
+use std/text
 use std/value
 
 (** if
@@ -143,9 +144,11 @@ use std/value
       true or bug.Panic("never runs") --> true *)
 
 (** not
-    The opposite of a condition, which is true or false.
+    The opposite of a condition, which is true or false. Followed by = in a call, it names an argument, as the not of
+    text.ByteFindAny.
 
-      not (1 > 2) --> true *)
+      not (1 > 2) --> true
+      text.ByteFindAny("ab", 1, "abc", not = true) --> 3 *)
 
 (** then
     Passes the value on its left to the call on its right: a pipeline, read from left to right. The value takes the place

@@ -37,6 +37,16 @@
   `new` and `private`, under no folder of `write=`, costs what it did before them, within 1 %: 1.86 µs a call to
   `/dev/null`, 1.84 before them (medians of 21 runs, alternated).
 
+### Texts
+
+- `text.ByteFindAny(bytes, from, s, not = false)` gives the byte position of the first byte of `s` from byte `from` on
+  that is one of the bytes of `bytes`, or with `not = true` the first that is none of them, or missing, as Go's
+  `strings.IndexAny` and C's `strcspn` and `strspn`: a lexer skips a word, a run of spaces or the inside of a text at
+  once. It reads eight bytes at a time through a table of the 256 bytes, made once for each of the last eight sets: a
+  run of 1 MB in 0.86 ms, where a loop of `text.Byte` takes 45 ms, and a call on a word of 5 bytes with a set of 63 in
+  69 ns, where `text.ByteFind` of one byte as near takes 125 (medians of 21 runs). It counts against `--limit steps` the
+  bytes of its set and those it read. In a call, `not =` names an argument, where it was an error.
+
 ### Science
 
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
@@ -50,6 +60,13 @@
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
   as it builds, with no script, in the time the site took before.
+
+### Speed
+
+- A native called with three or four arguments, as `text.ByteFind`, `text.ByteSlice` or `text.PadLeft`, gets them in
+  an array made in place, as one with one or two always did, where a map made a closure and called into C at each call:
+  20 ns less a call, `text.ByteFind` of a byte near in 125 ns instead of 145, `text.ByteSlice` of 5 bytes in 90 instead
+  of 109 (medians of 21 runs, alternated).
 
 ### Fixes
 
