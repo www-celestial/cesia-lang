@@ -1,0 +1,14 @@
+use std/io
+use std/math
+use std/ode
+use std/result
+
+(** The loop of ode.Solve as machine code, under a limit of depth that makes a checkpoint come at nearly every step: its
+    code goes back to the interpreter at a guess that fails, and is dropped at the 17th; the interpreter makes the rest
+    of that turn, where a loop inside gets hot, and the code the JIT makes again for the loop around it takes the turn
+    over from there. That new code ended the program with an internal error, as the old one alone was looked for. *)
+probe(t, y) = [math.Cos(t) * y[2], t - y[1] * y[1]]
+a = result.Unwrap(ode.Solve(probe, [0.0, 1.0], [0.5, 1.0], rtol = 1.0e-5, atol = 1.0e-8))
+io.Print(a.Stats)
+b = result.Unwrap(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 100.0], [1.0, 0.0], rtol = 1.0e-9, atol = 1.0e-12))
+io.Print(b.Stats)
