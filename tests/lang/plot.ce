@@ -88,7 +88,7 @@ end
 (* A point past xlim, or with a NaN, leaves its text out; the NaN counts in Dropped; a text has no entry in the legend. *)
 isTextLeftOut() = value.Len([x for x in role(scene(plot.Of([plot.Text(sun, high, hours)], xlim = [100, 160]), 640, 400), "data") if x.Kind == "text"]) == 5 and scene(plot.Text([1, math.Nan], [1, 2], ["a", "b"]), 640, 400).Dropped == 1 and value.Len(role(scene(plot.Of([plot.Line([1, 2], [1, 2], label = "l"), plot.Text([1], [1], ["t"])]), 640, 400), "legend")) == 2
 isTextEscaped() = text.Contains(">&lt;script&gt;&amp;&quot;x&quot;</text>", svg(plot.Text([1, 2], [1, 2], ["<script>&\"x\"", "b"]))) and not text.Contains("<script>", svg(plot.Of([plot.Text([1, 2], [1, 2], ["<script>", "b"])], title = "<script>", x = "<script>", y = "&\"")))
-isTextBound() = message(plot.Text(1..100001, 1..100001, ["a" for k in 1..100001])) == "plot.Text: 100001 texts are too many, past 100,000; keep those that a reader can tell apart."
+isTextBound() = message(plot.Text(list.Fill(1.0, 100001), list.Fill(1.0, 100001), list.Fill("a", 100001))) == "plot.Text: 100001 texts are too many, past 100,000; keep those that a reader can tell apart."
 
 (* The box of a note: at a corner of the plot, a line of text for each line of the note, on the paper. *)
 
@@ -215,7 +215,10 @@ isPolarAngles() = value.Equal(texts(plot.Of([plot.Line([0, 1], [1, 2])], polar =
 
 (* A scene without a height keeps the shape of the graph's own size, at most its own width, as an editor fits it to a pane. *)
 
-size(g, w) = [result.Unwrap(plot.Scene(g, w, missing)).Width, result.Unwrap(plot.Scene(g, w, missing)).Height]
+defn size(g, w)
+  s = result.Unwrap(plot.Scene(g, w, missing))
+  [s.Width, s.Height]
+end
 isSceneFitted() = value.Equal(size(plot.Line(xs, ys), 1000), [640, 400]) and value.Equal(size(plot.Line(xs, ys), 320), [320, 200]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 900), [500, 500]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 300.7), [300, 300]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], size = [800, 100]), 200), [200, 80]) and value.Equal(size(plot.Grid([plot.Line(xs, ys), plot.Line(xs, zs)]), 2000), [1280, 400]) and message0(plot.Scene(plot.Line(xs, ys), 90, missing)) == "plot.Scene needs at least 100 by 80 pixels, not 90 by missing."
 
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
