@@ -263,8 +263,10 @@ defn Save(g, path)
 end
 
 defn Scene(g, width, height, frame = 1, view = missing)
-  (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". The scene
-      is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
+  (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". With
+      height missing, the graph keeps the shape of its own size, its width and its height, as an editor fits it to a
+      pane: it is drawn width pixels wide, or its own width when that is less, and as high as its shape asks, square for a
+      polar graph. The scene is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
       infinity. For an animation of Frames, it is the scene of one frame, frame from 1, with two fields more: Frames, how
       many there are, and Fps, how many a second. A 3D graph has the field View, [az, el], the view it is seen from: its
       code's, or view when given, which turns it without changing the graph, as Cemacs does when it is dragged. An item is
@@ -285,9 +287,25 @@ defn Scene(g, width, height, frame = 1, view = missing)
       hold the labels).
 
         value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true
+        [result.Unwrap(Scene(Line([1, 2], [3, 4]), 320, missing)).Height, result.Unwrap(Scene(Of([Line([0, 90], [1, 2])], polar = true), 900, missing)).Width] --> [200, 500]
         result.Unwrap(Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])).View --> [0.0, 90.0] *)
-  r = sceneOf(g, width, height, frame, view)?
+  size = fitted(g, width, height)?
+  r = sceneOf(g, size[1], size[2], frame, view)?
   result.Ok(if dict.Has("Summary", r) dict.Drop("Summary", r) else r end)
+end
+
+defn fitted(g, width, height)
+  (** The size Scene draws a graph at: width by height, or with height missing, width at most its own and the height of
+      its own shape, at least 80. *)
+  if not value.IsMissing(height)
+    return result.Ok([width, height])
+  end
+  if not (value.IsNumber(width) and width >= 100)
+    return fail("plot.Scene needs at least 100 by 80 pixels, not $(brief(width)) by missing.")
+  end
+  own = sizeOf(g, "plot.Scene")?
+  wide = list.Min(math.Div(math.Floor(width), 1), math.Div(math.Floor(own[1]), 1))
+  result.Ok([wide, list.Max(80, math.Div(math.Round(wide * own[2] / own[1]), 1))])
 end
 
 defn sceneOf(g, width, height, frame, view)

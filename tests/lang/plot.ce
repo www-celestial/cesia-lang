@@ -196,6 +196,11 @@ defn isPolarDefaults()
 end
 isPolarAngles() = value.Equal(texts(plot.Of([plot.Line([0, 1], [1, 2])], polar = true, xticks = [0, 90, 360, 450]), "xlabel"), ["0°", "90°"])
 
+(* A scene without a height keeps the shape of the graph's own size, at most its own width, as an editor fits it to a pane. *)
+
+size(g, w) = [result.Unwrap(plot.Scene(g, w, missing)).Width, result.Unwrap(plot.Scene(g, w, missing)).Height]
+isSceneFitted() = value.Equal(size(plot.Line(xs, ys), 1000), [640, 400]) and value.Equal(size(plot.Line(xs, ys), 320), [320, 200]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 900), [500, 500]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 300.7), [300, 300]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], size = [800, 100]), 200), [200, 80]) and value.Equal(size(plot.Grid([plot.Line(xs, ys), plot.Line(xs, zs)]), 2000), [1280, 400]) and message0(plot.Scene(plot.Line(xs, ys), 90, missing)) == "plot.Scene needs at least 100 by 80 pixels, not 90 by missing."
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 

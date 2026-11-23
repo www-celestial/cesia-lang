@@ -713,7 +713,7 @@ defn Run(session, cell, width = 640)
       count of the lines of Output printed before it, Value as Value is, but a graph that can't be drawn, which is a
       Value of Kind "error" with Text), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
-      struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
+      struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, or the graph's own width when it is less, as high as the shape of its own size asks: plot.Scene with its height missing) and Key, which
       Scene draws again at another width, for an animation of plot.Frames, Frames and Fps, and Scene its first frame,
       and for a 3D graph View, [az, el], the view of its code; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
       of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
@@ -770,7 +770,8 @@ defn Rows(session, name, first, last)
 end
 
 defn Scene(session, key, width, frame = 1, view = missing)
-  (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, 400 pixels high:
+  (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, at most its own,
+      and the height of its own shape, as Run draws it:
       for a pane that changed its width, for another frame of an animation, frame from 1, or for a 3D graph turned to
       view, [az, el] in degrees, as Cemacs turns it when it is dragged. plot.Scene draws it in the session, one at a time,
       so that an animation never crosses whole and a surface crosses as the places of its points on the screen. The
@@ -1028,9 +1029,6 @@ end
 (** Is this value a frame of std/frame? *)
 isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and values.IsArray(v.Names)
 
-(** The height of a graph under a cell, in pixels. *)
-graphHeight = 400
-
 defn drawn(v, width, svg, frame = 1, view = missing)
   (** The scene of a struct that is a graph of std/plot, its frame of an animation or its view of a 3D graph, or its SVG
       with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing for a struct that is no graph.
@@ -1039,7 +1037,8 @@ defn drawn(v, width, svg, frame = 1, view = missing)
   if result.IsErr(f)
     return missing
   end
-  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight, frame = frame, view = view) end
+  (* The scene keeps the shape of the graph's own size, at the width of the pane or its own when that is less. *)
+  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), missing, frame = frame, view = view) end
   if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
     return missing
   end
