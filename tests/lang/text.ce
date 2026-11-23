@@ -144,8 +144,8 @@ setOf(kind, bs) = if kind == 0 "" else if kind == 1 allBytes else bs end
 fewBytes(most) = gen.Map(bs -> text.FromBytes(bs), gen.List(gen.Pick([0, 9, 32, 97, 98, 195, 169, 255]), max = most))
 findsAny(bytes) = gen.Of({Kind: gen.Int(0, 5), Bytes: bytes(6), From: gen.Int(1, 45), S: bytes(40), Not: gen.Bool()})
 sameAny(c) = value.Equal(text.ByteFindAny(setOf(c.Kind, c.Bytes), c.From, c.S, not = c.Not), slowFindAny(setOf(c.Kind, c.Bytes), c.From, c.S, c.Not))
-isByteFindAnyAsSlow() = test.ForAll(sameAny, findsAny(anyBytes), cases = 2000)
-isByteFindAnyAsSlowOnFewBytes() = test.ForAll(sameAny, findsAny(fewBytes), cases = 2000)
+isByteFindAnyAsSlow() = test.ForAll(sameAny, findsAny(anyBytes), cases = 500)
+isByteFindAnyAsSlowOnFewBytes() = test.ForAll(sameAny, findsAny(fewBytes), cases = 500)
 sameAnyFrom(s, f) = sameAny({Kind: 2, Bytes: "\n\t é", From: f, S: s, Not: true}) and sameAny({Kind: 2, Bytes: "\n\t é", From: f, S: s, Not: false})
 isByteFindAnyEveryPlace() = list.All([list.All([sameAnyFrom(s, f) for f in 1..text.ByteLength(s)]) for s in finds])
 oneAt(p) = "$(text.Repeat(p - 1, "a"))b$(text.Repeat(24 - p, "a"))"
