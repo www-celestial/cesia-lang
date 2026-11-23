@@ -197,7 +197,7 @@ value cesia_copy_meta(value from, value to) {
 }
 /* The bytes of an open file into another, in the kernel, as cp does: copy_file_range, which btrfs makes a clone, until
    a copy of nothing past the size that fstat gave. False if it stops before, at a failure or at a copy of nothing, as
-   for the files of /proc: the reads and writes of fs.ml go on from there. macOS has no such call on descriptors. */
+   for /proc: the reads and writes of fs.ml go on from there, and do it all on macOS, whose fcopyfile never clones. */
 value cesia_copy_data(value from, value to, value size) {
   long n = -1, done = 0, want = Long_val(size);
 #ifdef SYS_copy_file_range
