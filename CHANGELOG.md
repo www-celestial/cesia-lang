@@ -39,6 +39,33 @@
 
 ### Science
 
+- Graphs are black on white, their texts in JetBrains Mono, the font of the code in Cemacs, which draws them as
+  `plot.Save` writes them: the layers without a color are black, lines told apart by their dash, solid, dashed, dotted
+  and dash-dot in turn, points by their shape, circle, square, triangle and cross, bars by their grey, the ink at 100,
+  60, 40 and 30 %; the grid `#d0d0d0` and the lines 1 pixel wide by default, `width = 1.5` still taken. `color =` gives
+  any layer a color of its own, as before; heatmaps and surfaces keep viridis and RdBu. The font being monospaced, a
+  text is 0.6 em a column, none for a combining mark, two for a wide character of East Asia: the table of the widths of
+  Noto Sans and `tools/plot-font.ce` are gone. A graph that drew draws the same data; its look alone changed.
+- `plot.Text(x, y, texts, color, size, anchor, dx, dy)` writes texts on a graph, each beside its point of the data, as
+  the hour beside each point of a curve: a layer that follows the axes, cut to the plot, at most 100,000 texts. The SVG
+  writes `"` as `&quot;` too, with `&`, `<` and `>`, in every text of the program.
+- `plot.Of(..., note = "lat: 40.76\nlon: -73.98", noteAt = "top left")` puts a box of text at a corner of the plot, a
+  line for each line of the note, on the paper, a new color of scenes that a back-end paints as its ground; the SVG
+  keeps the spaces of its texts, `xml:space="preserve"`, as std/plot measures them.
+- `plot.Of(..., legend = "ends")` names each line at its end, its label right of its last point in the plot, in its
+  color, the labels moved apart a line when two would overlap, the margin grown to hold them; the box stays the default.
+- `plot.Of(..., xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])`, and `yticks`, `ylabels`:
+  the ticks of an axis chosen, in place of those of Talbot, Lin and Hanrahan, and their labels, as many as the ticks, or
+  the numbers written as the computed ones are; a log axis takes ticks above 0. Without them, nothing changes.
+- `plot.Of(..., polar = true)` draws a graph in a circle, as a compass: x an angle in degrees, 0 at the top, clockwise,
+  and y the distance from the center, `ylim = [90, 0]` putting 90 at the center and 0 on the rim; rings at the ticks of
+  y, rays every 30 degrees or at `xticks`, their labels outside the rim; lines, points, texts and rules, cut at the rim.
+  A polar graph is square, 500 by 500 by default; with a 3D graph, log axes or `xlim`, it is an Err.
+- A graph under a cell keeps the shape of its own size: `cells.Run` and `cells.Scene` draw it at the width asked, or its
+  own when it is less, and as high as its shape asks, 400 for 640 by default and square for a polar graph, where every
+  graph was 400 pixels high; `plot.Scene(g, width, missing)` gives that size to any back-end.
+- `plot.Rule(x = 180, label = "S")` and `plot.Rule(y = 0, dash = "dashed")`: a line of reference across the plot,
+  upright or across, grey unless a color is given, its label at its end; the range of its axis grows to hold it.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.

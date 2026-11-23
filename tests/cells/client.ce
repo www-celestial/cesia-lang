@@ -41,6 +41,11 @@ defn Main()
   g = cells.Run(s, {Title: "", From: 40, To: 41, Source: "use std/plot\nplot.Line([1, 2], [3, 4])"}, width = 500)?.Value
   io.Print("graph: $(g.Kind), $(g.Scene.Width) by $(g.Scene.Height), $(value.Len(g.Scene.Items) > 10) items")
   io.Print("again: $(cells.Scene(s, g.Key, 300)?.Width) wide")
+  (* A graph keeps the shape of its own size, at the width asked or its own when it is less: a polar graph square. *)
+  round = cells.Run(s, {Title: "", From: 41, To: 41, Source: "plot.Of([plot.Line([0, 90], [1, 2])], polar = true)"}, width = 900)?.Value
+  io.Print("polar: $(round.Scene.Width) by $(round.Scene.Height), at 300 $(cells.Scene(s, round.Key, 300)?.Height) high")
+  long = cells.Run(s, {Title: "", From: 41, To: 41, Source: "plot.Of([plot.Line([1, 2], [3, 4])], size = [800, 300])"}, width = 1000)?.Value
+  io.Print("long: $(long.Scene.Width) by $(long.Scene.Height), at 400 $(cells.Scene(s, long.Key, 400)?.Height) high")
   io.Print(shown(cells.Run(s, {Title: "", From: 42, To: 42, Source: "plot.Line([1, 2], [1])"})))
   moving = cells.Run(s, {Title: "", From: 43, To: 43, Source: "plot.Frames([plot.Line([1, 2], [k, 2 * k]) for k in 1..4], fps = 12)"}, width = 500)?.Value
   io.Print("animation: $(moving.Frames) frames at $(moving.Fps) a second, and its scene says $(moving.Scene.Frames)")

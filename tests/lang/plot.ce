@@ -7,6 +7,7 @@ use std/dict
 use std/gen
 use std/list
 use std/math
+use std/num
 use std/matrix
 use std/plot
 use std/random
@@ -50,6 +51,175 @@ isLogAxes() = test.Snapshot(svg(plot.Of([plot.Line(zs, zs)], xscale = "log", ysc
 isFactorLabels() = test.Snapshot(svg(plot.Line([0, 1, 2], [0.0, 2.5e7, 5e7]))) and test.Snapshot(svg(plot.Line([0, 1], [1e-7, 3e-7])))
 isGridSvg() = test.Snapshot(svg(plot.Grid([plot.Line(xs, ys), plot.Bars(["a"], [1]), plot.Points(xs, zs)], columns = 2)))
 isScene() = test.Snapshot(scene(plot.Of([plot.Line([1, 2], [3, 4], label = "l")], title = "t"), 320, 200))
+
+(* The look: black on white, the texts in JetBrains Mono, 0.6 em a character. Layers without a color are the ink of the
+   axes, told apart by their dash, their shape or their shade, in turn; a color is given where it says something. *)
+
+look = plot.Of(list.Concat([plot.Line(xs, ys + k, label = "line $k") for k in 1..5], [plot.Line(xs, ys, color = "#d55e00", label = "orange"), plot.Points(xs, zs, label = "a"), plot.Points(xs, zs + 1, label = "b"), plot.Points(xs, zs + 2, color = "#0072b2", label = "blue")]), title = "The look", x = "x", y = "y")
+isLookSvg() = test.Snapshot(svg(look))
+lines(s) = [x for x in role(s, "data") if x.Kind == "line"]
+defn isDashesInTurn()
+  (* Five black lines: solid, dashed, dotted, dash-dot, solid again; the orange one keeps a solid line and no turn. *)
+  ls = lines(scene(look, 640, 400))
+  dashes = [if value.IsMissing(l.Dash) 0 else value.Len(l.Dash) end for l in ls]
+  value.Equal(dashes, [0, 2, 2, 4, 0, 0]) and ls[2].Dash[1] > ls[3].Dash[1] and list.All([l.Color == "ink" for l in ls[1..5]]) and ls[6].Color == "#d55e00" and list.All([l.Width == 1.0 for l in ls])
+end
+isShapesInTurn() = value.Equal([[m.Shape, m.Color] for m in role(scene(look, 640, 400), "data") if m.Kind == "marks"], [["circle", "ink"], ["square", "ink"], ["circle", "#0072b2"]]) and value.Equal([x.Shape for x in role(scene(plot.Of([plot.Points([1], [k]) for k in 1..5]), 640, 400), "data")], ["circle", "square", "triangle", "cross", "circle"])
+isShadesInTurn() = value.Equal([[r.Color, r.Opacity] for r in role(scene(plot.Bars(["a"], [[1], [2], [3], [4], [5]]), 640, 400), "data")], [["ink", 1.0], ["ink", 0.6], ["ink", 0.4], ["ink", 0.3], ["ink", 1.0]]) and role(scene(plot.Histogram([1, 2, 2]), 640, 400), "data")[1].Opacity == 1.0
+isWidthStillTaken() = lines(scene(plot.Line(xs, ys, width = 1.5), 640, 400))[1].Width == 1.5 and text.Contains("stroke-width=\"1.5\"", svg(plot.Line(xs, ys, width = 1.5)))
+isSvgInk() = text.Contains("font-family=\"'JetBrains Mono', monospace\"", svg(look)) and text.Contains("stroke=\"#000000\"", svg(look)) and text.Contains("stroke=\"#d0d0d0\"", svg(look)) and not text.Contains("\"ink\"", svg(look))
+isMapsKept() = role(scene(plot.Heatmap(grid), 640, 400), "data")[1].Colors[1] == "#440154"
+(** The width of a text as the scene measures it, at 12 pixels. *)
+widthOf(words) = role(scene(plot.Of([plot.Line([1, 2], [1, 2])], title = words), 640, 400), "title")[1].Width / 15.0 * 12.0
+isMonospaced() = math.Abs(widthOf("abc") - 21.6) < 1e-9 and math.Abs(widthOf("−1.5×10⁶") - 57.6) < 1e-9 and math.Abs(widthOf("été") - 21.6) < 1e-9 and math.Abs(widthOf("中文a") - 36.0) < 1e-9 and math.Abs(widthOf("soft­hyphen") - 72.0) < 1e-9
+
+(* Texts placed on the graph: each at its point, moved by dx and dy, cut to the plot; escaped in the SVG. *)
+
+sun = [120.0, 125.0, 132.0, 142.0, 155.0, 170.0, 185.0, 200.0, 213.0, 224.0]
+high = [2.0, 10.0, 17.0, 23.0, 27.0, 29.0, 28.0, 24.0, 18.0, 10.0]
+hours = ["$h" for h in 7..16]
+isTextSvg() = test.Snapshot(svg(plot.Of([plot.Line(sun, high), plot.Points(sun, high, size = 3), plot.Text(sun, high, hours), plot.Text([150], [5], ["noon"], color = "#d55e00", size = 14, anchor = "middle", dx = 0, dy = 0)], x = "azimuth", y = "elevation")))
+defn isTextPlaced()
+  s = scene(plot.Of([plot.Points(sun, high), plot.Text(sun, high, hours, anchor = "right", dx = -2, dy = 3)]), 640, 400)
+  m = role(s, "data")[1]
+  ts = [x for x in role(s, "data") if x.Kind == "text"]
+  value.Len(ts) == 10 and list.All([math.Abs(ts[k].X - (m.Xs[k] - 2)) < 1e-9 and math.Abs(ts[k].Y - (m.Ys[k] + 3)) < 1e-9 and ts[k].Anchor == "end" and ts[k].Text == hours[k] and ts[k].Size == 11.0 and ts[k].Color == "ink" for k in 1..10])
+end
+(* A point past xlim, or with a NaN, leaves its text out; the NaN counts in Dropped; a text has no entry in the legend. *)
+isTextLeftOut() = value.Len([x for x in role(scene(plot.Of([plot.Text(sun, high, hours)], xlim = [100, 160]), 640, 400), "data") if x.Kind == "text"]) == 5 and scene(plot.Text([1, math.Nan], [1, 2], ["a", "b"]), 640, 400).Dropped == 1 and value.Len(role(scene(plot.Of([plot.Line([1, 2], [1, 2], label = "l"), plot.Text([1], [1], ["t"])]), 640, 400), "legend")) == 2
+isTextEscaped() = text.Contains(">&lt;script&gt;&amp;&quot;x&quot;</text>", svg(plot.Text([1, 2], [1, 2], ["<script>&\"x\"", "b"]))) and not text.Contains("<script>", svg(plot.Of([plot.Text([1, 2], [1, 2], ["<script>", "b"])], title = "<script>", x = "<script>", y = "&\"")))
+isTextBound() = message(plot.Text(list.Fill(1.0, 100001), list.Fill(1.0, 100001), list.Fill("a", 100001))) == "plot.Text: 100001 texts are too many, past 100,000; keep those that a reader can tell apart."
+
+(* The box of a note: at a corner of the plot, a line of text for each line of the note, on the paper. *)
+
+place = "name: essai\n  lat: 40.76\n  lon: -73.984\n date: 23/11/2026"
+isNoteSvg() = test.Snapshot(svg(plot.Of([plot.Line(sun, high)], note = place))) and test.Snapshot(svg(plot.Of([plot.Line(sun, high)], note = place, noteAt = "bottom right")))
+defn isNoteCorners()
+  (* Each corner puts the box 6 pixels inside the frame of the plot; its texts in the ink of the axes, 4 pixels inside it. *)
+  at = (corner) -> scene(plot.Of([plot.Line(sun, high)], note = "a\nbb", noteAt = corner), 640, 400)
+  boxes = [role(at(c), "info")[1] for c in ["top left", "top right", "bottom left", "bottom right"]]
+  f = plotArea(at("top left"))
+  ok = (b, left, top) -> math.Abs(b.X - left) < 1e-9 and math.Abs(b.Y - top) < 1e-9 and b.Color == "paper"
+  lines = role(at("top left"), "info")
+  ok(boxes[1], f.X + 6, f.Y + 6) and ok(boxes[2], f.X + f.W - 6 - boxes[2].W, f.Y + 6) and ok(boxes[3], f.X + 6, f.Y + f.H - 6 - boxes[3].H) and ok(boxes[4], f.X + f.W - 6 - boxes[4].W, f.Y + f.H - 6 - boxes[4].H) and value.Equal([x.Text for x in lines[2..3]], ["a", "bb"]) and lines[2].Color == "ink" and lines[2].X == boxes[1].X + 4
+end
+isNoteEscaped() = text.Contains("&lt;b&gt;&amp;&quot;", svg(plot.Of([plot.Line([1, 2], [1, 2])], note = "<b>&\"")))
+(* Every text of the program that reaches the SVG is escaped: titles, names of axes, labels of layers in the box and at the
+   ends, labels of ticks, rules, texts and notes; none comes out as markup. *)
+hostile = "<script>&\"x\"</script>"
+defn isEscapedEverywhere()
+  g = (legend) -> plot.Of([plot.Line([1, 2], [1, 2], label = hostile), plot.Rule(y = 1.5, label = hostile), plot.Text([1], [1], [hostile])], title = hostile, x = hostile, y = hostile, xticks = [1, 2], xlabels = [hostile, "b"], note = hostile, legend = legend)
+  all = [svg(g(true)), svg(g("ends")), svg(plot.Of([plot.Line([0, 90], [1, 2], label = hostile)], polar = true, xticks = [0], xlabels = [hostile], legend = "ends"))]
+  list.All([not text.Contains("<script>", x) and not text.Contains("\"x\"", x) and text.Contains("&lt;script&gt;&amp;&quot;x&quot;&lt;/script&gt;", x) for x in all])
+end
+isNote3d() = value.Len(role(scene(plot.Of([plot.Surface(wavy)], note = "z: a wave"), 640, 400), "info")) == 2
+
+(* legend = "ends": each label right of the last point of its line in the plot, apart from the others. *)
+
+ramp = [1.0, 2.0, 3.0, 4.0, 5.0]
+fan = plot.Of(list.Concat([plot.Line(ramp, ramp * k / 4.0, label = "line $k") for k in 1..6], [plot.Line(ramp, ramp * 0.3, color = "#e07000", label = "today")]), legend = "ends", title = "Ends")
+isEndsSvg() = test.Snapshot(svg(fan))
+defn isEndsApart()
+  (* The 7 labels: no legend box; each 6 pixels right of its last point when nothing is near; none overlaps another; all
+     inside the image, in the color of their line. *)
+  s = scene(plot.Of(list.Concat([plot.Line(ramp, ramp * k / 4.0, label = "line $k") for k in 1..6], [plot.Line(ramp, ramp * 0.3, color = "#e07000", label = "today")]), legend = "ends"), 640, 400)
+  tags = role(s, "legend")
+  ls = lines(s)
+  boxes = [box(t) for t in tags]
+  apart = true
+  for i in 1..7
+    for j in i + 1..7
+      if boxes[i].Y < boxes[j].Y + boxes[j].H - 0.01 and boxes[j].Y < boxes[i].Y + boxes[i].H - 0.01
+        apart = false
+      end
+    end
+  end
+  named = (words) -> list.FindFirst(t -> t.Text == words, tags)
+  value.Len(tags) == 7 and apart and insideScene(s) and list.All([math.Abs(named("line $k").X - (ls[k].Xs[5] + 6.0)) < 1e-9 for k in 1..6]) and named("today").Color == "#e07000" and named("line 1").Color == "ink"
+end
+(* A label whose line ends past xlim names the last point inside the plot; points and bands are named too, a layer without label not. *)
+isEndsInside() = value.Equal(list.Sort([t.Text for t in role(scene(plot.Of([plot.Line(ramp, ramp, label = "cut"), plot.Points([1, 2], [3, 4], label = "dots"), plot.Area(ramp, ramp - 1, ramp + 1, label = "band"), plot.Line(ramp, ramp * 2)], xlim = [0, 3], legend = "ends"), 640, 400), "legend")]), ["band", "cut", "dots"])
+
+(* Ticks and labels given: in place of those computed, those inside the range of the axis; their labels, or the numbers
+   written as the computed ones are. *)
+
+compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = [0, 90, 180, 270, 360], xlabels = ["N", "E", "S", "W", "N"], yticks = list.Range(0, 5, step = 0.5))
+isTicksSvg() = test.Snapshot(svg(compass))
+texts(g, r) = [x.Text for x in role(scene(g, 640, 400), r)]
+isTicksGiven() = value.Equal(texts(compass, "xlabel"), ["N", "E", "S", "W", "N"]) and value.Equal(texts(compass, "ylabel"), ["1", "1.5", "2", "2.5", "3", "3.5", "4"]) and value.Len(role(scene(compass, 640, 400), "grid")) == 5 + 7
+(* Only the ticks inside the range are drawn, and numbered among themselves: the 3e7 outside gives no power of ten. *)
+isTicksInside() = value.Equal(texts(plot.Of([plot.Line([1, 2], [1, 2])], xticks = [0.1, 1.25, 1.5, 3e7]), "xlabel"), ["1.25", "1.5"]) and value.Equal(texts(plot.Of([plot.Line([1, 1e8], [1, 2])], xticks = [1e7, 5e7, 1e8]), "xlabel"), ["0.1", "0.5", "1"]) and value.Equal(texts(plot.Of([plot.Line([1, 1e8], [1, 2])], xticks = [1e7, 5e7, 1e8]), "factor"), ["×10⁸"])
+isTicksLog() = value.Equal(texts(plot.Of([plot.Line([1, 1000], [1, 2])], xscale = "log", xticks = [1, 10, 100, 1000]), "xlabel"), ["1", "10", "100", "1000"]) and value.Equal(texts(plot.Of([plot.Line([1, 2], [-0.5, 1.5])], yticks = [-1, -0.5, 0, 0.5]), "ylabel"), ["−0.5", "0", "0.5"])
+(* Without the options, the ticks are those computed, as before. *)
+isTicksUnchanged() = value.Equal(scene(plot.Of([plot.Line(xs, ys)], xticks = missing, ylabels = missing), 640, 400), scene(plot.Line(xs, ys), 640, 400))
+
+(* Rules: a line of reference across the plot at a value, grey unless a color is given, its label at its end. *)
+
+ruled = plot.Of([plot.Line(sun, high), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed"), plot.Rule(x = 223, label = "late", color = "#d55e00")], x = "azimuth", y = "elevation")
+isRuleSvg() = test.Snapshot(svg(ruled))
+defn isRuleAcross()
+  s = scene(ruled, 640, 400)
+  f = plotArea(s)
+  ls = lines(s)
+  south = ls[2]
+  flat = ls[3]
+  late = [x for x in role(s, "data") if x.Kind == "text" and x.Text == "late"][1]
+  south.Xs[1] == south.Xs[2] and south.Ys[1] == f.Y and south.Ys[2] == f.Y + f.H and south.Color == "#808080" and flat.Ys[1] == flat.Ys[2] and flat.Xs[1] == f.X and flat.Xs[2] == f.X + f.W and value.Len(flat.Dash) == 2 and late.Anchor == "end" and late.Color == "#d55e00" and value.Len(role(s, "legend")) == 0
+end
+(* The range of its axis holds the rule; the other axis is the data's; a graph of rules alone has the other axis from 0 to 1. *)
+isRuleRange() = value.Equal(texts(plot.Of([plot.Line([1, 2], [1, 2]), plot.Rule(y = 10)]), "ylabel")[1..2], ["2", "4"]) and value.Equal(texts(plot.Rule(y = 3), "xlabel"), ["0", "0.2", "0.4", "0.6", "0.8", "1"])
+
+(* Polar: x an angle in degrees, 0 at the top, clockwise; y the distance from the center, ylim [center, rim]. *)
+
+arc = num.Linspace(60.0, 300.0, 25)
+hump(peak) = peak * math.Sin((arc - 60.0) / 240.0 * math.Pi) - 3.0
+dial = plot.Of([plot.Line(arc, hump(k * 10.0), label = "day $k") for k in 1..3], polar = true, ylim = [90, 0], title = "Sun path", legend = "ends")
+isPolarSvg() = test.Snapshot(svg(dial)) and test.Snapshot(svg(plot.Of([plot.Points([0, 90, 180, 270], [1, 2, 3, 4], label = "p"), plot.Text([45], [2], ["NE"]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 2, dash = "dotted")], polar = true, xticks = [0, 90, 180, 270], xlabels = ["N", "E", "S", "W"])))
+defn isPolarPlaces()
+  (* With ylim [90, 0]: 90 at the center, 0 on the rim; 0 degrees up, 90 to the right, 180 down, 270 to the left. The plot
+     is square, the disc in it; a point beyond the center or past the rim is left out. *)
+  s = scene(plot.Of([plot.Points([0, 90, 180, 270, 45, 10, 20], [0, 0, 0, 0, 90, -10, 100])], polar = true, ylim = [90, 0]), 500, 500)
+  m = role(s, "data")[1]
+  c = m.Clip
+  r = c[3] / 2
+  cx = c[1] + r
+  cy = c[2] + r
+  near = (k, x, y) -> math.Abs(m.Xs[k] - x) < 1e-9 and math.Abs(m.Ys[k] - y) < 1e-9
+  c[3] == c[4] and value.Len(m.Xs) == 5 and near(1, cx, cy - r) and near(2, cx + r, cy) and near(3, cx, cy + r) and near(4, cx - r, cy) and near(5, cx, cy)
+end
+defn isPolarCutAtRim()
+  (* A line from the center out past the rim ends on the rim; one that comes back starts there again. *)
+  s = scene(plot.Of([plot.Line([90, 90, 90, 270, 270], [0, 2, 4, 4, 1])], polar = true, ylim = [0, 3]), 500, 500)
+  ls = lines(s)
+  f = ls[1].Clip
+  r = f[3] / 2
+  value.Len(ls) == 2 and math.Abs(ls[1].Xs[3] - (f[1] + 2 * r)) < 1e-6 and math.Abs(ls[2].Xs[1] - f[1]) < 1e-6 and math.Abs(ls[2].Ys[1] - (f[2] + r)) < 1e-6
+end
+defn isPolarDefaults()
+  (* 500 by 500 by default; rays every 30 degrees, labeled with a degree sign; rings at the ticks of y; the range of y from 0 to
+     the greatest and 5 % more when no ylim gives it. *)
+  s = svg(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true))
+  sc = scene(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), 500, 500)
+  text.StartsWith("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" height=\"500\"", s) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "xlabel"), ["0°", "30°", "60°", "90°", "120°", "150°", "180°", "210°", "240°", "270°", "300°", "330°"]) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "ylabel")[1], "0") and value.Len(role(sc, "frame")) == 1
+end
+defn isPolarEndsPastRim()
+  (* Lines that end on the rim, on its right, are named past the labels of the rim: no name covers a label of an angle. *)
+  s = scene(plot.Of([plot.Line([300, 180, a], [0, 50, 0], label = "ends at $a") for a in [60, 75, 90, 120]], polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), legend = "ends"), 600, 500)
+  names = [box(x) for x in role(s, "legend")]
+  angles = [box(x) for x in role(s, "xlabel")]
+  meets = (a, b) -> a.X < b.X + b.W and b.X < a.X + a.W and a.Y < b.Y + b.H and b.Y < a.Y + a.H
+  inImage = (b) -> b.X >= -0.01 and b.Y >= -0.01 and b.X + b.W <= s.Width + 0.01 and b.Y + b.H <= s.Height + 0.01
+  value.Len(names) == 4 and not list.Any([list.Any([meets(n, a) for a in angles]) for n in names]) and list.All([inImage(box(x)) for x in s.Items if x.Kind == "text"])
+end
+isPolarAngles() = value.Equal(texts(plot.Of([plot.Line([0, 1], [1, 2])], polar = true, xticks = [0, 90, 360, 450]), "xlabel"), ["0°", "90°"])
+
+(* A scene without a height keeps the shape of the graph's own size, at most its own width, as an editor fits it to a pane. *)
+
+defn size(g, w)
+  s = result.Unwrap(plot.Scene(g, w, missing))
+  [s.Width, s.Height]
+end
+isSceneFitted() = value.Equal(size(plot.Line(xs, ys), 1000), [640, 400]) and value.Equal(size(plot.Line(xs, ys), 320), [320, 200]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 900), [500, 500]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], polar = true), 300.7), [300, 300]) and value.Equal(size(plot.Of([plot.Line(xs, ys)], size = [800, 100]), 200), [200, 80]) and value.Equal(size(plot.Grid([plot.Line(xs, ys), plot.Line(xs, zs)]), 2000), [1280, 400]) and message0(plot.Scene(plot.Line(xs, ys), 90, missing)) == "plot.Scene needs at least 100 by 80 pixels, not 90 by missing."
 
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
@@ -293,12 +463,12 @@ end
 
 defn box(t)
   (** The rectangle a text covers: its width along its line, and its line's height. *)
-  h = t.Size * 1.362
+  h = t.Size * 1.32
   start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
   if t.Angle == 0
-    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+    {X: t.X - start, Y: t.Y - t.Size * 1.02, W: t.Width, H: h}
   else
-    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+    {X: t.X - t.Size * 1.02, Y: t.Y - t.Width + start, W: h, H: t.Width}
   end
 end
 
@@ -311,7 +481,7 @@ defn ticksHold(s, horizontal)
     return false
   end
   for i in 1..n
-    p = if horizontal ls[i].X else ls[i].Y - ls[i].Size * 0.714 / 2 end
+    p = if horizontal ls[i].X else ls[i].Y - ls[i].Size * 0.73 / 2 end
     if p < (if horizontal a.X else a.Y end) - 1.0 or p > (if horizontal a.X + a.W else a.Y + a.H end) + 1.0
       return false
     end
@@ -323,7 +493,7 @@ defn ticksHold(s, horizontal)
       if not (v < w and ls[i].X + ls[i].Width / 2 + 6.0 <= ls[i + 1].X - ls[i + 1].Width / 2 + 0.01)
         return false
       end
-    else if not (v < w and ls[i].Y - ls[i + 1].Y >= ls[i].Size * 1.362 + 1.99)
+    else if not (v < w and ls[i].Y - ls[i + 1].Y >= ls[i].Size * 1.32 + 1.99)
       return false
     end
   end
@@ -410,6 +580,15 @@ errors = [
   [plot.Density([math.Nan], [1]), "plot.Density: no point has a finite x and y."],
   [plot.Area([1, 2], [1], [2, 3]), "plot.Area: x has 2 values, low 1 and high 2; give all three the same number."],
   [plot.Area([1], [math.Nan], [1]), "plot.Area: no point has a finite x, low and high."],
+  [plot.Text([1, 2], [1, 2], ["a"]), "plot.Text: there are 2 points and 1 texts; give one text for each point."],
+  [plot.Text([1], [1, 2], ["a"]), "plot.Text: x has 1 values and y has 2; give both the same number."],
+  [plot.Text([1], [1], "a"), "plot.Text: texts must be a list of texts, not \"a\"."],
+  [plot.Text([1, 2], [1, 2], ["a", 2]), "plot.Text: texts[2] is 2, not a text."],
+  [plot.Text([1], [1], ["a"], anchor = "top"), "plot.Text: anchor is \"top\"; it is \"left\", \"middle\" or \"right\"."],
+  [plot.Text([1], [1], ["a"], size = 3), "plot.Text: size is 3; give the size of the texts in pixels, from 4 to 96."],
+  [plot.Text([1], [1], ["a"], dy = math.Nan), "plot.Text: dy is nan; give a move in pixels, a finite number."],
+  [plot.Text([1], [1], ["a"], color = "red"), "plot.Text: color is \"red\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Text([math.Nan], [1], ["a"]), "plot.Text: no point has a finite x and y."],
   [plot.Of([]), "plot.Of needs at least one layer."],
   [plot.Of([1]), "plot.Of: layer 1 is 1, not a graph; give graphs, as plot.Line makes."],
   [plot.Of([plot.Line([1], [1]), plot.Points([1], [1], shape = "x")]), "plot.Points (layer 2): shape is \"x\"; it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\"."],
@@ -419,7 +598,41 @@ errors = [
   [plot.Of([plot.Line([1], [1])], xlim = [2, 1]), "plot.Line: xlim is [2, 1]; give [low, high], finite, low below high."],
   [plot.Of([plot.Line([1], [1])], xscale = "log", xlim = [0, 1]), "plot.Line: a log x axis needs xlim above 0, not [0, 1]."],
   [plot.Of([plot.Line([1], [1])], title = 1), "plot.Line: title is 1; give a text."],
-  [plot.Of([plot.Line([1], [1])], legend = "no"), "plot.Line: legend is \"no\"; give true or false."],
+  [plot.Of([plot.Line([1], [1])], legend = "no"), "plot.Line: legend is \"no\"; give true, false or \"ends\"."],
+  [plot.Of([plot.Bars(["a"], [[1], [2]], label = ["x", "y"])], legend = "ends"), "plot.Bars: legend = \"ends\" names the end of a line, and bars have none; give legend = true."],
+  [plot.Of([plot.Histogram([1, 2], label = "h")], legend = "ends"), "plot.Histogram \"h\": legend = \"ends\" names the end of a line, and a histogram has none; give legend = true."],
+  [plot.Of([plot.Line3([1], [1], [1])], legend = "ends"), "plot.Line3: legend is \"ends\"; the ends of lines are named in 2D: a 3D graph gives true or false."],
+  [plot.Of([plot.Line([1], [1])], note = 3), "plot.Line: note is 3; give a text, a line for each line of the box."],
+  [plot.Of([plot.Bars(["a"], [1])], polar = true), "plot.Bars: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer 1 is plot.Bars."],
+  [plot.Of([plot.Line([1], [1]), plot.Area([1], [1], [2])], polar = true), "plot.Of: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer 2 is plot.Area."],
+  [plot.Of([plot.Line([1], [1])], polar = true, xlim = [0, 1]), "plot.Line: xlim is [0, 1]; a polar graph turns a full circle, 0 to 360 degrees."],
+  [plot.Of([plot.Line([1], [1])], polar = true, ylim = [1, 1]), "plot.Line: ylim is [1, 1]; give [center, rim], two finite values that differ, as [90, 0]."],
+  [plot.Of([plot.Line([1], [1])], polar = 1), "plot.Line: polar is 1; give true or false."],
+  [plot.Of([plot.Line([1], [1])], polar = true, yscale = "log"), "plot.Line: yscale is \"log\"; a polar graph has linear axes."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], polar = true), "plot.Surface: polar is true; a 3D graph has its box, and a polar graph is flat: give one or the other."],
+  [plot.Of([plot.Line([1], [1])], polar = true, view = [0, 90]), "plot.Line: view is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Of([plot.Line([1], [1])], polar = true, size = [120, 90]), "plot.Line: 120 by 90 pixels leave no room for the plot; give a larger size."],
+  [plot.Rule(x = 1, y = 2), "plot.Rule: give x or y, one of them, not both."],
+  [plot.Rule(), "plot.Rule: give x or y, one of them, as x = 180 for a line upright at 180."],
+  [plot.Rule(x = "a"), "plot.Rule: x is \"a\"; give a finite number, where the line goes."],
+  [plot.Rule(y = math.Nan), "plot.Rule: y is nan; give a finite number, where the line goes."],
+  [plot.Rule(y = 1, dash = "long"), "plot.Rule: dash is \"long\"; it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\"."],
+  [plot.Rule(y = 1, color = "grey"), "plot.Rule: color is \"grey\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Rule(y = 1, label = 2), "plot.Rule: label is 2; give a text."],
+  [plot.Of([plot.Line([1, 2], [1, 2]), plot.Rule(y = 0)], yscale = "log"), "plot.Rule (layer 2): a log y axis needs values above 0, and y is 0."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = [2, 1]), "plot.Line: xticks[2] is 1.0; give finite numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yticks = [1, math.Nan]), "plot.Line: yticks[2] is nan; give finite numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = "a"), "plot.Line: xticks is \"a\"; give a list of numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = []), "plot.Line: xticks is []; give a list of numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = 1..1001), "plot.Line: xticks has 1001 values, past 1,000; give fewer."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = [1, 2], xlabels = ["a"]), "plot.Line: xlabels is [\"a\"]; give 2 texts, one for each of xticks."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yticks = [1, 2], ylabels = ["a", 3]), "plot.Line: ylabels[2] is 3, not a text."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], ylabels = ["a"]), "plot.Line: ylabels needs yticks, the places of its labels."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yscale = "log", yticks = [0, 1]), "plot.Line: a log y axis needs yticks above 0, and yticks[1] is 0.0."],
+  [plot.Of([plot.Bars(["a"], [1])], xticks = [1]), "plot.Bars: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], xticks = [1, 2]), "plot.Surface: xticks is for a 2D graph; a 3D graph places the ticks of its edges as they show."],
+  [plot.Of([plot.Line([1], [1])], note = "a", noteAt = "left"), "plot.Line: noteAt is \"left\"; it is \"top left\", \"top right\", \"bottom left\" or \"bottom right\"."],
+  [plot.Frames([plot.Of([plot.Line([1], [1])], note = "a"), plot.Of([plot.Line([1], [2])], note = "b")]), "plot.Frames: frame 2 differs from frame 1 in its option note; a frame changes only its data and its title."],
   [plot.Of([plot.Line([1], [1])], size = [10]), "plot.Of: size is [10]; give [width, height] in pixels, at least [100, 80]."],
   [plot.Of([plot.Line([1], [1])], size = [99, 400]), "plot.Of: size is [99, 400]; give [width, height] in pixels, at least [100, 80]."],
   [plot.Of([plot.Line([1], [1], label = "a")], size = [120, 90], title = "t", x = "x"), "plot.Line \"a\": 120 by 90 pixels leave no room for the plot; give a larger size."],
@@ -448,7 +661,7 @@ errors = [
   [plot.Frames([plot.Line([1], [1]), plot.Of([plot.Line([1], [2])], title = "b")]), "plot.Frames: frame 2 has a title and frame 1 has none; a frame changes only its data and its title."],
   [plot.Frames([plot.Of([plot.Line([1], [1])], title = 3)]), "plot.Frames: frame 1: its title is 3; give a text."],
   [plot.Frames([plot.Of([plot.Line([1, 2], [1, 2])], yscale = "log"), plot.Of([plot.Line([1, 2], [0, 1])], yscale = "log")]), "plot.Frames: frame 2: plot.Line: a log y axis needs values above 0, and y[1] is 0.0."],
-  [plot.Frames([plot.Of([plot.Line([1], [1])], legend = "no")]), "plot.Frames: frame 1: plot.Line: legend is \"no\"; give true or false."],
+  [plot.Frames([plot.Of([plot.Line([1], [1])], legend = "no")]), "plot.Frames: frame 1: plot.Line: legend is \"no\"; give true, false or \"ends\"."],
   [plot.Of([plot.Frames([plot.Line([1], [1])])]), "plot.Of: layer 1 is an animation; plot.Frames goes around the graphs, as plot.Frames([plot.Of(...), ...])."],
   [plot.Grid([plot.Frames([plot.Line([1], [1])])]), "plot.Grid: graph 1 is an animation; a grid holds graphs, as plot.Line or plot.Of makes, not animations."],
   [plot.Surface([1, 2]), "plot.Surface: z is 1 × 2; a surface needs at least 2 rows and 2 columns."],

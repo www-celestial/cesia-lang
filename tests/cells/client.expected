@@ -12,8 +12,10 @@ Ok: output [], value missing, error {Line: 30, Text: "notebook.ce:30:1: Name \"n
   30 | n + 1
      | ^"}
 ["xs", "df", "total"]
-graph: graph, 500 by 400, true items
+graph: graph, 500 by 313, true items
 again: 300 wide
+polar: 500 by 500, at 300 300 high
+long: 800 by 300, at 400 150 high
 Ok: output [], value missing, error {Line: missing, Text: "plot.Line: x has 2 values and y has 1; give both the same number."}
 animation: 4 frames at 12 a second, and its scene says 4
 frame 3: 300 wide, 4 frames, true items
@@ -24,7 +26,7 @@ turned: 400 wide, view [-62.5, 20.0], 1 mesh
 Err({Kind: "cells", Message: "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D."})
 Err({Kind: "cells", Message: "plot.Scene: view is [0, 91]; give [az, el] in degrees, el from -90 to 90."})
 shown: ["before", "after"], [1, 2], ["graph", "text"], 3, value 4
-shown again: 300 wide, key 11.1
+shown again: 300 wide, key 13.1
 7 sections
 true true true
 true

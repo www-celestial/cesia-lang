@@ -156,7 +156,7 @@ What a value shows:
 
 | Value | Shows |
 |---|---|
-| a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, and 400 high; a graph that std/plot can't draw is the cell's error, with std/plot's message |
+| a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, or the graph's own width when it is less, and as high as the shape of the graph's own size asks, 400 for 640 by default, square for a polar graph; a graph that std/plot can't draw is the cell's error, with std/plot's message |
 | an animation of [plot.Frames] | `{Kind: "graph", Scene, Key, Frames, Fps}`: the scene of its first frame, the number of its frames and their rate |
 | a 3D graph of [plot.Surface] or [plot.Line3] | `{Kind: "graph", Scene, Key, View}`: its scene, and `View`, the `[az, el]` of its code |
 | a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count}`: its first 20 rows, as texts, and its count |

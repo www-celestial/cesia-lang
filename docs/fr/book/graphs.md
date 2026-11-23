@@ -1,8 +1,8 @@
 # Graphiques
 
 Dans ce chapitre, vous dessinez des données avec [std/plot] : des courbes, des points, des barres, des histogrammes, des
-heatmaps (des cartes de chaleur), des densités et des bandes, des surfaces et des courbes en 3D, et des animations de
-tout cela. Un graphique est une valeur, comme un nombre ou une liste
+heatmaps (des cartes de chaleur), des densités et des bandes, des textes et des règles, des graphiques en cercle, des
+surfaces et des courbes en 3D, et des animations de tout cela. Un graphique est une valeur, comme un nombre ou une liste
 : vous le faites, en mettez plusieurs sur des axes communs, et le dessinez dans un fichier SVG, ou Cemacs le dessine sur
 son écran. Chaque étape des données jusqu'aux pixels suit une méthode publiée, nommée ici avec son article, et les tests
 de Cesia vérifient ce que promet chaque étape.
@@ -51,8 +51,9 @@ invisible(dev.off())
 ```
 
 `waves.svg` est une image de 640 pixels sur 400 en *SVG*, Scalable Vector Graphics, le format de dessins que tout
-navigateur web ouvre et qui reste net à tous les zooms. La légende s'affiche parce que les layers ont un label (une
-étiquette).
+navigateur web ouvre et qui reste net à tous les zooms. Il est noir sur blanc : les deux courbes sont noires, la première
+en trait plein et la seconde en tirets, et les textes sont en JetBrains Mono, la police du code dans Cemacs, qui dessine
+le graphique de la même façon. La légende s'affiche parce que les layers ont un label (une étiquette).
 
 ## Un graphique est une valeur
 
@@ -78,24 +79,29 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Density] `(x, y, bins)` | des points en nombre quelconque comptés par cellule, un histogramme 2D |
 | [plot.Area] `(x, low, high, label, color)` | la bande entre deux courbes |
 | [plot.Surface] `(z, x, y, colors)` | une surface en 3D, la hauteur `z[i, j]` au-dessus de `(x[j], y[i])` |
+| [plot.Text] `(x, y, texts, color, size, anchor, dx, dy)` | des textes à côté de points des données |
+| [plot.Rule] `(x, y, label, dash, color)` | une ligne de repère à travers le tracé |
 | [plot.Line3] `(x, y, z, label, color, width, dash)` | une courbe en 3D |
-| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view)` | des layers sur des axes communs |
+| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | des layers sur des axes communs |
 | [plot.Grid] `(graphs, columns)` | des graphiques côte à côte |
 | [plot.Frames] `(graphs, fps)` | des graphiques l'un après l'autre : une animation |
 | [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | le dessin |
 
 Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
-en CSS. Un layer sans couleur prend la suivante de la palette de [Couleurs](#couleurs).
+en CSS. Un layer sans couleur est noir, comme le dit [Couleurs](#couleurs) : les courbes se distinguent par leur trait,
+les points par leur forme, les barres par leur nuance de gris. Tout layer prend une couleur à lui, chacun la sienne, pour
+distinguer des courbes par la couleur ou en mettre une en avant.
 
 ### Courbes et points
 
 [plot.Line] relie les points dans l'ordre donné. Un NaN, *not a number* (pas un nombre), ou un infini dans `x` ou `y`
 coupe la courbe : elle y laisse un trou, comme le fait matplotlib, pour qu'une mesure manquante ne dessine pas un faux
-segment. `dash` (le tireté) vaut `"dashed"`, `"dotted"` ou `"dashdot"`, avec les motifs du style par défaut de
-matplotlib mis à l'échelle de la largeur : 3,7 tracé et 1,6 vide, 1 et 1,65, et 6,4, 1,6, 1, 1,6 largeurs.
+segment. Une courbe a 1 pixel de large, sauf si `width` dit autre chose. `dash` (le tireté) vaut `"dashed"`, `"dotted"`
+ou `"dashdot"`, avec les motifs du style par défaut de matplotlib mis à l'échelle de la largeur : 3,7 tracé et 1,6 vide,
+1 et 1,65, et 6,4, 1,6, 1, 1,6 largeurs.
 
 [plot.Points] dessine un marqueur à chaque point, `"circle"`, `"square"`, `"triangle"`, `"diamond"`, `"cross"` ou
-`"plus"`, de `size` pixels de large. Un point avec un NaN ou un infini est laissé de côté, et la scène le compte dans
+`"plus"`, de `size` pixels de large ; sans `shape`, la suivante du tour de [Couleurs](#couleurs). Un point avec un NaN ou un infini est laissé de côté, et la scène le compte dans
 `Dropped`. Au plus 200 000 points sont dessinés un par un : au-delà, un nuage de marqueurs cache sa propre forme, et le
 fichier grossit d'environ 20 octets par point, si bien que [plot.Points] donne un `Err` qui nomme [plot.Density], qui
 compte n'importe quel nombre de points par cellule.
@@ -234,10 +240,170 @@ invisible(dev.off())
 
 [plot.Of] prend les options des axes : `title` ; `x` et `y`, les noms des axes ; `xscale` et `yscale`, `"linear"` ou
 `"log"` pour un axe logarithmique en base 10, où chaque puissance de dix prend la même longueur ; `xlim` et `ylim`,
-l'étendue d'un axe sous la forme `[low, high]` ; `legend = false` pour cacher la légende ; `size = [width, height]` en
-pixels, 640 sur 400 par défaut, 100 sur 80 au moins. Les options d'un [plot.Of] donné comme layer sont laissées de côté
-: celles du plus extérieur s'appliquent. Un graphique 3D prend aussi `z`, `zlim` et `view`, comme le montre [3D](#3d) ;
-sur un graphique 2D, elles sont une erreur.
+l'étendue d'un axe sous la forme `[low, high]` ; `legend = false` pour cacher la légende, `legend = "ends"` pour nommer
+chaque courbe à son bout ; `size = [width, height]` en pixels, 640 sur 400 par défaut, 100 sur 80 au moins ; `note` et
+`noteAt`, une boîte de texte dans un coin ; `xticks`, `xlabels`, `yticks` et `ylabels`, des ticks à vous ;
+`polar = true`, un graphique en cercle. Les sections qui suivent montrent chacune. Les options d'un [plot.Of] donné comme
+layer sont laissées de côté : celles du plus extérieur s'appliquent. Un graphique 3D prend aussi `z`, `zlim` et `view`,
+comme le montre [3D](#3d) ; sur un graphique 2D, elles sont une erreur.
+
+### Textes et règles
+
+[plot.Text] écrit des textes sur le graphique, chacun à côté de son point des données : `texts[i]` en `(x[i], y[i])`,
+décalé de `dx` pixels vers la droite et `dy` vers le bas, 4 et -4 par défaut, pour qu'il se pose au-dessus et à droite
+d'un marqueur. `anchor` (l'ancre) est le côté du texte posé à cet endroit, `"left"`, `"middle"` ou `"right"` ; `size` est
+en pixels, 11 par défaut, de 4 à 96. C'est un layer comme les autres : il suit les axes, un texte dont le point est
+au-delà de `xlim` est laissé de côté, et il n'a pas d'entrée dans la légende. Au plus 100 000 textes, pour qu'une scène
+reste assez petite pour Cemacs ; au-delà, un `Err` dit combien.
+
+```cesia
+hour = [7, 8, 9, 10, 11]
+height = [5.0, 14.0, 21.0, 26.0, 28.0]
+morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])])
+[x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+```
+
+Les textes sont une liste en compréhension, `["$h h" for h in hour]`, la forme courte de [list.Map]`(h -> "$h h", hour)`.
+
+[plot.Rule] (une règle) trace une ligne de repère à travers le tracé : `x = 180` debout à 180, `y = 0` en travers à 0,
+exactement l'un des deux. Elle est grise sauf si `color` dit autre chose, prend un `dash` comme une courbe, et écrit son
+`label` à son bout, dans le tracé. L'étendue de son axe grandit pour la contenir, comme pour les données ; l'autre axe
+est laissé aux autres layers.
+
+```cesia
+noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")])
+[x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+```
+
+### Une note, et des noms aux bouts
+
+`note` pose une boîte de texte dans un coin du tracé, une ligne pour chaque ligne du texte, comme le nom, le lieu et la
+date de ce qui est dessiné ; `noteAt` vaut `"top left"`, par défaut, `"top right"`, `"bottom left"` ou `"bottom right"`.
+La boîte n'a pas de cadre : ses lignes sont de l'encre des axes, sur le *paper* (le papier), le fond, qui cache la grille
+derrière elles. Les espaces sont gardés, pour que les deux-points des lignes puissent se tenir l'un sous l'autre :
+
+```cesia
+place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984")
+[x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
+```
+
+`legend = "ends"` nomme chaque courbe à son bout, à la place de la boîte de la légende : son label à droite de son
+dernier point dans le tracé, de sa couleur, comme un graphique imprimé nomme ses courbes. Deux labels qui se
+chevaucheraient sont écartés d'une ligne, par une passe depuis le haut, puis par une passe depuis le bas pour ceux qui
+sortiraient du tracé : une mise en page gloutonne, la plus simple qui garde les labels dans l'ordre des courbes. La
+marge de droite grandit pour les contenir. Les points et les bandes sont nommés à leur dernier point aussi ; les barres
+et les histogrammes n'ont pas de bout, et avec `"ends"` ils sont un `Err`.
+
+```cesia
+three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends")
+[x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
+```
+
+### Des ticks à vous
+
+`xticks` et `yticks` donnent les ticks d'un axe à la place de ceux de la recherche que décrit [Les ticks](#les-ticks) :
+une liste de nombres, croissants, au plus 1 000 ; ceux qui sont dans l'étendue de l'axe sont dessinés, chacun avec sa
+ligne de la grille. `xlabels` et `ylabels` donnent leurs labels, autant de textes que de ticks, sinon un `Err` ; sans
+eux, les nombres s'écrivent comme les ticks calculés, chacun le plus court décimal qui se relit en lui. Un axe log prend
+des ticks au-dessus de 0. Sans ces options, rien ne change.
+
+```cesia
+use std/list
+compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])
+[x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
+```
+
+[list.Range]`(0, 360, step = 90)` vaut `[0, 90, 180, 270, 360]` ; `0..360`, sa forme courte sans pas, serait chaque
+entier.
+
+### Les graphiques polaires
+
+`polar = true` dessine le graphique dans un cercle, comme une boussole ou la course du soleil : `x` est un angle en
+degrés, 0 en haut, tournant dans le sens des aiguilles d'une montre, si bien que 90 est à droite, comme l'est sur une
+carte ; `y` est la distance au centre. `ylim` vaut `[center, rim]` (le centre, le bord), dans l'un ou l'autre ordre :
+`[90, 0]` met 90 au centre et 0 sur le bord, comme la hauteur du soleil, à la verticale à 90 et sur l'horizon à 0. Sans
+elle, 0, ou le plus petit `y` en dessous, est au centre, et le plus grand `y` et 5 % de plus sur le bord. Des cercles se
+tiennent aux ticks de `y`, écrits le long du rayon de 0, et des rayons aux ticks de `x`, tous les 30 degrés sauf si
+`xticks` les donne, écrits hors du bord avec un signe degré, comme les écrivent les axes polaires de matplotlib.
+
+```cesia
+dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0])
+[x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
+```
+
+Un graphique polaire est carré, son disque au milieu de la place que laissent les textes. Il dessine [plot.Line],
+[plot.Points], [plot.Text] et [plot.Rule], une règle en `x` comme un rayon et en `y` comme un cercle. Une courbe relie
+ses points par des segments droits, comme les relient les axes polaires de matplotlib, et est coupée là où elle traverse
+le bord, la traversée calculée pour que la courbe finisse dessus ; les points et les textes hors du disque sont laissés
+de côté. Une courbe qui finit à droite du bord est nommée, avec `"ends"`, au-delà des labels des angles. Avec un
+graphique 3D, un axe log ou `xlim`, `polar` est un `Err`.
+
+### La taille d'un graphique
+
+Un graphique fait 640 pixels sur 400 sauf si `size = [width, height]` donne la sienne, et un graphique polaire 500 sur
+500, autant de place que 640 sur 400 dans un carré ; [plot.Svg] et [plot.Save] l'écrivent à cette taille. Sous une
+cellule, Cemacs le dessine aussi large que le panneau, jamais plus large que le graphique lui-même, et aussi haut que le
+demande la forme de sa taille : un graphique de 640 sur 400 dans un panneau de 500 pixels fait 500 sur 313, et un
+graphique polaire reste carré. [plot.Scene] donne cette taille à un back-end quand sa hauteur manque :
+
+```cesia
+[result.Unwrap(plot.Scene(dome, 900, missing)).Width, result.Unwrap(plot.Scene(waves, 500, missing)).Height] -->
+```
+
+## La course du soleil, avec des formules simples
+
+La page *position du soleil* de SunEarthTools dessine la course du soleil dans le ciel d'un lieu, une courbe pour le 21
+de chaque mois, le jour d'aujourd'hui parmi elles en orange avec ses heures, son nom, son lieu et sa date dans un coin,
+et chaque courbe nommée à son bout : sur une grille plate et dans un cercle. Cette section dessine un graphique dans son
+esprit, avec des jours inventés et lisses plutôt qu'avec l'astronomie. Un jour est ici trois nombres : l'azimut où le
+soleil se lève, à l'est du nord, sa hauteur à midi, plein sud, et ses heures de jour. Le soleil tourne d'un pas égal de
+son lever à son coucher en `360 - rise`, sa hauteur une demi-sinusoïde :
+
+```cesia allow=read,write
+defn sun(rise, noon, light, t)
+  (** The sun of an invented day at the times t, in hours: its azimuth and its height, in degrees. *)
+  f = (t - (12.0 - light / 2.0)) / light
+  {Az: rise + (360.0 - 2.0 * rise) * f, El: noon * math.Sin(math.Pi * f)}
+end
+day(rise, noon, light) = sun(rise, noon, light, num.Linspace(12.0 - light / 2.0, 12.0 + light / 2.0, 61))
+days = [day(58, 72.6, 15.0), day(61, 69.5, 14.6), day(74, 61, 13.4), day(90, 49.2, 12.1), day(106, 38, 10.9), day(118, 29.5, 9.8), day(122, 25.8, 9.3)]
+names = ["21 Jun solstice", "21 May-Jul", "21 Apr-Aug", "21 Mar-Sep equinox", "21 Feb-Oct", "21 Jan-Nov", "21 Dec solstice"]
+today = day(117, 28, 9.6)
+clock = 8..16
+hours = sun(117, 28, 9.6, clock)
+orange = "#e07000"
+where = "name: essai\n  lat: 40.76\n  lon: -73.984\n date: 23/11/2026"
+flat = plot.Of(list.Concat([plot.Line(days[k].Az, days[k].El, label = names[k]) for k in 1..7],
+  [plot.Line(today.Az, today.El, color = orange, label = "23/11/2026"), plot.Points(hours.Az, hours.El, color = orange, size = 4),
+   plot.Text(hours.Az, hours.El, ["$h" for h in clock], color = orange), plot.Rule(x = 180, label = "S")]),
+  x = "azimuth", y = "elevation", xlim = [0, 360], ylim = [0, 90], xticks = list.Range(0, 360, step = 45),
+  xlabels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"], yticks = list.Range(0, 90, step = 10), note = where,
+  size = [760, 420], title = "Sun path")
+plot.Save(flat, "sunpath.svg") -->
+```
+
+Les sept jours sont noirs, distingués par leur trait ; aujourd'hui seul a une couleur, comme sur la page. Ses heures sont
+un [plot.Text] à côté d'un [plot.Points] : `clock` vaut `8..16`, la forme courte de [list.Range]`(8, 16)`, et les textes
+`["$h" for h in clock]` celle de [list.Map]`(h -> "$h", clock)`. La légende est la boîte : les jours finissent tous sur
+l'horizon, où des noms à leurs bouts s'entasseraient.
+
+Dans un cercle, l'azimut est l'angle et la hauteur la distance au bord, `ylim = [90, 0]`. Chaque jour est lu de son
+coucher à son lever, pour qu'il finisse à l'est, à droite du disque, où `legend = "ends"` écrit son nom, au-delà des
+labels du bord :
+
+```cesia allow=read,write
+east(d) = {Az: list.Reverse(d.Az), El: list.Reverse(d.El)}
+dial = plot.Of(list.Concat([plot.Line(east(days[k]).Az, east(days[k]).El, label = names[k]) for k in 1..7],
+  [plot.Line(east(today).Az, east(today).El, color = orange, label = "23/11/2026"), plot.Points(hours.Az, hours.El, color = orange, size = 4),
+   plot.Text(hours.Az, hours.El, ["$h" for h in clock], color = orange), plot.Rule(x = 180, label = "S")]),
+  polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), yticks = list.Range(0, 90, step = 10),
+  legend = "ends", note = where, size = [760, 560], title = "Sun path")
+plot.Save(dial, "sundial.svg") -->
+[x.Text for x in result.Unwrap(plot.Scene(dial, 760, 560)).Items if x.Role == "legend"] -->
+```
+
+La page dessine une image faite sur son serveur ; ici le graphique est une valeur, dessinée de la même façon par
+[plot.Save] et par Cemacs, dans la police du code, noir sur blanc avec la seule couleur qui dit quelque chose.
 
 ## Animations
 
@@ -532,19 +698,18 @@ puissance ; avec encore moins de 3 ticks, il les place comme le ferait un axe li
 
 Les marges autour du tracé sont mesurées, pas devinées : la largeur de chaque label est la somme des *advance widths*
 (les chasses) de ses caractères, de combien chacun fait avancer la plume, dans la police avec laquelle Cemacs dessine,
-Noto Sans Medium. [std/plot] garde ces largeurs pour les lettres latines, Latin-1 et Latin Extended-A, le grec, et la
-ponctuation, les exposants, les indices et le signe moins des nombres et des unités, lues dans le fichier de la police
-par `tools/plot-font.ce`. Un test mesure chacune d'elles avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les
-trouve toutes à moins d'un pixel près. Un caractère hors de celles-ci, comme un caractère chinois, compte pour un *em*
-entier, la taille de la police, aussi large que n'importe lequel de ces glyphes sauf `‰`, pour qu'aucun label ne
-chevauche ou ne soit coupé, au prix d'un peu de place. Le trait d'union conditionnel ne compte rien, puisque la mise en
-forme le cache.
+JetBrains Mono 2.304, la police de son code. Elle est *monospaced* (à chasse fixe) : chacun de ses 1 363 caractères fait
+avancer la plume de 0,6 *em*, la taille de la police, sauf les diacritiques combinants, qui ne la font pas avancer, si
+bien qu'un label de 12 pixels fait 7,2 pixels par caractère. [std/plot] compte un texte ainsi, en *colonnes*, comme un
+terminal les compte, selon les règles du `wcwidth` de Markus Kuhn : une colonne par caractère, aucune pour un
+diacritique combinant, un trait d'union conditionnel ou un caractère de largeur nulle, deux pour un caractère large
+d'Asie de l'Est, que la police n'a pas et qu'une autre police dessine large d'environ un em. Un test mesure les
+caractères des graphiques avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les trouve tous à moins d'un pixel près.
 
-Les textes sont dessinés sans *kerning* (le crénage), les petits déplacements entre des paires de lettres comme `AV`,
-pour que les largeurs mesurées soient les largeurs dessinées. Le SVG nomme d'abord Noto Sans, puis la police sans-serif
-du navigateur : un lecteur sans Noto Sans dessine les textes dans une autre police, un peu plus large ou plus étroite
-que ce qui a été mesuré. L'encre de quelques lettres, comme un `f` ou un `î` au bout d'un label, va jusqu'à environ 0,2
-em au-delà de sa chasse, 2 pixels à 12 ; l'espace gardé entre les labels, 6 pixels, le couvre.
+Le SVG nomme d'abord JetBrains Mono, puis la police monospace du navigateur : un lecteur sans JetBrains Mono dessine les
+textes dans une autre police à chasse fixe, comme DejaVu Sans Mono, Menlo ou Consolas, dont les caractères sont aussi
+larges, 0,6 em ou un peu moins, si bien que la mise en page tient. Un caractère que JetBrains Mono n'a pas, comme le
+moins en exposant de `10⁻³`, est dessiné par une autre police, Noto Sans Medium dans Cemacs.
 
 Les largeurs connues, la mise en page réserve le titre, les labels des ticks, les noms des axes, la légende et la barre
 de couleurs, et donne au tracé ce qui reste. Un label au bout d'un axe peut dépasser du tracé : la marge grandit pour le
@@ -568,10 +733,20 @@ tracé. Une courbe dont le x va et vient, comme un cercle, garde tous ses points
 
 ### Couleurs
 
-Les layers prennent tour à tour les huit couleurs d'Okabe et Ito (2008), choisies pour rester distinctes pour les formes
-courantes de daltonisme : bleu `#0072b2`, vermillon `#d55e00`, vert bleuté `#009e73`, pourpre rougeâtre `#cc79a7`, bleu
-ciel `#56b4e9`, orange `#e69f00`, jaune `#f0e442` et noir `#000000`. Le noir vient en dernier, puisqu'il disparaît sur
-un fond sombre.
+Un graphique est noir sur blanc, la grille d'un gris clair, `#d0d0d0`, de 1 pixel de large, comme le cadre et les
+courbes. Les layers sans couleur sont noirs, l'encre des axes, et se distinguent par ce que le noir et blanc garde :
+
+| Layers sans couleur | Tour à tour |
+|---|---|
+| [plot.Line], [plot.Line3], sans `dash` | trait plein, tirets, pointillés, tiret-point |
+| [plot.Points], sans `shape` | cercle, carré, triangle, croix |
+| les séries de [plot.Bars], [plot.Histogram] | noir, puis l'encre à 60, 40 et 30 % : les gris du style `grayscale` de matplotlib |
+| [plot.Area] | l'encre à 30 %, un gris |
+
+Le cinquième d'un genre recommence le tour. Un layer avec une `color` garde un trait plein ou un cercle et ne prend pas
+de tour : une couleur se donne là où elle dit quelque chose, pour distinguer des courbes ou en mettre une en avant, comme
+le jour d'aujourd'hui parmi les autres. Le même graphique s'imprime et se photocopie en noir et blanc sans perdre une
+courbe.
 
 Les heatmaps et les densités prennent *viridis*, de van der Walt et Smith (2015) : sa luminosité croît régulièrement de
 la plus petite valeur à la plus grande, si bien que des pas égaux des données ont l'air de pas égaux de couleur, une
@@ -601,11 +776,15 @@ chacun un dictionnaire avec un `Kind` (une sorte) et un `Role` (un rôle) ; la s
 
 Les coordonnées sont en pixels depuis le coin en haut à gauche. Les éléments des données ont `Clip`, le rectangle
 `[x, y, width, height]` du tracé auquel ils sont coupés. Une `Color` vaut `"#rrggbb"`, ou `"ink"` et `"grid"` pour le
-cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème ; [plot.Svg] les peint en `#222222`
-et `#e6e6e6` sur du blanc. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`,
+cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème, comme il peint `"ink"` pour les
+layers sans couleur et `"paper"` pour ce qui cache la grille derrière un texte ; [plot.Svg] les peint en `#000000`,
+`#d0d0d0` et `#ffffff`. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`,
 `"ylabel"` et `"zlabel"` pour les labels des ticks, `"factor"` pour la puissance de dix ou l'offset d'un axe, `"title"`,
-`"xtitle"`, `"ytitle"`, `"ztitle"`, `"legend"`, `"colorbar"` ou `"note"`, une ligne sous le graphique ; en 3D, `"pane"`
-pour les faces du fond de la boîte et `"axis"` pour les arêtes qui portent les labels.
+`"xtitle"`, `"ytitle"`, `"ztitle"`, `"legend"`, `"colorbar"`, `"note"`, une ligne sous le graphique, ou `"info"`, la
+boîte de l'option `note`, son papier et ses lignes ; en 3D, `"pane"` pour les faces du fond de la boîte et `"axis"` pour
+les arêtes qui portent les labels. Un graphique polaire a les mêmes rôles : ses rayons et ses cercles sont `"grid"`, son
+bord `"frame"`, les labels de ses angles `"xlabel"` et ceux de ses cercles `"ylabel"`. Les labels de `legend = "ends"`
+ont le rôle `"legend"`.
 
 Un back-end dessine un mesh (un maillage) selon son `Order` : les lignes depuis la première quand `rowStep` vaut 1, depuis
 la dernière quand il vaut -1, et dans chaque ligne les colonnes de même ; chaque quad est le chemin par ses points
@@ -691,9 +870,12 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 
 - Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi
   sur mesure.
-- Une seule police est mesurée, Noto Sans Medium ; les autres polices dessinent un peu plus large ou plus étroit.
-- La légende et la barre de couleurs sont à droite du tracé ; les barres sont debout ; un graphique contient un seul
-  [plot.Bars].
+- Une seule police est mesurée, JetBrains Mono ; une autre police à chasse fixe dessine aussi large ou un peu plus
+  étroit, une police proportionnelle plus étroit.
+- La légende et la barre de couleurs sont à droite du tracé, ou les noms aux bouts des courbes ; les barres sont debout ;
+  un graphique contient un seul [plot.Bars].
+- Un graphique polaire dessine des courbes, des points, des textes et des règles, sur des axes linéaires, un tour entier ;
+  pas encore de barres ni de bandes dans un cercle.
 - Une courbe dont le x va et vient garde tous ses points ; au-delà de 200 000 marqueurs, prenez [plot.Density].
 - Pas de zoom dans cette version. Une animation contient au plus 300 images, toutes en mémoire, et s'écrit en SVG, pas
   en vidéo ni en GIF.
@@ -717,8 +899,6 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
   21(153):65–66, 1926. <https://doi.org/10.1080/01621459.1926.10502161>. Le nombre de bins quand l'IQR vaut 0.
 - Rob J. Hyndman, Yanan Fan. "Sample Quantiles in Statistical Packages". *The American Statistician* 50(4):361–365,
   1996. <https://doi.org/10.1080/00031305.1996.10473566>. Les quartiles, par son type 7.
-- Masataka Okabe, Kei Ito. "Color Universal Design (CUD): How to make figures and presentations that are friendly to
-  Colorblind people". J*Fly, 2002, revu en 2008. <https://jfly.uni-koeln.de/color/>. Les couleurs des layers.
 - Stéfan van der Walt, Nathaniel Smith. "matplotlib colormaps", la page des cartes de couleurs qu'ils ont conçues pour
   être celles de matplotlib par défaut, avec leur exposé à SciPy 2015. <https://bids.github.io/colormap/>. Viridis,
   d'après la table de matplotlib 3.11.
@@ -743,8 +923,10 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 - L'équipe de développement de Matplotlib. *mplot3d FAQ*, "My 3D plot doesn't look right at certain viewing angles",
   et `Axes3D.plot_surface`. <https://matplotlib.org/stable/api/toolkits/mplot3d/faq.html>. Le tri de matplotlib, son
   sous-échantillonnage et `axlim_clip`.
-- Microsoft et Adobe. *OpenType specification* : les tables cmap, hmtx et head.
-  <https://learn.microsoft.com/typography/opentype/spec/>. Comment `tools/plot-font.ce` lit les largeurs de la police.
+- Markus Kuhn. *wcwidth*, les largeurs des caractères d'Unicode dans un terminal, 2007.
+  <https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c>. Les colonnes d'un texte : aucune, une ou deux.
+- JetBrains. *JetBrains Mono*, version 2.304, SIL Open Font License 1.1. <https://www.jetbrains.com/lp/mono/>. La police
+  des textes, chacun de ses caractères large de 600 millièmes d'em.
 
 ## La suite
 

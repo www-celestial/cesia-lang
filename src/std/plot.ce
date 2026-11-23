@@ -2,8 +2,10 @@
     puts layers on shared axes, Grid sets graphs side by side and Frames shows them one after the other, an animation.
     Nothing is drawn until a back-end asks for it: Svg gives the SVG text of a graph, Save writes it to a file, and Scene
     gives its shapes in pixels, which Cemacs draws. The chapter Graphs of the book shows each step with the papers it
-    follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman and Diaconis, the colors of
-    Okabe and Ito, viridis and ColorBrewer, and the order of the quads of a surface, which needs no sort. *)
+    follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman and Diaconis, viridis and
+    ColorBrewer, and the order of the quads of a surface, which needs no sort. A graph is black on white, its texts in
+    JetBrains Mono, the font of the code in Cemacs: layers without a color are black, told apart by their dash or their
+    shape, and a color is given where it says something. *)
 use std/columns as col
 use std/dict
 use std/list
@@ -36,14 +38,22 @@ struct Graph
   ztitle = missing
   zlim = missing
   view = missing
+  note = missing
+  noteAt = "top left"
+  xticks = missing
+  xlabels = missing
+  yticks = missing
+  ylabels = missing
+  polar = false
 end
 
 one(l) = Graph([l])
 
-defn Line(x, y, label = missing, color = missing, width = 1.5, dash = missing)
+defn Line(x, y, label = missing, color = missing, width = 1, dash = missing)
   (** A line through the points (x[i], y[i]), in their order. A NaN or an infinity in x or y cuts it: a gap, as in
-      matplotlib. color is written "#rrggbb"; without it, the layers take the colors of Okabe and Ito in turn. width is
-      in pixels; dash is missing for a solid line, or "dashed", "dotted" or "dashdot". A line whose x never decreases and
+      matplotlib. color is written "#rrggbb"; without it, the line is black, the ink of the axes, and the lines without a
+      color or a dash are solid, dashed, dotted and dash-dot in turn. width is in pixels; dash is missing for a solid
+      line, or "dashed", "dotted" or "dashdot". A line whose x never decreases and
       that has more than 4 points per pixel column keeps 4 points per column, as M4 does: the first, the last, the lowest
       and the highest, which draw the same pixels.
 
@@ -52,10 +62,11 @@ defn Line(x, y, label = missing, color = missing, width = 1.5, dash = missing)
   one({Fn: "Line", X: x, Y: y, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Points(x, y, label = missing, color = missing, size = 6, shape = "circle")
+defn Points(x, y, label = missing, color = missing, size = 6, shape = missing)
   (** A marker at each point (x[i], y[i]): shape is "circle", "square", "triangle", "diamond", "cross" or "plus", and
-      size its width in pixels. A point with a NaN or an infinity is left out, and Scene counts it in Dropped. At most
-      200,000 points: plot.Density counts more, per cell.
+      size its width in pixels. Without a color, the markers are black, and the points without a color or a shape are
+      circles, squares, triangles and crosses in turn; with a color, circles. A point with a NaN or an infinity is left
+      out, and Scene counts it in Dropped. At most 200,000 points: plot.Density counts more, per cell.
 
         result.Unwrap(Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)).Dropped --> 1 *)
   one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape})
@@ -63,8 +74,9 @@ end
 
 defn Bars(names, heights, label = missing, color = missing)
   (** A bar for each name, as high as its height, from 0. With a list of lists of heights, the bars of a name stand side
-      by side, one series for each list; label and color are then lists too, one for each series. A graph holds one
-      plot.Bars, on a linear y axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
+      by side, one series for each list; label and color are then lists too, one for each series. A series without a
+      color is black, then grey: the ink at 100, 60, 40 and 30 % in turn. A graph holds one plot.Bars, on a linear y
+      axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
 
         Svg(Bars(["a", "b"], [[1, 2], [3, 4]], label = ["2025", "2026"])) then result.IsOk() --> true *)
   one({Fn: "Bars", Names: names, Heights: heights, Label: label, Color: color})
@@ -76,7 +88,7 @@ defn Histogram(values, bins = missing, label = missing, color = missing)
       when the IQR is 0; at most 10,000 bins. A count gives that many bins of equal width, from the least value to the
       greatest. A list gives the edges, increasing. A bin holds the values from its left edge, included, to its right edge,
       left out, and the last bin holds its right edge too, as in numpy. A NaN, an infinity or a value outside the edges is
-      left out.
+      left out. Without a color, it takes the shade of bars in turn.
 
         Svg(Histogram([1, 2, 2, 3], bins = 0)) --> result.Err({Kind: "plot", Message: "plot.Histogram: bins is 0; give a count of 1 or more, or the edges."}) *)
   one({Fn: "Histogram", Values: values, Bins: bins, Label: label, Color: color})
@@ -104,10 +116,34 @@ end
 
 defn Area(x, low, high, label = missing, color = missing)
   (** The band between two curves, from low[i] to high[i] at x[i]: an interval, an envelope. It is filled with its color
-      at 30 % opacity. A NaN or an infinity cuts it.
+      at 30 % opacity, black by default, which shows grey. A NaN or an infinity cuts it.
 
         Svg(Area([1, 2, 3], [0, 1, 0], [2, 3, 2])) then result.IsOk() --> true *)
   one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color})
+end
+
+defn Text(x, y, texts, color = missing, size = 11, anchor = "left", dx = 4, dy = -4)
+  (** Texts on the graph, each at a point of the data: texts[i] at (x[i], y[i]), moved dx pixels to the right and dy
+      down, as the hour written beside each point of a curve. anchor is the side of a text at that place, "left",
+      "middle" or "right"; size is in pixels, from 4 to 96; color is written "#rrggbb", the ink of the axes without it.
+      A layer as the others: it follows the axes and their limits, and has no entry in the legend. A point with a NaN or
+      an infinity leaves its text out, and Scene counts it in Dropped; a point outside the plot leaves it out too. At
+      most 100,000 texts.
+
+        Svg(Of([Line([1, 2, 3], [1, 4, 9]), Text([1, 2, 3], [1, 4, 9], ["7h", "8h", "9h"])])) then result.IsOk() --> true
+        Svg(Text([1, 2], [1, 4], ["a"])) --> result.Err({Kind: "plot", Message: "plot.Text: there are 2 points and 1 texts; give one text for each point."}) *)
+  one({Fn: "Text", X: x, Y: y, Texts: texts, Label: missing, Color: color, Size: size, Anchor: anchor, Dx: dx, Dy: dy})
+end
+
+defn Rule(x = missing, y = missing, label = missing, dash = missing, color = missing)
+  (** A line of reference across the plot, as the south of a sun path or the horizon: x = c draws it upright at c, y = c
+      across at c; exactly one of x and y. Its label is written at its end, inside the plot, in its color; dash is as for
+      Line; color is written "#rrggbb", a grey without it. The range of its axis grows to hold it, as for the data; the
+      other axis is left to the other layers. It has no entry in the legend.
+
+        Svg(Of([Line([0, 360], [0, 50]), Rule(x = 180, label = "S")])) then result.IsOk() --> true
+        Svg(Rule(x = 1, y = 2)) --> result.Err({Kind: "plot", Message: "plot.Rule: give x or y, one of them, not both."}) *)
+  one({Fn: "Rule", X: x, Y: y, Label: label, Color: color, Dash: dash})
 end
 
 defn Surface(z, x = missing, y = missing, colors = "viridis")
@@ -126,7 +162,7 @@ defn Surface(z, x = missing, y = missing, colors = "viridis")
   one(dict.Put("Ready", surfaceOf(l, "plot.Surface"), l))
 end
 
-defn Line3(x, y, z, label = missing, color = missing, width = 1.5, dash = missing)
+defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   (** A line in 3D through the points (x[i], y[i], z[i]), in their order, as Line draws one in 2D, with the same label,
       color, width and dash. A NaN or an infinity cuts it, and so does a point past xlim, ylim or zlim: a gap. At most
       1,000,000 points. Several Line3 share a graph, drawn in their order, the later on top, but never with a Surface.
@@ -135,19 +171,33 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1.5, dash = missin
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing)
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing, polar = false)
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
-      legend, which shows when a layer has a label; size is [width, height] in pixels, 640 by 400 by default. The options
+      legend, which shows when a layer has a label, and legend = "ends" writes each label right of the last point of its
+      line in the plot, as a curve is named at its end, the labels moved apart when two would overlap; size is [width,
+      height] in pixels, 640 by 400 by default. The options
       of an Of given as a layer are left aside: those of this Of apply. A 3D graph, of Surface or Line3, has three more:
       z names its third axis, zlim is its range, and view is where it is seen from, [az, el] in degrees as MATLAB's view:
       the azimuth az turns from the -y axis, counterclockwise seen from above, and the elevation el, from -90 to 90, is
       the angle above the x-y plane; [-37.5, 30] by default. Its axes are linear and cover the data exactly, unless their
-      lim gives them.
+      lim gives them. note is a text in a box at a corner of the plot, one line for each line of the text, as the name, the
+      place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right". xticks and
+      yticks are the ticks of an axis, a list of numbers, increasing, in place of those computed: those inside its range
+      are drawn; xlabels and ylabels their labels, as many texts as ticks, else the numbers, written as the computed ones.
+      polar = true draws the graph in a circle, as a compass: x is an angle in degrees, 0 at the top, turning clockwise,
+      and y the distance from the center; ylim is [center, rim], so that [90, 0] puts 90 at the center and 0 on the rim,
+      else 0, or the least y below it, at the center and the greatest y and 5 % more on the rim. Rings stand at the ticks
+      of y, written along the ray of 0; rays at the ticks of x, every 30 degrees unless xticks gives them, written outside
+      the rim. A polar graph is square, 500 by 500 by default, and draws plot.Line, Points, Text and Rule; a line joins its
+      points by straight segments, as matplotlib's polar axes do, cut at the rim.
 
         Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true
-        result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0] *)
+        result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
+        Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true
+        [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"]
+        Svg(Of([Line([90, 180, 270], [10, 60, 10])], polar = true, ylim = [90, 0])) then result.IsOk() --> true *)
   ls = []
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
@@ -161,7 +211,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view)
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar)
 end
 
 defn Grid(graphs, columns = missing)
@@ -188,9 +238,9 @@ defn Frames(graphs, fps = 30)
 end
 
 defn Svg(g)
-  (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do. The texts
-      name the font Noto Sans Medium first, then sans-serif, and are drawn without kerning, so that their widths are the
-      ones std/plot measured.
+  (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do: black on
+      white, the grid light grey. The texts name the font JetBrains Mono first, then the browser's monospace, whose
+      characters are all as wide, so that their widths are the ones std/plot measured.
 
         text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
         Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
@@ -213,8 +263,10 @@ defn Save(g, path)
 end
 
 defn Scene(g, width, height, frame = 1, view = missing)
-  (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". The scene
-      is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
+  (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". With
+      height missing, the graph keeps the shape of its own size, its width and its height, as an editor fits it to a
+      pane: it is drawn width pixels wide, or its own width when that is less, and as high as its shape asks, square for a
+      polar graph. The scene is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
       infinity. For an animation of Frames, it is the scene of one frame, frame from 1, with two fields more: Frames, how
       many there are, and Fps, how many a second. A 3D graph has the field View, [az, el], the view it is seen from: its
       code's, or view when given, which turns it without changing the graph, as Cemacs does when it is dragged. An item is
@@ -226,16 +278,34 @@ defn Scene(g, width, height, frame = 1, view = missing)
       [rowStep, columnStep], each 1 or -1: a back-end draws the rows in that order, from the first or the last, and in
       each row the columns, so that the near quads cover the far ones) or "text" (X, Y on the baseline, Text, Size, Color,
       Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's items have Clip, the
-      rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink" and "grid" for the axes and the
-      texts, which a back-end gives the colors of its theme. Each item has a Role too: "grid", "data", "frame", "tick",
+      rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink", "grid" and "paper", which a
+      back-end gives the colors of its theme: the ink of the axes, the texts and the layers without a color, the grid,
+      and the background. Each item has a Role too: "grid", "data", "frame", "tick",
       "xlabel", "ylabel" and "zlabel" (the labels of the ticks), "factor" (the power of ten of an axis's labels), "title",
-      "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), and in 3D "pane" (the three
-      far sides of the box) and "axis" (the edges that hold the labels).
+      "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), "info" (the box of the option
+      note of Of, its paper and its lines), and in 3D "pane" (the three far sides of the box) and "axis" (the edges that
+      hold the labels).
 
         value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true
+        [result.Unwrap(Scene(Line([1, 2], [3, 4]), 320, missing)).Height, result.Unwrap(Scene(Of([Line([0, 90], [1, 2])], polar = true), 900, missing)).Width] --> [200, 500]
         result.Unwrap(Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])).View --> [0.0, 90.0] *)
-  r = sceneOf(g, width, height, frame, view)?
+  size = fitted(g, width, height)?
+  r = sceneOf(g, size[1], size[2], frame, view)?
   result.Ok(if dict.Has("Summary", r) dict.Drop("Summary", r) else r end)
+end
+
+defn fitted(g, width, height)
+  (** The size Scene draws a graph at: width by height, or with height missing, width at most its own and the height of
+      its own shape, at least 80. *)
+  if not value.IsMissing(height)
+    return result.Ok([width, height])
+  end
+  if not (value.IsNumber(width) and width >= 100)
+    return fail("plot.Scene needs at least 100 by 80 pixels, not $(brief(width)) by missing.")
+  end
+  own = sizeOf(g, "plot.Scene")?
+  wide = list.Min(math.Div(math.Floor(width), 1), math.Div(math.Floor(own[1]), 1))
+  result.Ok([wide, list.Max(80, math.Div(math.Round(wide * own[2] / own[1]), 1))])
 end
 
 defn sceneOf(g, width, height, frame, view)
@@ -298,7 +368,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z) -> true
   else -> false
 end
 
@@ -338,7 +408,7 @@ end
 
 defn sizeOf(g, fn)
   (** The size a graph is drawn at, [width, height]: its own, the first graph's times the columns and rows of a grid, or
-      640 by 400. *)
+      640 by 400, 500 by 500 for a polar graph, as much room as 640 by 400 in a square. *)
   if not isGraph(g)
     return fail("$fn needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
   end
@@ -357,7 +427,7 @@ defn sizeOf(g, fn)
   end
   s = g.size
   if value.IsMissing(s)
-    return result.Ok([640, 400])
+    return result.Ok(if g.polar == true [500, 500] else [640, 400] end)
   end
   if not (value.IsArray(s) and value.Len(s) == 2 and isPositive(s[1]) and isPositive(s[2]) and s[1] >= 100 and s[2] >= 80)
     return fail("plot.Of: size is $(brief(s)); give [width, height] in pixels, at least [100, 80].")
@@ -489,6 +559,8 @@ defn prepare(l, at, count)
     "Heatmap" -> heatmapOf(l, w)
     "Surface" -> renamed(l.Ready, w)
     "Line3" -> line3Of(l, w)
+    "Text" -> lazily(textsOf)(l, w)
+    "Rule" -> lazily(ruleOf)(l, w)
     else -> densityOf(l, w)
   end
 end
@@ -508,7 +580,7 @@ defn pointsOf(l, w, marks)
     if e.Count > 200000
       return fail("$w: $(e.Count) points are too many to draw one by one, past 200,000; plot.Density counts them per cell.")
     end
-    if not (l.Shape in shapes)
+    if not (value.IsMissing(l.Shape) or l.Shape in shapes)
       return fail("$w: shape is $(brief(l.Shape)); it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\".")
     end
     if not isPositive(l.Size)
@@ -536,6 +608,93 @@ defn pointsOf(l, w, marks)
   p.Yhi = e.Yhi
   p.Xbad = bad("x", x, e.Xbad)
   p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+mostTexts = 100000   (** The most texts of a plot.Text. *)
+anchors = ["left", "middle", "right"]   (** The sides of a text that plot.Text places at its point. *)
+
+defn textsOf(l, w)
+  x = floats(l.X, "x", w)?
+  y = floats(l.Y, "y", w)?
+  n = value.Len(x)
+  if value.Len(y) != n
+    return fail("$w: x has $n values and y has $(value.Len(y)); give both the same number.")
+  end
+  ts = l.Texts
+  if not value.IsArray(ts) or value.Len(value.Size(ts)) > 1 and value.Size(ts)[1] > 1
+    return fail("$w: texts must be a list of texts, not $(brief(ts)).")
+  end
+  if value.Len(ts) != n
+    return fail("$w: there are $n points and $(value.Len(ts)) texts; give one text for each point.")
+  end
+  if n > mostTexts
+    return fail("$w: $n texts are too many, past 100,000; keep those that a reader can tell apart.")
+  end
+  for i in 1..n
+    if not value.IsText(ts[i])
+      return fail("$w: texts[$i] is $(brief(ts[i])), not a text.")
+    end
+  end
+  if not (l.Anchor in anchors)
+    return fail("$w: anchor is $(brief(l.Anchor)); it is \"left\", \"middle\" or \"right\".")
+  end
+  if not (value.IsNumber(l.Size) and l.Size >= 4 and l.Size <= 96)
+    return fail("$w: size is $(brief(l.Size)); give the size of the texts in pixels, from 4 to 96.")
+  end
+  for d in [["dx", l.Dx], ["dy", l.Dy]]
+    if not (value.IsNumber(d[2]) and d[2] - d[2] == 0)
+      return fail("$w: $(d[1]) is $(brief(d[2])); give a move in pixels, a finite number.")
+    end
+  end
+  e = extent(x, y)
+  if e.Count == 0
+    return fail("$w: no point has a finite x and y.")
+  end
+  p = base(l, w)
+  p.X = x
+  p.Y = y
+  p.Texts = ts
+  p.Size = l.Size * 1.0
+  p.Anchor = ["start", "middle", "end"][list.IndexOf(l.Anchor, anchors)]
+  p.Dx = l.Dx * 1.0
+  p.Dy = l.Dy * 1.0
+  p.Dropped = n - e.Count
+  p.Xlo = e.Xlo
+  p.Xhi = e.Xhi
+  p.Ylo = e.Ylo
+  p.Yhi = e.Yhi
+  p.Xbad = bad("x", x, e.Xbad)
+  p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+ruleGrey = "#808080"   (** The color of a plot.Rule that gives none. *)
+
+defn ruleOf(l, w)
+  if value.IsMissing(l.X) == value.IsMissing(l.Y)
+    return fail("$w: give x or y, one of them, $(if value.IsMissing(l.X) "as x = 180 for a line upright at 180" else "not both" end).")
+  end
+  which = if value.IsMissing(l.X) "y" else "x" end
+  v = if which == "x" l.X else l.Y end
+  if not (value.IsNumber(v) and v - v == 0)
+    return fail("$w: $which is $(brief(v)); give a finite number, where the line goes.")
+  end
+  if not (value.IsMissing(l.Dash) or l.Dash in dashes)
+    return fail("$w: dash is $(brief(l.Dash)); it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\".")
+  end
+  p = base(l, w)
+  p.Axis = which
+  p.At = v * 1.0
+  p.Width = 1.0
+  p.Dash = l.Dash
+  p.Xlo = if which == "x" p.At else inf end
+  p.Xhi = if which == "x" p.At else -inf end
+  p.Ylo = if which == "y" p.At else inf end
+  p.Yhi = if which == "y" p.At else -inf end
+  why = if v <= 0 "$which is $(value.Text(v))" else missing end
+  p.Xbad = if which == "x" why else missing end
+  p.Ybad = if which == "y" why else missing end
   result.Ok(p)
 end
 
@@ -952,6 +1111,11 @@ defn axisOf(which, ps, scale, lim, w)
       end
     end
   end
+  if lo > hi
+    (* No layer has a value on this axis, as a graph of rules across it alone: 0 to 1, or 1 to 10 on a log axis. *)
+    lo = if scale == "log" 1.0 else 0.0 end
+    hi = if scale == "log" 10.0 else 1.0 end
+  end
   axis = {Scale: scale, Lo: lo, Hi: hi, T0: 0.0, T1: 1.0, Flip: flip, Category: category, Names: missing}
   if not value.IsMissing(lim)
     if not (value.IsArray(lim) and value.Len(lim) == 2 and value.IsNumber(lim[1]) and value.IsNumber(lim[2]) and lim[1] < lim[2] and lim[1] - lim[1] == 0 and lim[2] - lim[2] == 0)
@@ -988,37 +1152,45 @@ defn axisOf(which, ps, scale, lim, w)
   result.Ok(axis)
 end
 
-(* Fonts: the advance widths of Noto Sans Medium, in thousandths of an em, made by tools/plot-font.ce from the font. A
-   character outside them counts a whole em, as wide as any of them but ‰, so that no text overlaps. *)
+(* Fonts: the texts are drawn in JetBrains Mono, the font of the code in Cemacs, a monospaced font: each of its glyphs
+   moves the pen 600 thousandths of an em, but the combining marks, which move it none. A text's width is 0.6 em a
+   column, a column a character, as a terminal counts them: none for a mark that combines with the character before,
+   a soft hyphen or a character of zero width, and two for a wide character of East Asia, so that a font that fills in
+   for one the font lacks, about an em wide, never overlaps the next text. The heights are those of the font, in em:
+   its line, its ascent above the baseline and the height of its capitals. *)
 
 tickSize = 12.0
 titleSize = 15.0
 axisSize = 13.0
-lineRatio = 1.362
-ascent = 1.069
-cap = 0.714
+lineRatio = 1.32
+ascent = 1.02
+cap = 0.73
 
-defn advance(code)
-  if code >= 32 and code <= 126
-    return basic[code - 31]
+defn columns(code)
+  (** The columns of a character: 0, 1 or 2, as Markus Kuhn's wcwidth counts them, with the emoji of Unicode 9 wide. *)
+  if code < 768
+    return if code == 173 0 else 1 end
   end
-  if code >= 160 and code <= 383
-    return latin[code - 159]
+  if code <= 879 or code >= 8203 and code <= 8207 or code == 8288 or code == 65279
+    return 0
   end
-  if code >= 880 and code <= 1023 and greek[code - 879] > 0
-    return greek[code - 879]
+  if code >= 4352 and code <= 4447 or code >= 11904 and code <= 42191 and code != 12351 or code >= 44032 and code <= 55203 or code >= 63744 and code <= 64255 or code >= 65040 and code <= 65049 or code >= 65072 and code <= 65135 or code >= 65280 and code <= 65376 or code >= 65504 and code <= 65510 or code >= 127744 and code <= 128591 or code >= 129280 and code <= 129535 or code >= 131072 and code <= 262141
+    return 2
   end
-  k = list.IndexOf(code, extraCodes)
-  if value.IsMissing(k) 1000 else extraWidths[k] end
+  1
 end
 
 defn textWidth(s, size)
-  (** The width of a text in pixels at a font size: the sum of the advances of its characters, without kerning. *)
+  (** The width of a text in pixels at a font size: 0.6 of the size a column. *)
+  n = value.Len(s)
+  if text.ByteLength(s) == n
+    return n * size * 0.6
+  end
   total = 0
   for c in text.Chars(s)
-    total += advance(text.Code(c))
+    total += columns(text.Code(c))
   end
-  total * size / 1000.0
+  total * size * 0.6
 end
 
 (* Labels: each the shortest decimal that reads back to its tick, written from integers, so that no rounding shows. *)
@@ -1255,7 +1427,10 @@ defn logTicks(axis, length, horizontal)
 end
 
 defn ticksOf(axis, length, horizontal)
-  (** The ticks of an axis: {Values, Labels, Factor}. *)
+  (** The ticks of an axis: {Values, Labels, Factor}; those the graph gives, inside its range, when it gives them. *)
+  if dict.Has("Given", axis) and not value.IsMissing(axis.Given)
+    return lazily(givenTicks)(axis, axis.Given)
+  end
   if axis.Category
     return {Values: [k * 1.0 for k in 1..value.Len(axis.Names)], Labels: axis.Names, Factor: missing}
   end
@@ -1263,6 +1438,74 @@ defn ticksOf(axis, length, horizontal)
     return logTicks(axis, length, horizontal)
   end
   linearTicks(axis, length, horizontal)
+end
+
+mostTicks = 1000   (** The most ticks that xticks or yticks give. *)
+
+defn givenTicks(axis, given)
+  (** The ticks given to an axis that are inside its range, {Values, Labels, Factor}: their labels, or the numbers. *)
+  lo = list.Min(axis.Lo, axis.Hi)
+  hi = list.Max(axis.Lo, axis.Hi)
+  slack = (hi - lo) * 1e-9
+  keep = [k for k in 1..value.Len(given.Values) if given.Values[k] >= lo - slack and given.Values[k] <= hi + slack]
+  vs = [given.Values[k] for k in keep]
+  if value.IsMissing(given.Labels)
+    t = numbered(vs)
+    return {Values: vs, Labels: t.Labels, Factor: t.Factor}
+  end
+  {Values: vs, Labels: [given.Labels[k] for k in keep], Factor: missing}
+end
+
+defn givenOf(ticks, labels, which, scale, w)
+  (** The ticks that a graph gives an axis, {Values, Labels}, in an Ok, Labels missing for the numbers themselves;
+      missing when it gives none; an Err for ticks that are no list of finite numbers, increasing, labels that are not as
+      many texts, or labels without ticks. *)
+  if value.IsMissing(ticks)
+    if not value.IsMissing(labels)
+      return fail("$w: $(which)labels needs $(which)ticks, the places of its labels.")
+    end
+    return result.Ok(missing)
+  end
+  vs = ticks
+  if not value.IsArray(vs) or value.Len(vs) == 0 or col.Kind(vs) != "int" and col.Kind(vs) != "float" and not list.All([value.IsNumber(v) for v in vs])
+    return fail("$w: $(which)ticks is $(brief(ticks)); give a list of numbers, increasing.")
+  end
+  n = value.Len(vs)
+  if n > mostTicks
+    return fail("$w: $(which)ticks has $n values, past 1,000; give fewer.")
+  end
+  vs = vs * 1.0
+  for k in 1..n
+    if vs[k] - vs[k] != 0.0 or k > 1 and not (vs[k - 1] < vs[k])
+      return fail("$w: $(which)ticks[$k] is $(value.Text(vs[k])); give finite numbers, increasing.")
+    end
+  end
+  if scale == "log" and vs[1] <= 0.0
+    return fail("$w: a log $which axis needs $(which)ticks above 0, and $(which)ticks[1] is $(value.Text(vs[1])).")
+  end
+  if value.IsMissing(labels)
+    return result.Ok({Values: vs, Labels: missing})
+  end
+  if not value.IsArray(labels) or value.Len(labels) != n
+    return fail("$w: $(which)labels is $(brief(labels)); give $n texts, one for each of $(which)ticks.")
+  end
+  for k in 1..n
+    if not value.IsText(labels[k])
+      return fail("$w: $(which)labels[$k] is $(brief(labels[k])), not a text.")
+    end
+  end
+  result.Ok({Values: vs, Labels: [l for l in labels]})
+end
+
+defn numbered(vs)
+  (** The labels of ticks given as numbers, written as the ticks computed, with their power of ten or their offset: each
+      n times 10^-k, for the least k up to 15 that makes every n a whole number to a billionth, so that each label is the
+      shortest decimal that reads back to its tick. *)
+  k = 0
+  while k < 15 and not list.All([math.Abs(v * pow10(k) - math.Round(v * pow10(k))) <= 1e-9 * list.Max(1.0, math.Abs(v * pow10(k))) for v in vs])
+    k += 1
+  end
+  labelsOf([math.Round(v * pow10(k)) for v in vs], 0 - k)
 end
 
 defn widest(labels, size)
@@ -1273,9 +1516,12 @@ defn widest(labels, size)
   w
 end
 
-(* Colors: Okabe and Ito's eight for the layers, viridis and RdBu for the cells. *)
+(* Looks: the layers without a color in the ink of the axes, told apart by their dash, their shape or their shade;
+   viridis and RdBu for the cells. *)
 
-palette = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9", "#e69f00", "#f0e442", "#000000"]
+lineTurn = [missing, "dashed", "dotted", "dashdot"]   (** The dashes that lines without a color or a dash take in turn. *)
+markTurn = ["circle", "square", "triangle", "cross"]   (** The shapes that points without a color or a shape take in turn. *)
+fillTurn = [1.0, 0.6, 0.4, 0.3]   (** The shades of bars without a color: the ink at these opacities, in turn. *)
 rdbu = ["#053061", "#2166ac", "#4393c3", "#92c5de", "#d1e5f0", "#f7f7f7", "#fddbc7", "#f4a582", "#d6604d", "#b2182b", "#67001f"]
 
 hexOf(c, i) = math.Div(text.Byte(i, c) - if text.Byte(i, c) >= 97 87 else 48 end, 1)
@@ -1547,6 +1793,8 @@ defn dataItems(p, xa, ya, a, clip)
     "Area" -> areaItems(p, xa, ya, a, clip)
     "Bars" -> barItems(p, a, clip)
     "Histogram" -> histogramItems(p, xa, a, clip)
+    "Text" -> lazily(textItems)(p, xa, ya, a, clip)
+    "Rule" -> lazily(ruleItems)(p, xa, ya, a, clip)
     else -> cellsItems(p, xa, ya, a, clip)
   end
 end
@@ -1563,6 +1811,45 @@ defn markItems(p, xa, ya, a, clip)
   py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
   ok = col.Positions((px - px) + (py - py) == 0.0)
   [{Kind: "marks", Xs: col.Pick(ok, px), Ys: col.Pick(ok, py), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip, Role: "data"}]
+end
+
+defn textItems(p, xa, ya, a, clip)
+  (** The texts of a plot.Text whose point is inside the plot, each moved from it, cut to the plot as the data are. *)
+  px = a.X + (inT(xa, p.X) - a.T0x) * a.Sx
+  py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
+  inside = col.Positions((px >= clip[1] - 0.5) * 1 + (px <= clip[1] + clip[3] + 0.5) * 1 + (py >= clip[2] - 0.5) * 1 + (py <= clip[2] + clip[4] + 0.5) * 1 == 4)
+  [{Kind: "text", X: px[i] + p.Dx, Y: py[i] + p.Dy, Text: p.Texts[i], Size: p.Size, Color: p.Color, Anchor: p.Anchor, Angle: 0, Width: textWidth(p.Texts[i], p.Size), Clip: clip, Role: "data"} for i in inside]
+end
+
+defn ruleItems(p, xa, ya, a, clip)
+  (** A rule across the plot at its value, on the middle of its pixels, and its label at its end inside the plot: right of
+      the top of an upright rule, or left of it near the right side; above the right end of a rule across, or below it
+      near the top. None when the value is outside the plot. *)
+  if p.Axis == "x"
+    x = a.X + (tf(xa, p.At) - a.T0x) * a.Sx
+    if x < clip[1] - 0.5 or x > clip[1] + clip[3] + 0.5
+      return []
+    end
+    x = snap(x)
+    out = [{Kind: "line", Xs: [x, x], Ys: [clip[2], clip[2] + clip[4]], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+    if value.IsMissing(p.Label)
+      return out
+    end
+    wide = textWidth(p.Label, tickSize)
+    left = x + 4.0 + wide > clip[1] + clip[3]
+    return list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(if left x - 4.0 else x + 4.0 end, clip[2] + 4.0 + tickSize * ascent, p.Label, tickSize, if left "end" else "start" end, "data"))), out)
+  end
+  y = a.Y + (tf(ya, p.At) - a.T0y) * a.Sy
+  if y < clip[2] - 0.5 or y > clip[2] + clip[4] + 0.5
+    return []
+  end
+  y = snap(y)
+  out = [{Kind: "line", Xs: [clip[1], clip[1] + clip[3]], Ys: [y, y], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+  if value.IsMissing(p.Label)
+    return out
+  end
+  under = y - 4.0 - tickSize * ascent < clip[2]
+  list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(clip[1] + clip[3] - 4.0, if under y + 4.0 + tickSize * ascent else y - 4.0 end, p.Label, tickSize, "end", "data"))), out)
 end
 
 defn areaItems(p, xa, ya, a, clip)
@@ -1585,7 +1872,7 @@ defn barItems(p, a, clip)
       if h - h == 0.0
         x0 = a.X + (i - 0.4 + (s - 1) * width - a.T0x) * a.Sx
         top = a.Y + (h - a.T0y) * a.Sy
-        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: 1.0, Clip: clip, Role: "data"}, out)
+        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: p.Shades[s], Clip: clip, Role: "data"}, out)
       end
     end
   end
@@ -1600,7 +1887,7 @@ defn histogramItems(p, xa, a, clip)
     c = p.Counts[k]
     if c > 0.0
       top = a.Y + (c - a.T0y) * a.Sy
-      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: 1.0, Clip: clip, Role: "data"}, out)
+      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: p.Shade, Clip: clip, Role: "data"}, out)
     end
   end
   out
@@ -1619,39 +1906,61 @@ defn legendEntries(ps)
     if p.Fn == "Bars"
       for s in 1..value.Len(p.Labels)
         if not value.IsMissing(p.Labels[s])
-          out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: 1.0}, out)
+          out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: p.Shades[s]}, out)
         end
       end
-    else if not value.IsMissing(p.Label) and not p.Cells
+    else if not value.IsMissing(p.Label) and not p.Cells and p.Fn != "Rule"
       kind = match p.Fn
         "Line" -> "line"
         "Line3" -> "line"
         "Points" -> "mark"
         else -> "box"
       end
-      out = list.Append({Kind: kind, Label: p.Label, Color: p.Color, Opacity: if p.Fn == "Area" 0.3 else 1.0 end, Layer: p}, out)
+      out = list.Append({Kind: kind, Label: p.Label, Color: p.Color, Opacity: if p.Fn == "Area" 0.3 else dict.GetOr("Shade", 1.0, p) end, Layer: p}, out)
     end
   end
   out
 end
 
 defn colored(ps)
-  (** The layers with their colors: those without one take Okabe and Ito's in turn, a series of bars counting as one. *)
-  k = 0
+  (** The layers with their looks: a layer without a color takes the ink of the axes, "ink", which a back-end paints in
+      its theme; then, in turn, a line without a dash a solid, a dashed, a dotted and a dash-dot line, points without a
+      shape a circle, a square, a triangle and a cross, and the bars of a series or a histogram the ink at 100, 60, 40
+      and 30 %, the greys of matplotlib's grayscale style. A layer with a color keeps a solid line and a circle. *)
+  lines = 0
+  marks = 0
+  fills = 0
   out = []
   for p in ps
     if p.Fn == "Bars"
       cs = p.Colors
+      shades = list.Fill(1.0, value.Len(cs))
       for s in 1..value.Len(cs)
         if value.IsMissing(cs[s])
-          cs[s] = palette[math.Mod(k, 8) + 1]
-          k += 1
+          cs[s] = "ink"
+          shades[s] = fillTurn[math.Mod(fills, 4) + 1]
+          fills += 1
         end
       end
       p.Colors = cs
-    else if not p.Cells and value.IsMissing(p.Color)
-      p.Color = palette[math.Mod(k, 8) + 1]
-      k += 1
+      p.Shades = shades
+    else if not p.Cells
+      plain = value.IsMissing(p.Color)
+      if plain
+        p.Color = if p.Fn == "Rule" ruleGrey else "ink" end
+      end
+      if (p.Fn == "Line" or p.Fn == "Line3") and plain and value.IsMissing(p.Dash)
+        p.Dash = lineTurn[math.Mod(lines, 4) + 1]
+        lines += 1
+      end
+      if p.Fn == "Points" and value.IsMissing(p.Shape)
+        p.Shape = if plain markTurn[math.Mod(marks, 4) + 1] else "circle" end
+        marks += if plain 1 else 0 end
+      end
+      if p.Fn == "Histogram"
+        p.Shade = if plain fillTurn[math.Mod(fills, 4) + 1] else 1.0 end
+        fills += if plain 1 else 0 end
+      end
     end
     out = list.Append(p, out)
   end
@@ -1668,7 +1977,8 @@ end
 defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing)
   (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}, and for a 3D graph View and
       Summary. A frame of an animation takes the ranges its frames share, those of each of its layers over every frame, so
-      that its axes and its colors are those of every frame. A note is a line under the graph. A view turns a 3D graph. *)
+      that its axes and its colors are those of every frame. A note is a line under the graph, as std/plot writes one,
+      not the box of the option note. A view turns a 3D graph. *)
   count = value.Len(g.layers)
   if count == 0
     return fail("plot.Of needs at least one layer.")
@@ -1693,12 +2003,22 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if not value.IsMissing(view)
     return fail("plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D.")
   end
+  if not value.IsBool(g.polar)
+    return fail("$gw: polar is $(brief(g.polar)); give true or false.")
+  end
+  if g.polar
+    return lazily(drawPolar)(g, ps, ox, oy, w, h, note)
+  end
   title = checkText(g.title, "title", gw)?
   xtitle = checkText(g.xtitle, "x", gw)?
   ytitle = checkText(g.ytitle, "y", gw)?
-  if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
-    return fail("$gw: legend is $(brief(g.legend)); give true or false.")
+  if not (value.IsMissing(g.legend) or value.IsBool(g.legend) or g.legend == "ends")
+    return fail("$gw: legend is $(brief(g.legend)); give true, false or \"ends\".")
   end
+  (* The options that most graphs leave out are drawn by functions of their own, called through lazily: a first graph
+     pays only for the code it runs. *)
+  box = if value.IsMissing(g.note) and g.noteAt == "top left" missing else lazily(noteOf)(g, gw)? end
+  ends = g.legend == "ends"
   bars = list.Filter(p -> p.Category, ps)
   if value.Len(bars) > 1
     return fail("$gw: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2]).")
@@ -1708,10 +2028,17 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if xa.Category
     xa.Names = bars[1].Names
   end
+  if not (value.IsMissing(g.xticks) and value.IsMissing(g.xlabels) and value.IsMissing(g.yticks) and value.IsMissing(g.ylabels))
+    given = lazily(givenAxes)(g, xa, ya, gw)?
+    xa = given[1]
+    ya = given[2]
+  end
   ps = colored(ps)
-  entries = if g.legend == false [] else legendEntries(ps) end
+  tagged = if ends lazily(endsNamed)(ps)? else [] end
+  entries = if g.legend == false or ends [] else legendEntries(ps) end
   legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
   shaded = list.Filter(p -> p.Cells, ps)
+  tags = []
   barTicks = missing
   barW = 0.0
   dropped = 0
@@ -1771,13 +2098,22 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
       rotated = true
       moved = true
     end
+    over = 0.0
+    if value.Len(tagged) > 0
+      (* The names at the ends of the lines may reach past the plot: the margin on the right holds them too. *)
+      pass = lazily(endsPass)(tagged, xa, ya, [ax, ay, aw, ah], ox + w - outer - barW)
+      tags = pass.Tags
+      over = pass.Over
+    end
     if not rotated and value.Len(xt.Values) > 0
       n = value.Len(xt.Values)
-      over = ax + pos(xa, aw, xt.Values[n]) + textWidth(xt.Labels[n], tickSize) / 2 - (ox + w - outer - legendW - barW)
-      if over > 0.5
-        more += over
-        moved = true
-      end
+      over = list.Max(over, ax + pos(xa, aw, xt.Values[n]) + textWidth(xt.Labels[n], tickSize) / 2 - (ox + w - outer - legendW - barW))
+    end
+    if over > 0.5
+      more += over
+      moved = true
+    end
+    if not rotated and value.Len(xt.Values) > 0
       under = ox + outer - (ax + pos(xa, aw, xt.Values[1]) - textWidth(xt.Labels[1], tickSize) / 2)
       if under > 0.5
         less += under
@@ -1848,10 +2184,160 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  if value.Len(tags) > 0
+    items = list.Concat(items, lazily(tagItems)(tags))
+  end
+  if not value.IsMissing(box)
+    items = list.Concat(items, lazily(noteItems)(box, ax, ay, ax + aw, ay + ah))
+  end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
   result.Ok({Items: items, Dropped: dropped})
+end
+
+defn endsNamed(ps)
+  (** The layers that legend = "ends" names, those of a line, points or a band with a label, in an Ok; an Err for bars or
+      a histogram with a label, which have no end. *)
+  for p in ps
+    if (p.Fn == "Bars" and list.Any([value.IsText(x) for x in p.Labels])) or (p.Fn == "Histogram" and value.IsText(p.Label))
+      return fail("$(p.W): legend = \"ends\" names the end of a line, and $(if p.Fn == "Bars" "bars have" else "a histogram has" end) none; give legend = true.")
+    end
+  end
+  result.Ok([p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points" or p.Fn == "Area")])
+end
+
+defn givenAxes(g, xa, ya, w)
+  (** The x and y axes with the ticks that the graph gives them, in an Ok; an Err for ticks given wrong, or on the axis of
+      the names of bars. *)
+  x = xa
+  y = ya
+  x.Given = givenOf(g.xticks, g.xlabels, "x", g.xscale, w)?
+  y.Given = givenOf(g.yticks, g.ylabels, "y", g.yscale, w)?
+  if x.Category and not value.IsMissing(x.Given)
+    return fail("$w: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name.")
+  end
+  result.Ok([x, y])
+end
+
+defn endsPass(tagged, xa, ya, plot, right)
+  (** The labels of legend = "ends" for a plot [x, y, width, height], {Tags, Over}: Over, how far they reach past a line
+      on the right, in pixels, 0 when none does. *)
+  tags = endsOf(tagged, xa, ya, mapOf(xa, ya, plot[1], plot[2], plot[3], plot[4]), plot[2], plot[2] + plot[4])
+  over = 0.0
+  for t in tags
+    over = list.Max(over, t.X + t.W - right)
+  end
+  {Tags: tags, Over: over}
+end
+
+(** The labels of legend = "ends" as texts, each in the color of its line. *)
+tagItems(tags) = [dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")) for t in tags]
+
+(** A function given back as it is, to call it as lazily(f)(...): a function is inferred and compiled with every function
+    it calls by its name, even in a branch that never runs, and one called through lazily only when it runs. The code of
+    an option that most graphs leave out is called so, so that a first graph pays only for the code it runs; see the
+    chapter Internals of the book, on the versions of a function. *)
+lazily(f) = f
+
+(** How the data meet the pixels of a plot from (ax, ay), aw by ah: the place of the first value of each axis on the scale
+    and the pixels a unit of it, y running up unless its axis runs down. *)
+mapOf(xa, ya, ax, ay, aw, ah) = {X: ax, Y: if ya.Flip ay else ay + ah end, Sx: aw / (xa.T1 - xa.T0), Sy: (if ya.Flip ah else 0.0 - ah end) / (ya.T1 - ya.T0), T0x: xa.T0, T0y: ya.T0, W: aw, H: ah}
+
+defn lastInside(xs, ys, xa, ya)
+  (** The last point of a layer, in its order, whose x and y are finite and inside the ranges of the axes; 0 for none. *)
+  lx = list.Min(xa.Lo, xa.Hi)
+  hx = list.Max(xa.Lo, xa.Hi)
+  ly = list.Min(ya.Lo, ya.Hi)
+  hy = list.Max(ya.Lo, ya.Hi)
+  k = value.Len(xs)
+  while k >= 1
+    x = xs[k]
+    y = ys[k]
+    if x - x == 0.0 and y - y == 0.0 and x >= lx and x <= hx and y >= ly and y <= hy
+      return k
+    end
+    k -= 1
+  end
+  0
+end
+
+defn endsOf(ps, xa, ya, a, top, bottom)
+  (** The labels of legend = "ends": each right of the last point of its layer inside the plot, 6 pixels on, its middle at
+      the height of the point, in the color of the layer, a line of text {Text, X, Y, Color} on its baseline. Two labels
+      that would overlap are moved apart, a line apart, by a pass from the top, then from the bottom for those that
+      would pass the bottom of the plot, as a greedy layout of the labels of a column, kept from top to bottom. *)
+  row = tickSize * lineRatio
+  tags = []
+  for p in ps
+    ys = if p.Fn == "Area" (p.Low + p.High) / 2.0 else p.Y end
+    k = lastInside(p.X, ys, xa, ya)
+    if k > 0
+      px = a.X + (tf(xa, p.X[k]) - a.T0x) * a.Sx
+      py = a.Y + (tf(ya, ys[k]) - a.T0y) * a.Sy
+      tags = list.Append({Text: p.Label, X: px + 6.0, Y: py + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
+    end
+  end
+  placed(list.SortBy(t -> t.Y, tags), row, top + tickSize * ascent, bottom - tickSize * (lineRatio - ascent))
+end
+
+defn placed(tags, row, top, bottom)
+  (** Labels sorted by their baseline, moved down until none overlaps one above it that it meets across, then up from
+      bottom, the lowest baseline, for those that pass it. *)
+  n = value.Len(tags)
+  across = (i, j) -> tags[i].X < tags[j].X + tags[j].W and tags[j].X < tags[i].X + tags[i].W
+  for i in 1..n
+    t = tags[i]
+    t.Y = list.Max(t.Y, top)
+    for j in 1..i - 1
+      if across(i, j) and t.Y < tags[j].Y + row
+        t.Y = tags[j].Y + row
+      end
+    end
+    tags[i] = t
+  end
+  for i in [n + 1 - k for k in 1..n]
+    t = tags[i]
+    t.Y = list.Min(t.Y, bottom)
+    for j in i + 1..n
+      if across(i, j) and t.Y > tags[j].Y - row
+        t.Y = tags[j].Y - row
+      end
+    end
+    tags[i] = t
+  end
+  tags
+end
+
+corners = ["top left", "top right", "bottom left", "bottom right"]   (** The corners where the box of a note goes. *)
+
+defn noteOf(g, w)
+  (** The note of a graph, {Lines, At}, its lines and its corner, in an Ok; missing without one; an Err for a note that
+      is no text or a corner that is none. *)
+  if not (value.IsMissing(g.note) or value.IsText(g.note))
+    return fail("$w: note is $(brief(g.note)); give a text, a line for each line of the box.")
+  end
+  if not (g.noteAt in corners)
+    return fail("$w: noteAt is $(brief(g.noteAt)); it is \"top left\", \"top right\", \"bottom left\" or \"bottom right\".")
+  end
+  if value.IsMissing(g.note) result.Ok(missing) else result.Ok({Lines: text.Split("\n", g.note), At: g.noteAt}) end
+end
+
+defn noteItems(box, x0, y0, x1, y1)
+  (** The box of a note at its corner of the rectangle from (x0, y0) to (x1, y1), 6 pixels inside it: the paper behind,
+      which hides the grid, and a line of text in the ink of the axes for each line of the note, without a frame. *)
+  row = tickSize * lineRatio
+  wide = widest(box.Lines, tickSize) + 8.0
+  high = value.Len(box.Lines) * row + 6.0
+  left = if text.EndsWith("left", box.At) x0 + 6.0 else x1 - 6.0 - wide end
+  top = if text.StartsWith("top", box.At) y0 + 6.0 else y1 - 6.0 - high end
+  items = [{Kind: "rect", X: left, Y: top, W: wide, H: high, Color: "paper", Opacity: 0.85, Clip: missing, Role: "info"}]
+  for k in 1..value.Len(box.Lines)
+    if box.Lines[k] != ""
+      items = list.Append(label(left + 4.0, top + 3.0 + (k - 1) * row + tickSize * ascent, box.Lines[k], tickSize, "start", "info"), items)
+    end
+  end
+  items
 end
 
 defn colorBar(p, t, x, y, h)
@@ -1889,6 +2375,324 @@ defn legendItems(entries, x, y)
     items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start", "legend"), items)
   end
   items
+end
+
+(* Polar: x an angle in degrees, 0 at the top, turning clockwise as a compass, and y the distance from the center, from
+   the value at the center to the value on the rim. Lines are cut where they cross the rim, points and texts outside it
+   are left out, so that the data stay in the disc as they stay in the frame of a plot. *)
+
+polarKinds = ["Line", "Points", "Text", "Rule"]   (** The layers a polar graph draws. *)
+degree = math.Pi / 180.0
+
+(** A point of the data in pixels, {X, Y, R}, R its distance from the center: m holds the center, the radius and the
+    values at the center and on the rim. xs and ys may be arrays. *)
+defn polarAt(m, xs, ys)
+  r = (ys - m.C0) * (m.R / (m.C1 - m.C0))
+  {X: m.Cx + r * math.Sin(xs * degree), Y: m.Cy - r * math.Cos(xs * degree), R: r}
+end
+
+defn rimPoint(at, k, j, m)
+  (** Where the segment from point k, inside the disc, to point j, past its rim, crosses the rim: the root in [0, 1] of
+      |p + t d - c| = R, p the point k, d the segment. *)
+  dx = at.X[k] - m.Cx
+  dy = at.Y[k] - m.Cy
+  ex = at.X[j] - at.X[k]
+  ey = at.Y[j] - at.Y[k]
+  a = ex * ex + ey * ey
+  b = dx * ex + dy * ey
+  c = dx * dx + dy * dy - m.R * m.R
+  t = if a > 0.0 (0.0 - b + math.Sqrt(list.Max(0.0, b * b - a * c))) / a else 0.0 end
+  t = list.Max(0.0, list.Min(1.0, t))
+  [at.X[k] + t * ex, at.Y[k] + t * ey]
+end
+
+defn polarRuns(xs, ys, m)
+  (** The polylines of a line in a polar graph: its runs of points inside the disc, each ended on the rim where a segment
+      leaves it or started there where one enters it; a NaN, an infinity or a point beyond the center cuts the line. *)
+  at = polarAt(m, xs, ys)
+  edge = m.R * (1.0 + 1e-9)
+  finite = (at.X - at.X) + (at.Y - at.Y) == 0.0
+  inside = col.Positions(finite * 1 + (at.R >= 0.0 - m.R * 1e-9) * 1 + (at.R <= edge) * 1 == 3)
+  n = value.Len(xs)
+  out = []
+  count = value.Len(inside)
+  from = 1
+  for i in 1..count
+    if i == count or inside[i + 1] != inside[i] + 1
+      a = inside[from]
+      b = inside[i]
+      keep = inside[from..i]
+      rx = col.Pick(keep, at.X)
+      ry = col.Pick(keep, at.Y)
+      if a > 1 and finite[a - 1] and at.R[a - 1] > edge
+        q = rimPoint(at, a, a - 1, m)
+        rx = list.Concat([q[1]], rx)
+        ry = list.Concat([q[2]], ry)
+      end
+      if b < n and finite[b + 1] and at.R[b + 1] > edge
+        q = rimPoint(at, b, b + 1, m)
+        rx = list.Append(q[1], rx)
+        ry = list.Append(q[2], ry)
+      end
+      if value.Len(rx) >= 2
+        out = list.Append({X: rx, Y: ry}, out)
+      end
+      from = i + 1
+    end
+  end
+  out
+end
+
+defn ring(m, r, color, role)
+  (** A circle of radius r pixels about the center, as a closed line whose chords stray at most a quarter of a pixel from
+      it. *)
+  n = if r < 1.0 16 else list.Max(16, math.Ceil(math.Pi / math.Acos(list.Max(-1.0, 1.0 - 0.25 / r)))) end
+  ts = [k * 2.0 * math.Pi / n for k in 0..n]
+  line([m.Cx + r * math.Sin(t) for t in ts], [m.Cy - r * math.Cos(t) for t in ts], color, 1.0, role)
+end
+
+defn polarItems(p, m, clip)
+  (** The items of a layer of a polar graph. *)
+  inside = (at) -> col.Positions(((at.X - at.X) + (at.Y - at.Y) == 0.0) * 1 + (at.R >= 0.0 - m.R * 1e-9) * 1 + (at.R <= m.R * (1.0 + 1e-9)) * 1 == 3)
+  match p.Fn
+    "Line" -> [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in polarRuns(p.X, p.Y, m)]
+    "Points" -> polarMarks(p, m, clip, inside)
+    "Text" -> polarTexts(p, m, clip, inside)
+    else -> polarRule(p, m, clip)
+  end
+end
+
+defn polarMarks(p, m, clip, inside)
+  at = polarAt(m, p.X, p.Y)
+  ok = inside(at)
+  [{Kind: "marks", Xs: col.Pick(ok, at.X), Ys: col.Pick(ok, at.Y), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip, Role: "data"}]
+end
+
+defn polarTexts(p, m, clip, inside)
+  at = polarAt(m, p.X, p.Y)
+  [{Kind: "text", X: at.X[i] + p.Dx, Y: at.Y[i] + p.Dy, Text: p.Texts[i], Size: p.Size, Color: p.Color, Anchor: p.Anchor, Angle: 0, Width: textWidth(p.Texts[i], p.Size), Clip: clip, Role: "data"} for i in inside(at)]
+end
+
+defn polarRule(p, m, clip)
+  (** A rule of a polar graph: at an angle x, a ray from the center to the rim, its label inside near the rim; at a
+      distance y, a ring, its label at its top right. *)
+  if p.Axis == "x"
+    tip = polarAt(m, p.At, m.C1)
+    out = [{Kind: "line", Xs: [m.Cx, tip.X], Ys: [m.Cy, tip.Y], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+    if value.IsMissing(p.Label)
+      return out
+    end
+    near = polarAt(m, p.At, m.C0 + (m.C1 - m.C0) * 0.85)
+    return list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(near.X + 4.0, near.Y + tickSize * cap / 2.0, p.Label, tickSize, "start", "data"))), out)
+  end
+  r = (p.At - m.C0) * (m.R / (m.C1 - m.C0))
+  if r < 0.0 - m.R * 1e-9 or r > m.R * (1.0 + 1e-9)
+    return []
+  end
+  out = [dict.Merge(ring(m, list.Max(0.0, r), p.Color, "data"), {Dash: dashOf(p.Dash, 1.0), Clip: clip})]
+  if value.IsMissing(p.Label)
+    return out
+  end
+  list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(m.Cx + r * 0.7071 + 4.0, m.Cy - r * 0.7071 - 4.0, p.Label, tickSize, "start", "data"))), out)
+end
+
+defn angleTicks(g, w)
+  (** The ticks of the angle of a polar graph, {Values, Labels}: those of xticks, or every 30 degrees; each turned into
+      [0, 360), a repeat left out; labeled by xlabels, or by the numbers and a degree sign, as matplotlib's polar axes. *)
+  given = givenOf(g.xticks, g.xlabels, "x", "linear", w)?
+  vs = if value.IsMissing(given) [k * 30.0 for k in 0..11] else given.Values end
+  labels = if value.IsMissing(given) or value.IsMissing(given.Labels) ["$(l)°" for l in numbered(vs).Labels] else given.Labels end
+  outVs = []
+  outLs = []
+  for k in 1..value.Len(vs)
+    a = vs[k] - 360.0 * math.Floor(vs[k] / 360.0)
+    if not list.Any([math.Abs(a - b) < 1e-9 or math.Abs(a - b) > 360.0 - 1e-9 for b in outVs])
+      outVs = list.Append(a, outVs)
+      outLs = list.Append(labels[k], outLs)
+    end
+  end
+  result.Ok({Values: outVs, Labels: outLs})
+end
+
+defn polarRange(ps, lim, w)
+  (** The values at the center and on the rim of a polar graph, [c0, c1]: its ylim, else 0, or the least y below it, at the
+      center, and the greatest y and 5 % more on the rim. *)
+  if not value.IsMissing(lim)
+    if not (value.IsArray(lim) and value.Len(lim) == 2 and value.IsNumber(lim[1]) and value.IsNumber(lim[2]) and lim[1] - lim[1] == 0 and lim[2] - lim[2] == 0 and lim[1] != lim[2])
+      return fail("$w: ylim is $(brief(lim)); give [center, rim], two finite values that differ, as [90, 0].")
+    end
+    return result.Ok([lim[1] * 1.0, lim[2] * 1.0])
+  end
+  lo = inf
+  hi = -inf
+  for p in ps
+    lo = list.Min(lo, p.Ylo)
+    hi = list.Max(hi, p.Yhi)
+  end
+  if lo > hi
+    return result.Ok([0.0, 1.0])
+  end
+  c0 = list.Min(0.0, lo)
+  if hi <= c0
+    return result.Ok([c0, c0 + if c0 == 0.0 1.0 else math.Abs(c0) * 0.1 end])
+  end
+  result.Ok([c0, hi + (hi - c0) * 0.05])
+end
+
+defn drawPolar(g, ps, ox, oy, w, h, footnote)
+  (** The items of a polar graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. The disc in the middle
+      of the room the texts leave, its labels outside the rim; a note at a corner of the graph, as the corners of the
+      disc are narrow. *)
+  count = value.Len(ps)
+  gw = if count == 1 ps[1].W else "plot.Of" end
+  for k in 1..count
+    if not (ps[k].Fn in polarKinds)
+      return fail("$gw: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer $k is plot.$(ps[k].Fn).")
+    end
+  end
+  for o in [["xscale", g.xscale], ["yscale", g.yscale]]
+    if o[2] != "linear"
+      return fail("$gw: $(o[1]) is $(brief(o[2])); a polar graph has linear axes.")
+    end
+  end
+  if not value.IsMissing(g.xlim)
+    return fail("$gw: xlim is $(brief(g.xlim)); a polar graph turns a full circle, 0 to 360 degrees.")
+  end
+  title = checkText(g.title, "title", gw)?
+  xtitle = checkText(g.xtitle, "x", gw)?
+  ytitle = checkText(g.ytitle, "y", gw)?
+  if not (value.IsMissing(g.legend) or value.IsBool(g.legend) or g.legend == "ends")
+    return fail("$gw: legend is $(brief(g.legend)); give true, false or \"ends\".")
+  end
+  box = noteOf(g, gw)?
+  ends = g.legend == "ends"
+  range = polarRange(ps, g.ylim, gw)?
+  angles = angleTicks(g, gw)?
+  rings = givenOf(g.yticks, g.ylabels, "y", "linear", gw)?
+  raxis = {Scale: "linear", Lo: list.Min(range[1], range[2]), Hi: list.Max(range[1], range[2]), T0: list.Min(range[1], range[2]), T1: list.Max(range[1], range[2]), Flip: false, Category: false, Names: missing, Given: rings}
+  ps = colored(ps)
+  entries = if g.legend == false or ends [] else legendEntries(ps) end
+  legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
+  tagged = if ends [p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points")] else [] end
+  dropped = 0
+  for p in ps
+    dropped += p.Dropped
+  end
+
+  (* The layout: the disc as large as the room left by the title, the titles of the axes, the legend and the names at the
+     ends of the lines, with its labels outside the rim on every side. *)
+  titleH = if value.IsMissing(title) 0.0 else titleSize * lineRatio + 6.0 end
+  belowH = if value.IsMissing(footnote) 0.0 else tickSize * lineRatio + 4.0 end
+  xtitleH = if value.IsMissing(xtitle) 0.0 else 4.0 + axisSize * lineRatio end
+  ytitleW = if value.IsMissing(ytitle) 0.0 else axisSize * lineRatio + 4.0 end
+  reachX = tickLen + tickGap + widest(angles.Labels, tickSize)
+  reachY = tickLen + tickGap + tickSize * lineRatio
+  top = oy + outer + titleH
+  bottom = oy + h - outer - belowH - xtitleH
+  left = ox + outer + ytitleW
+  more = 0.0
+  m = missing
+  tags = []
+  for pass in 1..6
+    right = ox + w - outer - legendW - more
+    rad = math.Floor(list.Min((right - left) / 2.0 - reachX, (bottom - top) / 2.0 - reachY))
+    if rad < 20
+      return fail("$gw: $(text.Decimals(0, w)) by $(text.Decimals(0, h)) pixels leave no room for the plot; give a larger size.")
+    end
+    m = {Cx: math.Floor((left + right) / 2.0) + 0.5, Cy: math.Floor((top + bottom) / 2.0) + 0.5, R: rad, C0: range[1], C1: range[2]}
+    over = 0.0
+    if value.Len(tagged) > 0
+      tags = polarEnds(tagged, m, m.Cy - m.R, m.Cy + m.R, reachX)
+      for t in tags
+        over = list.Max(over, t.X + t.W - (ox + w - outer))
+      end
+    end
+    if over <= 0.5
+      break
+    end
+    more += over
+  end
+
+  (* The items: the rays and the rings, the data cut to the disc, the rim, its ticks and their labels, the labels of the
+     rings, the titles, the legend and the note. *)
+  clip = [m.Cx - m.R, m.Cy - m.R, 2.0 * m.R, 2.0 * m.R]
+  items = []
+  for a in angles.Values
+    tip = polarAt(m, a, m.C1)
+    items = list.Append(line([m.Cx, tip.X], [m.Cy, tip.Y], "grid", 1.0, "grid"), items)
+  end
+  rt = ticksOf(raxis, m.R, false)
+  for v in rt.Values
+    r = (v - m.C0) * (m.R / (m.C1 - m.C0))
+    if r > 0.5 and r < m.R - 0.5
+      items = list.Append(ring(m, r, "grid", "grid"), items)
+    end
+  end
+  for p in ps
+    items = list.Concat(items, polarItems(p, m, clip))
+  end
+  items = list.Append(ring(m, m.R, "ink", "frame"), items)
+  for i in 1..value.Len(angles.Values)
+    a = angles.Values[i] * degree
+    d = [math.Sin(a), 0.0 - math.Cos(a)]
+    rim = {X: m.Cx + m.R * d[1], Y: m.Cy + m.R * d[2]}
+    items = list.Append(line([rim.X, rim.X + d[1] * tickLen], [rim.Y, rim.Y + d[2] * tickLen], "ink", 1.0, "tick"), items)
+    words = angles.Labels[i]
+    at = boxOut(rim, d, textWidth(words, tickSize), tickSize * lineRatio, tickLen + tickGap)
+    items = list.Append(label(at.X, at.Y + tickSize * (ascent - lineRatio / 2.0), words, tickSize, "middle", "xlabel"), items)
+  end
+  for i in 1..value.Len(rt.Values)
+    r = (rt.Values[i] - m.C0) * (m.R / (m.C1 - m.C0))
+    items = list.Append(label(m.Cx + 3.0, m.Cy - r + 2.0 + tickSize * ascent, rt.Labels[i], tickSize, "start", "ylabel"), items)
+  end
+  if not value.IsMissing(rt.Factor)
+    items = list.Append(label(m.Cx + 3.0, m.Cy + m.R - 4.0, rt.Factor, tickSize, "start", "factor"), items)
+  end
+  if not value.IsMissing(title)
+    items = list.Append(label(m.Cx, oy + outer + titleSize * ascent, title, titleSize, "middle", "title"), items)
+  end
+  if not value.IsMissing(xtitle)
+    items = list.Append(label(m.Cx, m.Cy + m.R + reachY + 4.0 + axisSize * ascent, xtitle, axisSize, "middle", "xtitle"), items)
+  end
+  if not value.IsMissing(ytitle)
+    items = list.Append(label(ox + outer + axisSize * ascent, m.Cy, ytitle, axisSize, "middle", "ytitle", angle = -90), items)
+  end
+  if value.Len(entries) > 0
+    items = list.Concat(items, legendItems(entries, ox + w - outer - legendW + 12.0, top))
+  end
+  for t in tags
+    items = list.Append(dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")), items)
+  end
+  if not value.IsMissing(box)
+    items = list.Concat(items, noteItems(box, ox + outer - 6.0, top - 6.0, ox + w - outer - legendW + 6.0, oy + h - outer - belowH + 6.0))
+  end
+  if not value.IsMissing(footnote)
+    items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), footnote, tickSize, "start", "note"), items)
+  end
+  result.Ok({Items: items, Dropped: dropped})
+end
+
+defn polarEnds(ps, m, top, bottom, reach)
+  (** The labels of legend = "ends" in a polar graph: right of the last point of each line inside the disc, apart; a line
+      that ends on the rim, on its right half, is named past the labels of the rim, reach pixels beyond it, so that no
+      label covers another. *)
+  tags = []
+  for p in ps
+    at = polarAt(m, p.X, p.Y)
+    k = value.Len(p.X)
+    while k >= 1 and not (at.X[k] - at.X[k] == 0.0 and at.Y[k] - at.Y[k] == 0.0 and at.R[k] >= 0.0 - m.R * 1e-9 and at.R[k] <= m.R * (1.0 + 1e-9))
+      k -= 1
+    end
+    if k >= 1
+      x = at.X[k] + 6.0
+      if at.R[k] >= m.R - 1.0 and at.X[k] > m.Cx
+        dy = at.Y[k] - m.Cy
+        x = list.Max(x, m.Cx + math.Sqrt(list.Max(0.0, (m.R + reach) * (m.R + reach) - dy * dy)) + 4.0)
+      end
+      tags = list.Append({Text: p.Label, X: x, Y: at.Y[k] + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
+    end
+  end
+  placed(list.SortBy(t -> t.Y, tags), tickSize * lineRatio, top + tickSize * ascent, bottom - tickSize * (lineRatio - ascent))
 end
 
 (* 3D: a surface or lines in a box, seen from far away along a view as MATLAB's view(az, el), without perspective. The box
@@ -2332,7 +3136,16 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   title = checkText(g.title, "title", gw)?
   titles = [checkText(g.xtitle, "x", gw)?, checkText(g.ytitle, "y", gw)?, checkText(g.ztitle, "z", gw)?]
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
-    return fail("$gw: legend is $(brief(g.legend)); give true or false.")
+    return fail("$gw: legend is $(brief(g.legend)); $(if g.legend == "ends" "the ends of lines are named in 2D: a 3D graph gives true or false" else "give true, false or \"ends\"" end).")
+  end
+  box = if value.IsMissing(g.note) and g.noteAt == "top left" missing else lazily(noteOf)(g, gw)? end
+  if g.polar != false
+    return fail("$gw: polar is $(brief(g.polar)); a 3D graph has its box, and a polar graph is flat: give one or the other.")
+  end
+  for o in [["xticks", g.xticks], ["xlabels", g.xlabels], ["yticks", g.yticks], ["ylabels", g.ylabels]]
+    if not value.IsMissing(o[2])
+      return fail("$gw: $(o[1]) is for a 2D graph; a 3D graph places the ticks of its edges as they show.")
+    end
   end
   for o in [["xscale", g.xscale], ["yscale", g.yscale]]
     if o[2] != "linear"
@@ -2500,6 +3313,9 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  if not value.IsMissing(box)
+    items = list.Concat(items, lazily(noteItems)(box, ox + outer - 6.0, ay - 6.0, ox + w - outer + 6.0, ay + ah + 6.0))
+  end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
@@ -2523,7 +3339,7 @@ defn ordinal(k)
 end
 
 (** The fields of a layer that hold its data, which a frame changes; its other fields stay as the first frame has them. *)
-dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready"]
+dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready", "Texts"]
 
 (** A field of a layer as its function names the option. *)
 optionOf(key) = if key == "Xs" "x" else if key == "Ys" "y" else text.Lower(key) end
@@ -2533,7 +3349,8 @@ defn differs(first, g)
   options = [["x", first.xtitle, g.xtitle], ["y", first.ytitle, g.ytitle], ["xscale", first.xscale, g.xscale],
     ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
     ["legend", first.legend, g.legend], ["size", first.size, g.size], ["z", first.ztitle, g.ztitle], ["zlim", first.zlim, g.zlim],
-    ["view", first.view, g.view]]
+    ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt], ["xticks", first.xticks, g.xticks],
+    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels], ["polar", first.polar, g.polar]]
   for o in options
     if not value.Equal(o[2], o[3])
       return "differs from frame 1 in its option $(o[1])"
@@ -2785,13 +3602,16 @@ defn num(x)
   end
 end
 
+(** A color of a scene as SVG paints it: the ink of the axes black, the grid light grey, the paper white. *)
 paint(c) = match c
-  "ink" -> "#222222"
-  "grid" -> "#e6e6e6"
+  "ink" -> "#000000"
+  "grid" -> "#d0d0d0"
+  "paper" -> "#ffffff"
   else -> c
 end
 
-escaped(s) = text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s)))
+(** A text of the program as SVG holds it: its &, <, > and " written as entities, so that no text is read as markup. *)
+escaped(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
 
 defn pathOf(xs, ys, close)
   parts = list.Fill("", value.Len(xs))
@@ -2817,7 +3637,7 @@ defn itemSvg(item)
   match item.Kind
     "line" -> "<path d=\"$(pathOf(item.Xs, item.Ys, false))\" fill=\"none\" stroke=\"$(paint(item.Color))\" stroke-width=\"$(num(item.Width))\" stroke-linejoin=\"round\"$(if value.IsMissing(item.Dash) "" else " stroke-dasharray=\"$(text.Join(" ", [num(d) for d in item.Dash]))\"" end)/>"
     "area" -> "<path d=\"$(pathOf(item.Xs, item.Ys, true))\" fill=\"$(paint(item.Color))\" fill-opacity=\"$(num(item.Opacity))\"/>"
-    "rect" -> "<rect shape-rendering=\"crispEdges\" x=\"$(num(item.X))\" y=\"$(num(item.Y))\" width=\"$(num(item.W))\" height=\"$(num(item.H))\" fill=\"$(item.Color)\"$(if item.Opacity < 1.0 " fill-opacity=\"$(num(item.Opacity))\"" else "" end)/>"
+    "rect" -> "<rect shape-rendering=\"crispEdges\" x=\"$(num(item.X))\" y=\"$(num(item.Y))\" width=\"$(num(item.W))\" height=\"$(num(item.H))\" fill=\"$(paint(item.Color))\"$(if item.Opacity < 1.0 " fill-opacity=\"$(num(item.Opacity))\"" else "" end)/>"
     "marks" -> marksSvg(item)
     "cells" -> cellsSvg(item)
     "mesh" -> meshSvg(item)
@@ -2835,19 +3655,19 @@ defn marksSvg(item)
     for i in 1..n
       parts[i] = "M$(num(item.Xs[i])) $(num(item.Ys[i]))h0"
     end
-    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$(num(item.Size))\" stroke-linecap=\"round\"/>"
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(paint(item.Color))\" stroke-width=\"$(num(item.Size))\" stroke-linecap=\"round\"/>"
   end
   if item.Shape == "square"
     side = num(item.Size)
     for i in 1..n
       parts[i] = "M$(num(item.Xs[i] - r)) $(num(item.Ys[i]))h$side"
     end
-    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$side\"/>"
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(paint(item.Color))\" stroke-width=\"$side\"/>"
   end
   for i in 1..n
     parts[i] = markOf(item.Shape, item.Xs[i], item.Ys[i], r)
   end
-  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(item.Color)\" stroke-width=\"1.5\">" else "<g fill=\"$(item.Color)\">" end
+  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(paint(item.Color))\" stroke-width=\"1.5\">" else "<g fill=\"$(paint(item.Color))\">" end
   "$open$(text.Join("", parts))</g>"
 end
 
@@ -2918,10 +3738,10 @@ defn svgOf(scene, title = missing)
 end
 
 defn svgOpen(width, height)
-  (** The tag that opens an SVG of a size, with the font of the texts. *)
+  (** The tag that opens an SVG of a size, with the font of the texts, whose spaces are kept as std/plot measured them. *)
   w = num(width)
   h = num(height)
-  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'Noto Sans', sans-serif\" font-weight=\"500\" style=\"font-kerning:none\">"
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'JetBrains Mono', monospace\" style=\"font-kerning:none\" xml:space=\"preserve\">"
 end
 
 defn pageSvg(width, height, clips)
@@ -2982,11 +3802,3 @@ viridis = [
   "#d8e219", "#dae319", "#dde318", "#dfe318", "#e2e418", "#e5e419", "#e7e419", "#eae51a", "#ece51b", "#efe51c", "#f1e51d", "#f4e61e",
   "#f6e620", "#f8e621", "#fbe723", "#fde725"
 ]
-
-(* Widths: from here *)
-basic = [260, 273, 429, 646, 572, 852, 737, 237, 312, 312, 548, 572, 273, 321, 272, 385, 572, 572, 572, 572, 572, 572, 572, 572, 572, 572, 272, 273, 572, 572, 572, 447, 899, 655, 654, 635, 731, 557, 528, 727, 748, 354, 290, 632, 534, 918, 776, 784, 610, 784, 632, 550, 562, 738, 615, 941, 611, 584, 574, 330, 385, 330, 572, 434, 306, 572, 620, 491, 620, 574, 357, 620, 627, 270, 270, 559, 270, 947, 627, 611, 620, 620, 423, 486, 383, 627, 527, 807, 543, 528, 477, 384, 551, 384, 572]
-latin = [260, 274, 572, 572, 571, 572, 551, 505, 584, 832, 364, 540, 572, 0, 832, 500, 427, 572, 359, 359, 306, 632, 653, 272, 236, 359, 379, 540, 770, 801, 800, 447, 655, 655, 655, 655, 655, 655, 902, 635, 557, 557, 557, 557, 354, 354, 354, 354, 731, 773, 784, 784, 784, 784, 784, 572, 784, 738, 738, 738, 738, 584, 612, 652, 572, 572, 572, 572, 572, 572, 880, 491, 574, 574, 574, 574, 270, 270, 270, 270, 611, 627, 611, 611, 611, 611, 611, 572, 609, 627, 627, 627, 627, 528, 620, 528, 655, 572, 655, 572, 655, 572, 635, 491, 635, 491, 635, 491, 635, 491, 731, 620, 731, 625, 557, 574, 557, 574, 557, 574, 557, 572, 557, 574, 727, 620, 727, 620, 727, 620, 727, 620, 748, 627, 748, 630, 354, 270, 354, 270, 354, 270, 354, 270, 354, 270, 644, 544, 290, 270, 631, 559, 559, 534, 270, 534, 270, 534, 270, 534, 298, 536, 272, 773, 627, 773, 627, 773, 627, 714, 776, 627, 784, 611, 784, 611, 784, 611, 941, 955, 632, 423, 632, 423, 632, 423, 550, 486, 550, 486, 550, 486, 550, 486, 562, 383, 562, 383, 562, 382, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 941, 808, 584, 528, 584, 574, 477, 574, 477, 574, 477, 343]
-greek = [455, 388, 691, 665, 192, 192, 784, 666, 0, 0, 257, 489, 491, 489, 273, 290, 0, 0, 0, 0, 251, 690, 734, 272, 739, 930, 558, 0, 917, 0, 814, 869, 352, 655, 654, 508, 648, 557, 574, 748, 784, 354, 631, 626, 918, 773, 625, 784, 738, 610, 0, 574, 562, 584, 861, 611, 838, 729, 354, 584, 633, 481, 618, 352, 610, 633, 618, 530, 594, 480, 467, 618, 600, 352, 559, 535, 640, 530, 500, 611, 680, 605, 495, 626, 506, 610, 751, 602, 773, 819, 352, 610, 611, 610, 821, 631, 646, 655, 610, 838, 610, 751, 904, 560, 771, 611, 635, 490, 522, 526, 497, 555, 593, 516, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 675, 605, 491, 270, 785, 503, 499, 612, 620, 635, 918, 754, 610, 635, 635, 635]
-extraCodes = [8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8240, 8242, 8243, 8304, 8305, 8308, 8309, 8310, 8311, 8312, 8313, 8314, 8315, 8316, 8317, 8318, 8319, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8330, 8331, 8332, 8333, 8334, 8722]
-extraWidths = [500, 1000, 187, 187, 384, 384, 376, 810, 1207, 253, 442, 359, 176, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 408, 359, 359, 359, 359, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 575]
-(* Widths: to here *)
