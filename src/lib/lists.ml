@@ -315,6 +315,47 @@ let code ctx (a : t array) =
 let byte_position ctx i s =
   if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.text_outside i (String.length s) "bytes")
 
+(* The tables of text.ByteFindAny, one int for each byte: 1 at the bytes of the set, or with [out] at the others. Making
+   one costs more than a short search, and a lexer looks for the same few sets again and again: the last eight made are
+   kept, each slot a triple that never changes, so a domain reads it whole; a slot never used has the flag 2, which no
+   call has. A set of more than 256 bytes repeats some, and isn't kept: no large text is held. *)
+let byte_tables = Array.init 8 (fun _ -> Atomic.make ("", 2, [||]))
+let next_table = Atomic.make 0
+
+let rec byte_table set out k =
+  if k = Array.length byte_tables then begin
+    let t = Array.make 256 out in
+    for i = 0 to String.length set - 1 do t.(Char.code set.[i]) <- 1 - out done;
+    let slot = Atomic.fetch_and_add next_table 1 land 7 in
+    if String.length set <= 256 then Atomic.set byte_tables.(slot) (set, out, t);
+    t
+  end
+  else
+    let s, o, t = Atomic.get byte_tables.(k) in
+    if o = out && (s == set || String.equal s set) then t else byte_table set out (k + 1)
+
+(* The first of the four bytes of [x] from the [k]th that is 1 in [t], when there is one. *)
+let rec within (t : int array) x k = if t.((x lsr (8 * k)) land 255) <> 0 then k else within t x (k + 1)
+
+(* The first place of [s] from [i] on whose byte is 1 in [t], or the length of [s]: eight bytes at a time, read as one
+   word, while none of them is, then the first of the four that hold one; the last seven, byte by byte. *)
+let first_in (t : int array) s i =
+  let n = String.length s and i = ref i and found = ref (-1) in
+  while !found < 0 && !i + 8 <= n do
+    let w = String.get_int64_le s !i in
+    let x = Int64.to_int w and y = Int64.to_int (Int64.shift_right_logical w 32) in
+    if t.(x land 255) lor t.((x lsr 8) land 255) lor t.((x lsr 16) land 255) lor t.((x lsr 24) land 255) <> 0 then
+      found := !i + within t x 0
+    else if t.(y land 255) lor t.((y lsr 8) land 255) lor t.((y lsr 16) land 255) lor t.((y lsr 24) land 255) <> 0 then
+      found := !i + 4 + within t y 0
+    else i := !i + 8
+  done;
+  if !found >= 0 then !found
+  else begin
+    while !i < n && t.(Char.code s.[!i]) = 0 do incr i done;
+    !i
+  end
+
 let from_bytes ctx (a : t array) =
   let values = elements ctx "FromBytes" a.(0) in
   let b = Buffer.create (Array.length values) in
@@ -420,6 +461,18 @@ let text_natives =
           let at = Native.find_from ~fold s part (from - 1) in
           Runtime.pay_bytes ctx ((if at < 0 then String.length s else at + String.length part) - from + 1);
           if at < 0 then Missing else Int (at + 1)
+        end);
+    (* It pays for the bytes of the set and for those it read, as ByteFind: skipping a word costs the word. *)
+    "ByteFindAny", nat ~params:[| "bytes"; "from"; "s"; "not" |] "ByteFindAny" 3 4 (fun ctx a ->
+        let set = text_arg ctx "ByteFindAny" a.(0) and from = Arrays.whole_index ctx a.(1) in
+        let s = text_arg ctx "ByteFindAny" a.(2) in
+        let out = Bool.to_int (Native.flag_arg ctx "not" a 3) and n = String.length s in
+        if from < 1 || from > n then Missing
+        else begin
+          let at = first_in (byte_table set out 0) s (from - 1) in
+          let found = at < n in
+          Runtime.pay_bytes ctx (String.length set + (if found then at + 1 else n) - from + 1);
+          if found then Int (at + 1) else Missing
         end) ]
 
 (* The value of each byte as a digit of Base64, standard or for URLs (RFC 4648 §4 and §5), 255 for the others; made at the

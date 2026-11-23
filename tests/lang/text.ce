@@ -1,9 +1,11 @@
 use std/fiber
+use std/gen
 use std/list
 use std/math
 use std/random
 use std/regex
 use std/result
+use std/test
 use std/text
 use std/value
 
@@ -125,6 +127,34 @@ isByteFindFoldCases() = text.ByteFind("World", 1, "hello WORLD", fold = true) ==
 isByteFindFoldOnlyLetters() = value.IsMissing(text.ByteFind("[", 1, "{", fold = true)) and value.IsMissing(text.ByteFind("@", 1, "`", fold = true))
 isByteFindEdges() = text.ByteFind("", 3, "abc") == 3 and value.IsMissing(text.ByteFind("a", 4, "abc")) and value.IsMissing(text.ByteFind("a", 1, ""))
 isByteFindFoldNotBool() = fails(() -> text.ByteFind("a", 1, "a", fold = 1), "type")
+(* text.ByteFindAny: through a table of the 256 bytes, eight at a time; from any byte, with not or without, the same
+   answer as a loop over the bytes, on any bytes, UTF-8 or not, with sets of a few bytes, none or all 256. *)
+defn slowFindAny(set, from, s, out)
+  bs = text.Bytes(set)
+  for k in from..text.ByteLength(s)
+    if (text.Byte(k, s) in bs) != out
+      return k
+    end
+  end
+  missing
+end
+anyBytes(most) = gen.Map(bs -> text.FromBytes(bs), gen.List(gen.Int(0, 255), max = most))
+allBytes = text.FromBytes([k for k in 0..255])
+setOf(kind, bs) = if kind == 0 "" else if kind == 1 allBytes else bs end
+fewBytes(most) = gen.Map(bs -> text.FromBytes(bs), gen.List(gen.Pick([0, 9, 32, 97, 98, 195, 169, 255]), max = most))
+findsAny(bytes) = gen.Of({Kind: gen.Int(0, 5), Bytes: bytes(6), From: gen.Int(1, 45), S: bytes(40), Not: gen.Bool()})
+sameAny(c) = value.Equal(text.ByteFindAny(setOf(c.Kind, c.Bytes), c.From, c.S, not = c.Not), slowFindAny(setOf(c.Kind, c.Bytes), c.From, c.S, c.Not))
+isByteFindAnyAsSlow() = test.ForAll(sameAny, findsAny(anyBytes), cases = 500)
+isByteFindAnyAsSlowOnFewBytes() = test.ForAll(sameAny, findsAny(fewBytes), cases = 500)
+sameAnyFrom(s, f) = sameAny({Kind: 2, Bytes: "\n\t é", From: f, S: s, Not: true}) and sameAny({Kind: 2, Bytes: "\n\t é", From: f, S: s, Not: false})
+isByteFindAnyEveryPlace() = list.All([list.All([sameAnyFrom(s, f) for f in 1..text.ByteLength(s)]) for s in finds])
+oneAt(p) = "$(text.Repeat(p - 1, "a"))b$(text.Repeat(24 - p, "a"))"
+findsAt(p) = list.All([text.ByteFindAny("b", f, oneAt(p)) == p and text.ByteFindAny("a", f, oneAt(p), not = true) == p for f in 1..p])
+isByteFindAnyEveryOffset() = list.All([findsAt(p) for p in 1..24])
+isByteFindAnyLong() = text.ByteFindAny(" ", 1, "$(text.Repeat(100000, "ab")) ") == 200001 and text.ByteFindAny("ab", 3, "$(text.Repeat(100000, "ab"))c", not = true) == 200001
+isByteFindAnyEdges() = text.ByteFindAny("", 2, "abc", not = true) == 2 and value.IsMissing(text.ByteFindAny("", 2, "abc")) and value.IsMissing(text.ByteFindAny("a", 4, "abc")) and value.IsMissing(text.ByteFindAny("a", 0, "abc")) and value.IsMissing(text.ByteFindAny("", 1, "", not = true))
+isByteFindAnyBadArgs() = fails(() -> text.ByteFindAny(1, 1, "a"), "type") and fails(() -> text.ByteFindAny("a", 1.5, "a"), "type") and fails(() -> text.ByteFindAny("a", 1, 2), "type") and fails(() -> text.ByteFindAny("a", 1, "a", not = 1), "type")
+isNotNamesAnArgument() = text.ByteFindAny("a", 1, "ab", not = not false) == 2 and value.Equal([not x for x in [true, false]], [false, true])
 (* text.Fold: Unicode's simple case folding, for search and comparison; text.Lower and text.Upper stay ASCII. *)
 isFold() = text.Fold("Élodie") == text.Fold("ÉLODIE") and text.Fold("ÉLODIE") == "élodie"
 isFoldAscii() = text.Fold("AbC-1 [@`{]") == "abc-1 [@`{]"

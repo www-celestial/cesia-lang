@@ -1,0 +1,4 @@
+find-any-pays.ce:7:7: Limit "steps" reached.
+  7 |   text.ByteFindAny("bc", 1, s)
+    |       ^
+exit 1

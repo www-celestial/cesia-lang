@@ -1,0 +1,9 @@
+(** A search for any of some bytes pays for the bytes it read: skipping the first word of a large text costs the word. *)
+use std/io
+use std/text
+
+s = "ab $(text.Repeat(2000000, "a"))"
+for i in 1..1000
+  text.ByteFindAny("ab", 1, s, not = true)
+end
+io.Print("not stopped")

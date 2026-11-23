@@ -1,0 +1,9 @@
+(** A search for any of some bytes pays for the text it reads, not for the bytes it looks for. *)
+use std/io
+use std/text
+
+s = text.Repeat(2000000, "a")
+for i in 1..100
+  text.ByteFindAny("bc", 1, s)
+end
+io.Print("not stopped")

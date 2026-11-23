@@ -784,6 +784,18 @@ use std/test
       text.ByteFind("b", 1, "abc") --> 2
       text.ByteFind("World", 1, "hello world", fold = true) --> 7 *)
 
+(** text.ByteFindAny(bytes, from, s, not = false)
+    The byte position, from 1, of the first byte of s at or after byte from that is one of the bytes of the text bytes;
+    with not = true, the first that is none of them; missing when there is none, or when from is past the end. It reads
+    s once, through a table of the 256 bytes, eight bytes at a time: a lexer skips a word or a run of spaces of a long
+    line at once, as Go's strings.IndexAny and C's strcspn and strspn do. It counts against --limit steps the bytes of
+    bytes and those it read, from byte from to what it found or the end, as text.ByteFind does.
+
+      text.ByteFindAny("\"\\$", 1, "ab\\c") --> 3
+      text.ByteFindAny("abc", 1, "aabxd", not = true) --> 4
+      text.ByteFindAny(" \t", 4, "let  x") --> 4
+      text.ByteFindAny("xyz", 1, "abc") --> missing *)
+
 (** math.BitAnd(a, b)
     The bits that are set in both integers.
 

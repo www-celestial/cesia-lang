@@ -304,6 +304,39 @@ found in 39 ms, 41 ms with `fold`, against 317 ms for a lower-case copy of the t
 A search counts against `--limit steps` the bytes it read, from where it started to the end of what it found: finding
 the next line end of a large text, line after line, costs each line once, not the whole text each time.
 
+### Finding any of some bytes
+
+[text.ByteFindAny] gives the byte position of the first byte, from a byte on, that is one of the bytes of a text, or
+missing; with `not = true`, the first that is none of them. A lexer skips a word, a run of spaces or the inside of a text
+with it, as Go's `strings.IndexAny` and C's `strcspn` and `strspn` do:
+
+```cesia
+text.ByteFindAny("*)\"\\$", 1, "ab*c") -->
+text.ByteFindAny("abc", 1, "aabxd", not = true) -->
+text.ByteFindAny(" \t", 1, "let x") -->
+```
+
+Written plainly, it is a loop over the bytes, with [text.Byte] and `in`: for any `from` of 1 or more,
+`text.ByteFindAny(bytes, from, s, not = out)` gives what `byteFindAny(bytes, from, s, out)` gives:
+
+```cesia
+defn byteFindAny(bytes, from, s, out)
+  wanted = text.Bytes(bytes)
+  for k in from..text.ByteLength(s)
+    if (text.Byte(k, s) in wanted) != out
+      return k
+    end
+  end
+  missing
+end
+byteFindAny("abc", 1, "aabxd", true) -->
+```
+
+But the loop pays a call for each byte, about 45 ns, where [text.ByteFindAny] reads the text eight bytes at a time
+through a table of the 256 bytes, made once for each of the last eight sets it was given: a word of a megabyte is
+skipped in 0.86 ms, where a loop of [text.Byte] that stops at a space takes 45 ms, and a call on a word of 5 bytes takes
+69 ns. It counts against `--limit steps` the bytes of its set and those it read, as [text.ByteFind] does.
+
 ### Valid UTF-8
 
 A text written in a program is always valid UTF-8, but one read from a file or the network holds whatever bytes it was
