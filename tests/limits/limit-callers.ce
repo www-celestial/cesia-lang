@@ -1,0 +1,29 @@
+(* A limit at a frame's own step names the function entered, at its line, whoever made the call: a native that calls
+   back, a function of std/ written in Cesia and the one it calls back, a method, a function held in a value, the first
+   function of a fiber. *)
+use std/fiber
+use std/list
+use std/quad
+use std/sys
+
+struct Box { V }
+
+twice(x) = x * 2
+(b Box) Get() = b.V * 2
+add(a, x) = a + x
+defn run(how)
+  held = twice
+  if how == "native"
+    quad.Integral(twice, 0, 1)
+  else if how == "std"
+    list.Reduce(add, 0, [1])
+  else if how == "method"
+    box.Get()
+  else if how == "held"
+    held(1)
+  else
+    fiber.Wait(fiber.Spawn(() -> twice(1)))
+  end
+end
+box = Box(1)
+run(sys.Args[1])
