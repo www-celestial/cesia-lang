@@ -1,6 +1,6 @@
 (** A text that writes values reserves its memory as it grows: a list of 4,000 times one text of 10 KB costs little
-    memory, its text 40 MB, past a limit of 16 MB, whether value.Text, an interpolation, io.Print, json.Text or csv.Text
-    writes it. *)
+    memory, its text 40 MB, ten times a limit of 4 MB, whether value.Text, an interpolation, io.Print, json.Text or
+    csv.Text writes it. *)
 use std/csv
 use std/io
 use std/json
