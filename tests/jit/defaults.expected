@@ -1,0 +1,28 @@
+off:
+5 5 5 5
+5 5 200000
+261000 15000.0
+defaults-depth.ce:5:1: Limit "depth" reached.
+  5 | defn count(n, acc = 0)
+    | ^
+  in count (defaults-depth.ce:5)
+  called from count (defaults-depth.ce:9)
+default:
+5 5 5 5
+5 5 200000
+261000 15000.0
+defaults-depth.ce:5:1: Limit "depth" reached.
+  5 | defn count(n, acc = 0)
+    | ^
+  in count (defaults-depth.ce:5)
+  called from count (defaults-depth.ce:9)
+always:
+5 5 5 5
+5 5 200000
+261000 15000.0
+defaults-depth.ce:5:1: Limit "depth" reached.
+  5 | defn count(n, acc = 0)
+    | ^
+  in count (defaults-depth.ce:5)
+  called from count (defaults-depth.ce:9)
+exit 0
