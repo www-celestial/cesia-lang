@@ -12,6 +12,10 @@ Two fixes of machine code, and nothing else.
   function, summed 239,999,960 where they sum 100,000. A self tail call that gives that argument is a call to the
   version for every argument, in a frame of its own, in machine code as in the interpreter: `count(5)` of
   `defn count(n, acc = 0)` gave 11 under `CESIA_JIT=always`, and a limit of depth counts that frame in every mode.
+- A loop whose machine code was dropped, at the 17th guess of it that failed, while the interpreter made the rest of
+  that turn, goes on with the code the JIT made again for it when a loop inside got hot there: the program ended with
+  `Internal error: Cesia.Tier.Handoff`, as two calls of `ode.Solve` under `--limit depth=4` in the default mode, where
+  a checkpoint comes at nearly every step; in any long run, the checkpoint of every million steps could fall there.
 
 ## 1.2.0
 

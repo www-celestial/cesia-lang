@@ -2492,11 +2492,12 @@ and cu c (e : expr) : ctx -> unit =
                    if not (entered ctx code (Tier.after code (Tier.id st)) hi) then interp ctx (n + 1) hi
                  | _ -> interp ctx (n + 1) hi
                end
-             (* A loop inside got hot in that rest, and its code is this loop's: native code takes the turn from there. *)
+             (* A loop inside got hot in that rest, and its code is this loop's, the one that bailed or one made again for it
+                once that one was dropped: native code takes the turn from there. *)
              | exception (Tier.Handoff (h, from) as x) ->
-               if h != code then raise_notrace x;
-               Tier.place ctx code st n hi;
-               if not (entered ctx code (Tier.after code from) hi) then failwith "jit: a region refused after its check");
+               if not (Tier.is_root h st) then raise_notrace x;
+               Tier.place ctx h st n hi;
+               if not (entered ctx h (Tier.after h from) hi) then failwith "jit: a region refused after its check");
             true
         and interp ?(warm = false) ctx lo hi =
           if lo <= hi then begin
@@ -2609,8 +2610,8 @@ and cu c (e : expr) : ctx -> unit =
                   if not (entered ctx code (Tier.after code (Tier.id st))) then interp ctx
                 | _ -> interp ctx)
              | exception (Tier.Handoff (h, from) as x) ->
-               if h != code then raise_notrace x;
-               if not (entered ctx code (Tier.after code from)) then failwith "jit: a region refused after its check");
+               if not (Tier.is_root h st) then raise_notrace x;
+               if not (entered ctx h (Tier.after h from)) then failwith "jit: a region refused after its check");
             true
         and interp ?(warm = false) ctx =
           match
