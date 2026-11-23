@@ -559,8 +559,8 @@ defn prepare(l, at, count)
     "Heatmap" -> heatmapOf(l, w)
     "Surface" -> renamed(l.Ready, w)
     "Line3" -> line3Of(l, w)
-    "Text" -> textsOf(l, w)
-    "Rule" -> ruleOf(l, w)
+    "Text" -> lazily(textsOf)(l, w)
+    "Rule" -> lazily(ruleOf)(l, w)
     else -> densityOf(l, w)
   end
 end
@@ -1428,18 +1428,8 @@ end
 
 defn ticksOf(axis, length, horizontal)
   (** The ticks of an axis: {Values, Labels, Factor}; those the graph gives, inside its range, when it gives them. *)
-  given = dict.GetOr("Given", missing, axis)
-  if not value.IsMissing(given)
-    lo = list.Min(axis.Lo, axis.Hi)
-    hi = list.Max(axis.Lo, axis.Hi)
-    slack = (hi - lo) * 1e-9
-    keep = [k for k in 1..value.Len(given.Values) if given.Values[k] >= lo - slack and given.Values[k] <= hi + slack]
-    vs = [given.Values[k] for k in keep]
-    if value.IsMissing(given.Labels)
-      t = numbered(vs)
-      return {Values: vs, Labels: t.Labels, Factor: t.Factor}
-    end
-    return {Values: vs, Labels: [given.Labels[k] for k in keep], Factor: missing}
+  if dict.Has("Given", axis) and not value.IsMissing(axis.Given)
+    return lazily(givenTicks)(axis, axis.Given)
   end
   if axis.Category
     return {Values: [k * 1.0 for k in 1..value.Len(axis.Names)], Labels: axis.Names, Factor: missing}
@@ -1451,6 +1441,20 @@ defn ticksOf(axis, length, horizontal)
 end
 
 mostTicks = 1000   (** The most ticks that xticks or yticks give. *)
+
+defn givenTicks(axis, given)
+  (** The ticks given to an axis that are inside its range, {Values, Labels, Factor}: their labels, or the numbers. *)
+  lo = list.Min(axis.Lo, axis.Hi)
+  hi = list.Max(axis.Lo, axis.Hi)
+  slack = (hi - lo) * 1e-9
+  keep = [k for k in 1..value.Len(given.Values) if given.Values[k] >= lo - slack and given.Values[k] <= hi + slack]
+  vs = [given.Values[k] for k in keep]
+  if value.IsMissing(given.Labels)
+    t = numbered(vs)
+    return {Values: vs, Labels: t.Labels, Factor: t.Factor}
+  end
+  {Values: vs, Labels: [given.Labels[k] for k in keep], Factor: missing}
+end
 
 defn givenOf(ticks, labels, which, scale, w)
   (** The ticks that a graph gives an axis, {Values, Labels}, in an Ok, Labels missing for the numbers themselves;
@@ -1789,8 +1793,8 @@ defn dataItems(p, xa, ya, a, clip)
     "Area" -> areaItems(p, xa, ya, a, clip)
     "Bars" -> barItems(p, a, clip)
     "Histogram" -> histogramItems(p, xa, a, clip)
-    "Text" -> textItems(p, xa, ya, a, clip)
-    "Rule" -> ruleItems(p, xa, ya, a, clip)
+    "Text" -> lazily(textItems)(p, xa, ya, a, clip)
+    "Rule" -> lazily(ruleItems)(p, xa, ya, a, clip)
     else -> cellsItems(p, xa, ya, a, clip)
   end
 end
@@ -2003,7 +2007,7 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     return fail("$gw: polar is $(brief(g.polar)); give true or false.")
   end
   if g.polar
-    return drawPolar(g, ps, ox, oy, w, h, note)
+    return lazily(drawPolar)(g, ps, ox, oy, w, h, note)
   end
   title = checkText(g.title, "title", gw)?
   xtitle = checkText(g.xtitle, "x", gw)?
@@ -2011,15 +2015,10 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend) or g.legend == "ends")
     return fail("$gw: legend is $(brief(g.legend)); give true, false or \"ends\".")
   end
-  box = noteOf(g, gw)?
+  (* The options that most graphs leave out are drawn by functions of their own, called through lazily: a first graph
+     pays only for the code it runs. *)
+  box = if value.IsMissing(g.note) and g.noteAt == "top left" missing else lazily(noteOf)(g, gw)? end
   ends = g.legend == "ends"
-  if ends
-    for p in ps
-      if (p.Fn == "Bars" and list.Any([value.IsText(x) for x in p.Labels])) or (p.Fn == "Histogram" and value.IsText(p.Label))
-        return fail("$(p.W): legend = \"ends\" names the end of a line, and $(if p.Fn == "Bars" "bars have" else "a histogram has" end) none; give legend = true.")
-      end
-    end
-  end
   bars = list.Filter(p -> p.Category, ps)
   if value.Len(bars) > 1
     return fail("$gw: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2]).")
@@ -2029,16 +2028,16 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if xa.Category
     xa.Names = bars[1].Names
   end
-  xa.Given = givenOf(g.xticks, g.xlabels, "x", g.xscale, gw)?
-  ya.Given = givenOf(g.yticks, g.ylabels, "y", g.yscale, gw)?
-  if xa.Category and not value.IsMissing(xa.Given)
-    return fail("$gw: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name.")
+  if not (value.IsMissing(g.xticks) and value.IsMissing(g.xlabels) and value.IsMissing(g.yticks) and value.IsMissing(g.ylabels))
+    given = lazily(givenAxes)(g, xa, ya, gw)?
+    xa = given[1]
+    ya = given[2]
   end
   ps = colored(ps)
+  tagged = if ends lazily(endsNamed)(ps)? else [] end
   entries = if g.legend == false or ends [] else legendEntries(ps) end
   legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
   shaded = list.Filter(p -> p.Cells, ps)
-  tagged = if ends [p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points" or p.Fn == "Area")] else [] end
   tags = []
   barTicks = missing
   barW = 0.0
@@ -2102,10 +2101,9 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     over = 0.0
     if value.Len(tagged) > 0
       (* The names at the ends of the lines may reach past the plot: the margin on the right holds them too. *)
-      tags = endsOf(tagged, xa, ya, mapOf(xa, ya, ax, ay, aw, ah), ay, ay + ah)
-      for t in tags
-        over = list.Max(over, t.X + t.W - (ox + w - outer - barW))
-      end
+      pass = lazily(endsPass)(tagged, xa, ya, [ax, ay, aw, ah], ox + w - outer - barW)
+      tags = pass.Tags
+      over = pass.Over
     end
     if not rotated and value.Len(xt.Values) > 0
       n = value.Len(xt.Values)
@@ -2128,8 +2126,8 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   end
 
   (* The items: the grid, the data cut to the plot, the frame, the ticks and their labels, the titles, the legend. *)
-  a = mapOf(xa, ya, ax, ay, aw, ah)
-  sy = a.Sy
+  sy = if ya.Flip ah / (ya.T1 - ya.T0) else 0.0 - ah / (ya.T1 - ya.T0) end
+  a = {X: ax, Y: if ya.Flip ay else ay + ah end, Sx: aw / (xa.T1 - xa.T0), Sy: sy, T0x: xa.T0, T0y: ya.T0, W: aw, H: ah}
   clip = [ax, ay, aw, ah]
   items = []
   if not xa.Category
@@ -2186,17 +2184,61 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
-  for t in tags
-    items = list.Append(dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")), items)
+  if value.Len(tags) > 0
+    items = list.Concat(items, lazily(tagItems)(tags))
   end
   if not value.IsMissing(box)
-    items = list.Concat(items, noteItems(box, ax, ay, ax + aw, ay + ah))
+    items = list.Concat(items, lazily(noteItems)(box, ax, ay, ax + aw, ay + ah))
   end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
   result.Ok({Items: items, Dropped: dropped})
 end
+
+defn endsNamed(ps)
+  (** The layers that legend = "ends" names, those of a line, points or a band with a label, in an Ok; an Err for bars or
+      a histogram with a label, which have no end. *)
+  for p in ps
+    if (p.Fn == "Bars" and list.Any([value.IsText(x) for x in p.Labels])) or (p.Fn == "Histogram" and value.IsText(p.Label))
+      return fail("$(p.W): legend = \"ends\" names the end of a line, and $(if p.Fn == "Bars" "bars have" else "a histogram has" end) none; give legend = true.")
+    end
+  end
+  result.Ok([p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points" or p.Fn == "Area")])
+end
+
+defn givenAxes(g, xa, ya, w)
+  (** The x and y axes with the ticks that the graph gives them, in an Ok; an Err for ticks given wrong, or on the axis of
+      the names of bars. *)
+  x = xa
+  y = ya
+  x.Given = givenOf(g.xticks, g.xlabels, "x", g.xscale, w)?
+  y.Given = givenOf(g.yticks, g.ylabels, "y", g.yscale, w)?
+  if x.Category and not value.IsMissing(x.Given)
+    return fail("$w: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name.")
+  end
+  result.Ok([x, y])
+end
+
+defn endsPass(tagged, xa, ya, plot, right)
+  (** The labels of legend = "ends" for a plot [x, y, width, height], {Tags, Over}: Over, how far they reach past a line
+      on the right, in pixels, 0 when none does. *)
+  tags = endsOf(tagged, xa, ya, mapOf(xa, ya, plot[1], plot[2], plot[3], plot[4]), plot[2], plot[2] + plot[4])
+  over = 0.0
+  for t in tags
+    over = list.Max(over, t.X + t.W - right)
+  end
+  {Tags: tags, Over: over}
+end
+
+(** The labels of legend = "ends" as texts, each in the color of its line. *)
+tagItems(tags) = [dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")) for t in tags]
+
+(** A function given back as it is, to call it as lazily(f)(...): a function is inferred and compiled with every function
+    it calls by its name, even in a branch that never runs, and one called through lazily only when it runs. The code of
+    an option that most graphs leave out is called so, so that a first graph pays only for the code it runs; see the
+    chapter Internals of the book, on the versions of a function. *)
+lazily(f) = f
 
 (** How the data meet the pixels of a plot from (ax, ay), aw by ah: the place of the first value of each axis on the scale
     and the pixels a unit of it, y running up unless its axis runs down. *)
@@ -3096,7 +3138,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
     return fail("$gw: legend is $(brief(g.legend)); $(if g.legend == "ends" "the ends of lines are named in 2D: a 3D graph gives true or false" else "give true, false or \"ends\"" end).")
   end
-  box = noteOf(g, gw)?
+  box = if value.IsMissing(g.note) and g.noteAt == "top left" missing else lazily(noteOf)(g, gw)? end
   if g.polar != false
     return fail("$gw: polar is $(brief(g.polar)); a 3D graph has its box, and a polar graph is flat: give one or the other.")
   end
@@ -3272,7 +3314,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
   if not value.IsMissing(box)
-    items = list.Concat(items, noteItems(box, ox + outer - 6.0, ay - 6.0, ox + w - outer + 6.0, ay + ah + 6.0))
+    items = list.Concat(items, lazily(noteItems)(box, ox + outer - 6.0, ay - 6.0, ox + w - outer + 6.0, ay + ah + 6.0))
   end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
