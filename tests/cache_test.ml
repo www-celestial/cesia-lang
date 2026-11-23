@@ -199,6 +199,29 @@ let () =
   check "two programs in turn, units changed: read again in both"
     (later' <> later && alone "later.ce" = later' && alone "first.ce" = first' && alone "later.ce" = later')
 
+(* A file of 300 functions, past 256 statements: read from its entry with no young collection, where each of its arrays
+   that long, made of a young value, cost one and promoted all that was read, three at each start of Cemacs. *)
+let () =
+  write (Filename.concat app "src/wide/wide.ce")
+    ("(** Many functions. *)\n" ^ String.concat "" (List.init 300 (fun i -> Printf.sprintf "W%d(x) = x + %d   (** W%d. *)\n" i i i)));
+  write (Filename.concat app "wide.ce") "use src/wide\nuse std/io\n\nio.Print(wide.W0(1), wide.W299(1))\n";
+  let alone () =
+    let out = Buffer.create 64 in
+    let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = Buffer.add_string out } in
+    let code = Loader.run_file w (Filename.concat app "wide.ce") [] in
+    Cache.save ();
+    Printf.sprintf "%sexit %d" (Buffer.contents out) code
+  in
+  with_store "test" @@ fun () ->
+  let cold = alone () in
+  check "a file of 300 functions runs" (cold = "1 300\nexit 0");
+  Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 21 };
+  Gc.minor ();
+  let before = (Gc.quick_stat ()).minor_collections in
+  let warm = alone () in
+  check "a file of 300 functions, from its entry: the same output" (warm = cold);
+  check "a file of 300 functions, from its entry: no young collection" ((Gc.quick_stat ()).minor_collections = before)
+
 (* The store's files. *)
 let () =
   let cache = Filename.concat top "cache" in

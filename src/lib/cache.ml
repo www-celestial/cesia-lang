@@ -315,8 +315,18 @@ module In = struct
      cost a young collection. *)
   let texts d = let n = count d in let a = Array.make n "" in for i = 0 to n - 1 do a.(i) <- raw d done; a
 
+  (* So is an array past 256 made of any young value, as Array.init makes it: a file of more than 256 statements or
+     functions paid three young collections at each load, each promoting all that was read. One that long is read in
+     pieces of 256, young, which Array.concat joins into the major heap with no collection. *)
+  let long n f =
+    let rec pieces left acc =
+      if left = 0 then Array.concat (List.rev acc)
+      else let k = min 256 left in let p = Array.init k (fun _ -> f ()) in pieces (left - k) (p :: acc)
+    in
+    pieces n []
+
   let opt f d = match byte d with 0 -> None | 1 -> Some (f d) | _ -> raise Bad
-  let arr f d = let n = count d in Array.init n (fun _ -> f d)
+  let arr f d = let n = count d in if n <= 256 then Array.init n (fun _ -> f d) else long n (fun () -> f d)
   let list f d = let n = count d in List.init n (fun _ -> f d)
 
   let binding d =
@@ -356,11 +366,12 @@ module In = struct
     | 0 -> [||]
     | 1 -> [| expr d |]
     | 2 -> let a = expr d in let b = expr d in [| a; b |]
-    | n ->
+    | n when n <= 256 ->
       let a = expr d in
       let b = Array.make n a in
       for i = 1 to n - 1 do b.(i) <- expr d done;
       b
+    | n -> long n (fun () -> expr d)
 
   and two d = let a = expr d in let b = expr d in a, b
 
