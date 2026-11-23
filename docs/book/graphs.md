@@ -1,7 +1,7 @@
 # Graphs
 
-In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands,
-surfaces and lines in 3D, and animations of them. A graph is a value, as a number or a list is: you make it, put several on shared axes, and draw it to
+In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands, texts
+and rules, graphs in a circle, surfaces and lines in 3D, and animations of them. A graph is a value, as a number or a list is: you make it, put several on shared axes, and draw it to
 an SVG file, or Cemacs draws it on its screen. Each step from the data to the pixels follows a published method, named here with its paper, and the
 tests of Cesia check what each step promises.
 
@@ -75,8 +75,10 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Density] `(x, y, bins)` | points of any number counted per cell, a 2D histogram |
 | [plot.Area] `(x, low, high, label, color)` | the band between two curves |
 | [plot.Surface] `(z, x, y, colors)` | a surface in 3D, the height `z[i, j]` over `(x[j], y[i])` |
+| [plot.Text] `(x, y, texts, color, size, anchor, dx, dy)` | texts beside points of the data |
+| [plot.Rule] `(x, y, label, dash, color)` | a line of reference across the plot |
 | [plot.Line3] `(x, y, z, label, color, width, dash)` | a line in 3D |
-| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view)` | layers on shared axes |
+| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | layers on shared axes |
 | [plot.Grid] `(graphs, columns)` | graphs side by side |
 | [plot.Frames] `(graphs, fps)` | graphs one after the other: an animation |
 | [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | the drawing |
@@ -227,9 +229,164 @@ invisible(dev.off())
 
 [plot.Of] takes the options of the axes: `title`; `x` and `y`, the names of the axes; `xscale` and `yscale`, `"linear"`
 or `"log"` for a logarithmic axis in base 10, where each power of ten takes the same length; `xlim` and `ylim`, the range
-of an axis as `[low, high]`; `legend = false` to hide the legend; `size = [width, height]` in pixels, 640 by 400 by
-default, 100 by 80 at least. The options of an [plot.Of] given as a layer are left aside: those of the outer one apply.
-A 3D graph takes `z`, `zlim` and `view` too, as [3D](#3d) shows; on a graph of 2D they are an error.
+of an axis as `[low, high]`; `legend = false` to hide the legend, `legend = "ends"` to name each line at its end;
+`size = [width, height]` in pixels, 640 by 400 by default, 100 by 80 at least; `note` and `noteAt`, a box of text at a
+corner; `xticks`, `xlabels`, `yticks` and `ylabels`, ticks of your own; `polar = true`, a graph in a circle. The sections
+below show each. The options of an [plot.Of] given as a layer are left aside: those of the outer one apply. A 3D graph
+takes `z`, `zlim` and `view` too, as [3D](#3d) shows; on a graph of 2D they are an error.
+
+### Texts and rules
+
+[plot.Text] writes texts on the graph, each beside its point of the data: `texts[i]` at `(x[i], y[i])`, moved `dx`
+pixels to the right and `dy` down, 4 and -4 by default, so that it sits above and right of a marker. `anchor` is the side
+of the text at that place, `"left"`, `"middle"` or `"right"`; `size` is in pixels, 11 by default, from 4 to 96. It is a
+layer as the others: it follows the axes, a text whose point is past `xlim` is left out, and it has no entry in the
+legend. At most 100,000 texts, so that a scene stays small enough for Cemacs; past that, an `Err` says how many.
+
+```cesia
+hour = [7, 8, 9, 10, 11]
+height = [5.0, 14.0, 21.0, 26.0, 28.0]
+morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])])
+[x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+```
+
+The texts are a list comprehension, `["$h h" for h in hour]`, the short form of [list.Map]`(h -> "$h h", hour)`.
+
+[plot.Rule] draws a line of reference across the plot: `x = 180` upright at 180, `y = 0` across at 0, exactly one of
+the two. It is grey unless `color` says otherwise, takes a `dash` as a line does, and writes its `label` at its end,
+inside the plot. The range of its axis grows to hold it, as for the data; the other axis is left to the other layers.
+
+```cesia
+noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")])
+[x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+```
+
+### A note, and names at the ends
+
+`note` puts a box of text at a corner of the plot, a line for each line of the text, as the name, the place and the date
+of what is drawn; `noteAt` is `"top left"`, the default, `"top right"`, `"bottom left"` or `"bottom right"`. The box has
+no frame: its lines are in the ink of the axes, on the *paper*, the background, which hides the grid behind them. Spaces
+are kept, so that the colons of the lines can stand one under the other:
+
+```cesia
+place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984")
+[x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
+```
+
+`legend = "ends"` names each line at its end, in place of the box of the legend: its label right of its last point
+inside the plot, in its color, as a printed chart names its curves. Two labels that would overlap are moved apart a line,
+by a pass from the top, then by a pass from the bottom for those that would leave the plot: a greedy layout, the
+simplest that keeps the labels in the order of the lines. The margin on the right grows to hold them. Points and bands
+are named at their last point too; bars and histograms have no end, and with `"ends"` they are an `Err`.
+
+```cesia
+three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends")
+[x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
+```
+
+### Ticks of your own
+
+`xticks` and `yticks` give the ticks of an axis in place of those of the search that [Ticks](#ticks) describes: a list of
+numbers, increasing, at most 1,000; those inside the range of the axis are drawn, each with its line of the grid.
+`xlabels` and `ylabels` give their labels, as many texts as ticks, else an `Err`; without them, the numbers are written
+as the computed ticks are, each the shortest decimal that reads back to it. A log axis takes ticks above 0. Without these
+options nothing changes.
+
+```cesia
+use std/list
+compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])
+[x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
+```
+
+[list.Range]`(0, 360, step = 90)` is `[0, 90, 180, 270, 360]`; `0..360`, its short form without a step, would be every
+integer.
+
+### Polar graphs
+
+`polar = true` draws the graph in a circle, as a compass or the path of the sun: `x` is an angle in degrees, 0 at the
+top, turning clockwise, so that 90 is on the right, as the east on a map; `y` is the distance from the center. `ylim` is
+`[center, rim]`, in either order: `[90, 0]` puts 90 at the center and 0 on the rim, as the height of the sun, straight up
+at 90 and on the horizon at 0. Without it, 0, or the least `y` below it, is at the center, and the greatest `y` and 5 %
+more on the rim. Rings stand at the ticks of `y`, written along the ray of 0, and rays at the ticks of `x`, every 30
+degrees unless `xticks` gives them, written outside the rim with a degree sign, as matplotlib's polar axes write them.
+
+```cesia
+dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0])
+[x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
+```
+
+A polar graph is square, its disc in the middle of the room that the texts leave. It draws [plot.Line], [plot.Points],
+[plot.Text] and [plot.Rule], a rule at `x` as a ray and at `y` as a ring. A line joins its points by straight segments,
+as matplotlib's polar axes join them, and is cut where it crosses the rim, the crossing computed so that the line ends on
+it; points and texts outside the disc are left out. A line that ends on the right of the rim is named, with `"ends"`,
+past the labels of the angles. With a 3D graph, a log axis or `xlim`, `polar` is an `Err`.
+
+### The size of a graph
+
+A graph is 640 by 400 pixels unless `size = [width, height]` gives its own, and a polar graph 500 by 500, as much room
+as 640 by 400 in a square; [plot.Svg] and [plot.Save] write it at that size. Under a cell, Cemacs draws it as wide as the
+pane, never wider than the graph itself, and as high as the shape of its own size asks: a graph of 640 by 400 in a pane
+of 500 pixels is 500 by 313, and a polar graph stays square. [plot.Scene] gives a back-end that size when its height is
+missing:
+
+```cesia
+[result.Unwrap(plot.Scene(dome, 900, missing)).Width, result.Unwrap(plot.Scene(waves, 500, missing)).Height] -->
+```
+
+## A sun path from simple formulas
+
+The page *position of the sun* of SunEarthTools draws the path of the sun across the sky of a place, a curve for the 21st
+of each month, the day of today among them in orange with its hours, its name, its place and its date in a corner, and
+each curve named at its end: on a flat grid and in a circle. This section draws a chart in its spirit, from invented
+smooth days rather than from astronomy. A day here is three numbers: the azimuth where the sun rises, east of north, its
+height at noon, due south, and its hours of light. The sun turns at an even pace from its rise to its setting at
+`360 - rise`, its height half a sine:
+
+```cesia allow=read,write
+defn sun(rise, noon, light, t)
+  (** The sun of an invented day at the times t, in hours: its azimuth and its height, in degrees. *)
+  f = (t - (12.0 - light / 2.0)) / light
+  {Az: rise + (360.0 - 2.0 * rise) * f, El: noon * math.Sin(math.Pi * f)}
+end
+day(rise, noon, light) = sun(rise, noon, light, num.Linspace(12.0 - light / 2.0, 12.0 + light / 2.0, 61))
+days = [day(58, 72.6, 15.0), day(61, 69.5, 14.6), day(74, 61, 13.4), day(90, 49.2, 12.1), day(106, 38, 10.9), day(118, 29.5, 9.8), day(122, 25.8, 9.3)]
+names = ["21 Jun solstice", "21 May-Jul", "21 Apr-Aug", "21 Mar-Sep equinox", "21 Feb-Oct", "21 Jan-Nov", "21 Dec solstice"]
+today = day(117, 28, 9.6)
+clock = 8..16
+hours = sun(117, 28, 9.6, clock)
+orange = "#e07000"
+where = "name: essai\n  lat: 40.76\n  lon: -73.984\n date: 23/11/2026"
+flat = plot.Of(list.Concat([plot.Line(days[k].Az, days[k].El, label = names[k]) for k in 1..7],
+  [plot.Line(today.Az, today.El, color = orange, label = "23/11/2026"), plot.Points(hours.Az, hours.El, color = orange, size = 4),
+   plot.Text(hours.Az, hours.El, ["$h" for h in clock], color = orange), plot.Rule(x = 180, label = "S")]),
+  x = "azimuth", y = "elevation", xlim = [0, 360], ylim = [0, 90], xticks = list.Range(0, 360, step = 45),
+  xlabels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"], yticks = list.Range(0, 90, step = 10), note = where,
+  size = [760, 420], title = "Sun path")
+plot.Save(flat, "sunpath.svg") -->
+```
+
+The seven days are black, told apart by their dash; today alone has a color, as on the page. Its hours are a
+[plot.Text] beside a [plot.Points]: `clock` is `8..16`, the short form of [list.Range]`(8, 16)`, and the texts
+`["$h" for h in clock]` that of [list.Map]`(h -> "$h", clock)`. The legend is the box: the days all end on the horizon,
+where names at their ends would stand in a heap.
+
+In a circle, the azimuth is the angle and the height the distance from the rim, `ylim = [90, 0]`. Each day is read from
+its setting back to its rise, so that it ends in the east, on the right of the disc, where `legend = "ends"` writes its
+name, past the labels of the rim:
+
+```cesia allow=read,write
+east(d) = {Az: list.Reverse(d.Az), El: list.Reverse(d.El)}
+dial = plot.Of(list.Concat([plot.Line(east(days[k]).Az, east(days[k]).El, label = names[k]) for k in 1..7],
+  [plot.Line(east(today).Az, east(today).El, color = orange, label = "23/11/2026"), plot.Points(hours.Az, hours.El, color = orange, size = 4),
+   plot.Text(hours.Az, hours.El, ["$h" for h in clock], color = orange), plot.Rule(x = 180, label = "S")]),
+  polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), yticks = list.Range(0, 90, step = 10),
+  legend = "ends", note = where, size = [760, 560], title = "Sun path")
+plot.Save(dial, "sundial.svg") -->
+[x.Text for x in result.Unwrap(plot.Scene(dial, 760, 560)).Items if x.Role == "legend"] -->
+```
+
+The page draws a picture made on its server; here the chart is a value, drawn the same by [plot.Save] and by Cemacs, in
+the font of the code, black on white with the one color that says something.
 
 ## Animations
 
@@ -582,8 +739,10 @@ texts, which a back-end paints in the colors of its theme, as it does `"ink"` fo
 `"paper"` for what hides the grid behind a text; [plot.Svg] paints them `#000000`, `#d0d0d0` and `#ffffff`. The
 `Role` says what an item is: `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`, `"ylabel"` and `"zlabel"` for the
 labels of the ticks, `"factor"` for the power of ten or the offset of an axis, `"title"`, `"xtitle"`, `"ytitle"`,
-`"ztitle"`, `"legend"`, `"colorbar"` or `"note"`, a line under the graph; in 3D, `"pane"` for the far sides of the box and
-`"axis"` for the edges that hold the labels.
+`"ztitle"`, `"legend"`, `"colorbar"`, `"note"`, a line under the graph, or `"info"`, the box of the option `note`, its
+paper and its lines; in 3D, `"pane"` for the far sides of the box and `"axis"` for the edges that hold the labels. A
+polar graph has the same roles: its rays and rings are `"grid"`, its rim `"frame"`, the labels of its angles `"xlabel"`
+and those of its rings `"ylabel"`. The labels of `legend = "ends"` have the role `"legend"`.
 
 A back-end draws a mesh by its `Order`: the rows from the first when `rowStep` is 1, from the last when it is -1, and in
 each row the columns the same way; each quad is the path through its points $(i, j)$, $(i + 1, j)$, $(i + 1, j + 1)$ and
@@ -666,7 +825,9 @@ leaves the painting to Cemacs.
 - SVG only, for now; PNG will come with a rasterizer chosen by measure.
 - One font is measured, JetBrains Mono; another monospaced font draws as wide or a little narrower, a proportional
   font narrower.
-- The legend and the color bar sit right of the plot; bars stand upright; a graph holds one [plot.Bars].
+- The legend and the color bar sit right of the plot, or the names at the ends of the lines; bars stand upright; a graph
+  holds one [plot.Bars].
+- A polar graph draws lines, points, texts and rules, on linear axes, a full turn; no bars or bands in a circle yet.
 - A line whose x goes back and forth keeps all its points; past 200,000 markers, use [plot.Density].
 - No zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as a video
   or a GIF.
