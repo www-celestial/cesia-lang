@@ -3193,6 +3193,23 @@ and call_native_placed s n compiled =
         let y = b ctx in
         ctx.site <- s;
         run ctx [| x; y |]
+    (* Three and four as one and two: the array made in place, where the map of the others costs a closure and a call
+       into C, 60 ns, more than text.ByteFind takes to find a byte near. *)
+    | [| a; b; c |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        let z = c ctx in
+        ctx.site <- s;
+        run ctx [| x; y; z |]
+    | [| a; b; c; d |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        let z = c ctx in
+        let w = d ctx in
+        ctx.site <- s;
+        run ctx [| x; y; z; w |]
     | positional ->
       fun ctx ->
         let vals = Array.map (fun a -> a ctx) positional in
