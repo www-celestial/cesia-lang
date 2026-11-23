@@ -1,0 +1,10 @@
+off:
+{Steps: 5, Rejected: 0, Evaluations: 32, Jacobians: 0, Factorizations: 0}
+{Steps: 2118, Rejected: 51, Evaluations: 13016, Jacobians: 0, Factorizations: 0}
+default:
+{Steps: 5, Rejected: 0, Evaluations: 32, Jacobians: 0, Factorizations: 0}
+{Steps: 2118, Rejected: 51, Evaluations: 13016, Jacobians: 0, Factorizations: 0}
+always:
+{Steps: 5, Rejected: 0, Evaluations: 32, Jacobians: 0, Factorizations: 0}
+{Steps: 2118, Rejected: 51, Evaluations: 13016, Jacobians: 0, Factorizations: 0}
+exit 0
