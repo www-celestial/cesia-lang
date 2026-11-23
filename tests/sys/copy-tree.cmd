@@ -17,7 +17,10 @@ touch -t 200102030405.06 src/tree/c/y.txt src/tree/c
 printf 'old\n' > out/there/a/x.txt
 ln -s ../../outside/k.txt out/there/run.sh
 ln -s ../outside out/link
-(cd src && mkdir deep && cd deep && for _ in $(seq 100); do mkdir d && cd d || exit; done && printf 'bottom\n' > f.txt)
+# A tree 100 folders deep, made by one mkdir.
+deep=src/deep
+for ((i = 0; i < 100; i++)); do deep=$deep/d; done
+mkdir -p "$deep" && printf 'bottom\n' > "$deep/f.txt"
 mkdir src/pipe && mkfifo src/pipe/fifo
 cesia run $no_spec --allow read=src,read=out,write=out copy-tree.ce 2> /dev/null
 echo "== the copy"

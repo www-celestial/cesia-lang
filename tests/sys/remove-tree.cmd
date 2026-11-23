@@ -12,7 +12,10 @@ ln -s ../../outside out/tree/a/to-folder
 ln -s ../../outside/k.txt out/tree/c/to-file
 ln -s ../outside out/link
 printf 'f\n' > out/file.txt
-(cd out && mkdir deep && cd deep && for _ in $(seq 200); do mkdir d && cd d || exit; done && printf 'bottom\n' > f.txt)
+# A tree 200 folders deep, made by one mkdir.
+deep=out/deep
+for ((i = 0; i < 200; i++)); do deep=$deep/d; done
+mkdir -p "$deep" && printf 'bottom\n' > "$deep/f.txt"
 mkdir -p out/locked/inner
 printf 'l\n' > out/locked/inner/l.txt
 chmod a-w out/locked/inner
