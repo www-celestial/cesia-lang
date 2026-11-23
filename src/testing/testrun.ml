@@ -426,9 +426,11 @@ let run_unit ctx st ~examples = function
   | `File p -> run_file ctx st p
   | `Folder (dir, tests) -> run_folder ctx st ~examples dir tests
 
-(* A worker runs one unit: a file, or a folder and the test files in it. *)
+(* A worker runs one unit: a file, or a folder and the test files in it, in the order of their names, as without workers,
+   whatever order the system lists them in. *)
 let worker_unit path =
-  if Package.is_dir path then `Folder (path, List.filter Package.is_test (List.map (Filename.concat path) (Array.to_list (Sys.readdir path))))
+  if Package.is_dir path then
+    `Folder (path, List.filter Package.is_test (List.map (Filename.concat path) (List.sort String.compare (Array.to_list (Sys.readdir path)))))
   else `File path
 
 (** The units of a path, as paths: one worker each. *)
