@@ -586,6 +586,8 @@ and call_args p =
         (comma_list p RP (fun p ->
              match (cur p).t with
              | NAME n when next_tok p == ASSIGN -> advance p; advance p; { aname = Some n; value = expr p }
+             (* not = true, as text.ByteFindAny takes: the keyword names an argument, as not then = reads as nothing else. *)
+             | NOT when next_tok p == ASSIGN -> advance p; advance p; { aname = Some "not"; value = expr p }
              | _ -> { aname = None; value = expr p })))
 
 (* f(args) do x, y: do right after the parenthesis, on its line, and before a name or the line end, so that do stays a plain
