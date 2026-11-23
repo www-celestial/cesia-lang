@@ -57,6 +57,10 @@
 - `plot.Of(..., xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])`, and `yticks`, `ylabels`:
   the ticks of an axis chosen, in place of those of Talbot, Lin and Hanrahan, and their labels, as many as the ticks, or
   the numbers written as the computed ones are; a log axis takes ticks above 0. Without them, nothing changes.
+- `plot.Of(..., polar = true)` draws a graph in a circle, as a compass: x an angle in degrees, 0 at the top, clockwise,
+  and y the distance from the center, `ylim = [90, 0]` putting 90 at the center and 0 on the rim; rings at the ticks of
+  y, rays every 30 degrees or at `xticks`, their labels outside the rim; lines, points, texts and rules, cut at the rim.
+  A polar graph is square, 500 by 500 by default; with a 3D graph, log axes or `xlim`, it is an Err.
 - `plot.Rule(x = 180, label = "S")` and `plot.Rule(y = 0, dash = "dashed")`: a line of reference across the plot,
   upright or across, grey unless a color is given, its label at its end; the range of its axis grows to hold it.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in

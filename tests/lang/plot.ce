@@ -7,6 +7,7 @@ use std/dict
 use std/gen
 use std/list
 use std/math
+use std/num
 use std/matrix
 use std/plot
 use std/random
@@ -159,6 +160,41 @@ defn isRuleAcross()
 end
 (* The range of its axis holds the rule; the other axis is the data's; a graph of rules alone has the other axis from 0 to 1. *)
 isRuleRange() = value.Equal(texts(plot.Of([plot.Line([1, 2], [1, 2]), plot.Rule(y = 10)]), "ylabel")[1..2], ["2", "4"]) and value.Equal(texts(plot.Rule(y = 3), "xlabel"), ["0", "0.2", "0.4", "0.6", "0.8", "1"])
+
+(* Polar: x an angle in degrees, 0 at the top, clockwise; y the distance from the center, ylim [center, rim]. *)
+
+arc = num.Linspace(60.0, 300.0, 25)
+hump(peak) = peak * math.Sin((arc - 60.0) / 240.0 * math.Pi) - 3.0
+dial = plot.Of([plot.Line(arc, hump(k * 10.0), label = "day $k") for k in 1..3], polar = true, ylim = [90, 0], title = "Sun path", legend = "ends")
+isPolarSvg() = test.Snapshot(svg(dial)) and test.Snapshot(svg(plot.Of([plot.Points([0, 90, 180, 270], [1, 2, 3, 4], label = "p"), plot.Text([45], [2], ["NE"]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 2, dash = "dotted")], polar = true, xticks = [0, 90, 180, 270], xlabels = ["N", "E", "S", "W"])))
+defn isPolarPlaces()
+  (* With ylim [90, 0]: 90 at the center, 0 on the rim; 0 degrees up, 90 to the right, 180 down, 270 to the left. The plot
+     is square, the disc in it; a point beyond the center or past the rim is left out. *)
+  s = scene(plot.Of([plot.Points([0, 90, 180, 270, 45, 10, 20], [0, 0, 0, 0, 90, -10, 100])], polar = true, ylim = [90, 0]), 500, 500)
+  m = role(s, "data")[1]
+  c = m.Clip
+  r = c[3] / 2
+  cx = c[1] + r
+  cy = c[2] + r
+  near = (k, x, y) -> math.Abs(m.Xs[k] - x) < 1e-9 and math.Abs(m.Ys[k] - y) < 1e-9
+  c[3] == c[4] and value.Len(m.Xs) == 5 and near(1, cx, cy - r) and near(2, cx + r, cy) and near(3, cx, cy + r) and near(4, cx - r, cy) and near(5, cx, cy)
+end
+defn isPolarCutAtRim()
+  (* A line from the center out past the rim ends on the rim; one that comes back starts there again. *)
+  s = scene(plot.Of([plot.Line([90, 90, 90, 270, 270], [0, 2, 4, 4, 1])], polar = true, ylim = [0, 3]), 500, 500)
+  ls = lines(s)
+  f = ls[1].Clip
+  r = f[3] / 2
+  value.Len(ls) == 2 and math.Abs(ls[1].Xs[3] - (f[1] + 2 * r)) < 1e-6 and math.Abs(ls[2].Xs[1] - f[1]) < 1e-6 and math.Abs(ls[2].Ys[1] - (f[2] + r)) < 1e-6
+end
+defn isPolarDefaults()
+  (* 500 by 500 by default; rays every 30 degrees, labeled with a degree sign; rings at the ticks of y; the range of y from 0 to
+     the greatest and 5 % more when no ylim gives it. *)
+  s = svg(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true))
+  sc = scene(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), 500, 500)
+  text.StartsWith("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" height=\"500\"", s) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "xlabel"), ["0°", "30°", "60°", "90°", "120°", "150°", "180°", "210°", "240°", "270°", "300°", "330°"]) and value.Equal(texts(plot.Of([plot.Line([0, 120, 240], [1, 2, 3])], polar = true), "ylabel")[1], "0") and value.Len(role(sc, "frame")) == 1
+end
+isPolarAngles() = value.Equal(texts(plot.Of([plot.Line([0, 1], [1, 2])], polar = true, xticks = [0, 90, 360, 450]), "xlabel"), ["0°", "90°"])
 
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
@@ -542,6 +578,15 @@ errors = [
   [plot.Of([plot.Histogram([1, 2], label = "h")], legend = "ends"), "plot.Histogram \"h\": legend = \"ends\" names the end of a line, and a histogram has none; give legend = true."],
   [plot.Of([plot.Line3([1], [1], [1])], legend = "ends"), "plot.Line3: legend is \"ends\"; the ends of lines are named in 2D: a 3D graph gives true or false."],
   [plot.Of([plot.Line([1], [1])], note = 3), "plot.Line: note is 3; give a text, a line for each line of the box."],
+  [plot.Of([plot.Bars(["a"], [1])], polar = true), "plot.Bars: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer 1 is plot.Bars."],
+  [plot.Of([plot.Line([1], [1]), plot.Area([1], [1], [2])], polar = true), "plot.Of: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer 2 is plot.Area."],
+  [plot.Of([plot.Line([1], [1])], polar = true, xlim = [0, 1]), "plot.Line: xlim is [0, 1]; a polar graph turns a full circle, 0 to 360 degrees."],
+  [plot.Of([plot.Line([1], [1])], polar = true, ylim = [1, 1]), "plot.Line: ylim is [1, 1]; give [center, rim], two finite values that differ, as [90, 0]."],
+  [plot.Of([plot.Line([1], [1])], polar = 1), "plot.Line: polar is 1; give true or false."],
+  [plot.Of([plot.Line([1], [1])], polar = true, yscale = "log"), "plot.Line: yscale is \"log\"; a polar graph has linear axes."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], polar = true), "plot.Surface: polar is true; a 3D graph has its box, and a polar graph is flat: give one or the other."],
+  [plot.Of([plot.Line([1], [1])], polar = true, view = [0, 90]), "plot.Line: view is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Of([plot.Line([1], [1])], polar = true, size = [120, 90]), "plot.Line: 120 by 90 pixels leave no room for the plot; give a larger size."],
   [plot.Rule(x = 1, y = 2), "plot.Rule: give x or y, one of them, not both."],
   [plot.Rule(), "plot.Rule: give x or y, one of them, as x = 180 for a line upright at 180."],
   [plot.Rule(x = "a"), "plot.Rule: x is \"a\"; give a finite number, where the line goes."],

@@ -44,6 +44,7 @@ struct Graph
   xlabels = missing
   yticks = missing
   ylabels = missing
+  polar = false
 end
 
 one(l) = Graph([l])
@@ -170,7 +171,7 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing)
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing, polar = false)
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
@@ -185,11 +186,18 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
       place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right". xticks and
       yticks are the ticks of an axis, a list of numbers, increasing, in place of those computed: those inside its range
       are drawn; xlabels and ylabels their labels, as many texts as ticks, else the numbers, written as the computed ones.
+      polar = true draws the graph in a circle, as a compass: x is an angle in degrees, 0 at the top, turning clockwise,
+      and y the distance from the center; ylim is [center, rim], so that [90, 0] puts 90 at the center and 0 on the rim,
+      else 0, or the least y below it, at the center and the greatest y and 5 % more on the rim. Rings stand at the ticks
+      of y, written along the ray of 0; rays at the ticks of x, every 30 degrees unless xticks gives them, written outside
+      the rim. A polar graph is square, 500 by 500 by default, and draws plot.Line, Points, Text and Rule; a line joins its
+      points by straight segments, as matplotlib's polar axes do, cut at the rim.
 
         Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true
         result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
         Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true
-        [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"] *)
+        [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"]
+        Svg(Of([Line([90, 180, 270], [10, 60, 10])], polar = true, ylim = [90, 0])) then result.IsOk() --> true *)
   ls = []
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
@@ -203,7 +211,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels)
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar)
 end
 
 defn Grid(graphs, columns = missing)
@@ -342,7 +350,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z) -> true
   else -> false
 end
 
@@ -382,7 +390,7 @@ end
 
 defn sizeOf(g, fn)
   (** The size a graph is drawn at, [width, height]: its own, the first graph's times the columns and rows of a grid, or
-      640 by 400. *)
+      640 by 400, 500 by 500 for a polar graph, as much room as 640 by 400 in a square. *)
   if not isGraph(g)
     return fail("$fn needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
   end
@@ -401,7 +409,7 @@ defn sizeOf(g, fn)
   end
   s = g.size
   if value.IsMissing(s)
-    return result.Ok([640, 400])
+    return result.Ok(if g.polar == true [500, 500] else [640, 400] end)
   end
   if not (value.IsArray(s) and value.Len(s) == 2 and isPositive(s[1]) and isPositive(s[2]) and s[1] >= 100 and s[2] >= 80)
     return fail("plot.Of: size is $(brief(s)); give [width, height] in pixels, at least [100, 80].")
@@ -1973,6 +1981,12 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if not value.IsMissing(view)
     return fail("plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D.")
   end
+  if not value.IsBool(g.polar)
+    return fail("$gw: polar is $(brief(g.polar)); give true or false.")
+  end
+  if g.polar
+    return drawPolar(g, ps, ox, oy, w, h, note)
+  end
   title = checkText(g.title, "title", gw)?
   xtitle = checkText(g.xtitle, "x", gw)?
   ytitle = checkText(g.ytitle, "y", gw)?
@@ -2301,6 +2315,317 @@ defn legendItems(entries, x, y)
     items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start", "legend"), items)
   end
   items
+end
+
+(* Polar: x an angle in degrees, 0 at the top, turning clockwise as a compass, and y the distance from the center, from
+   the value at the center to the value on the rim. Lines are cut where they cross the rim, points and texts outside it
+   are left out, so that the data stay in the disc as they stay in the frame of a plot. *)
+
+polarKinds = ["Line", "Points", "Text", "Rule"]   (** The layers a polar graph draws. *)
+degree = math.Pi / 180.0
+
+(** A point of the data in pixels, {X, Y, R}, R its distance from the center: m holds the center, the radius and the
+    values at the center and on the rim. xs and ys may be arrays. *)
+defn polarAt(m, xs, ys)
+  r = (ys - m.C0) * (m.R / (m.C1 - m.C0))
+  {X: m.Cx + r * math.Sin(xs * degree), Y: m.Cy - r * math.Cos(xs * degree), R: r}
+end
+
+defn rimPoint(at, k, j, m)
+  (** Where the segment from point k, inside the disc, to point j, past its rim, crosses the rim: the root in [0, 1] of
+      |p + t d - c| = R, p the point k, d the segment. *)
+  dx = at.X[k] - m.Cx
+  dy = at.Y[k] - m.Cy
+  ex = at.X[j] - at.X[k]
+  ey = at.Y[j] - at.Y[k]
+  a = ex * ex + ey * ey
+  b = dx * ex + dy * ey
+  c = dx * dx + dy * dy - m.R * m.R
+  t = if a > 0.0 (0.0 - b + math.Sqrt(list.Max(0.0, b * b - a * c))) / a else 0.0 end
+  t = list.Max(0.0, list.Min(1.0, t))
+  [at.X[k] + t * ex, at.Y[k] + t * ey]
+end
+
+defn polarRuns(xs, ys, m)
+  (** The polylines of a line in a polar graph: its runs of points inside the disc, each ended on the rim where a segment
+      leaves it or started there where one enters it; a NaN, an infinity or a point beyond the center cuts the line. *)
+  at = polarAt(m, xs, ys)
+  edge = m.R * (1.0 + 1e-9)
+  finite = (at.X - at.X) + (at.Y - at.Y) == 0.0
+  inside = col.Positions(finite * 1 + (at.R >= 0.0 - m.R * 1e-9) * 1 + (at.R <= edge) * 1 == 3)
+  n = value.Len(xs)
+  out = []
+  count = value.Len(inside)
+  from = 1
+  for i in 1..count
+    if i == count or inside[i + 1] != inside[i] + 1
+      a = inside[from]
+      b = inside[i]
+      keep = inside[from..i]
+      rx = col.Pick(keep, at.X)
+      ry = col.Pick(keep, at.Y)
+      if a > 1 and finite[a - 1] and at.R[a - 1] > edge
+        q = rimPoint(at, a, a - 1, m)
+        rx = list.Concat([q[1]], rx)
+        ry = list.Concat([q[2]], ry)
+      end
+      if b < n and finite[b + 1] and at.R[b + 1] > edge
+        q = rimPoint(at, b, b + 1, m)
+        rx = list.Append(q[1], rx)
+        ry = list.Append(q[2], ry)
+      end
+      if value.Len(rx) >= 2
+        out = list.Append({X: rx, Y: ry}, out)
+      end
+      from = i + 1
+    end
+  end
+  out
+end
+
+defn ring(m, r, color, role)
+  (** A circle of radius r pixels about the center, as a closed line whose chords stray at most a quarter of a pixel from
+      it. *)
+  n = if r < 1.0 16 else list.Max(16, math.Ceil(math.Pi / math.Acos(list.Max(-1.0, 1.0 - 0.25 / r)))) end
+  ts = [k * 2.0 * math.Pi / n for k in 0..n]
+  line([m.Cx + r * math.Sin(t) for t in ts], [m.Cy - r * math.Cos(t) for t in ts], color, 1.0, role)
+end
+
+defn polarItems(p, m, clip)
+  (** The items of a layer of a polar graph. *)
+  inside = (at) -> col.Positions(((at.X - at.X) + (at.Y - at.Y) == 0.0) * 1 + (at.R >= 0.0 - m.R * 1e-9) * 1 + (at.R <= m.R * (1.0 + 1e-9)) * 1 == 3)
+  match p.Fn
+    "Line" -> [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in polarRuns(p.X, p.Y, m)]
+    "Points" -> polarMarks(p, m, clip, inside)
+    "Text" -> polarTexts(p, m, clip, inside)
+    else -> polarRule(p, m, clip)
+  end
+end
+
+defn polarMarks(p, m, clip, inside)
+  at = polarAt(m, p.X, p.Y)
+  ok = inside(at)
+  [{Kind: "marks", Xs: col.Pick(ok, at.X), Ys: col.Pick(ok, at.Y), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip, Role: "data"}]
+end
+
+defn polarTexts(p, m, clip, inside)
+  at = polarAt(m, p.X, p.Y)
+  [{Kind: "text", X: at.X[i] + p.Dx, Y: at.Y[i] + p.Dy, Text: p.Texts[i], Size: p.Size, Color: p.Color, Anchor: p.Anchor, Angle: 0, Width: textWidth(p.Texts[i], p.Size), Clip: clip, Role: "data"} for i in inside(at)]
+end
+
+defn polarRule(p, m, clip)
+  (** A rule of a polar graph: at an angle x, a ray from the center to the rim, its label inside near the rim; at a
+      distance y, a ring, its label at its top right. *)
+  if p.Axis == "x"
+    tip = polarAt(m, p.At, m.C1)
+    out = [{Kind: "line", Xs: [m.Cx, tip.X], Ys: [m.Cy, tip.Y], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+    if value.IsMissing(p.Label)
+      return out
+    end
+    near = polarAt(m, p.At, m.C0 + (m.C1 - m.C0) * 0.85)
+    return list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(near.X + 4.0, near.Y + tickSize * cap / 2.0, p.Label, tickSize, "start", "data"))), out)
+  end
+  r = (p.At - m.C0) * (m.R / (m.C1 - m.C0))
+  if r < 0.0 - m.R * 1e-9 or r > m.R * (1.0 + 1e-9)
+    return []
+  end
+  out = [dict.Merge(ring(m, list.Max(0.0, r), p.Color, "data"), {Dash: dashOf(p.Dash, 1.0), Clip: clip})]
+  if value.IsMissing(p.Label)
+    return out
+  end
+  list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(m.Cx + r * 0.7071 + 4.0, m.Cy - r * 0.7071 - 4.0, p.Label, tickSize, "start", "data"))), out)
+end
+
+defn angleTicks(g, w)
+  (** The ticks of the angle of a polar graph, {Values, Labels}: those of xticks, or every 30 degrees; each turned into
+      [0, 360), a repeat left out; labeled by xlabels, or by the numbers and a degree sign, as matplotlib's polar axes. *)
+  given = givenOf(g.xticks, g.xlabels, "x", "linear", w)?
+  vs = if value.IsMissing(given) [k * 30.0 for k in 0..11] else given.Values end
+  labels = if value.IsMissing(given) or value.IsMissing(given.Labels) ["$(l)°" for l in numbered(vs).Labels] else given.Labels end
+  outVs = []
+  outLs = []
+  for k in 1..value.Len(vs)
+    a = vs[k] - 360.0 * math.Floor(vs[k] / 360.0)
+    if not list.Any([math.Abs(a - b) < 1e-9 or math.Abs(a - b) > 360.0 - 1e-9 for b in outVs])
+      outVs = list.Append(a, outVs)
+      outLs = list.Append(labels[k], outLs)
+    end
+  end
+  result.Ok({Values: outVs, Labels: outLs})
+end
+
+defn polarRange(ps, lim, w)
+  (** The values at the center and on the rim of a polar graph, [c0, c1]: its ylim, else 0, or the least y below it, at the
+      center, and the greatest y and 5 % more on the rim. *)
+  if not value.IsMissing(lim)
+    if not (value.IsArray(lim) and value.Len(lim) == 2 and value.IsNumber(lim[1]) and value.IsNumber(lim[2]) and lim[1] - lim[1] == 0 and lim[2] - lim[2] == 0 and lim[1] != lim[2])
+      return fail("$w: ylim is $(brief(lim)); give [center, rim], two finite values that differ, as [90, 0].")
+    end
+    return result.Ok([lim[1] * 1.0, lim[2] * 1.0])
+  end
+  lo = inf
+  hi = -inf
+  for p in ps
+    lo = list.Min(lo, p.Ylo)
+    hi = list.Max(hi, p.Yhi)
+  end
+  if lo > hi
+    return result.Ok([0.0, 1.0])
+  end
+  c0 = list.Min(0.0, lo)
+  if hi <= c0
+    return result.Ok([c0, c0 + if c0 == 0.0 1.0 else math.Abs(c0) * 0.1 end])
+  end
+  result.Ok([c0, hi + (hi - c0) * 0.05])
+end
+
+defn drawPolar(g, ps, ox, oy, w, h, footnote)
+  (** The items of a polar graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. The disc in the middle
+      of the room the texts leave, its labels outside the rim; a note at a corner of the graph, as the corners of the
+      disc are narrow. *)
+  count = value.Len(ps)
+  gw = if count == 1 ps[1].W else "plot.Of" end
+  for k in 1..count
+    if not (ps[k].Fn in polarKinds)
+      return fail("$gw: a polar graph draws plot.Line, plot.Points, plot.Text and plot.Rule; layer $k is plot.$(ps[k].Fn).")
+    end
+  end
+  for o in [["xscale", g.xscale], ["yscale", g.yscale]]
+    if o[2] != "linear"
+      return fail("$gw: $(o[1]) is $(brief(o[2])); a polar graph has linear axes.")
+    end
+  end
+  if not value.IsMissing(g.xlim)
+    return fail("$gw: xlim is $(brief(g.xlim)); a polar graph turns a full circle, 0 to 360 degrees.")
+  end
+  title = checkText(g.title, "title", gw)?
+  xtitle = checkText(g.xtitle, "x", gw)?
+  ytitle = checkText(g.ytitle, "y", gw)?
+  if not (value.IsMissing(g.legend) or value.IsBool(g.legend) or g.legend == "ends")
+    return fail("$gw: legend is $(brief(g.legend)); give true, false or \"ends\".")
+  end
+  box = noteOf(g, gw)?
+  ends = g.legend == "ends"
+  range = polarRange(ps, g.ylim, gw)?
+  angles = angleTicks(g, gw)?
+  rings = givenOf(g.yticks, g.ylabels, "y", "linear", gw)?
+  raxis = {Scale: "linear", Lo: list.Min(range[1], range[2]), Hi: list.Max(range[1], range[2]), T0: list.Min(range[1], range[2]), T1: list.Max(range[1], range[2]), Flip: false, Category: false, Names: missing, Given: rings}
+  ps = colored(ps)
+  entries = if g.legend == false or ends [] else legendEntries(ps) end
+  legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
+  named = if ends [p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points")] else [] end
+  dropped = 0
+  for p in ps
+    dropped += p.Dropped
+  end
+
+  (* The layout: the disc as large as the room left by the title, the titles of the axes, the legend and the names at the
+     ends of the lines, with its labels outside the rim on every side. *)
+  titleH = if value.IsMissing(title) 0.0 else titleSize * lineRatio + 6.0 end
+  belowH = if value.IsMissing(footnote) 0.0 else tickSize * lineRatio + 4.0 end
+  xtitleH = if value.IsMissing(xtitle) 0.0 else 4.0 + axisSize * lineRatio end
+  ytitleW = if value.IsMissing(ytitle) 0.0 else axisSize * lineRatio + 4.0 end
+  reachX = tickLen + tickGap + widest(angles.Labels, tickSize)
+  reachY = tickLen + tickGap + tickSize * lineRatio
+  top = oy + outer + titleH
+  bottom = oy + h - outer - belowH - xtitleH
+  left = ox + outer + ytitleW
+  more = 0.0
+  m = missing
+  tags = []
+  for pass in 1..6
+    right = ox + w - outer - legendW - more
+    rad = math.Floor(list.Min((right - left) / 2.0 - reachX, (bottom - top) / 2.0 - reachY))
+    if rad < 20
+      return fail("$gw: $(text.Decimals(0, w)) by $(text.Decimals(0, h)) pixels leave no room for the plot; give a larger size.")
+    end
+    m = {Cx: math.Floor((left + right) / 2.0) + 0.5, Cy: math.Floor((top + bottom) / 2.0) + 0.5, R: rad, C0: range[1], C1: range[2]}
+    over = 0.0
+    if value.Len(named) > 0
+      tags = polarEnds(named, m, m.Cy - m.R, m.Cy + m.R)
+      for t in tags
+        over = list.Max(over, t.X + t.W - (ox + w - outer))
+      end
+    end
+    if over <= 0.5
+      break
+    end
+    more += over
+  end
+
+  (* The items: the rays and the rings, the data cut to the disc, the rim, its ticks and their labels, the labels of the
+     rings, the titles, the legend and the note. *)
+  clip = [m.Cx - m.R, m.Cy - m.R, 2.0 * m.R, 2.0 * m.R]
+  items = []
+  for a in angles.Values
+    tip = polarAt(m, a, m.C1)
+    items = list.Append(line([m.Cx, tip.X], [m.Cy, tip.Y], "grid", 1.0, "grid"), items)
+  end
+  rt = ticksOf(raxis, m.R, false)
+  for v in rt.Values
+    r = (v - m.C0) * (m.R / (m.C1 - m.C0))
+    if r > 0.5 and r < m.R - 0.5
+      items = list.Append(ring(m, r, "grid", "grid"), items)
+    end
+  end
+  for p in ps
+    items = list.Concat(items, polarItems(p, m, clip))
+  end
+  items = list.Append(ring(m, m.R, "ink", "frame"), items)
+  for i in 1..value.Len(angles.Values)
+    a = angles.Values[i] * degree
+    d = [math.Sin(a), 0.0 - math.Cos(a)]
+    rim = {X: m.Cx + m.R * d[1], Y: m.Cy + m.R * d[2]}
+    items = list.Append(line([rim.X, rim.X + d[1] * tickLen], [rim.Y, rim.Y + d[2] * tickLen], "ink", 1.0, "tick"), items)
+    words = angles.Labels[i]
+    at = boxOut(rim, d, textWidth(words, tickSize), tickSize * lineRatio, tickLen + tickGap)
+    items = list.Append(label(at.X, at.Y + tickSize * (ascent - lineRatio / 2.0), words, tickSize, "middle", "xlabel"), items)
+  end
+  for i in 1..value.Len(rt.Values)
+    r = (rt.Values[i] - m.C0) * (m.R / (m.C1 - m.C0))
+    items = list.Append(label(m.Cx + 3.0, m.Cy - r + 2.0 + tickSize * ascent, rt.Labels[i], tickSize, "start", "ylabel"), items)
+  end
+  if not value.IsMissing(rt.Factor)
+    items = list.Append(label(m.Cx + 3.0, m.Cy + m.R - 4.0, rt.Factor, tickSize, "start", "factor"), items)
+  end
+  if not value.IsMissing(title)
+    items = list.Append(label(m.Cx, oy + outer + titleSize * ascent, title, titleSize, "middle", "title"), items)
+  end
+  if not value.IsMissing(xtitle)
+    items = list.Append(label(m.Cx, m.Cy + m.R + reachY + 4.0 + axisSize * ascent, xtitle, axisSize, "middle", "xtitle"), items)
+  end
+  if not value.IsMissing(ytitle)
+    items = list.Append(label(ox + outer + axisSize * ascent, m.Cy, ytitle, axisSize, "middle", "ytitle", angle = -90), items)
+  end
+  if value.Len(entries) > 0
+    items = list.Concat(items, legendItems(entries, ox + w - outer - legendW + 12.0, top))
+  end
+  for t in tags
+    items = list.Append(dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")), items)
+  end
+  if not value.IsMissing(box)
+    items = list.Concat(items, noteItems(box, ox + outer - 6.0, top - 6.0, ox + w - outer - legendW + 6.0, oy + h - outer - belowH + 6.0))
+  end
+  if not value.IsMissing(footnote)
+    items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), footnote, tickSize, "start", "note"), items)
+  end
+  result.Ok({Items: items, Dropped: dropped})
+end
+
+defn polarEnds(ps, m, top, bottom)
+  (** The labels of legend = "ends" in a polar graph: right of the last point of each line inside the disc, apart. *)
+  tags = []
+  for p in ps
+    at = polarAt(m, p.X, p.Y)
+    k = value.Len(p.X)
+    while k >= 1 and not (at.X[k] - at.X[k] == 0.0 and at.Y[k] - at.Y[k] == 0.0 and at.R[k] >= 0.0 - m.R * 1e-9 and at.R[k] <= m.R * (1.0 + 1e-9))
+      k -= 1
+    end
+    if k >= 1
+      tags = list.Append({Text: p.Label, X: at.X[k] + 6.0, Y: at.Y[k] + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
+    end
+  end
+  placed(list.SortBy(t -> t.Y, tags), tickSize * lineRatio, top + tickSize * ascent, bottom - tickSize * (lineRatio - ascent))
 end
 
 (* 3D: a surface or lines in a box, seen from far away along a view as MATLAB's view(az, el), without perspective. The box
@@ -2747,6 +3072,9 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     return fail("$gw: legend is $(brief(g.legend)); $(if g.legend == "ends" "the ends of lines are named in 2D: a 3D graph gives true or false" else "give true, false or \"ends\"" end).")
   end
   box = noteOf(g, gw)?
+  if g.polar != false
+    return fail("$gw: polar is $(brief(g.polar)); a 3D graph has its box, and a polar graph is flat: give one or the other.")
+  end
   for o in [["xticks", g.xticks], ["xlabels", g.xlabels], ["yticks", g.yticks], ["ylabels", g.ylabels]]
     if not value.IsMissing(o[2])
       return fail("$gw: $(o[1]) is for a 2D graph; a 3D graph places the ticks of its edges as they show.")
@@ -2955,7 +3283,7 @@ defn differs(first, g)
     ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
     ["legend", first.legend, g.legend], ["size", first.size, g.size], ["z", first.ztitle, g.ztitle], ["zlim", first.zlim, g.zlim],
     ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt], ["xticks", first.xticks, g.xticks],
-    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels]]
+    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels], ["polar", first.polar, g.polar]]
   for o in options
     if not value.Equal(o[2], o[3])
       return "differs from frame 1 in its option $(o[1])"
