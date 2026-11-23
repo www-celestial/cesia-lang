@@ -1,10 +1,12 @@
 (** Cells in a file of code, as a notebook has them, and a session that runs them one by one. A line that holds only a
     comment starting with %%, as (* %% Simulation *), starts a cell, and its title is the rest of the comment; the lines
     before the first one are the first cell, usually the uses. A cell reads the names that cells above it define, and a
-    run reruns the cells that depend on what it defines: the file means what cesia run computes. A cell of sliders,
-    name = cells.Slider(28.0, 0.0, 50.0), gives numbers that an editor moves by writing them in the file. *)
+    run reruns the cells that depend on what it defines: the file means what cesia run computes. A cell of inputs, as
+    name = cells.Slider(28.0, 0.0, 50.0) or zone = cells.Choice("GMT-5", ["GMT-6", "GMT-5"]), gives values that an editor
+    changes by writing them in the file. *)
 use std/bug
 use std/cesia
+use std/date
 use std/debug
 use std/dict
 use std/fiber
@@ -137,26 +139,33 @@ defn Analyse(cells)
       read. Sliders lists the lines name = cells.Slider(...) of a cell, through the name that the use of std/cells of the
       first cell gives, each {Name, Line, Column, End, Value, Min, Max, Step}: Column and End are the first and the last
       columns of the value's number on its line, from 1, Step is the default one when none is written; Value, Min, Max and
-      Step are Ints for a slider of Ints, else Floats, as Slider gives. A cell with a slider holds only sliders and
-      comments, and a slider takes numbers written in the file, which Slider would take.
+      Step are Ints for a slider of Ints, else Floats, as Slider gives. Inputs lists every input of a cell, a slider
+      too, the lines name = cells.Slider(...), cells.Choice(...), cells.Check(...), cells.Field(...) or cells.Date(...), each
+      {Name, Kind, Line, Column, End, Value}: Kind "slider", "choice", "check", "field" or "date", Column and End the first
+      and the last columns of the value as the line writes it, a text with its quotes, and Value what the function gives
+      under cesia run; a slider has Min, Max and Step besides, a choice Options and a check Label, a text or missing. A
+      cell with an input holds only inputs, one a line, and comments, and an input takes values written in the file,
+      which its function would take.
 
         a = Analyse(Parse("n = 3\n(* %% Twice *)\nm = n * 2"))
         a[2].Reads --> ["n"]
         a[1].Defines --> ["n"]
         Analyse(Parse("(* %% A *)\nx = y\n(* %% B *)\ny = 1"))[2].Errors[1].Line --> 2
         s = Analyse(Parse("use std/cells\n(* %% P *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)"))[2].Sliders[1]
-        [s.Name, s.Line, s.Column, s.End, s.Value, s.Step] --> ["rho", 3, 20, 23, 28.0, 0.5] *)
+        [s.Name, s.Line, s.Column, s.End, s.Value, s.Step] --> ["rho", 3, 20, 23, 28.0, 0.5]
+        c = Analyse(Parse("use std/cells\n(* %% P *)\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\"])"))[2].Inputs[1]
+        [c.Kind, c.Column, c.End, c.Value, c.Options] --> ["choice", 21, 27, "GMT-5", ["GMT-6", "GMT-5"]] *)
   n = values.Len(cells)
   scans = [scanned(c) for c in cells]
   alias = if n == 0 missing else cellsAlias(cells[1]) end
-  sliders = [slidersOf(cells[i], i, alias) for i in 1..n]
+  inputs = [inputsOf(cells[i], i, alias) for i in 1..n]
   owners = {}
   for i in 1..n
     for d in scans[i].Defs
       owners = dict.Put(d.Name, list.Append(i, dict.GetOr(d.Name, [], owners)), owners)
     end
   end
-  errors = [list.Concat(if values.IsMissing(scans[i].Error) [] else [scans[i].Error] end, sliders[i].Errors) for i in 1..n]
+  errors = [list.Concat(if values.IsMissing(scans[i].Error) [] else [scans[i].Error] end, inputs[i].Errors) for i in 1..n]
   (* R1: one cell for a name. *)
   for i in 1..n
     for d in scans[i].Defs
@@ -211,7 +220,7 @@ defn Analyse(cells)
       errors[m.Cell] = list.Append(fault(m.Read.Line, m.Read.Column, message), errors[m.Cell])
     end
   end
-  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i]), Sliders: sliders[i].Sliders} for i in 1..n]
+  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i]), Sliders: inputs[i].Sliders, Inputs: inputs[i].Inputs} for i in 1..n]
 end
 
 defn ToRun(analysis, changed)
@@ -240,8 +249,9 @@ defn readers(analysis, from, names)
   out
 end
 
-(* ---- Sliders: a cell of lines name = cells.Slider(value, min, max, step = s), whose numbers the file holds. An editor
-   moves one by writing its new number in the file, and Set gives that number to the session, in place. *)
+(* ---- Inputs: a cell of lines name = cells.Slider(value, min, max, step = s), cells.Choice(value, options),
+   cells.Check(value, label = l), cells.Field(value) or cells.Date(value), whose values the file holds. An editor changes
+   one by writing its new value in the file, and Set gives that value to the session, in place. *)
 
 (** The most steps from the min to the max of a slider. *)
 mostSteps = 1000000
@@ -337,17 +347,191 @@ defn Slider(value, min, max, step = missing)
   if whole(value, min, max, step) value else value * 1.0 end
 end
 
+(** The most options of a choice. *)
+mostOptions = 1000
+
+(** Is a value a text or a finite number, as a choice and a field hold? *)
+plain(x) = values.IsText(x) or finite(x)
+
+defn choiceFault(at, options)
+  (** What is wrong with the value and the options of a choice, or missing: one text for the panic of Choice and the error
+      of Analyse. *)
+  if not values.IsArray(options)
+    return "cells.Choice takes a list of texts or finite numbers as its options."
+  end
+  if values.Len(options) > mostOptions
+    return "cells.Choice takes at most $mostOptions options: $(values.Len(options)) given."
+  end
+  if not list.All([plain(o) for o in options])
+    return "cells.Choice takes a list of texts or finite numbers as its options."
+  end
+  if not plain(at) or not (at in options)
+    return "cells.Choice needs its value among its options: $(literalOf(at)) is not."
+  end
+  missing
+end
+
+defn Choice(value, options)
+  (** A value chosen among options, for a notebook: gives value, one of options, texts or finite numbers, at most 1,000.
+      Written in a cell of inputs only, one a line, with values written there, as
+      zone = cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"]): Cemacs draws a box under the line that opens the list, and
+      a choice writes the new value in the file, so that cesia run reads it. Panics on options that are no list of texts
+      and finite numbers, on more than 1,000 of them, or on a value not among them: Analyse says the same of the file.
+
+        Choice(2026, [2025, 2026, 2027]) --> 2026
+        Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"]) --> "GMT-5" *)
+  fault = choiceFault(value, options)
+  if values.IsSome(fault)
+    bug.Panic(fault)
+  end
+  value
+end
+
+defn checkFault(at, label)
+  (** What is wrong with the value and the label of a check box, or missing, for Check and Analyse. *)
+  if not values.IsBool(at)
+    "cells.Check takes true or false as its value, not $(literalOf(at))."
+  else if values.IsSome(label) and not values.IsText(label)
+    "cells.Check takes a text as its label, not $(literalOf(label))."
+  else
+    missing
+  end
+end
+
+defn Check(value, label = missing)
+  (** A check box, for a notebook: gives value, true or false. Written in a cell of inputs only, one a line, as
+      bold = cells.Check(false, label = "Bold line"): Cemacs draws the box under the line, [ ] or [x] and the label, and a
+      click or Space writes the other value in the file, so that cesia run reads it. Panics on a value that is no true or
+      false, or a label that is no text: Analyse says the same of the file.
+
+        Check(false, label = "Bold line") --> false *)
+  fault = checkFault(value, label)
+  if values.IsSome(fault)
+    bug.Panic(fault)
+  end
+  value
+end
+
+(** What is wrong with the value of a field, or missing, for Field and Analyse. *)
+fieldFault(at) = if plain(at) missing else "cells.Field takes a text or a finite number, not $(literalOf(at))." end
+
+defn Field(value)
+  (** A text or a number typed in a box, for a notebook: gives value, as written, a text, an Int or a Float. Written in a
+      cell of inputs only, one a line, as place = cells.Field("40.76, -73.984") or high = cells.Field(50): Cemacs draws
+      the box under the line, and what is typed there is written in the file at Enter, so that cesia run reads it; a
+      field of a number takes only numbers. Panics on a value that is no text or finite number: Analyse says the same of
+      the file.
+
+        Field("40.76, -73.984") --> "40.76, -73.984"
+        Field(50) --> 50 *)
+  fault = fieldFault(value)
+  if values.IsSome(fault)
+    bug.Panic(fault)
+  end
+  value
+end
+
+defn dayOf(y, m, d)
+  (** The date of std/date of a day, at midnight in UTC, or missing for numbers that are no day of the years 0 to 9999,
+      which "YYYY-MM-DD" writes. *)
+  if not (values.IsInt(y) and values.IsInt(m) and values.IsInt(d)) or y < 0 or y > 9999 or m < 1 or m > 12 or d < 1 or d > date.DaysInMonth(y, m)
+    return missing
+  end
+  date.Date(y, m, d)
+end
+
+defn dayIn(t)
+  (** The date of a text written YYYY-MM-DD, as "2026-11-23", or missing. *)
+  if not values.IsText(t) or values.Len(t) != 10 or text.Slice(5, 5, t) != "-" or text.Slice(8, 8, t) != "-"
+    return missing
+  end
+  parts = [text.Slice(1, 4, t), text.Slice(6, 7, t), text.Slice(9, 10, t)]
+  if not list.All([list.All([digit(c) for c in text.Chars(p)]) for p in parts])
+    return missing
+  end
+  dayOf(text.Number(parts[1]), text.Number(parts[2]), text.Number(parts[3]))
+end
+
+(** What is wrong with the value of a date, or missing, for Date and Analyse. *)
+dateFault(at) = if values.IsSome(dayIn(at)) missing else "cells.Date takes a day written YYYY-MM-DD, as \"2026-11-23\": $(literalOf(at)) is none." end
+
+defn Date(value)
+  (** A day, for a notebook: gives the date of std/date of a text written YYYY-MM-DD, at midnight in UTC. Written in a cell
+      of inputs only, one a line, as day = cells.Date("2026-11-23"): Cemacs draws the box under the line, whose arrows
+      change the year, the month or the day, and Enter writes the new day in the file, so that cesia run reads it.
+      Panics on a text that is no day of the years 0 to 9999: Analyse says the same of the file.
+
+        Date("2026-11-23").Day --> 23 *)
+  fault = dateFault(value)
+  if values.IsSome(fault)
+    bug.Panic(fault)
+  end
+  dayIn(value)
+end
+
+(** Is a value a date of std/date? *)
+isDate(x) = values.IsStruct(x) and not values.IsDict(x) and dict.Has("Year", dict.Fields(x)) and dict.Has("Month", dict.Fields(x)) and dict.Has("Day", dict.Fields(x))
+
+defn literalOf(x)
+  (** A value as a file of Cesia writes it, which reads back as the same value and never as code: a text in quotes, its \,
+      its ", its ends of line, tabs and carriage returns written \\, \", \n, \t and \r and its $ written $$; a number, true
+      or false as Cesia writes them; a date of std/date as its day in quotes, "2026-11-23"; anything else as its text. *)
+  if values.IsText(x)
+    t = text.Replace("\\", "\\\\", x)
+    for pair in [["\"", "\\\""], ["\n", "\\n"], ["\t", "\\t"], ["\r", "\\r"], ["$$", "$$$$"]]
+      t = text.Replace(pair[1], pair[2], t)
+    end
+    "\"$t\""
+  else if isDate(x)
+    "\"$(date.FormatDate(x))\""
+  else
+    values.Text(x, 80)
+  end
+end
+
+(** The kind of an input of Analyse: a slider of Sliders, or of a hand, has none. *)
+kindOf(input) = if values.IsDict(input) dict.GetOr("Kind", "slider", input) else "slider" end
+
+defn optionAt(choice, x)
+  (** The place of x among the options of a choice, or of its value when x is none of them. *)
+  at = list.FindFirst(k -> choice.Options[k] == x, 1..values.Len(choice.Options))
+  if values.IsSome(at) at else list.FindFirst(k -> choice.Options[k] == choice.Value, 1..values.Len(choice.Options)) end
+end
+
 defn Snap(slider, x, steps = 0)
-  (** The position of a slider of Analyse nearest to x, then steps further, within its min and its max: {Value, Text}, Text
-      as the file writes it and Value the number cesia run reads from that text. A position is Min + k × Step for a whole
-      k, computed and never added up, and its text has the decimals of Min and of Step, so that steps of 0.1 write 0.3
-      and not 0.30000000000000004. An editor moves a slider with it, and Set snaps the value it gives with it.
+  (** The position of an input of Analyse nearest to x, then steps further: {Value, Text}, Text as the file writes it and
+      Value what cesia run reads from that text. For a slider, within its min and its max, a position is Min + k × Step
+      for a whole k, computed and never added up, and its text has the decimals of Min and of Step, so that steps of 0.1
+      write 0.3 and not 0.30000000000000004. For a choice, the option x, or the value when x is no option, then steps
+      options further, within the first and the last; for a date, the day of x, a date of std/date, then steps days
+      further, within the years 0 to 9999; for a check box, true or false, and for a field, a text or a number as the
+      field holds, x itself. A text is written as literalOf writes it, in quotes, so that the file never reads it as code.
+      An editor changes an input with it, and Set gives the value it gives with it. Panics on an x of another kind than
+      the input's: Set says so in an Err.
 
         s = {Value: 0.0, Min: 0.0, Max: 1.0, Step: 0.1}
         Snap(s, 0.31).Text --> "0.3"
         Snap(s, 0.31, steps = 1).Value --> 0.4
         Snap(s, 0.31, steps = -10).Text --> "0.0"
-        Snap({Value: 5, Min: 0, Max: 10, Step: 3}, 10).Text --> "9" *)
+        Snap({Value: 5, Min: 0, Max: 10, Step: 3}, 10).Text --> "9"
+        Snap({Kind: "choice", Value: "b", Options: ["a", "b", "c"]}, "b", steps = 1).Text --> "\"c\""
+        Snap({Kind: "field", Value: "x"}, "say \"$$(hi)\"").Text --> "\"say \\\"$$$$(hi)\\\"\"" *)
+  kind = kindOf(slider)
+  if kind != "slider"
+    wrong = if kind == "choice" missing else valueFault(slider, x) end
+    if values.IsSome(wrong)
+      bug.Panic(wrong)
+    end
+    at = if kind == "choice"
+      slider.Options[list.Max(1, list.Min(values.Len(slider.Options), optionAt(slider, x) + steps))]
+    else if kind == "date"
+      d = date.AddDays(steps, dayOf(x.Year, x.Month, x.Day))
+      if d.Year > 9999 date.Date(9999, 12, 31) else if d.Year < 0 date.Date(0, 1, 1) else d end
+    else
+      x
+    end
+    return {Value: at, Text: literalOf(at)}
+  end
   ints = whole(slider.Value, slider.Min, slider.Max, slider.Step)
   (* A slider of Floats counts in Floats: an Int min and a Float max may be farther apart than 63 bits hold. *)
   float = n -> if ints n else 1.0 * n end
@@ -384,9 +568,10 @@ defn cellsAlias(first)
   missing
 end
 
-defn codeOnly(lines)
+defn codeOnly(lines, texts = true)
   (** The lines of a cell with their comments and their texts made spaces, each character in its column: only code is read
-      for sliders, and a slider named in a comment or in a text is none. *)
+      for inputs, and an input named in a comment or in a text is none. With texts false, the texts stay, and only the
+      comments are made spaces. *)
   depth = 0
   quoted = false
   out = []
@@ -405,11 +590,11 @@ defn codeOnly(lines)
         i += wide
       else if quoted
         quoted = c != "\""
-        kept = list.Append(if c == "\\" and i < n "  " else " " end, kept)
+        kept = list.Append(if texts (if c == "\\" and i < n "  " else " " end) else if c == "\\" and i < n "$c$(cs[i + 1])" else c end, kept)
         i += if c == "\\" 2 else 1 end
       else
         quoted = c == "\""
-        kept = list.Append(if quoted " " else c end, kept)
+        kept = list.Append(if quoted and texts " " else c end, kept)
         i += 1
       end
     end
@@ -454,11 +639,120 @@ defn numberEnd(cs, i)
   if k <= values.Len(cs) and (nameChar(cs[k]) or cs[k] == ".") i else k end
 end
 
-defn sliderCall(code, alias)
-  (** The slider of a line of code name = alias.Slider(...): {Name, Args}, each argument {Key, Text, Column, End}, its Key
-      "" when it has no name; {Fault, Column} for such a line whose arguments are no numbers written there; missing for
-      another line. *)
-  cs = text.Chars(code)
+(** Does a character go on with a name, as Cesia reads one: a letter, a digit, _ or any character past ASCII? *)
+wordChar(c) = nameChar(c) or text.Code(c) >= 128
+
+(** The escapes of a text, by the character after its \. *)
+escapes = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", "\"": "\""}
+
+defn textAt(cs, i)
+  (** The text written from place i of the characters of a line, as Cesia reads it, and the place after it: {Value, Next},
+      or missing when no text starts there or it is more than a text written, with $name or $(...) in it, or doubled
+      quotes, which Cesia refuses. *)
+  n = values.Len(cs)
+  if i > n or cs[i] != "\""
+    return missing
+  end
+  out = []
+  j = i + 1
+  while j <= n
+    c = cs[j]
+    next = if j < n cs[j + 1] else "" end
+    if c == "\\" and dict.Has(next, escapes)
+      out = list.Append(escapes[next], out)
+      j += 2
+    else if c == "$" and next == "$"
+      out = list.Append("$", out)
+      j += 2
+    else if c == "$" and next != "" and (next == "(" or nameStart(next) or text.Code(next) >= 128)
+      return missing
+    else if c == "\""
+      return if next == "\"" missing else {Value: text.Join("", out), Next: j + 1} end
+    else
+      out = list.Append(c, out)
+      j += 1
+    end
+  end
+  missing
+end
+
+defn wordAt(cs, i, word)
+  (** Is word written from place i, as a whole word? *)
+  last = i + values.Len(word) - 1
+  last <= values.Len(cs) and text.Join("", cs[i..last]) == word and (last == values.Len(cs) or not (wordChar(cs[last + 1]) or cs[last + 1] == "."))
+end
+
+defn valueAt(cs, i, lists = true)
+  (** The value written from place i of the characters of a line and the place after it, {Value, Next}, or missing: a
+      number, possibly negative, true, false, a text as textAt reads it, or with lists a list of those. *)
+  n = values.Len(cs)
+  if i > n
+    return missing
+  end
+  e = numberEnd(cs, i)
+  if e > i
+    return {Value: text.Number(text.Join("", cs[i..e - 1])), Next: e}
+  end
+  for word in ["true", "false"]
+    if wordAt(cs, i, word)
+      return {Value: word == "true", Next: i + values.Len(word)}
+    end
+  end
+  if cs[i] == "\""
+    return textAt(cs, i)
+  end
+  if not lists or cs[i] != "["
+    return missing
+  end
+  items = []
+  j = spaced(cs, i + 1)
+  while j <= n and cs[j] != "]"
+    v = valueAt(cs, j, lists = false)
+    if values.IsMissing(v)
+      return missing
+    end
+    items = list.Append(v.Value, items)
+    j = spaced(cs, v.Next)
+    if j <= n and cs[j] == ","
+      j = spaced(cs, j + 1)
+    else if j > n or cs[j] != "]"
+      return missing
+    end
+  end
+  if j > n missing else {Value: items, Next: j + 1} end
+end
+
+(** The parameters of the function of each input, in order. *)
+paramsOf = {Slider: ["value", "min", "max", "step"], Choice: ["value", "options"], Check: ["value", "label"], Field: ["value"], Date: ["value"]}
+
+(** The parameters that a call of the function of each input must give. *)
+neededOf = {Slider: ["value", "min", "max"], Choice: ["value", "options"], Check: ["value"], Field: ["value"], Date: ["value"]}
+
+(** The error of an input whose arguments are no values written in the file. *)
+unwritten(f) = if f == "Slider" "cells.Slider takes numbers written in the file, not expressions." else "cells.$f takes values written in the file, not expressions." end
+
+defn headIn(code, alias)
+  (** The first input function named in a line of code, alias.Slider, alias.Choice, alias.Check, alias.Field or alias.Date
+      as a whole name, {Function, Column}, or missing. *)
+  for f in dict.Keys(paramsOf)
+    head = "$alias.$f"
+    at = text.Find(head, code)
+    if values.IsSome(at)
+      after = at + values.Len(head)
+      if after > values.Len(code) or not wordChar(text.Slice(after, after, code))
+        return {Function: f, Column: at}
+      end
+    end
+  end
+  missing
+end
+
+defn inputCall(line, alias)
+  (** The input of a line name = alias.F(...), F the function of an input, as a cell of inputs writes one: {Name, Function,
+      Column, Args}, each argument {Key, Text, Value, Column, End}, its Key "" when it has no name; {Fault, Column,
+      Function} for such a line whose arguments are no values written there, numbers for a slider; missing for another
+      line. The line has its comments made spaces, and its texts as written. *)
+  cs = text.Chars(line)
   n = values.Len(cs)
   first = spaced(cs, 1)
   i = after(cs, first, nameChar)
@@ -471,13 +765,18 @@ defn sliderCall(code, alias)
     return missing
   end
   i = spaced(cs, i + 1)
-  head = "$alias.Slider"
   call = i
-  if i + values.Len(head) - 1 > n or text.Join("", cs[i..i + values.Len(head) - 1]) != head
+  dot = i + values.Len(alias)
+  if dot >= n or text.Join("", cs[i..dot]) != "$alias."
     return missing
   end
-  i = spaced(cs, i + values.Len(head))
-  bad = at -> {Fault: "cells.Slider takes numbers written in the file, not expressions.", Column: at}
+  e = after(cs, dot + 1, nameChar)
+  f = text.Join("", cs[dot + 1..e - 1])
+  if not dict.Has(f, paramsOf) or (e <= n and wordChar(cs[e]))
+    return missing
+  end
+  i = spaced(cs, e)
+  bad = at -> {Fault: unwritten(f), Column: at, Function: f}
   if i > n or cs[i] != "("
     return bad(call)
   end
@@ -486,7 +785,7 @@ defn sliderCall(code, alias)
   while i <= n and cs[i] != ")"
     key = ""
     j = after(cs, i, nameChar)
-    if j > i and nameStart(cs[i])
+    if j > i and nameStart(cs[i]) and not wordAt(cs, i, "true") and not wordAt(cs, i, "false")
       k = spaced(cs, j)
       if k > n or cs[k] != "=" or (k < n and cs[k + 1] == "=")
         return bad(i)
@@ -494,12 +793,13 @@ defn sliderCall(code, alias)
       key = text.Join("", cs[i..j - 1])
       i = spaced(cs, k + 1)
     end
-    e = numberEnd(cs, i)
-    if e == i
+    (* A slider takes numbers only, as it always did. *)
+    v = if f == "Slider" (if numberEnd(cs, i) > i valueAt(cs, i) else missing end) else valueAt(cs, i) end
+    if values.IsMissing(v)
       return bad(i)
     end
-    args = list.Append({Key: key, Text: text.Join("", cs[i..e - 1]), Column: i, End: e - 1}, args)
-    i = spaced(cs, e)
+    args = list.Append({Key: key, Text: text.Join("", cs[i..v.Next - 1]), Value: v.Value, Column: i, End: v.Next - 1}, args)
+    i = spaced(cs, v.Next)
     if i <= n and cs[i] == ","
       i = spaced(cs, i + 1)
     else if i > n or cs[i] != ")"
@@ -509,80 +809,112 @@ defn sliderCall(code, alias)
   if i > n or spaced(cs, i + 1) <= n
     return bad(list.Min(i, n))
   end
-  {Name: name, Args: args}
+  {Name: name, Function: f, Column: call, Args: args}
 end
 
-defn sliderArgs(args)
-  (** The arguments of a slider by their parameters, value, min, max and step, as a call gives them: in order, then by
-      name; or missing when a call would give them otherwise. *)
-  params = ["value", "min", "max", "step"]
+defn argsOf(f, args)
+  (** The arguments of an input's call by their parameters, as a call gives them: in order, then by name; or missing when
+      a call would give them otherwise, or lacks one it needs. *)
+  params = paramsOf[f]
   got = {}
   for k in 1..values.Len(args)
     a = args[k]
-    p = if a.Key == "" (if k <= 4 and values.Len(got) == k - 1 params[k] else "" end) else a.Key end
+    p = if a.Key == "" (if k <= values.Len(params) and values.Len(got) == k - 1 params[k] else "" end) else a.Key end
     if not (p in params) or dict.Has(p, got)
       return missing
     end
     got = dict.Put(p, a, got)
   end
-  if dict.Has("value", got) and dict.Has("min", got) and dict.Has("max", got) got else missing end
+  if list.All([dict.Has(p, got) for p in neededOf[f]]) got else missing end
 end
 
-defn slidersOf(cell, i, alias)
-  (** The sliders of a cell, {Sliders, Errors}: its lines name = cells.Slider(...) through alias, and the errors of R4 (a
-      cell with a slider holds only sliders and comments), of R5 (numbers written in the file) and of their numbers. *)
-  none = {Sliders: [], Errors: []}
-  if values.IsMissing(alias) or not text.Contains("$alias.Slider", cell.Source)
+defn inputOf(c, line)
+  (** The input of a call of inputCall on a line, {Input, Slider} with Slider missing for another kind, or {Error, Column}
+      for one whose arguments its function would refuse. *)
+  got = argsOf(c.Function, c.Args)
+  if values.IsMissing(got)
+    return {Error: unwritten(c.Function), Column: if values.Len(c.Args) > 0 c.Args[1].Column else c.Column end}
+  end
+  v = p -> if dict.Has(p, got) got[p].Value else missing end
+  at = got["value"]
+  base = {Name: c.Name, Kind: text.Lower(c.Function), Line: line, Column: at.Column, End: at.End}
+  if c.Function == "Slider"
+    problem = sliderFault(v("value"), v("min"), v("max"), v("step"))
+    if values.IsSome(problem)
+      return {Error: problem, Column: at.Column}
+    end
+    (* A slider of Floats is Floats, as Slider gives: its Value may be written 3, and its Min an Int far from a Float Max. *)
+    float = x -> if whole(v("value"), v("min"), v("max"), v("step")) x else 1.0 * x end
+    s = {Name: c.Name, Line: line, Column: at.Column, End: at.End, Value: float(v("value")), Min: float(v("min")), Max: float(v("max")),
+      Step: float(stepOf(v("value"), v("min"), v("max"), v("step")))}
+    return {Input: dict.Merge(base, {Value: s.Value, Min: s.Min, Max: s.Max, Step: s.Step}), Slider: s}
+  end
+  problem = if c.Function == "Choice" choiceFault(v("value"), v("options")) else if c.Function == "Check" checkFault(v("value"), v("label")) else if c.Function == "Field" fieldFault(v("value")) else dateFault(v("value")) end
+  if values.IsSome(problem)
+    return {Error: problem, Column: at.Column}
+  end
+  more = if c.Function == "Choice" {Options: v("options")} else if c.Function == "Check" {Label: v("label")} else if c.Function == "Date" {Value: dayIn(v("value"))} else {} end
+  {Input: dict.Merge(dict.Put("Value", v("value"), base), more), Slider: missing}
+end
+
+defn inputsOf(cell, i, alias)
+  (** The inputs of a cell, {Inputs, Sliders, Errors}: its lines name = cells.F(...) through alias, and the errors of R4 (a
+      cell with an input holds only inputs and comments), of R5 (values written in the file) and of their values. A cell
+      whose inputs are all sliders says so in the words it always used. *)
+  none = {Inputs: [], Sliders: [], Errors: []}
+  if values.IsMissing(alias) or not list.Any([text.Contains("$alias.$f", cell.Source) for f in dict.Keys(paramsOf)])
     return none
   end
-  code = codeOnly(text.Lines(cell.Source))
-  head = "$alias.Slider"
+  raw = text.Lines(cell.Source)
+  code = codeOnly(raw)
   if i == 1
     for k in 1..values.Len(code)
-      if text.Contains(head, code[k])
-        return {Sliders: [], Errors: [fault(cell.From + k - 1, text.Find(head, code[k]), "Sliders go in a cell below the uses, as (* %% Parameters *) starts one.")]}
+      h = headIn(code[k], alias)
+      if values.IsSome(h)
+        what = if h.Function == "Slider" "Sliders" else "Inputs" end
+        return {Inputs: [], Sliders: [], Errors: [fault(cell.From + k - 1, h.Column, "$what go in a cell below the uses, as (* %% Parameters *) starts one.")]}
       end
     end
     return none
   end
+  flat = codeOnly(raw, texts = false)
   out = []
+  sliders = []
   errors = []
   others = []
+  functions = []
   for k in 1..values.Len(code)
     line = cell.From + k - 1
-    c = sliderCall(code[k], alias)
-    if values.IsMissing(c) and text.Contains(head, code[k])
-      c = {Fault: "cells.Slider takes numbers written in the file, not expressions.", Column: text.Find(head, code[k])}
+    h = headIn(code[k], alias)
+    c = if values.IsMissing(h) missing else inputCall(flat[k], alias) end
+    if values.IsMissing(c) and values.IsSome(h)
+      c = {Fault: unwritten(h.Function), Column: h.Column, Function: h.Function}
     end
     if values.IsMissing(c)
       if text.Trim(code[k]) != ""
-        others = list.Append(fault(line, spaced(text.Chars(code[k]), 1), "A cell with a slider holds only sliders: move line $line to a cell below."), others)
+        others = list.Append({Line: line, Column: spaced(text.Chars(code[k]), 1)}, others)
       end
-    else if dict.Has("Fault", c)
-      errors = list.Append(fault(line, c.Column, c.Fault), errors)
     else
-      got = sliderArgs(c.Args)
-      if values.IsMissing(got)
-        errors = list.Append(fault(line, c.Args[1].Column, "cells.Slider takes numbers written in the file, not expressions."), errors)
+      functions = list.Append(c.Function, functions)
+      made = if dict.Has("Fault", c) {Error: c.Fault, Column: c.Column} else inputOf(c, line) end
+      twin = list.FindFirst(x -> x.Name == dict.GetOr("Name", "", c), out)
+      if dict.Has("Error", made)
+        errors = list.Append(fault(line, made.Column, made.Error), errors)
+      else if values.IsSome(twin)
+        what = if twin.Kind == "slider" and c.Function == "Slider" "a slider" else "an input" end
+        errors = list.Append(fault(line, 1, "\"$(c.Name)\" is $what of this cell already."), errors)
       else
-        number = p -> if dict.Has(p, got) text.Number(got[p].Text) else missing end
-        at = number("value")
-        problem = sliderFault(at, number("min"), number("max"), number("step"))
-        if values.IsSome(problem)
-          errors = list.Append(fault(line, got["value"].Column, problem), errors)
-        else if list.Any([s.Name == c.Name for s in out])
-          errors = list.Append(fault(line, 1, "\"$(c.Name)\" is a slider of this cell already."), errors)
-        else
-          (* A slider of Floats is Floats, as Slider gives: its Value may be written 3, and its Min an Int far from a Float Max. *)
-          float = x -> if whole(at, number("min"), number("max"), number("step")) x else 1.0 * x end
-          out = list.Append({Name: c.Name, Line: line, Column: got["value"].Column, End: got["value"].End, Value: float(at),
-            Min: float(number("min")), Max: float(number("max")), Step: float(stepOf(at, number("min"), number("max"), number("step")))}, out)
-        end
+        out = list.Append(made.Input, out)
+        sliders = if values.IsSome(made.Slider) list.Append(made.Slider, sliders) else sliders end
       end
     end
   end
-  (* A cell that names a slider only in a comment or a text has none. *)
-  if values.Len(out) == 0 and values.Len(errors) == 0 none else {Sliders: out, Errors: list.Concat(errors, others)} end
+  (* A cell that names an input only in a comment or a text has none. *)
+  if values.Len(functions) == 0
+    return none
+  end
+  rule = if list.All([f == "Slider" for f in functions]) "A cell with a slider holds only sliders" else "A cell with an input holds only inputs" end
+  {Inputs: out, Sliders: sliders, Errors: list.Concat(errors, [fault(o.Line, o.Column, "$rule: move line $(o.Line) to a cell below.") for o in others])}
 end
 
 defn sliderNamed(analysis, name)
@@ -595,6 +927,35 @@ defn sliderNamed(analysis, name)
     end
   end
   missing
+end
+
+defn inputNamed(analysis, name)
+  (** The input of a name in an analysis and its cell, {Input, Cell}, or missing. *)
+  for i in 1..values.Len(analysis)
+    for s in dict.GetOr("Inputs", [], analysis[i])
+      if s.Name == name
+        return {Input: s, Cell: i}
+      end
+    end
+  end
+  missing
+end
+
+defn valueFault(input, x)
+  (** What is wrong with a value for an input of Analyse other than a slider, as Analyse would say of it, or missing. *)
+  kind = kindOf(input)
+  name = dict.GetOr("Name", "", input)
+  if kind == "choice"
+    choiceFault(x, input.Options)
+  else if kind == "check"
+    checkFault(x, missing)
+  else if kind == "date"
+    if isDate(x) and values.IsSome(dayOf(x.Year, x.Month, x.Day)) missing else "The date $name takes a date of std/date, a day of the years 0 to 9999, not $(literalOf(x))." end
+  else if values.IsText(input.Value)
+    if values.IsText(x) missing else "The field $name takes a text, not $(literalOf(x))." end
+  else
+    if finite(x) missing else "The field $name takes a finite number, not $(literalOf(x))." end
+  end
 end
 
 (* ---- A session: a Cesia process that runs the cells of one file, beside the program that asks. *)
@@ -783,32 +1144,44 @@ defn Scene(session, key, width, frame = 1, view = missing)
 end
 
 defn Set(session, analysis, name, value)
-  (** Gives the slider of a name in an analysis a value, snapped to its step as Snap does, in the session, in place: the
-      name keeps its place, so that a function of another cell that reads it sees the new value at once, and never a name
-      without a value. An Ok of {Value, ToRun}: Value the number set, ToRun the cells that read the name, directly or
-      through other cells, in file order, without the cell of the slider, which holds nothing else. An Err for a name that
-      is no slider of the analysis, a value that is no finite number or is out of the slider's min and max, a session that
-      has no value for the name yet (its cell runs first: ToRun(analysis, cell) gives the cells), or a session that has
-      ended. An editor writes the slider's number in the file first, Snap(slider, value).Text, so that the file says what
-      the session holds. *)
+  (** Gives the input of a name in an analysis a value, in the session, in place: the name keeps its place, so that a
+      function of another cell that reads it sees the new value at once, and never a name without a value. A slider takes
+      a finite number, snapped to its step as Snap does, within its min and its max; a choice one of its options; a check
+      box true or false; a field a text, or a finite number when the file writes a number there; a date a date of
+      std/date, of which it keeps the day. An Ok of {Value, ToRun, Text}: Value what is set, as cesia run reads it from
+      Text, the value as the file writes it, Snap(input, value).Text, and ToRun the cells that read the name, directly
+      or through other cells, in file order, without the cell of the input, which holds nothing else. An Err for a name
+      that is no input of the analysis, a value the input doesn't take, a session that has no value for the name yet (its
+      cell runs first: ToRun(analysis, cell) gives the cells), or a session that has ended. An editor writes Text in the
+      file first, in place of the old value, so that the file says what the session holds. *)
   found = sliderNamed(analysis, name)
-  if values.IsMissing(found)
-    return result.Err({Kind: "cells", Message: "\"$name\" is no slider of the cells."})
+  if values.IsSome(found)
+    s = found.Slider
+    if not finite(value)
+      return result.Err({Kind: "cells", Message: "A slider takes a finite number, not $value."})
+    end
+    if value < s.Min or value > s.Max
+      return result.Err({Kind: "cells", Message: "$value is out of the slider $name, from $(s.Min) to $(s.Max)."})
+    end
+    at = Snap(s, value)
+    ask(session, {Do: "set", Name: name, Text: at.Text})?
+  else
+    found = inputNamed(analysis, name)
+    if values.IsMissing(found)
+      return result.Err({Kind: "cells", Message: "\"$name\" is no input of the cells."})
+    end
+    wrong = valueFault(found.Input, value)
+    if values.IsSome(wrong)
+      return result.Err({Kind: "cells", Message: wrong})
+    end
+    at = Snap(found.Input, value)
+    ask(session, {Do: "set", Name: name, Kind: found.Input.Kind, Text: at.Text})?
   end
-  s = found.Slider
-  if not finite(value)
-    return result.Err({Kind: "cells", Message: "A slider takes a finite number, not $value."})
-  end
-  if value < s.Min or value > s.Max
-    return result.Err({Kind: "cells", Message: "$value is out of the slider $name, from $(s.Min) to $(s.Max)."})
-  end
-  at = Snap(s, value)
-  ask(session, {Do: "set", Name: name, Text: at.Text})?
   got = answered(session)?
   if dict.Has("Error", got)
     return result.Err({Kind: "cells", Message: got.Error})
   end
-  result.Ok({Value: at.Value, ToRun: readers(analysis, found.Cell, [name])})
+  result.Ok({Value: at.Value, ToRun: readers(analysis, found.Cell, [name]), Text: at.Text})
 end
 
 defn Stop(session)
@@ -935,6 +1308,9 @@ th { color: var(--muted); font-weight: 600; }
 .anim .f { animation-play-state: paused; } .anim .play:checked ~ svg .f { animation-play-state: running; }
 .slider { margin: 0 0 8px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace; font-size: 14px; }
 .slider input { vertical-align: middle; width: 240px; max-width: 50%; } .slider .value { color: var(--muted); }
+.input { margin: 0 0 8px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace; font-size: 14px; }
+.input input, .input select { font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--ink); border-radius: 0; padding: 1px 6px; opacity: 1; }
+.input input[type=text] { width: 240px; max-width: 60%; } .input input[type=checkbox] { accent-color: var(--ink); vertical-align: middle; }
 .k { color: var(--k); } .n { color: var(--n); } .s { color: var(--s); } .m { color: var(--m); }
 .c { color: var(--c); font-style: italic; } .f { color: var(--f); }
 "
@@ -966,8 +1342,27 @@ defn printedHtml(ran, i)
   out
 end
 
-defn cellHtml(cell, i, errors, ran, sliders)
-  (** Cell i of the page: its title, its code, then its errors, or its sliders, what it printed and its value. *)
+defn inputHtml(x)
+  (** An input of a cell in the page, other than a slider, as it stands in the file: its name and its value in a box that
+      doesn't change, a list of its one value for a choice, a check box and its label, or its name, for a check, a text
+      box for a field and a date box for a date; the page has no session, and nothing there runs again what reads it. Each text is escaped,
+      and the ends of line of a field's text too, so that the box stays on its line of HTML. *)
+  name = escape(x.Name)
+  box = if x.Kind == "choice"
+    "<select disabled><option selected>$(escape("$(x.Value)"))</option></select>"
+  else if x.Kind == "check"
+    label = if values.IsText(dict.GetOr("Label", missing, x)) escape(x.Label) else name end
+    return text.Str("<p class=\"input\"><label><input type=\"checkbox\"", if x.Value " checked" else "" end, " disabled> ", label, "</label></p>\n")
+  else if x.Kind == "date"
+    "<input type=\"date\" value=\"$(date.FormatDate(x.Value))\" disabled>"
+  else
+    "<input type=\"text\" value=\"$(text.Replace("\r", "&#13;", text.Replace("\n", "&#10;", escape("$(x.Value)"))))\" disabled>"
+  end
+  text.Str("<p class=\"input\"><label>", name, " ", box, "</label></p>\n")
+end
+
+defn cellHtml(cell, i, errors, ran, inputs)
+  (** Cell i of the page: its title, its code, then its errors, or its inputs, what it printed and its value. *)
   title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
   body = text.Join("\n", list.DropWhile(l -> values.IsSome(marker(l)), text.Lines(cell.Source)))
   code = if text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
@@ -975,7 +1370,7 @@ defn cellHtml(cell, i, errors, ran, sliders)
   if values.Len(errors) > 0
     out = list.Append("<pre class=\"error\">$(escape(text.Join("\n", ["line $(e.Line): $(e.Message)" for e in errors])))</pre>\n", out)
   else if values.IsSome(ran)
-    out = list.Concat(out, [sliderHtml(x) for x in sliders])
+    out = list.Concat(out, [if kindOf(x) == "slider" sliderHtml(x) else inputHtml(x) end for x in inputs])
     out = list.Concat(out, printedHtml(ran, i))
     out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value, "$i") end, out)
   end
@@ -1001,7 +1396,7 @@ defn Html(path, allow = [])
       end
       ran = r.Value
     end
-    parts = list.Append(cellHtml(cells[i], i, errors, ran, analysis[i].Sliders), parts)
+    parts = list.Append(cellHtml(cells[i], i, errors, ran, analysis[i].Inputs), parts)
   end
   close(session)
   name = list.Last(text.Split("/", path))
@@ -1274,18 +1669,52 @@ defn slice(name, first, last)
 end
 
 defn setTo(c)
-  (** The answer to a set: the name given the number of its text in place, where it is, when it holds a number already. *)
+  (** The answer to a set: the name given the value of its text in place, where it is, when it holds a value of that kind
+      already: a number for a slider, as the text of its number; for another input, its Kind, the value as the file writes
+      it, which is read as a value and never run. *)
   if not values.IsText(dict.GetOr("Name", missing, c)) or not values.IsText(dict.GetOr("Text", missing, c))
     return {Kind: "set", Error: "A set takes the name of a slider and the text of its number."}
   end
-  x = text.Number(c.Text)
-  if not finite(x)
-    return {Kind: "set", Error: "A slider takes a finite number, not $(c.Text)."}
+  kind = dict.GetOr("Kind", "slider", c)
+  if kind == "slider"
+    x = text.Number(c.Text)
+    if not finite(x)
+      return {Kind: "set", Error: "A slider takes a finite number, not $(c.Text)."}
+    end
+    if result.IsErr(setValue(c.Name, x))
+      return {Kind: "set", Error: "\"$(c.Name)\" holds no number in the session yet: its cell runs first."}
+    end
+    return {Kind: "set"}
+  end
+  x = written(kind, c.Text)
+  if values.IsMissing(x)
+    return {Kind: "set", Error: "A set of a $kind takes its value as the file writes it, not $(literalOf(c.Text))."}
   end
   if result.IsErr(setValue(c.Name, x))
-    return {Kind: "set", Error: "\"$(c.Name)\" holds no number in the session yet: its cell runs first."}
+    what = if values.IsText(x) "text" else if values.IsBool(x) "true or false" else if isDate(x) "date" else "number" end
+    return {Kind: "set", Error: "\"$(c.Name)\" holds no $what in the session yet: its cell runs first."}
   end
   {Kind: "set"}
+end
+
+defn written(kind, t)
+  (** The value of an input of a kind, "choice", "check", "field" or "date", from its text as the file writes it, read as
+      Analyse reads it and never run, or missing for a text that is no such value. *)
+  cs = text.Chars(t)
+  v = valueAt(cs, 1, lists = false)
+  if values.IsMissing(v) or v.Next != values.Len(cs) + 1
+    return missing
+  end
+  x = v.Value
+  if kind == "check"
+    if values.IsBool(x) x else missing end
+  else if kind == "date"
+    dayIn(x)
+  else if (kind == "choice" or kind == "field") and plain(x)
+    x
+  else
+    missing
+  end
 end
 
 defn command(line)

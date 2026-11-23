@@ -80,6 +80,21 @@
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.
   Out of a session, as under `cesia run`, Show only gives its value.
+- The inputs of a form in a cell, written as a slider is: `cells.Choice(value, options)`, a value among options, texts
+  or finite numbers, at most 1,000; `cells.Check(value, label = missing)`, `true` or `false`; `cells.Field(value)`, a
+  text or a number as written; `cells.Date("2026-11-23")`, the date of std/date of a day written `YYYY-MM-DD`. Each gives
+  its value under `cesia run` and panics on one it doesn't take, and `cells.Analyse` says the same of the file in the same
+  words, with the errors of the cell: a value written as an expression, `$name` or `$(...)` in a text, two inputs of
+  one name, code beside them. Analyse gives each cell its new Inputs, the sliders among them, each with its Name, Kind,
+  Line, the Column and End of its value, Value, and Min, Max and Step, Options or Label; Sliders stays as it was.
+- `cells.Snap` gives the value of any input as the file writes it, a text in quotes with `\`, `"`, ends of line, tabs
+  and carriage returns escaped and `$` written `$$`, so that it reads back as the same text and never as code; for a
+  choice the option `steps` further, for a date the day `steps` days further. `cells.Set` gives any input its new value
+  in the session in place, checked as Analyse checks it, and gives Text, that value as the file writes it, besides Value
+  and ToRun, for a slider too; its Err for a name that is no input says `is no input of the cells`. The session reads the
+  value of a set from its text, never runs it, and gives it only to a name that holds a value of the same kind.
+- The page of `cells.Html` shows each input as the file writes it, in a box that doesn't change: a list of its one value,
+  a check box, a text box or a date box, its texts escaped.
 
 ### Tools
 
@@ -97,6 +112,8 @@
 
 ### Fixes
 
+- `cells.Analyse` gives the error of rule 5 for a slider written with no argument, `x = cells.Slider()`, where it
+  panicked, so an editor that analysed such a file stopped.
 - `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
   compiler, its version or its flags, where it reused a library whose `.cpp` text matched: an edited header went
   unseen, and a library that someone else put in the build folder beside that `.cpp` was loaded. The fingerprint of each

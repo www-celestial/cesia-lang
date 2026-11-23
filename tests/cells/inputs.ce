@@ -1,0 +1,67 @@
+(* The inputs of std/cells from the side of a program that runs cells: Analyse gives each input of the form, Set gives
+   each kind its value in the session in place, with the text the file writes, and the cells it gives run again with it;
+   a text that holds quotes, \, $(...), an end of line or <script> is set as that text, never run; Set refuses a value an
+   input doesn't take; and the page shows each input as the file writes it, its texts escaped. *)
+use std/cells
+use std/io
+use std/date
+use std/result
+use std/sys
+use std/text
+
+defn shown(r)
+  (** A run without its time. *)
+  match r
+    result.Ok(x) -> "Ok: output $(x.Output), value $(x.Value), error $(x.Error)"
+    result.Err(e) -> "Err: $(e.Message)"
+  end
+end
+
+defn rerun(s, cs, r)
+  (** Prints what Set gave, then runs the cells it gives. *)
+  if result.IsErr(r)
+    io.Print("Err: $(r.Error.Message)")
+    return missing
+  end
+  io.Print("Ok: text $(r.Value.Text), value $(r.Value.Value), to run $(r.Value.ToRun)")
+  for i in r.Value.ToRun
+    io.Print(shown(cells.Run(s, cs[i])))
+  end
+end
+
+defn Main()
+  (** The steps, each printed. *)
+  cs = cells.Parse(sys.Read("form.ce")?)
+  a = cells.Analyse(cs)
+  for x in a[2].Inputs
+    io.Print(x)
+  end
+  io.Print("sliders: $(a[2].Sliders)")
+  s = cells.Session("form.ce")?
+  io.Print("before its cell: $(cells.Set(s, a, "zone", "GMT-4"))")
+  for i in 1..4
+    io.Print(shown(cells.Run(s, cs[i])))
+  end
+  rerun(s, cs, cells.Set(s, a, "zone", "GMT-4"))
+  rerun(s, cs, cells.Set(s, a, "year", 2027))
+  rerun(s, cs, cells.Set(s, a, "bold", true))
+  rerun(s, cs, cells.Set(s, a, "high", 62.5))
+  rerun(s, cs, cells.Set(s, a, "day", date.Date(2024, 2, 29, 13, 5)))
+  rerun(s, cs, cells.Set(s, a, "rho", 31.6))
+  rerun(s, cs, cells.Set(s, a, "place", "say \"hi\" \\ $$(io.Print(\"ran\")) $$zone\n<script>alert(1)</script>"))
+  for bad in [["zone", "GMT+9"], ["year", "2026"], ["bold", 1], ["place", 3], ["high", "50"], ["high", 1.0 / 0.0], ["day", "2026-11-23"], ["day", date.Date(2026, 2, 30)], ["nope", 1]]
+    rerun(s, cs, cells.Set(s, a, bad[1], bad[2]))
+  end
+  page = cells.Html("form.ce")?
+  for line in text.Lines(page)
+    if text.Contains("class=\"input\"", line) or text.Contains("class=\"slider\"", line)
+      io.Print(line)
+    end
+  end
+  result.Ok(missing)
+end
+
+r = Main()
+if result.IsErr(r)
+  io.Print(r)
+end

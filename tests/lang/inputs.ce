@@ -1,0 +1,210 @@
+(** The tests of the inputs of std/cells without a session: the lines Analyse reads as choices, check boxes, fields and
+    dates, beside sliders, and the columns of their values; the checks of their values, which give the same text as the
+    panic of their function; the expressions, the names given twice and the code beside them that a cell of inputs
+    refuses; Snap for each kind; the text of a value as the file writes it, which reads back as the same value whatever it
+    holds, quotes, \, $(...), ends of line or <script>, and never as code; and an edit, the text of a new value written
+    over the columns of the old one: nothing else in the file moves, and the file reads back the new value. *)
+use std/cells
+use std/cesia
+use std/date
+use std/dict
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/result
+use std/test
+use std/text
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+analysed(source) = cells.Analyse(cells.Parse(source))
+errors(source, k) = [e.Message for e in analysed(source)[k].Errors]
+head = "use std/cells\n(* %% Place and day *)\n"
+input(line) = analysed("$(head)$(line)")[2].Inputs[1]
+(** A value as the file writes it, through Snap on a field of its kind. *)
+lit(x) = cells.Snap({Kind: "field", Value: if value.IsText(x) "" else 0 end}, x).Text
+
+(* The lines of each input. *)
+isChoice() = value.Equal(input("zone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])"),
+  {Name: "zone", Kind: "choice", Line: 3, Column: 21, End: 27, Value: "GMT-5", Options: ["GMT-6", "GMT-5", "GMT-4"]})
+defn isChoiceOfNumbers()
+  x = input("year = cells.Choice(2026, [2025, 2026, 2027])")
+  value.Equal([x.Value, x.Column, x.End], [2026, 21, 24]) and value.IsInt(x.Value)
+end
+isCheck() = value.Equal(input("bold = cells.Check(false, label = \"Bold line\")"), {Name: "bold", Kind: "check", Line: 3, Column: 20, End: 24, Value: false, Label: "Bold line"})
+isCheckWithoutLabel() = value.IsMissing(input("bold = cells.Check(true)").Label) and input("bold = cells.Check(true)").Value
+isFieldOfText() = value.Equal(input("place = cells.Field(\"40.76, -73.984\")"), {Name: "place", Kind: "field", Line: 3, Column: 21, End: 36, Value: "40.76, -73.984"})
+isFieldOfNumber() = value.IsInt(input("high = cells.Field(50)").Value) and value.IsFloat(input("high = cells.Field(-1.5e3)").Value) and input("high = cells.Field(-1.5e3)").Value == -1500.0
+isDate() = value.Equal(input("day = cells.Date(\"2026-11-23\")") then [it.Kind, it.Column, it.End, it.Value], ["date", 18, 29, date.Date(2026, 11, 23)])
+isNamedArguments() = input("x = cells.Choice(options = [1, 2], value = 2)").Value == 2 and input("x = cells.Check(label = \"L\", value = true)").Label == "L"
+isEscapes() = input("x = cells.Field(\"a\\\"b\\\\c\\nd\\te\\rf$$$$g\")").Value == "a\"b\\c\nd\te\rf$$g"
+isOtherBackslash() = input("x = cells.Field(\"a\\qb\")").Value == "a\\qb"
+isTrailingComment() = input("x = cells.Field(\"(* in *)\")   (* a, \"b\" ) *)").Value == "(* in *)"
+defn isSpans()
+  (** The columns of each value hold the value as the line writes it. *)
+  lines = ["zone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\"])", "bold  =  cells.Check( true )", "f = cells.Field( \"a, b\" )", "d = cells.Date(\"2026-01-31\")", "n = cells.Field(-2.5e-3)"]
+  value.Equal([text.Slice(input(l).Column, input(l).End, l) for l in lines], ["\"GMT-5\"", "true", "\"a, b\"", "\"2026-01-31\"", "-2.5e-3"])
+end
+defn isMixedCell()
+  (** A cell of every kind: Inputs in the order of the lines, Sliders the sliders alone, as they always were. *)
+  a = analysed("$(head)year = cells.Choice(2026, [2025, 2026])\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold = cells.Check(false)\nday = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"x\")")[2]
+  value.Equal([x.Kind for x in a.Inputs], ["choice", "slider", "check", "date", "field"]) and value.Equal(a.Sliders, [{Name: "rho", Line: 4, Column: 20, End: 23, Value: 28.0, Min: 0.0, Max: 50.0, Step: 0.5}]) and
+    value.Equal(a.Inputs[2], {Name: "rho", Kind: "slider", Line: 4, Column: 20, End: 23, Value: 28.0, Min: 0.0, Max: 50.0, Step: 0.5}) and value.Len(a.Errors) == 0
+end
+isAlias() = value.Equal([x.Name for x in analysed("use std/cells as nb\n(* %% P *)\na = nb.Field(1)\nb = cells.Field(1)")[2].Inputs], ["a"])
+isNamedInComments() = value.Equal(analysed("use std/cells\nuse std/io\n(* %% A *)\n(* x = cells.Field(1) *)\nio.Print(\"cells.Check(true)\")")[2] then [it.Inputs, it.Errors], [[], []])
+isNoInputNoCost() = value.Equal(analysed("use std/io\n(* %% A *)\nx = 1")[2].Inputs, [])
+
+(* The values: an error of Analyse has the text of the panic of the function. *)
+defn same(f, line)
+  (** Do the error of the line and the panic of its function say the same? *)
+  e = errors("$(head)$(line)", 2)
+  value.Len(e) == 1 and message(f) == result.Err(e[1])
+end
+isNotAmong() = same(() -> cells.Choice(3, [1, 2]), "x = cells.Choice(3, [1, 2])")
+isTextNotAmong() = same(() -> cells.Choice("a", ["b", "c"]), "x = cells.Choice(\"a\", [\"b\", \"c\"])")
+isOptionsNoList() = same(() -> cells.Choice(1, 1), "x = cells.Choice(1, 1)")
+isOptionsOfBools() = same(() -> cells.Choice(true, [true, false]), "x = cells.Choice(true, [true, false])")
+isTooManyOptions() = same(() -> cells.Choice(1, [k for k in 1..1001]), "x = cells.Choice(1, [$(text.Join(", ", ["$k" for k in 1..1001]))])")
+isThousandOptions() = value.Len(input("x = cells.Choice(1, [$(text.Join(", ", ["$k" for k in 1..1000]))])").Options) == 1000
+isNoDay() = same(() -> cells.Date("2026-02-30"), "x = cells.Date(\"2026-02-30\")")
+isNoDayForm() = same(() -> cells.Date("2026-1-1"), "x = cells.Date(\"2026-1-1\")")
+isNotLeap() = same(() -> cells.Date("2023-02-29"), "x = cells.Date(\"2023-02-29\")") and input("x = cells.Date(\"2024-02-29\")").Value == date.Date(2024, 2, 29)
+isDateOfNumber() = same(() -> cells.Date(5), "x = cells.Date(5)")
+isCheckOfNumber() = same(() -> cells.Check(1), "x = cells.Check(1)")
+isLabelOfNumber() = same(() -> cells.Check(true, label = 3), "x = cells.Check(true, label = 3)")
+isFieldOfBool() = same(() -> cells.Field(true), "x = cells.Field(true)")
+isFieldInfinite() = same(() -> cells.Field(1e400), "x = cells.Field(1e400)")
+isMessages() = value.Equal([message(f) for f in [() -> cells.Choice(3, [1, 2]), () -> cells.Date("2026-02-30"), () -> cells.Check(1), () -> cells.Field([1])]],
+  [result.Err("cells.Choice needs its value among its options: 3 is not."), result.Err("cells.Date takes a day written YYYY-MM-DD, as \"2026-11-23\": \"2026-02-30\" is none."),
+   result.Err("cells.Check takes true or false as its value, not 1."), result.Err("cells.Field takes a text or a finite number, not [1].")])
+isFunctions() = cells.Choice("b", ["a", "b"]) == "b" and cells.Check(true) and cells.Field("x") == "x" and cells.Field(2.5) == 2.5 and cells.Date("2026-11-23") == date.Date(2026, 11, 23)
+
+(* Values written in the file, not expressions: an editor rewrites them, and nothing in them runs. *)
+unwritten(f) = "cells.$f takes values written in the file, not expressions."
+has(line, m) = list.Any([e == m for e in errors("$(head)$(line)", 2)])
+isExpression() = has("x = cells.Field(\"a\" + \"b\")", unwritten("Field")) and has("x = cells.Choice(1, options)", unwritten("Choice")) and has("x = cells.Date(today)", unwritten("Date")) and
+  has("x = cells.Check(not true)", unwritten("Check"))
+isInterpolation() = has("x = cells.Field(\"$$(f())\")", unwritten("Field")) and has("x = cells.Field(\"$$name\")", unwritten("Field")) and has("x = cells.Choice(\"a\", [\"$$(b)\"])", unwritten("Choice"))
+isDollarWritten() = input("x = cells.Field(\"$$$$(a) $$$$b $$9\")").Value == "$$(a) $$b $$9"
+isInside() = has("x = 2 * cells.Field(1)", unwritten("Field")) and has("x = cells.Field(1) + 1", unwritten("Field")) and has("x = cells.Field()", unwritten("Field"))
+isDoubledQuote() = has("x = cells.Field(\"a\"\")", unwritten("Field"))
+isUnknownArgument() = has("x = cells.Field(1, size = 2)", unwritten("Field")) and has("x = cells.Check(true, \"L\", 3)", unwritten("Check"))
+isNestedList() = has("x = cells.Choice(1, [[1]])", unwritten("Choice"))
+isSliderTakesNumbers() = has("x = cells.Slider(\"1\", 0, 2)", "cells.Slider takes numbers written in the file, not expressions.") and has("x = cells.Slider()", "cells.Slider takes numbers written in the file, not expressions.")
+
+(* R4 and the names. *)
+isTwice() = value.Equal(errors("$(head)x = cells.Field(1)\nx = cells.Check(true)", 2), ["\"x\" is an input of this cell already."])
+isBeside() = value.Equal(errors("$(head)x = cells.Field(1)\ny = x + 1", 2), ["A cell with an input holds only inputs: move line 4 to a cell below."])
+isBesideMixed() = value.Equal(errors("$(head)a = cells.Slider(1, 0, 2)\nx = cells.Date(\"2026-01-01\")\ny = 2", 2), ["A cell with an input holds only inputs: move line 5 to a cell below."])
+isSlidersSayTheirs() = value.Equal(errors("$(head)a = cells.Slider(1, 0, 2)\ny = 2", 2), ["A cell with a slider holds only sliders: move line 4 to a cell below."])
+isFirstCell() = value.Equal(errors("use std/cells\nx = cells.Field(1)", 1), ["Inputs go in a cell below the uses, as (* %% Parameters *) starts one."])
+isOtherCells() = list.Any([text.Contains("defined by", m) for m in errors("$(head)x = cells.Field(1)\n(* %% B *)\nx = 2", 2)])
+
+(* Snap for each kind. *)
+choice = {Kind: "choice", Value: "b", Options: ["a", "b", "c"]}
+isSnapChoice() = value.Equal([cells.Snap(choice, "b", steps = k).Value for k in [-5, -1, 0, 1, 5]], ["a", "a", "b", "c", "c"]) and cells.Snap(choice, "z").Value == "b" and
+  cells.Snap(choice, "c").Text == "\"c\""
+isSnapChoiceOfNumbers() = cells.Snap({Kind: "choice", Value: 2026, Options: [2025, 2026, 2027]}, 2027).Text == "2027"
+day = {Kind: "date", Value: date.Date(2026, 11, 23)}
+isSnapDate() = cells.Snap(day, date.Date(2026, 11, 23), steps = 10).Text == "\"2026-12-03\"" and cells.Snap(day, date.Date(2026, 11, 23, 15, 30)).Value == date.Date(2026, 11, 23)
+isSnapDateBounds() = cells.Snap(day, date.Date(9999, 12, 30), steps = 5).Text == "\"9999-12-31\"" and cells.Snap(day, date.Date(0, 1, 2), steps = -5).Text == "\"0000-01-01\""
+isSnapCheck() = cells.Snap({Kind: "check", Value: false}, true) == {Value: true, Text: "true"}
+isSnapField() = cells.Snap({Kind: "field", Value: 1}, 2.5) == {Value: 2.5, Text: "2.5"} and cells.Snap({Kind: "field", Value: "a"}, "b") == {Value: "b", Text: "\"b\""}
+defn isSnapWrongKind()
+  wrong = [message(() -> cells.Snap(x[1], x[2])) for x in [[{Kind: "field", Name: "high", Value: 1}, "a"], [{Kind: "field", Name: "place", Value: "a"}, 1], [{Kind: "check", Value: true}, 1],
+    [{Kind: "date", Name: "day", Value: date.Date(2026, 1, 1)}, "2026-01-01"]]]
+  value.Equal(wrong, [result.Err("The field high takes a finite number, not \"a\"."), result.Err("The field place takes a text, not 1."), result.Err("cells.Check takes true or false as its value, not 1."),
+    result.Err("The date day takes a date of std/date, a day of the years 0 to 9999, not \"2026-01-01\".")])
+end
+isSnapSliderAsBefore() = cells.Snap({Kind: "slider", Value: 0.0, Min: 0.0, Max: 1.0, Step: 0.1}, 0.31).Text == "0.3"
+
+(* The text of a value as the file writes it. *)
+isHostileText() = lit("say \"hi\" \\ $$(rm -rf) $$x\n<script>alert(1)</script>\t\r") == "\"say \\\"hi\\\" \\\\ $$$$(rm -rf) $$$$x\\n<script>alert(1)</script>\\t\\r\""
+pieces = ["\"", "\\", "$$", "$$(", "$$x", "(", ")", "\n", "\r", "\t", "<script>", "</script>", "(*", "*)", "%%", "a", "é", "日", " ", "n", "t", "{", "&", "'", ",", "]"]
+texts = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(pieces), max = 16))
+defn readBack(t)
+  (** Does the text of t, written in a field, read back as t, on one line, read no name, and stay the only value of its
+      cell? *)
+  line = "x = cells.Field($(lit(t)))   (* after *)"
+  a = analysed("$(head)$(line)")[2]
+  reads = cesia.Reads(line)
+  not text.Contains("\n", lit(t)) and not text.Contains("\r", lit(t)) and value.Len(a.Errors) == 0 and a.Inputs[1].Value == t and result.IsOk(reads) and
+    value.Equal([r.Name for r in reads.Value], ["cells"])
+end
+isTextsReadBack() = test.ForAll(readBack, texts, cases = 100)
+
+(* An edit: random cells of inputs, one of them given a new value written over the columns of its old one. Nothing else
+   moves: not another line, not the start or the end of its line; and the file reads back the new value, the other inputs
+   and the other cells as they were. *)
+kinds = ["slider", "choice", "check", "field", "date"]
+tails = ["", "   (* a note *)", " (* \"quoted\", $$(x) ) *)"]
+first = date.Date(2026, 1, 1)
+defn call(kind, v, w)
+  (** The call of an input of a kind, its value made of a text v and a number w. *)
+  match kind
+    "slider" -> "cells.Slider($(w / 2.0), 0.0, 100.0, step = 0.5)"
+    "choice" -> "cells.Choice($(lit(v)), [$(lit("$v-")), $(lit(v)), $(lit("$v+"))])"
+    "check" -> "cells.Check($(math.Mod(w, 2) == 0), label = $(lit(v)))"
+    "field" -> if math.Mod(w, 2) == 0 "cells.Field($(lit(v)))" else "cells.Field($(w * 1.5))" end
+    else -> "cells.Date($(lit(date.FormatDate(date.AddDays(w, first)))))"
+  end
+end
+defn newValue(x, v, w)
+  (** A new value for an input of Analyse, from a text v and a number w. *)
+  match x.Kind
+    "slider" -> w / 2.0
+    "choice" -> x.Options[math.Mod(w, 3) + 1]
+    "check" -> math.Mod(w, 2) == 0
+    "field" -> if value.IsText(x.Value) v else w * 0.25 end
+    else -> date.AddDays(w, first)
+  end
+end
+files = gen.Of({Others: gen.List(gen.Pick(kinds), max = 4), Texts: gen.List(texts, min = 6, max = 6), Numbers: gen.List(gen.Int(0, 200), min = 6, max = 6),
+  Tails: gen.List(gen.Pick(tails), min = 5, max = 5), At: gen.Int(1, 5), Spaces: gen.Int(0, 3)})
+defn edited(kind, f)
+  (** Does an edit of an input of a kind, among others, move only its value? *)
+  ks = list.Take(value.Len(f.Others) + 1, list.Concat(list.Take(f.At - 1, f.Others), list.Concat([kind], list.Skip(f.At - 1, f.Others))))
+  at = list.Min(f.At, value.Len(ks))
+  lines = ["v$k$(text.Repeat(f.Spaces, " ")) = $(call(ks[k], f.Texts[k], f.Numbers[k]))$(f.Tails[k])" for k in 1..value.Len(ks)]
+  source = "use std/cells\nuse std/io\n(* %% Before *)\nk = 1\n(* %% Inputs *)\n(* the inputs *)\n$(text.Join("\n", lines))\n\n(* %% After *)\nio.Print([$(text.Join(", ", ["v$k" for k in 1..value.Len(ks)]))])"
+  a = analysed(source)
+  x = a[3].Inputs[at]
+  if x.Kind != ks[at] or value.Len(a[3].Errors) > 0
+    return false
+  end
+  snapped = cells.Snap(x, newValue(x, f.Texts[6], f.Numbers[6]))
+  old = text.Lines(source)
+  line = old[x.Line]
+  made = text.Str(text.Slice(1, x.Column - 1, line), snapped.Text, text.Slice(x.End + 1, value.Len(line), line))
+  now = [if n == x.Line made else old[n] end for n in 1..value.Len(old)]
+  b = analysed(text.Join("\n", now))
+  y = b[3].Inputs[at]
+  others = [k for k in 1..value.Len(ks) if k != at]
+  text.Slice(1, x.Column - 1, made) == text.Slice(1, x.Column - 1, line) and text.Slice(x.Column + value.Len(snapped.Text), value.Len(made), made) == text.Slice(x.End + 1, value.Len(line), line) and
+    value.Len(now) == value.Len(old) and value.Len(b[3].Errors) == 0 and value.Equal(y.Value, snapped.Value) and y.Name == x.Name and y.Column == x.Column and
+    y.End == x.Column + value.Len(snapped.Text) - 1 and value.Equal([b[3].Inputs[k] for k in others], [a[3].Inputs[k] for k in others]) and
+    value.Equal([[c.Defines, c.Reads] for c in b], [[c.Defines, c.Reads] for c in a])
+end
+isEditSlider() = test.ForAll(f -> edited("slider", f), files, cases = 20)
+isEditChoice() = test.ForAll(f -> edited("choice", f), files, cases = 20)
+isEditCheck() = test.ForAll(f -> edited("check", f), files, cases = 20)
+isEditField() = test.ForAll(f -> edited("field", f), files, cases = 20)
+isEditDate() = test.ForAll(f -> edited("date", f), files, cases = 20)
+
+(* Lines of input pieces at random: Analyse reads untrusted text, never panics, and each input it finds stands where it
+   says. *)
+bits = ["x", " ", "=", "==", "cells", ".", "Choice", "Check", "Field", "Date", "Slider", "(", ")", "[", "]", ",", "\"", "\\", "$$", "$$(", "true", "false", "label",
+  "value", "options", "1", "-", "2026-11-23", "e", "(*", "*)", "é", "\t", "\n"]
+randomLines = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(bits), max = 40))
+defn sane(line)
+  (** Does Analyse read a cell of inputs holding the line, each input it finds with its value written at its columns? *)
+  source = "$(head)a = cells.Field(\"x\")\n$(line)\nb = cells.Check(true)"
+  all = text.Lines(source)
+  a = cells.Analyse(cells.Parse(source))
+  list.All([x.Column <= x.End and x.End <= value.Len(all[x.Line]) and written(text.Slice(x.Column, x.End, all[x.Line]), x.Value) for x in dict.GetOr("Inputs", [], a[2])])
+end
+(** Is a span of a line a value as written: a text in quotes, or the number, true or false of the value? *)
+written(t, x) = text.StartsWith("\"", t) or text.Number(t) == x or t == "$x"
+isRandomLines() = test.ForAll(sane, randomLines, cases = 100)

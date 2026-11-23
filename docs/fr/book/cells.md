@@ -284,8 +284,8 @@ cell qui lit l'un d'eux le trouverait sans valeur jusqu'à ce que sa cell ait to
 tient le nom, et la fonction lit le nouveau tout de suite. Le code machine d'une boucle qui le lit lit chaque nouveau
 nombre dans un slot, si bien qu'il garde son code : un pas du slider de `rho` dans le notebook de Lorenz, Set puis la cell
 de résolution relancée, prend 2,6 ms au lieu de 24, comme le dit
-[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur). Set donne la valeur et ToRun, les cells à relancer : celles
-qui lisent le nom, directement ou par d'autres cells, dans l'ordre du fichier. La cell du slider n'en fait jamais
+[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur). Set donne la valeur, son Text, le nombre tel que le fichier
+l'écrit, que Snap donne, et ToRun, les cells à relancer : celles qui lisent le nom, directement ou par d'autres cells, dans l'ordre du fichier. La cell du slider n'en fait jamais
 partie, puisqu'elle ne contient rien d'autre.
 
 ```cesia norun
@@ -315,7 +315,7 @@ pas, la résolution seule, contre **2,66 ms** (2,64 à 2,67) pour Set et la cell
 un premier, à l'intérieur de chaque programme, la médiane de 101 lancements alternés et l'intervalle à 95 % de cette
 médiane, sur la machine de [Vitesse](speed.md#à-côté-des-géants), le 2026-11-19.
 
-Set est un Err pour un nom qui n'est pas un slider de l'analyse, une valeur qui n'est pas un nombre fini ou qui sort du
+Set est un Err pour un nom qui n'est pas un input de l'analyse, une valeur qui n'est pas un nombre fini ou qui sort du
 min et du max du slider, et une session qui n'a pas encore de valeur pour le nom : la cell du slider tourne d'abord,
 comme [cells.ToRun] la donne.
 
@@ -323,11 +323,140 @@ La page de [cells.Html] montre chaque slider sous sa cell, avec sa valeur telle 
 qui ne bouge pas : la page n'a pas de script, et rien n'y pourrait relancer ce qui lit le slider.
 
 Un slider fait confiance à peu de chose. [cells.Analyse] lit le texte du fichier sans jamais faire de panic : les nombres
-qu'un slider ne pourrait pas compter ou écrire sont des erreurs du fichier, comme plus haut. La session n'accepte un set
-que pour un nom qui tient déjà un nombre, et ne lui donne qu'un nombre fini : jamais une fonction, dont les appels ont pu
+qu'un slider ne pourrait pas compter ou écrire sont des erreurs du fichier, comme plus haut. La session ne donne au nom d'un
+slider qu'un nombre fini, et seulement quand ce nom tient déjà un nombre : jamais une fonction, dont les appels ont pu
 être compilés avec ce nombre, ni un texte. [cells.Set] vérifie le nom, le nombre et l'intervalle avant de demander. Ce
 qu'un éditeur écrit dans le fichier, c'est à l'éditeur de le vérifier : voir
 [Cemacs](https://www-celestial.github.io/cemacs/cells.html).
+
+## Inputs
+
+Les autres *inputs* (les champs d'un formulaire) s'écrivent comme un slider : une liste où choisir, une case à cocher,
+un champ où taper, et un jour. Chacun est un simple appel de fonction qui donne sa valeur sous `cesia run`, et Cemacs le
+dessine sous sa ligne, dans des cases de la police du code, noir sur blanc :
+
+```cesia norun
+use std/cells
+
+(* %% Place and day *)
+year  = cells.Choice(2026, [2025, 2026, 2027])
+zone  = cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"])
+day   = cells.Date("2026-11-23")
+place = cells.Field("40.76, -73.984")
+high  = cells.Field(50)
+rho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+bold  = cells.Check(false, label = "Bold line")
+```
+
+```
+year   [ 2026        v ]
+zone   [ GMT-5       v ]
+day    [ 2026-11-23  v ]
+place  [ 40.76, -73.984           ]
+high   [ 50                       ]
+rho    ----------o--------  28.0
+[ ] Bold line
+```
+
+| Fonction | Donne sous `cesia run` | Dans Cemacs |
+|---|---|---|
+| [cells.Choice] `(value, options)` | value, l'une des options : des textes ou des nombres finis, au plus 1 000 | Entrée ou un clic ouvre la liste, les flèches s'y déplacent, Entrée choisit |
+| [cells.Check] `(value, label = missing)` | value, `true` ou `false` | Espace ou un clic écrit l'autre |
+| [cells.Field] `(value)` | value telle qu'écrite : un texte, un Int ou un Float | ce qui est tapé dans la case est donné à Entrée ; un champ de nombre ne prend qu'un nombre |
+| [cells.Date] `(value)` | la date de [std/date] d'un jour écrit `YYYY-MM-DD`, à minuit en UTC | les flèches changent l'année, le mois ou le jour sous le curseur, Entrée le donne |
+
+```cesia
+use std/cells
+cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"]) -->
+cells.Check(false, label = "Bold line") -->
+cells.Field("40.76, -73.984") -->
+cells.Field(50) -->
+cells.Date("2026-11-23") -->
+```
+
+Un formulaire est le même notebook qu'avant : quand un input change, sa nouvelle valeur est écrite dans le fichier, à la
+place de l'ancienne, et seules les cells qui lisent son nom sont relancées, tout de suite, comme après le mouvement d'un
+slider ; une cell lourde montre qu'elle tourne, et `C-g` l'arrête. Un champ attend Entrée : aucune cell ne tourne à
+chaque lettre tapée.
+
+Les règles 4 et 5 valent pour tout input, un slider aussi : une cell qui a un input ne contient que des inputs, un par
+ligne, et des commentaires, et un input prend des valeurs écrites dans le fichier, des nombres, des textes entre
+guillemets, `true` et `false`, et pour les options d'un choix une liste de ces valeurs. Un texte écrit avec `$name` ou
+`$(...)` dedans est du code, que `cesia run` calculerait : c'est l'erreur
+`cells.Field takes values written in the file, not expressions.`, comme `cells.Choice(1, options)` et
+`cells.Date(today)`. Sliders et autres inputs partagent une cell, comme plus haut.
+
+Chaque fonction vérifie sa valeur, et [cells.Analyse] dit la même chose du fichier, avec les mêmes mots : une valeur qui
+n'est pas parmi ses options, des options qui ne sont pas une liste de textes et de nombres finis, ou plus de 1 000 ; une
+case à cocher qui n'est ni `true` ni `false`, ou un label (son libellé) qui n'est pas un texte ; un champ qui n'est ni un
+texte ni un nombre fini ; un jour qui n'en est pas un, comme `"2026-02-30"`. Analyse refuse aussi deux inputs d'un même
+nom dans une cell, et du code à côté d'eux :
+
+```cesia
+use std/cells
+a = cells.Analyse(cells.Parse("use std/cells\n(* %% P *)\nday = cells.Date(\"2026-02-30\")\nnext = day"))
+[e.Message for e in a[2].Errors] -->
+```
+
+Analyse donne à chaque cell ses Inputs, les sliders parmi eux, chacun avec son Name, son Kind (sa sorte : `"slider"`,
+`"choice"`, `"check"`, `"field"` ou `"date"`), sa Line, la Column et l'End de sa valeur sur cette ligne, un texte avec ses
+guillemets, et sa Value telle que `cesia run` la lit ; un slider a son Min, son Max et son Step, un choix ses Options et
+une case à cocher son Label. Sliders reste ce qu'il était, les sliders seuls, si bien qu'un programme qui le lit lit la
+même chose.
+
+```cesia
+use std/cells
+a = cells.Analyse(cells.Parse("use std/cells\n(* %% P *)\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\"])"))
+a[2].Inputs[1] -->
+```
+
+[cells.Snap] donne la valeur de tout input telle que le fichier l'écrit, son Text, et telle que `cesia run` la relit, sa
+Value : l'option `steps` plus loin pour un choix, le jour `steps` jours plus loin pour une date, la valeur elle-même pour
+une case à cocher ou un champ. Un texte s'écrit entre guillemets, ses `\`, ses `"`, ses fins de ligne, tabulations et
+retours chariot écrits `\\`, `\"`, `\n`, `\t` et `\r`, et ses `$` écrits `$$`, si bien que, quoi qu'il contienne, le
+fichier le relit comme le même texte, sur une ligne, et jamais comme du code :
+
+```cesia
+use std/cells
+zone = {Kind: "choice", Value: "GMT-5", Options: ["GMT-6", "GMT-5", "GMT-4"]}
+cells.Snap(zone, "GMT-5", steps = 1).Text -->
+cells.Snap({Kind: "field", Value: ""}, "say \"hi\" $$(rm)\n").Text -->
+```
+
+[cells.Set] donne à tout input sa nouvelle valeur dans la session, en place, comme à un slider : à un choix l'une de ses
+options, à une case à cocher `true` ou `false`, à un champ un texte, ou un nombre fini quand le fichier y écrit un
+nombre, à une date une date de [std/date], dont il garde le jour. Il vérifie la valeur comme Analyse le ferait, et donne
+Value, Text et ToRun ; un éditeur écrit Text sur les colonnes de l'ancienne valeur, de Column à End, si bien que rien
+d'autre ne bouge dans le fichier.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("form.ce")?)
+  a = cells.Analyse(cs)
+  s = cells.Session("form.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  moved = cells.Set(s, a, "zone", "GMT-4")?
+  io.Print(moved.Text)   (* "GMT-4", with its quotes, as the file writes it *)
+  for i in moved.ToRun
+    cells.Run(s, cs[i])?
+  end
+  result.Ok(missing)
+end
+```
+
+Un input fait confiance à peu de chose. Analyse lit les valeurs du fichier comme le lecteur de Cesia lui-même, sans en
+exécuter aucune. La session lit la valeur d'un set dans son texte comme Analyse, jamais comme du code, et ne la donne à
+un nom que quand ce nom tient déjà une valeur de la même sorte, un texte pour un texte, `true` ou `false` pour une case à
+cocher, une date pour une date, un nombre pour un nombre : jamais une fonction, ni une autre sorte, que le code compilé
+avec ce nom pourrait ne pas attendre. La page de [cells.Html] montre chaque input sous sa cell tel que le fichier
+l'écrit, dans une case qui ne change pas, ses textes échappés : une page n'a pas de session, et rien n'y tourne.
 
 ## Une page à partager
 
