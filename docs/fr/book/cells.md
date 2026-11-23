@@ -174,9 +174,10 @@ Ce que montre une valeur :
 | un graphique de [std/plot] | `{Kind: "graph", Scene, Key}` : sa scène, [plot.Scene] à la largeur que Run donne, 640 pixels par défaut, et 400 de haut ; un graphique que std/plot ne sait pas dessiner est l'erreur de la cell, avec le message de std/plot |
 | une animation de [plot.Frames] | `{Kind: "graph", Scene, Key, Frames, Fps}` : la scène de sa première image, le nombre de ses images et leur rythme |
 | un graphique 3D de [plot.Surface] ou [plot.Line3] | `{Kind: "graph", Scene, Key, View}` : sa scène, et `View`, le `[az, el]` de son code |
-| un frame de [std/frame], une table de colonnes | `{Kind: "table", Columns, Rows, Count}` : ses 20 premières lignes, en textes, et son nombre de lignes |
-| un array (une suite de nombres rangés côte à côte) ou une matrice | `{Kind: "array", Shape, Rows}` : sa forme et ses 10 × 10 premières valeurs, en textes |
-| une struct d'au plus 20 champs, comme un `stats.Test` | `{Kind: "table", Columns, Rows, Count}` : une ligne par champ public, son nom et sa valeur en texte, `value.Text(v, 80)`, qui ne fait d'une longue liste que ses 80 caractères, de sorte qu'un modèle de $10^6$ lignes s'affiche tout de suite, et d'une matrice de plus de 1000 valeurs sa taille ; un `Ok` d'une struct montre la struct |
+| un frame de [std/frame], une table de colonnes | `{Kind: "table", Columns, Rows, Count, Key}` : ses 20 premières lignes, en textes, son nombre de lignes, et la Key par laquelle [cells.Rows] la relit, comme le montre [Tables](#tables) |
+| une liste de maps ou de structs, comme une liste d'enregistrements | `{Kind: "table", Columns, Rows, Count, Key}` : une ligne pour chacun, ses colonnes les clés du premier |
+| un array (une suite de nombres rangés côte à côte) ou une matrice | `{Kind: "array", Shape, Rows}` : sa forme et ses 10 × 10 premières valeurs, en textes ; une matrice a aussi une Key |
+| une struct d'au plus 20 champs, comme un `stats.Test` | `{Kind: "table", Columns, Rows, Count, Key}` : une ligne par champ public, son nom et sa valeur en texte, `value.Text(v, 80)`, qui ne fait d'une longue liste que ses 80 caractères, de sorte qu'un modèle de $10^6$ lignes s'affiche tout de suite, et d'une matrice de plus de 1000 valeurs sa taille ; un `Ok` d'une struct montre la struct |
 | tout le reste | `{Kind: "text", Text}` : son texte, tel que `io.Print` l'écrit, coupé à 20 000 caractères par `value.Text` |
 
 Avant que chaque cell tourne, [std/random] repart du seed (le nombre dont part le générateur) de la session et du titre
@@ -195,15 +196,99 @@ au moment de la montrer, pour qu'une animation ne traverse jamais le pipe (le tu
 et une image de la courbe de Lorenz, 5 000 points, revient en 10 ms environ ; il demande chaque vue quand un graphique 3D
 tourne, et une surface de 100 par 100 quads revient en environ 14 ms, les places de ses points à l'écran, ses quads dans
 l'ordre où les dessiner. La session lit ses réponses par morceaux et joint chaque ligne une seule fois, si bien qu'une
-longue réponse coûte sa longueur, pas son carré. [cells.Rows] donne les
-lignes d'un frame, d'une matrice ou d'une liste, de l'une à une autre, en textes, pour qu'un visualiseur lise une grande
-valeur un écran à la fois.
+longue réponse coûte sa longueur, pas son carré. [cells.Rows] donne les lignes d'une table, de l'une à une autre, en
+textes, triées et filtrées là-bas, pour qu'un visualiseur lise une grande valeur un écran à la fois : voir
+[Tables](#tables).
 
 [cells.Stop] arrête la cell qui tourne : sa fiber (un fil d'exécution léger de Cesia) est annulée à sa prochaine attente
 ou à son prochain checkpoint (un point où le programme s'arrête un instant pour vérifier ce qu'on lui demande), son Run
 donne l'erreur `Stopped.`, et la session et les noms définis avant restent. Une session qui ne répond pas dans les
 2 secondes, comme une cell à l'intérieur d'un long appel natif, est arrêtée et une nouvelle démarre : la session que
 donne Stop a alors Restarted à true, et les cells tournent de nouveau depuis le haut.
+
+## Tables
+
+Un frame, une liste de maps ou de structs, une matrice ou une struct se montre en *table* sous sa cell, et la session la
+garde : une table que donne [cells.Run] a une Key (une clé), comme un graphique en a une, et la session la garde avec les
+64 derniers graphiques et tables que ses lancements ont montrés. [cells.Rows] relit une table, par cette Key ou par le
+nom qui la tient, un écran à la fois : la valeur ne quitte jamais la session, si bien qu'un éditeur qui montre un frame
+de $10^6$ lignes en reçoit les 20 premières, puis une centaine de plus chaque fois qu'il défile au-delà.
+
+`cells.Rows(session, name, first, last, sort = missing, filter = missing, find = missing)` donne les lignes `first` à
+`last`, à partir de 1, dans un Ok d'une struct :
+
+| Champ | Contient |
+|---|---|
+| Columns | les noms des colonnes d'un frame, les clés du premier élément d'une liste de maps ou de structs, les numéros des colonnes d'une matrice, `"1"` pour une liste, ou `"field"` et `"value"` pour une struct |
+| Rows | chaque ligne demandée, un texte pour chaque colonne, tel que `value.Text(x, 200)` l'écrit |
+| Count | les lignes que la table montre : celles qui contiennent les mots du filtre, ou toutes |
+| Total | les lignes de la valeur |
+| Positions | la place de chaque ligne donnée dans la valeur, à partir de 1, quelle que soit sa place dans l'ordre |
+| Found | avec `find` : où se trouve dans l'ordre la ligne de cette position, à partir de 1, ou missing quand le filtre l'écarte |
+
+`sort = {Column: "elevation", Descending: true}` range les lignes selon une colonne de Columns (sort veut dire trier,
+Descending décroissant) : les nombres comme des nombres, puis les textes par leurs octets, puis les autres valeurs par
+leur texte ; NaN et missing à la fin, dans un sens comme dans l'autre, et les lignes de valeurs égales dans leur ordre,
+dans les deux sens. `filter = "jun 12"` garde les lignes qui contiennent chacun de ses mots, séparés par des espaces,
+dans une cellule ou une autre, dans n'importe quel ordre : le texte d'une cellule tel que la table le montre, où un mot
+est cherché tel quel, ses lettres ASCII en majuscules ou en minuscules. Un filtre n'est jamais lu comme un motif ni comme
+du code : `(.*` trouve les trois caractères `(.*`. Les deux se font dans la session, qui garde l'ordre de chaque table
+pour sa prochaine demande, si bien que les écrans après le premier ne coûtent que leurs lignes, et qu'un filtre tapé plus
+loin, `jun 12` après `jun 1`, ne relit que les lignes qui correspondaient avant.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("day.ce")?)
+  s = cells.Session("day.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  high = cells.Rows(s, "hours", 1, 3, sort = {Column: "elevation", Descending: true})?
+  io.Print(high.Rows, " at ", high.Positions)
+  noon = cells.Rows(s, "hours", 1, 20, filter = "12:")?
+  io.Print(noon.Count, " of ", noon.Total)
+  result.Ok(missing)
+end
+```
+
+Une demande donne au plus 1 000 lignes, moins pour une table de plus de 20 colonnes, au plus 20 000 cellules, et au plus
+256 colonnes ; le texte d'une cellule est coupé à 200 caractères. Un nom qui ne tient aucune table, un tri par une
+colonne que la table n'a pas, un tri qui n'est pas `{Column, Descending}` et un filtre qui n'est pas un texte sont chacun
+un Err. Le premier écran d'un frame de $10^6$ lignes et 3 colonnes arrive en 0,21 ms, et 100 de ses lignes, n'importe
+où, en 0,48 ms ; un tri de ses $10^6$ lignes par une colonne de floats prend 0,24 s dans la session, par une colonne
+d'entiers en décroissant 0,14 s et par une colonne de textes 0,40 s ; un filtre de deux mots sur ses 3 colonnes 1,8 s,
+et tapé plus loin 0,34 s (médianes de 21, sur la machine de [Vitesse](speed.md#à-côté-des-géants)).
+
+### Une ligne et son point
+
+Dans les résultats d'une même cell, une table de $n$ lignes et chaque layer (chaque couche) d'un graphique de $n$
+points, [plot.Line], [plot.Points] ou [plot.Text], sont *liés* par leur position : la ligne $i$ est le point $i$. C'est la
+règle, la seule : une table et un graphique d'autres longueurs ne sont pas liés, et rien n'est deviné d'une cell à
+l'autre.
+
+```cesia norun
+use std/cells
+use std/frame
+use std/plot
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
+```
+
+[cells.Scene] avec `mark = [i, n]` redessine un graphique avec le point $i$ de chaque layer de $n$ points entouré d'un
+cercle, à sa place exacte, même celui que M4 a laissé de côté dans une longue ligne, et la boîte de ses valeurs à côté,
+`x = 9  y = 18.14`, comme le fait [plot.Scene] avec le même `mark` ; la scène a alors Points, pour chacun de ces layers,
+les positions à partir de 1 des points qu'elle montre et leurs places en pixels, pour qu'un éditeur trouve la ligne du
+point sous la souris. Un tri ou un filtre garde la position de chaque ligne, Positions, si bien que le lien tient quel
+que soit l'ordre que la table montre. Cemacs dessine ainsi la table et le graphique : la ligne choisie marque son point,
+et un clic sur un point choisit sa ligne, comme le dit [Cemacs](https://www-celestial.github.io/cemacs/cells.html).
 
 ## Sliders
 
@@ -467,7 +552,11 @@ montre ce que `cesia run` calcule, pas l'état d'un éditeur. Une animation dém
 une case *Play* qui la joue et la met en pause, par le CSS seul, comme le dit
 [Graphiques](graphs.md#dans-une-page-web--des-images-en-css) : la case est une case à cocher, que Tab atteint et
 qu'Espace coche. Un graphique 3D se montre à la vue de son code, et son SVG a un `<title>`, comme `Surface, 61 × 61
-points, z from −0.301 to 0.584`, qu'un lecteur d'écran prononce.
+points, z from −0.301 to 0.584`, qu'un lecteur d'écran prononce. Une table a l'allure de celle de Cemacs : un cadre fin
+et le trait sous son en-tête à l'encre, des lignes plus claires entre ses rangées et ses colonnes, son en-tête en gras, un
+nombre à droite de sa cellule, sa virgule sous celles de sa colonne, un texte à gauche ; chaque texte d'une cellule est
+échappé (ses caractères spéciaux du HTML sont écrits comme du texte), si bien que `<script>` dans un frame s'affiche
+comme ces huit caractères.
 
 ```cesia norun
 use std/cells

@@ -81,7 +81,7 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | layers on shared axes |
 | [plot.Grid] `(graphs, columns)` | graphs side by side |
 | [plot.Frames] `(graphs, fps)` | graphs one after the other: an animation |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | the drawing |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark)` | the drawing |
 
 A color is written `"#rrggbb"`, the red, green and blue of a color in two hexadecimal digits each, as in CSS. A layer
 without a color is black, as [Colors](#colors) says: lines told apart by their dash, points by their shape, bars by
@@ -743,6 +743,21 @@ labels of the ticks, `"factor"` for the power of ten or the offset of an axis, `
 paper and its lines; in 3D, `"pane"` for the far sides of the box and `"axis"` for the edges that hold the labels. A
 polar graph has the same roles: its rays and rings are `"grid"`, its rim `"frame"`, the labels of its angles `"xlabel"`
 and those of its rings `"ylabel"`. The labels of `legend = "ends"` have the role `"legend"`.
+
+A *mark* points at one point of the data, as the row of a table points at its point: `mark = [i, n]` rings point $i$ of
+each layer of $n$ points, [plot.Line], [plot.Points] or [plot.Text], at its exact place, even where M4 left it out of a
+long line, and writes its values in a box beside the first, `x = 2  y = 4`, the items of the role `"mark"`. The scene
+then has `Points`, for each such layer, `{Layer, Kind, Label, At, Xs, Ys}`: its place among the layers, `"line"`,
+`"points"` or `"text"`, its label, the positions from 1 of its points on the screen, those that M4 keeps of a long line,
+at most 100,000, and their places in pixels, to a hundredth. A mark is for a 2D graph; a grid, an animation or a 3D graph
+has none. [cells.Scene] asks it of a session, as [Cells](cells.md#a-row-and-its-point) tells.
+
+```cesia
+path3 = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2, 3], [3, 4, 2])])
+marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
+[x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
+[[p.Kind, p.At] for p in marked.Points] -->
+```
 
 A back-end draws a mesh by its `Order`: the rows from the first when `rowStep` is 1, from the last when it is -1, and in
 each row the columns the same way; each quad is the path through its points $(i, j)$, $(i + 1, j)$, $(i + 1, j + 1)$ and

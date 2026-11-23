@@ -159,9 +159,10 @@ What a value shows:
 | a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, or the graph's own width when it is less, and as high as the shape of the graph's own size asks, 400 for 640 by default, square for a polar graph; a graph that std/plot can't draw is the cell's error, with std/plot's message |
 | an animation of [plot.Frames] | `{Kind: "graph", Scene, Key, Frames, Fps}`: the scene of its first frame, the number of its frames and their rate |
 | a 3D graph of [plot.Surface] or [plot.Line3] | `{Kind: "graph", Scene, Key, View}`: its scene, and `View`, the `[az, el]` of its code |
-| a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count}`: its first 20 rows, as texts, and its count |
-| an array or a matrix | `{Kind: "array", Shape, Rows}`: its shape and its first 10 × 10 values, as texts |
-| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count}`: a row for each public field, its name and its value as a text, `value.Text(v, 80)`, which makes no more of a long list than its 80 characters, so a model of $10^6$ rows shows at once, and a matrix of more than 1000 values as its size; an `Ok` of a struct shows the struct |
+| a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count, Key}`: its first 20 rows, as texts, its count, and the Key by which [cells.Rows] reads it again, as [Tables](#tables) shows |
+| a list of maps or structs, as a list of records | `{Kind: "table", Columns, Rows, Count, Key}`: a row for each, its columns the keys of the first |
+| an array or a matrix | `{Kind: "array", Shape, Rows}`: its shape and its first 10 × 10 values, as texts; a matrix has a Key too |
+| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count, Key}`: a row for each public field, its name and its value as a text, `value.Text(v, 80)`, which makes no more of a long list than its 80 characters, so a model of $10^6$ rows shows at once, and a matrix of more than 1000 values as its size; an `Ok` of a struct shows the struct |
 | anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it, cut at 20,000 characters by `value.Text` |
 
 Before each cell runs, [std/random] starts again from the seed of the session and the title of the cell, as `cesia
@@ -177,13 +178,93 @@ to another view, `view = [az, el]`: an editor asks for each frame as it shows it
 pipe whole, and a frame of the Lorenz curve, 5,000 points, comes back in about 10 ms; it asks for each view as a 3D graph
 turns, and a surface of 100 by 100 quads comes back in about 14 ms, the places of its points on the screen, its quads in
 the order to draw them. The session reads its answers by chunks and joins each line once, so a long answer costs its
-length, not its square. [cells.Rows] gives the rows from one to another of a frame, a matrix or a list, as texts, so that a
-viewer reads a large value one screen at a time.
+length, not its square. [cells.Rows] gives the rows from one to another of a table, as texts, sorted and filtered there,
+so that a viewer reads a large value one screen at a time: see [Tables](#tables).
 
 [cells.Stop] stops the cell that runs: its fiber is cancelled at its next wait or checkpoint, its Run gives the error
 `Stopped.`, and the session and the names defined before stay. A session that doesn't answer within 2 seconds, as a cell
 inside one long native call, is ended and a new one starts: the session that Stop gives then has Restarted true, and the
 cells run again from the top.
+
+## Tables
+
+A frame, a list of maps or structs, a matrix or a struct shows as a *table* under its cell, and the session keeps it: a
+table that [cells.Run] gives has a Key, as a graph has, and the session keeps it with the last 64 graphs and tables its
+runs showed. [cells.Rows] reads a table again, by that Key or by the name that holds it, a screen at a time: the value
+never leaves the session, so an editor that shows a frame of $10^6$ rows gets its first 20 rows, then a hundred more
+each time it scrolls past them.
+
+`cells.Rows(session, name, first, last, sort = missing, filter = missing, find = missing)` gives rows `first` to `last`,
+from 1, in an Ok of a struct:
+
+| Field | Holds |
+|---|---|
+| Columns | the names of a frame's columns, the keys of the first of a list of maps or structs, the numbers of a matrix's columns, `"1"` for a list, or `"field"` and `"value"` for a struct |
+| Rows | each row asked, a text for each column, as `value.Text(x, 200)` writes it |
+| Count | the rows the table shows: those that hold the words of the filter, or all of them |
+| Total | the rows of the value |
+| Positions | the place of each row given in the value, from 1, whatever its place in the order |
+| Found | with `find`: where the row of that position stands in the order, from 1, or missing when the filter leaves it out |
+
+`sort = {Column: "elevation", Descending: true}` orders the rows by a column of Columns: numbers as numbers, then texts
+by their bytes, then the other values by their text; NaN and missing last, whichever the way, and rows of equal values in
+their order, both ways. `filter = "jun 12"` keeps the rows that hold each of its words, apart at spaces, in one cell or
+another, in any order: the text of a cell as the table shows it, in which a word is found as it is, its ASCII letters in
+either case. A filter is never read as a pattern or as code: `(.*` finds the three characters `(.*`. Both happen in the
+session, which keeps the order of each table for its next ask, so that the screens after the first cost their rows
+alone, and a filter typed further, `jun 12` after `jun 1`, reads only the rows that matched before.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("day.ce")?)
+  s = cells.Session("day.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  high = cells.Rows(s, "hours", 1, 3, sort = {Column: "elevation", Descending: true})?
+  io.Print(high.Rows, " at ", high.Positions)
+  noon = cells.Rows(s, "hours", 1, 20, filter = "12:")?
+  io.Print(noon.Count, " of ", noon.Total)
+  result.Ok(missing)
+end
+```
+
+An ask gives at most 1,000 rows, fewer for a table of more than 20 columns, at most 20,000 cells, and at most 256 columns;
+a cell's text is cut at 200 characters. A name that holds no table, a sort by a column the table hasn't, a sort that
+isn't `{Column, Descending}` and a filter that isn't a text are each an Err. The first screen of a frame of $10^6$ rows
+and 3 columns comes in 0.21 ms, and any 100 rows of it in 0.48 ms; a sort of its $10^6$ rows by a column of floats takes
+0.24 s in the session, by a column of integers decreasing 0.14 s and by a column of texts 0.40 s; a filter of two words
+over its 3 columns, 1.8 s, and typed further, 0.34 s (medians of 21, on the machine of [Speed](speed.md#beside-the-giants)).
+
+### A row and its point
+
+Within the results of one cell, a table of $n$ rows and each layer of a graph with $n$ points, [plot.Line], [plot.Points]
+or [plot.Text], are *linked* by position: row $i$ is point $i$. That is the rule, the only one: a table and a graph of
+other lengths are not linked, and nothing is guessed across cells.
+
+```cesia norun
+use std/cells
+use std/frame
+use std/plot
+
+(* %% Day *)
+hours = frame.Of({hour: [7, 8, 9, 10, 11, 12], elevation: [0.48, 9.99, 18.14, 24.35, 28.02, 28.66]})
+cells.Show(hours)
+plot.Points(frame.Column("hour", hours), frame.Column("elevation", hours))
+```
+
+[cells.Scene] with `mark = [i, n]` draws a graph again with point $i$ of each layer of $n$ points ringed, at its exact
+place, even one that M4 left out of a long line, and the box of its values beside it, `x = 9  y = 18.14`, as
+[plot.Scene] does with the same `mark`; the scene then has Points, for each such layer, the positions from 1 of the
+points it shows and their places in pixels, so that an editor finds the row of the point under the mouse. A sort or a
+filter keeps the position of each row, Positions, so the link holds whatever order the table shows. Cemacs draws the
+table and the graph this way: the row chosen marks its point, and a click on a point chooses its row, as
+[Cemacs](https://www-celestial.github.io/cemacs/cells.html) tells.
 
 ## Sliders
 
@@ -432,7 +513,10 @@ code colored as the docs color it, what it printed, its value as a graph in SVG,
 file and no script, and shows what `cesia run` computes, not the state of an editor. An animation starts paused on its
 first frame, under a box *Play* that plays it and pauses it, by CSS alone, as [Graphs](graphs.md#in-a-web-page-frames-of-css)
 tells: the box is a check box, which Tab reaches and Space checks. A 3D graph shows at the view of its code, and its
-SVG has a `<title>`, as `Surface, 61 × 61 points, z from −0.301 to 0.584`, which a screen reader says.
+SVG has a `<title>`, as `Surface, 61 × 61 points, z from −0.301 to 0.584`, which a screen reader says. A table has the
+look of Cemacs's: a thin frame and the rule under its header in ink, lighter lines between its rows and its columns, its
+header bold, a number on the right of its cell, its decimal point under those of its column, a text on the left; every
+text of a cell is escaped, so `<script>` in a frame shows as those eight characters.
 
 ```cesia norun
 use std/cells

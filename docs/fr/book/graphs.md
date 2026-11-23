@@ -85,7 +85,7 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | des layers sur des axes communs |
 | [plot.Grid] `(graphs, columns)` | des graphiques côte à côte |
 | [plot.Frames] `(graphs, fps)` | des graphiques l'un après l'autre : une animation |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | le dessin |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark)` | le dessin |
 
 Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
 en CSS. Un layer sans couleur est noir, comme le dit [Couleurs](#couleurs) : les courbes se distinguent par leur trait,
@@ -785,6 +785,22 @@ boîte de l'option `note`, son papier et ses lignes ; en 3D, `"pane"` pour les f
 les arêtes qui portent les labels. Un graphique polaire a les mêmes rôles : ses rayons et ses cercles sont `"grid"`, son
 bord `"frame"`, les labels de ses angles `"xlabel"` et ceux de ses cercles `"ylabel"`. Les labels de `legend = "ends"`
 ont le rôle `"legend"`.
+
+Une *marque* (un mark) désigne un point des données, comme la ligne d'une table désigne son point : `mark = [i, n]`
+entoure d'un cercle le point $i$ de chaque layer de $n$ points, [plot.Line], [plot.Points] ou [plot.Text], à sa place
+exacte, même là où M4 l'a laissé de côté dans une longue ligne, et écrit ses valeurs dans une boîte à côté du premier,
+`x = 2  y = 4`, les éléments du rôle `"mark"`. La scène a alors `Points`, pour chacun de ces layers,
+`{Layer, Kind, Label, At, Xs, Ys}` : sa place parmi les layers, `"line"`, `"points"` ou `"text"`, son label, les
+positions à partir de 1 de ses points à l'écran, ceux que M4 garde d'une longue ligne, au plus 100 000, et leurs places en
+pixels, au centième. Une marque est pour un graphique 2D ; une grille, une animation ou un graphique 3D n'en a pas.
+[cells.Scene] la demande à une session, comme le dit [Cells](cells.md#une-ligne-et-son-point).
+
+```cesia
+path3 = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2, 3], [3, 4, 2])])
+marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
+[x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
+[[p.Kind, p.At] for p in marked.Points] -->
+```
 
 Un back-end dessine un mesh (un maillage) selon son `Order` : les lignes depuis la première quand `rowStep` vaut 1, depuis
 la dernière quand il vaut -1, et dans chaque ligne les colonnes de même ; chaque quad est le chemin par ses points

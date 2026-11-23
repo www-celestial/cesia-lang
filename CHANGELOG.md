@@ -95,6 +95,22 @@
   value of a set from its text, never runs it, and gives it only to a name that holds a value of the same kind.
 - The page of `cells.Html` shows each input as the file writes it, in a box that doesn't change: a list of its one value,
   a check box, a text box or a date box, its texts escaped.
+- `cells.Rows(session, name, first, last, sort = missing, filter = missing, find = missing)` sorts a table by a column,
+  `{Column, Descending}`, numbers as numbers, NaN and missing last both ways, equal rows in their order, and keeps the
+  rows that hold each word of a filter in any of their cells, ASCII letters in either case, never read as a pattern; both
+  in the session, which keeps the order for the next screen. Rows gives Total and Positions, the place of each row in the
+  value, and with `find` the place of a position in the order. An ask gives at most 1,000 rows, 20,000 cells and 256
+  columns. A sort of a million rows by a column of floats takes 0.24 s, 100 of them anywhere 0.48 ms.
+- A table that a run shows, a frame, a struct or a matrix, has a Key, as a graph has, and the session keeps it with the
+  last 64 graphs: `cells.Rows` reads it again by that key, so a value that only a cell's last expression holds scrolls
+  too. A list of maps or structs shows as a table, its columns the keys of the first, where it showed as a row of texts.
+- `plot.Scene(..., mark = [i, n])` and `cells.Scene(..., mark = [i, n])` ring point i of each line, points or texts of n
+  points at its exact place, even one that M4 left out, write its values in a box beside it, and give Points, the places
+  on the screen of those layers' points with their positions: the row of a table of n rows and its point on the graph of
+  the same cell, which Cemacs links.
+- The page of `cells.Html` draws a table as Cemacs does: a thin frame and the rule under its header in ink, lighter
+  lines between its rows and columns, its header bold, a number on the right with its decimal point under those of its
+  column, a text on the left, every text escaped.
 
 ### Tools
 
