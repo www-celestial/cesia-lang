@@ -1,0 +1,2 @@
+(* A package with nothing to run: this file reads, and twice.ce doesn't. *)
+half(x) = x / 2

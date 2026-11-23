@@ -1,4 +1,7 @@
 usebroken/a.test.ce: can't load: Expected an expression, found the end of the file.
 usebroken/b.test.ce: can't load: Expected an expression, found the end of the file.
-0 passed, 2 failed
+usebroken/lib/lib.ce:1:6: Expected an expression, found the end of the file.
+  1 | x = (
+    |      ^
+0 passed, 3 failed
 exit 1

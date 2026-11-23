@@ -307,6 +307,34 @@ let has_tests path src =
 
 let read path = In_channel.with_open_bin path In_channel.input_all
 
+(* A source with nothing to run is read all the same, as cesia run reads it, and nothing of it runs, its uses neither: one
+   that doesn't parse gives its error in the one form of Cesia. Each file is read once, though the units are chosen before
+   they run, in the same process when there is one. *)
+let syntax_errors = Hashtbl.create 16
+
+let syntax_error path src =
+  match Hashtbl.find_opt syntax_errors path with
+  | Some found -> found
+  | None ->
+    let nesting = Runtime.default_limits.nesting in
+    let found =
+      match Parser.program ~file:path ~nesting (Lexer.tokens ~file:path ~nesting src) with
+      | (_ : Ast.func) -> None
+      | exception Pos.Load_error { file; pos; text; hint; _ } ->
+        Some (Loader.format_error ~source:(Some src) ~path:file ~pos ~text ~hint ~trace:[])
+    in
+    Hashtbl.replace syntax_errors path found;
+    found
+
+(* A file with nothing to run fails the run when it doesn't parse. *)
+let unparsed st path src =
+  match syntax_error path src with
+  | None -> ()
+  | Some report ->
+    only_looked := true;
+    st.failed <- st.failed + 1;
+    print_string report
+
 let cant_load st path e =
   only_looked := true;
   st.failed <- st.failed + 1;
@@ -340,6 +368,7 @@ let run_file (ctx : ctx) st path =
     (* A file of std/ sees the natives of its package, small ones too, as when it loads. *)
     run_source ctx st ?natives:(Loader.std_natives w path) ~lookup:(Loader.lookup w) path src
   end
+  else unparsed st path src
 
 (* Which file of a package stopped, and on which line. *)
 let place w dir = function
@@ -374,6 +403,7 @@ let run_folder (ctx : ctx) st ~examples dir tests =
       in
       List.iter (fun path -> run_source ctx st ~host:first ~lookup path (read path)) tests
   end
+  else List.iter (fun p -> unparsed st p (read p)) code
 
 (* A folder is a package, as for use. In a tests folder and in std/ each file stands alone, and so does a file given by name,
    except a test, which needs its package. *)
@@ -405,8 +435,12 @@ let worker_unit path =
 let unit_paths path =
   List.filter_map
     (function
-      | `File p -> if has_tests p (read p) then Some p else None
-      | `Folder (dir, tests) -> if tests <> [] || List.exists (fun p -> has_tests p (read p)) (Package.files dir) then Some dir else None)
+      | `File p -> let src = read p in if has_tests p src || syntax_error p src <> None then Some p else None
+      | `Folder (dir, tests) ->
+        (* Read for its syntax only when none of its files has anything to run. *)
+        let code = if tests <> [] then [] else List.map (fun p -> p, read p) (Package.files dir) in
+        let any f = List.exists (fun (p, src) -> f p src) code in
+        if tests <> [] || any has_tests || any (fun p src -> syntax_error p src <> None) then Some dir else None)
     (units path)
 
 let run w (c : Testing.config) =

@@ -6,7 +6,7 @@ open Types
 val run : world -> Testing.config -> int
 
 (** What cesia test runs under a path, each in a worker of its own when there are several: the files that stand alone,
-    and the folders of packages, with something to run. *)
+    and the folders of packages, with something to run or a file that doesn't parse. *)
 val unit_paths : string -> string list
 
 (** Set by the binary: closes every socket and forgets every waiting fiber, at the end of each test. *)

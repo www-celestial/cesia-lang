@@ -50,7 +50,8 @@ cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LI
 ```
 
 Runs the examples of the documentation and the test functions of the project, or of a folder or a file, or one test function
-of a file. Ends with the code 1 when a test fails. See [Tests](tests.md).
+of a file. Ends with the code 1 when a test fails, or when a file doesn't parse, even one with nothing to run. See
+[Tests](tests.md).
 
 | Option | What it does |
 |---|---|

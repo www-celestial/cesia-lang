@@ -189,6 +189,8 @@
   lines of the head were joined with their `defn`, whose space was dropped as one before the `)`.
 - A value at the top of a file written `X=1` or `X  = 1`, with any spaces around its `=` or none, keeps its documentation
   in `cesia doc`, `cesia.Doc` and `cesia.Definitions`, as `X = 1` does: only one space on each side was read as a value.
+- `cesia test` of a file that doesn't parse, or of a folder that holds one, prints its error as `cesia run` does and ends
+  with the code 1, even when the file has nothing to run, which it only reads: it said `0 passed, 0 failed` with the code 0.
 
 ## 1.2.0
 

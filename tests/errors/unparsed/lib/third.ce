@@ -1,0 +1,3 @@
+(* Reads, and prints at its top: cesia test only reads a package with nothing to run, and runs none of it. *)
+use std/io
+io.Print("never printed")

@@ -1,0 +1,18 @@
+unparsed/alone.ce:2:13: Expected an expression, found the end of the file.
+  2 | total = (1 +
+    |             ^
+0 passed, 1 failed
+exit 1
+unparsed/lib/twice.ce:1:17: Expected an expression, found ).
+  1 | twice(x) = 2 * x)
+    |                 ^
+0 passed, 1 failed
+exit 1
+unparsed/alone.ce:2:13: Expected an expression, found the end of the file.
+  2 | total = (1 +
+    |             ^
+unparsed/lib/twice.ce:1:17: Expected an expression, found ).
+  1 | twice(x) = 2 * x)
+    |                 ^
+0 passed, 2 failed
+exit 1
