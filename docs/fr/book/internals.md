@@ -1112,6 +1112,14 @@ qui copiaient 175 000 mots d'arbres et de code dans le major heap, puis un cycle
 processus. Maintenant il ne fait aucune collection : ses 460 000 mots tiennent dans le minor heap, et le programme finit
 avant qu'il soit plein.
 
+Un package lu depuis son entrée du [cache des packages chargés](#le-cache-des-packages-chargés) rencontrait le même mur :
+les instructions d'un fichier, ses fonctions et ses autres arrays étaient chacun faits de leur premier élément, jeune, et
+un fichier de plus de 256 d'entre eux payait une minor collection pour chacun, chaque arbre lu jusque-là copié dehors,
+puis un cycle majeur. Depuis le 2026-11-23, un array aussi long est lu en morceaux de 256, jeunes, que `Array.concat`
+joint dans le major heap sans collection : les cells de Cemacs, passées au-delà de 256 fonctions, se chargent sans
+aucune, et sa première frame prend 31,5 ms au lieu de 33,0, les 31,2 qu'elle prenait avant elles, les médianes de 11
+lancements, alternés.
+
 La limite de mémoire, 80 % de la mémoire de la machine sauf si `--limit memory=` dit autre chose, est vérifiée aux
 checkpoints complets et avant chaque grande allocation. Quand le heap semble la dépasser, Cesia fait d'abord une
 collection complète, et n'arrête le programme que si la mémoire encore utilisée dépasse la limite : les déchets seuls ne

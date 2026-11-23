@@ -987,6 +987,13 @@ the whole minor heap, as OCaml does so that the major heap points to no young bl
 words of trees and code to the major heap, then a major cycle, 2.2 ms of its 6.9 in the process. Now it makes no
 collection at all: its 460,000 words fit in the minor heap, and the program ends before it is full.
 
+A package read from its entry in the [cache of loaded packages](#the-cache-of-loaded-packages) met the same wall: the
+statements of a file, its functions and its other arrays were each made of their first item, young, and a file of more
+than 256 of them paid a minor collection for each, every tree read so far copied out, then a major cycle. Since
+2026-11-23, an array that long is read in pieces of 256, young, which `Array.concat` joins in the major heap with no
+collection: the cells of Cemacs, past 256 functions, load with none, and its first frame takes 31.5 ms instead of 33.0,
+the 31.2 it took before them, the medians of 11 runs, alternated.
+
 The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints,
 before each large allocation, and at each megabyte of a text that values are written into, as by `value.Text`,
 `io.Print` or `json.Text`. When the heap seems past it, Cesia runs a full collection first, and stops the program only

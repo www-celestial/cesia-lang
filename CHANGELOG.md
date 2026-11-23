@@ -125,6 +125,10 @@
   an array made in place, as one with one or two always did, where a map made a closure and called into C at each call:
   20 ns less a call, `text.ByteFind` of a byte near in 125 ns instead of 145, `text.ByteSlice` of 5 bytes in 90 instead
   of 109 (medians of 21 runs, alternated).
+- A file of more than 256 statements or functions loads from the cache of loaded packages with no young collection:
+  each of its arrays that long was made of a young value, which OCaml moves out first by a collection that promoted all
+  that was read, three of them at each load and then a major cycle. Cemacs, whose cells passed 256 functions, reaches
+  its first frame in 31.5 ms instead of 33.0, as fast as before them (31.2), medians of 11 runs, alternated.
 
 ### Fixes
 
