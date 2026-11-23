@@ -104,6 +104,14 @@ defn isNoteCorners()
   ok(boxes[1], f.X + 6, f.Y + 6) and ok(boxes[2], f.X + f.W - 6 - boxes[2].W, f.Y + 6) and ok(boxes[3], f.X + 6, f.Y + f.H - 6 - boxes[3].H) and ok(boxes[4], f.X + f.W - 6 - boxes[4].W, f.Y + f.H - 6 - boxes[4].H) and value.Equal([x.Text for x in lines[2..3]], ["a", "bb"]) and lines[2].Color == "ink" and lines[2].X == boxes[1].X + 4
 end
 isNoteEscaped() = text.Contains("&lt;b&gt;&amp;&quot;", svg(plot.Of([plot.Line([1, 2], [1, 2])], note = "<b>&\"")))
+(* Every text of the program that reaches the SVG is escaped: titles, names of axes, labels of layers in the box and at the
+   ends, labels of ticks, rules, texts and notes; none comes out as markup. *)
+hostile = "<script>&\"x\"</script>"
+defn isEscapedEverywhere()
+  g = (legend) -> plot.Of([plot.Line([1, 2], [1, 2], label = hostile), plot.Rule(y = 1.5, label = hostile), plot.Text([1], [1], [hostile])], title = hostile, x = hostile, y = hostile, xticks = [1, 2], xlabels = [hostile, "b"], note = hostile, legend = legend)
+  all = [svg(g(true)), svg(g("ends")), svg(plot.Of([plot.Line([0, 90], [1, 2], label = hostile)], polar = true, xticks = [0], xlabels = [hostile], legend = "ends"))]
+  list.All([not text.Contains("<script>", x) and not text.Contains("\"x\"", x) and text.Contains("&lt;script&gt;&amp;&quot;x&quot;&lt;/script&gt;", x) for x in all])
+end
 isNote3d() = value.Len(role(scene(plot.Of([plot.Surface(wavy)], note = "z: a wave"), 640, 400), "info")) == 2
 
 (* legend = "ends": each label right of the last point of its line in the plot, apart from the others. *)
