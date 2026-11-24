@@ -1,0 +1,2 @@
+Slow by nature: 200,000 calls of a loop of two turns, then 20,000 of 32, in four runs; with a quarter of them, the hot
+mode never reaches level 2. tools/check.sh runs it, past the change loop.

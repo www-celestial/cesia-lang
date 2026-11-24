@@ -1,0 +1,3 @@
+Slow by nature: the JIT makes the machine code of std/ode's solver, all of it in the mode always: 0.09 s in the
+default mode and 0.22 s in always, as long for a solve of a quarter of the interval. tools/check.sh runs it, past the
+change loop.

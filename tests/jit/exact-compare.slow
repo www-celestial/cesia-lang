@@ -1,0 +1,2 @@
+Slow by nature: five loops of 100,000 turns in each of three modes; with 25,000, four of its seven units and five of its
+nine level 2 are never made. tools/check.sh runs it, past the change loop.

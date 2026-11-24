@@ -1,0 +1,2 @@
+Slow by nature: fifteen runs, five limits of steps placed up to 400,000 steps in, each in three modes, the mode always
+making all its code at each run. tools/check.sh runs it, past the change loop.
