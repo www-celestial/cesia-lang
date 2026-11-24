@@ -1,0 +1,21 @@
+entries: 4
+unlinked: the same graph
+unlinked: the entries after it: 0 as they were, 0 changed, 4 gone
+unlinked: the next run, the same graph
+unlinked: every entry as it was
+replaced: the same graph
+replaced: the entries after it: 0 as they were, 4 changed, 0 gone
+replaced: the next run, the same graph
+replaced: every entry as it was
+records: the same graph
+records: the entries after it: 4 as they were, 0 changed, 0 gone
+records: the next run, the same graph
+records: every entry as it was
+records with the JIT always: the same graph
+records with the JIT always: the next run, the same graph
+records with the JIT always: every entry as it was
+records --limit memory=2M: the same graph
+records --limit memory=2M: the entries after it: 4 as they were, 0 changed, 0 gone
+records --limit memory=2M: the next run, the same graph
+records --limit memory=2M: every entry as it was
+exit 0

@@ -82,8 +82,9 @@ expected=$(run)
 for i in 1 2 3 4; do [ "$(cat "$top/out$i")" = "$expected" ] || echo "run $i at once: another output"; done
 echo "four runs at once: $(entries "$top/race/cesia/load" | grep -c -v '\.tmp$') entries"
 same "after them"
-# An entry changed on the disk while a run that read it still runs, before it reads the bodies of its functions: it reads
-# them from the bytes it checked, and the next run reads the package from its sources and writes the entry as it was.
+# An entry changed in place on the disk while a run that read its head still runs, before it reads the bodies of its
+# functions: a record changed is found when it is read, and its function taken from the source that the load read; the
+# next run reads the package from its sources and writes the entry as it was.
 printf 'use src/shapes\nuse std/io\nuse std/sys\n\nio.Print("loaded")\n_ = sys.ReadInput(1)\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\n' > "$app/later.ce"
 export XDG_CACHE_HOME="$top/later"
 later() { (cd "$app" && cesia run $no_spec "$app/later.ce" 2>&1; echo "exit $?"); for i in $(seq 1 500); do pgrep -f -- "$app/later.ce" > /dev/null || return 0; sleep 0.01; done; }
