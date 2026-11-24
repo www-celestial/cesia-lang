@@ -152,6 +152,9 @@
   upgrade`, the tight stiff problems of `ode.Solve`, math on an array past its split among the cores and the random
   lines of sliders. Tests slow by accident start fewer processes, stop a cell 50 ms after it starts instead of 200, or
   run under a limit of 4 MB instead of 16.
+- For those who work on Cesia: the CI runs the slow tests too, on Linux, as `tools/check.sh` does before each commit,
+  where no CI ran them; and a branch `try/NAME` is built and tested as main is, on the three systems, publishing nothing,
+  so that a change of the release itself is seen working before it reaches main.
 
 ### Speed
 
@@ -177,6 +180,14 @@
   `io`, which stops its fiber alone, as any bug, where an error of OCaml ended the program with exit 1, every fiber with
   it, saying only `cesia: No such file or directory`. An absolute path needs no folder and is given as before; a grant of
   a relative folder, as `--allow read=.`, holds nothing then and the act is denied; `sys.Run("./x")` gives an Err.
+- On a Windows with neither Git nor MSYS2, the libraries of a release load: `crypto.Open` and `tls.Open` failed there,
+  as the libsodium of `lib/` needed a DLL of its compiler, `libgcc_s_seh-1.dll`, that no release holds, and `libssl`
+  looked for `libcrypto` beside `cesia.exe` and on the `PATH`, not beside itself in `lib/`. A library opened by its full
+  path loads those it needs from its own folder first, as on Linux and macOS. The release builds libsodium and OpenSSL
+  from their sources, as on macOS, with nothing of the compiler outside them; it checks that each DLL of `lib/` needs only
+  the others and those of Windows, and runs its check of SQLite, libsodium and OpenSSL with only the folders of Windows on
+  the `PATH`, where those of Git hid both faults. OpenSSL is 3.5.9 on macOS and Windows, the version of 3.5 its project
+  follows until 2030, where Windows had 3.6.4, no longer followed since November 1, 2026, and macOS 3.5.4.
 - A search for a part of 32 bytes or more, by `text.Find`, `Contains`, `Count`, `Split`, `Replace` or `ByteFind`,
   allocates nothing of the part's length and does nothing when the part can't fit in what is left of the text: the
   method of Knuth, Morris and Pratt built a table of 8 bytes a byte of the part outside `--limit memory`, and its work

@@ -10,8 +10,20 @@
 _Static_assert(sizeof(void *) == 8, "Cesia needs 64 bits.");
 
 #ifdef _WIN32
+#include <string.h>
 #include <windows.h>
-#define open_library(name) ((void *) LoadLibraryA(name))
+/* A full path loads the DLLs it needs from its own folder first, as $ORIGIN and @loader_path do elsewhere: libssl of lib/
+   finds the libcrypto beside it, not the one beside cesia.exe or on the PATH. Windows reads that path only with
+   backslashes, and its behaviour for a relative one is undefined: a bare name or a relative path is searched as usual. */
+static void *open_library(const char *name) {
+  char path[MAX_PATH];
+  size_t n = strlen(name);
+  int full = (n > 2 && name[1] == ':' && (name[2] == '/' || name[2] == '\\')) ||
+             (n > 1 && (name[0] == '/' || name[0] == '\\') && (name[1] == '/' || name[1] == '\\'));
+  if (!full || n >= sizeof path) return (void *) LoadLibraryA(name);
+  for (size_t i = 0; i <= n; i++) path[i] = name[i] == '/' ? '\\' : name[i];
+  return (void *) LoadLibraryExA(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+}
 #define find_symbol(lib, name) ((void *) GetProcAddress((HMODULE) (lib), name))
 #else
 #include <dlfcn.h>

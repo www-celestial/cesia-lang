@@ -7,7 +7,9 @@ name: release
 # fingerprint in a .blake2 file, and the notes of tools/notes.sh. cesia upgrade reads them.
 on:
   push:
-    branches: [main]
+    # A branch try/NAME builds and tests as main does, on every system, and publishes nothing: a change of this file or of
+    # tools/release-libs.sh is seen working before it reaches main.
+    branches: [main, "try/**"]
     tags: ["v*"]
     paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
@@ -48,15 +50,21 @@ jobs:
       - uses: ocaml/setup-ocaml@ff66428f72b64472e749b22e0ad4dded4b2ddca6 # v3
         with:
           ocaml-compiler: "5.5"
-      # OpenSSL publishes no binaries for Windows: MSYS2's, which need only the DLLs of Windows itself. The runners no longer
-      # hold MSYS2.
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
-        id: msys2
-        if: runner.os == 'Windows'
+      # The C libraries of the last build with the same tools/release-libs.sh: they are built again only when it changes.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: libraries
         with:
-          msystem: MINGW64
+          path: libraries
+          key: libraries-${{ matrix.system }}-${{ hashFiles('tools/release-libs.sh') }}
+      # On Windows they are built by the compiler of MSYS2 for UCRT64, whose C runtime comes with Windows 10 and later, as
+      # MSYS2 drops MINGW64. The binary keeps the C runtime of OCaml's toolchain: tls.ce gives OpenSSL only its own objects,
+      # never a FILE or memory to free, and libsodium takes none. The runners no longer hold MSYS2.
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        if: runner.os == 'Windows' && steps.libraries.outputs.cache-hit != 'true'
+        with:
+          msystem: UCRT64
           update: false
-          install: mingw-w64-x86_64-openssl
+          install: make perl python curl unzip mingw-w64-ucrt-x86_64-gcc
       - name: Tools on Linux
         if: runner.os == 'Linux'
         run: |
@@ -79,6 +87,12 @@ jobs:
         if: runner.os != 'Windows'
         timeout-minutes: 15
         run: opam exec -- tools/test.sh --no-spec 2>&1 | tee test-no-spec.log
+      # The tests slow by nature, on both paths, which tools/check.sh runs before each commit: on Linux only, about two
+      # minutes.
+      - name: Slow tests
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: opam exec -- tools/test.sh --slow 2>&1 | tee test-slow.log
       - name: The version of this build
         run: |
           file=src/lib/version.ml
@@ -95,14 +109,13 @@ jobs:
           mv "$file.new" "$file"
           grep '^let text' "$file"
       - run: opam exec -- dune build --profile release
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: libraries
-          key: libraries-${{ matrix.system }}-${{ hashFiles('tools/release-libs.sh') }}
       - name: The C libraries
-        env:
-          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: if [ ! -d libraries/lib ]; then bash -x tools/release-libs.sh ${{ matrix.system }} libraries 2>&1 | tee libs.log; fi
+        if: runner.os != 'Windows' && steps.libraries.outputs.cache-hit != 'true'
+        run: bash -x tools/release-libs.sh ${{ matrix.system }} libraries 2>&1 | tee libs.log
+      - name: The C libraries on Windows
+        if: runner.os == 'Windows' && steps.libraries.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash -x tools/release-libs.sh ${{ matrix.system }} libraries 2>&1 | tee libs.log
       - name: The archive
         run: |
           # Each command it runs, for the annotation of a failure.
@@ -140,7 +153,7 @@ jobs:
             out/bin/cesia.exe version
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia.exe run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
-            tools/release-sqlite.sh out/bin/cesia.exe
+            tools/release-check.sh out/bin/cesia.exe
             (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
@@ -153,13 +166,13 @@ jobs:
             want='^jit: loaded'
             [ "$RUNNER_ARCH" = ARM64 ] && want='^jit: off on arm64'
             grep -q "$want" jit.txt || { cat jit.txt; exit 1; }
-            tools/release-sqlite.sh out/bin/cesia
+            tools/release-check.sh out/bin/cesia
             tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
           fi
       # The logs need an account to be read; an annotation doesn't, for a public repository.
       - name: Report a failure
         if: failure()
-        run: tools/ci-error.sh test.log test-no-spec.log libs.log archive.log jit.txt
+        run: tools/ci-error.sh test.log test-no-spec.log test-slow.log libs.log archive.log jit.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cesia-${{ matrix.system }}

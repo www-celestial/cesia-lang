@@ -4,20 +4,20 @@
 # repository by the release job of the CI, which keeps FOLDER in its cache: a version changed here builds them again.
 #   linux-x86_64     OpenBLAS (BLAS and LAPACK, the kernels of every processor, no Fortran) and libsodium; OpenSSL stays
 #                    the system's, which gets its security fixes.
-#   macos-arm64      libsodium and OpenSSL 3; BLAS and LAPACK are macOS's own, Accelerate.
-#   windows-x86_64   OpenBLAS and libsodium as their projects publish them for Windows, and OpenSSL 3 as MSYS2 builds it.
+#   macos-arm64      libsodium and OpenSSL 3.5, its long-term version; BLAS and LAPACK are macOS's own, Accelerate.
+#   windows-x86_64   OpenBLAS as its project publishes it for Windows, libsodium and OpenSSL 3.5 as on macOS, built in the
+#                    shell of MSYS2 for UCRT64 (msys2 -c), whose make, perl, python and gcc it needs.
 # All three hold SQLite: built from its amalgamation, the DLL that sqlite.org publishes on Windows.
 # The names are those c.Open and the BLAS search ask for: see src/sys/c.ml and src/sys/linalg.ml.
 set -eu
 system=$1
 root=$PWD
 out=$(mkdir -p "$2" && cd "$2" && pwd)
-openblas=0.3.28 sodium=1.0.20 openssl=3.5.4
+openblas=0.3.28 sodium=1.0.20 openssl=3.5.9
 openblas_sha256=f1003466ad074e9b0c8d421a204121100b0751c96fc6fcf3d1456bd12f8a00a1
 openblas_win_sha256=4cbd0e5daa3fb083b18f5e5fa6eefe79e2f2c51a6d539f98a3c6309a21160042
 sodium_sha256=ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
-sodium_win_sha256=01fb81c10ae3d249bfe5890ce59544571469e16691994ab6702a531533c6d726
-openssl_sha256=967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
+openssl_sha256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 # SQLite: its release, and the SHA3-256 of its files that sqlite.org publishes.
 sqlite=3540100 sqlite_year=2026 sqlite_version=3.54.1
 sqlite_sha3=92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30
@@ -108,20 +108,25 @@ case "$system" in
     unzip -q openblas.zip -d openblas
     cp openblas/bin/libopenblas.dll "$lib/"
     cp openblas/LICENSE "$lib/licenses/OpenBLAS.txt" 2> /dev/null || true
-    get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium-mingw.tar.gz" sodium.tgz "$sodium_win_sha256"
-    tar -xzf sodium.tgz
-    cp libsodium-win64/bin/libsodium-26.dll "$lib/libsodium.dll"
-    # OpenSSL publishes no binaries: MSYS2's, which need only the DLLs of Windows itself. MSYS2_ROOT is where the release job
-    # installed it, apart from the /mingw64 of Git's own shell; else C:\msys64.
-    msys=$(cygpath -u "${MSYS2_ROOT:-C:\\msys64}")
-    if [ ! -f "$msys/mingw64/bin/libssl-3-x64.dll" ]; then
-      "$msys/usr/bin/pacman" --noconfirm -S --needed mingw-w64-x86_64-openssl > /dev/null
-    fi
-    cp "$msys/mingw64/bin/libssl-3-x64.dll" "$msys/mingw64/bin/libcrypto-3-x64.dll" "$lib/"
-    cp "$msys"/mingw64/share/licenses/openssl/LICENSE* "$lib/licenses/OpenSSL.txt" 2> /dev/null || true
+    # libsodium and OpenSSL built here as on macOS, by the compiler of MSYS2 for UCRT64, in whose shell release.yml runs
+    # this script on Windows; libgcc goes inside them, so that they need no DLL of that compiler on the user's machine.
+    export LDFLAGS=-static-libgcc
+    build_sodium
+    cp "$work/prefix/bin/libsodium-26.dll" "$lib/libsodium.dll"
+    build_openssl mingw64
+    cp "$work/prefix/bin/libssl-3-x64.dll" "$work/prefix/bin/libcrypto-3-x64.dll" "$lib/"
     get_sqlite "sqlite-dll-win-x64-$sqlite.zip" "$sqlite_dll_sha3"
     unzip -q "sqlite-dll-win-x64-$sqlite.zip" -d sqlite
     cp sqlite/sqlite3.dll "$lib/"
+    # Each DLL needs only the others of lib/ and those of Windows itself, never one that only the build machine holds: on a
+    # user's machine it would not load. Windows names its DLLs in any case of letters.
+    system32=$(cygpath -u "$SYSTEMROOT")/System32
+    for f in "$lib"/*.dll; do
+      for dll in $(objdump -p "$f" | awk '/DLL Name/ { print $3 }'); do
+        case "${dll,,}" in api-ms-win-* | ext-ms-win-*) continue ;; esac
+        ls "$lib" "$system32" 2> /dev/null | grep -qixF "$dll" || { echo "$(basename "$f") needs $dll, which Windows lacks." >&2; exit 1; }
+      done
+    done
     ;;
   *)
     echo "No libraries for $system." >&2
