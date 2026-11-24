@@ -135,7 +135,7 @@ let start ?(dir = "") ?(group = false) cmd argv child_in child_out child_err =
 (* A command named by its path is the one of this program's folder, which exec= names, whatever dir it runs in. *)
 let program cmd =
   let named = String.contains cmd '/' || (Sys.win32 && String.contains cmd '\\') in
-  if named && Filename.is_relative cmd then Filename.concat (Sys.getcwd ()) cmd else cmd
+  if named && Filename.is_relative cmd then Filename.concat (Unix.getcwd ()) cmd else cmd
 
 (* Why a command didn't start: the folder it was to run in, when there is none, else the command. *)
 let start_failed ctx cmd dir e =

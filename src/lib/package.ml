@@ -28,7 +28,7 @@ let files dir =
   else []
 
 let shown path =
-  let here = Sys.getcwd () ^ "/" in
+  let here = try Sys.getcwd () ^ "/" with Sys_error _ -> "" in
   if String.starts_with ~prefix:here path then
     String.sub path (String.length here) (String.length path - String.length here)
   else path

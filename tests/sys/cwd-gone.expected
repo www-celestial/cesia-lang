@@ -1,0 +1,11 @@
+io: path.Abs: the current folder is gone, removed while the program ran.
+/top/b.txt
+Err({Kind: "io", Message: "Can't run ./x: no such file or directory."})
+the program goes on
+exit 0
+DIR/read.ce:3:13: Permission "read" denied for a.txt.
+  3 | io.Print(sys.Exists("a.txt"))
+    |             ^
+  Run again with --allow read=a.txt, or a folder that holds it.
+exit 1
+exit 0

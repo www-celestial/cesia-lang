@@ -1,0 +1,15 @@
+(* A program whose current folder another process removed. path.Abs of a relative path is a bug of the kind io, which
+   stops its fiber alone; an absolute path needs no folder, and a command named from that folder is an Err. *)
+use std/io
+use std/fiber
+use std/path
+use std/result
+use std/sys
+
+match fiber.Wait(fiber.Spawn(() -> path.Abs("a.txt")))
+  result.Err(e) -> io.Print("$(e.Kind): $(e.Message)")
+  result.Ok(v) -> io.Print("Ok $v")
+end
+io.Print(path.Abs("/top/./b.txt"))
+io.Print(sys.Run("./x"))
+io.Print("the program goes on")

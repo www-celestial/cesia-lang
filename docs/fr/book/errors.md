@@ -213,10 +213,11 @@ Un bug arrête le programme avec l'exit code 1 (le nombre qu'un programme rend �
 fichier, la ligne et la colonne, la ligne elle-même avec une marque sous l'endroit, le message, et, sur une dernière
 ligne, quand il y en a une, ce qu'il faut écrire à la place ; puis les appels qui ont mené là, le plus intérieur
 d'abord. Le message vient d'une seule table des sources, `src/lib/messages.ml` : la même faute se lit donc toujours de
-la même façon. Un bug a un *kind*, une sorte : `syntax`, `name`, `type`, `index`, `field`, `math`, `permission`, ou
-`user` pour [bug.Panic] et [bug.Assert]. Dans une [fiber](fibers.md) (une fonction qui tourne à côté des autres dans le
-même programme), un bug n'arrête que cette fiber, et [fiber.Wait] donne un `Err` avec son `Kind`, son `Message`, son
-`File` et sa `Line`.
+la même façon. Un bug a un *kind*, une sorte : `syntax`, `name`, `type`, `index`, `field`, `math`, `permission`, `io`
+pour un lieu que le système ne peut plus donner, comme le dossier courant qu'un autre processus a supprimé, dont
+[path.Abs] a besoin pour un chemin relatif, ou `user` pour [bug.Panic] et [bug.Assert]. Dans une [fiber](fibers.md) (une
+fonction qui tourne à côté des autres dans le même programme), un bug n'arrête que cette fiber, et [fiber.Wait] donne un
+`Err` avec son `Kind`, son `Message`, son `File` et sa `Line`.
 
 ## La suite
 

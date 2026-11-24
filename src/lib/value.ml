@@ -23,6 +23,7 @@ let kind_name = function
   | Math -> "math"
   | Permission -> "permission"
   | User -> "user"
+  | Io -> "io"
 
 (* The first of 15, 16 and 17 significant digits that reads back identically, in a single spelling: 1.0, 1e20, 1.5e-7.
    Its own bytes, so that any domain can call it; [write] and json.ml use [scratch], on the main domain. *)

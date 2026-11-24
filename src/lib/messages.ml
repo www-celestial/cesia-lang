@@ -66,6 +66,9 @@ let binary verb a joiner b is_text =
 let overflow a op b = hinted (Printf.sprintf "The integer result of %s %s %s doesn't fit in 63 bits." a op b) fits
 let overflow_neg a = hinted (Printf.sprintf "The integer result of -(%s) doesn't fit in 63 bits." a) fits
 let div_zero name = plain (Printf.sprintf "%s: division by zero." name)
+let cwd_gone name =
+  hinted (Printf.sprintf "%s: the current folder is gone, removed while the program ran." name)
+    "Give a full path, or run the program from a folder that exists."
 let negate a = plain (Printf.sprintf "Can't take the opposite of %s." a)
 let compare_op a op b = plain (Printf.sprintf "Can't compare %s %s %s." a op b)
 let condition a = plain (Printf.sprintf "A condition must be true or false, not %s." a)

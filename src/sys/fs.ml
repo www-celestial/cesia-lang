@@ -37,7 +37,8 @@ let real_path path =
           (match Unix.readlink p with
            | target -> go (links + 1) (if Filename.is_relative target then Filename.concat (Filename.dirname p) target else target)
            | exception Unix.Unix_error _ -> go (links + 1) p)
-        | _ -> Some (slashes (Package.absolute p))
+        (* A relative path leads nowhere once the current folder is gone, though "." can still be looked at. *)
+        | _ -> (match Package.absolute p with a -> Some (slashes a) | exception Sys_error _ -> None)
         | exception Unix.Unix_error _ ->
           let parent = Filename.dirname p in
           if parent = p then Some (slashes p)

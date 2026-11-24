@@ -207,9 +207,10 @@ and stops the program in the same way.
 A bug stops the program with the exit code 1. It prints the file, the line and the column, the line itself with a mark
 under the place, the message, and on a last line, when there is one, what to write instead; then the calls that led
 there, the innermost first. The message comes from one table of the source, `src/lib/messages.ml`, so the same mistake
-always reads the same way. A bug has a *kind*: `syntax`, `name`, `type`, `index`, `field`, `math`, `permission`, or
-`user` for [bug.Panic] and [bug.Assert]. In a [fiber](fibers.md), a bug stops that fiber alone, and [fiber.Wait] gives an
-`Err` with its `Kind`, `Message`, `File` and `Line`.
+always reads the same way. A bug has a *kind*: `syntax`, `name`, `type`, `index`, `field`, `math`, `permission`, `io`
+for a place the system can no longer give, as the current folder once another process removed it, which [path.Abs]
+needs for a relative path, or `user` for [bug.Panic] and [bug.Assert]. In a [fiber](fibers.md), a bug stops that fiber
+alone, and [fiber.Wait] gives an `Err` with its `Kind`, `Message`, `File` and `Line`.
 
 ## Next
 

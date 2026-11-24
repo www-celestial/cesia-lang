@@ -47,7 +47,8 @@ defn Abs(p)
   (** The absolute path of p: p when it is absolute, else p in the current folder, with its . and .. parts taken away as
       text, a .. at the top staying there, and / between its parts, on Windows too. The disk is not read, so a symbolic
       link stays as it is written, as Go's filepath.Abs, Python's os.path.abspath and Node's path.resolve do. Needs the
-      read permission on p, as sys.Exists does: it tells where p is, and so the name of the current folder.
+      read permission on p, as sys.Exists does: it tells where p is, and so the name of the current folder. A relative
+      p, once another process removed the current folder, is a bug of the kind io: no one can tell where it leads.
 
         Abs("photos/./../a.jpg") == Abs("a.jpg") --> true
         IsAbsolute(Abs("photos")) --> true

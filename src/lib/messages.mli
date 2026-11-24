@@ -56,6 +56,9 @@ val binary : string -> string -> string -> string -> bool -> t
 val overflow : string -> string -> string -> t
 val overflow_neg : string -> t
 val div_zero : string -> t
+
+(** A relative path, where the current folder was removed by another process. *)
+val cwd_gone : string -> t
 val negate : string -> t
 val compare_op : string -> string -> string -> t
 val condition : string -> t

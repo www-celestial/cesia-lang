@@ -378,11 +378,14 @@ let rec whole (perm : perm) = function
 
 (* Does a folder hold a place that no link leads through? When the folder as written, made absolute, is above it, it
    does, unresolved: each folder of such a place is no link, so the folder leads there, and the check costs no system
-   call but the current folder. A folder written with .., which after a link is not what its text says, is resolved. *)
+   call but the current folder. A folder written with .., which after a link is not what its text says, is resolved. A
+   relative folder holds nothing once the current folder is gone: no one can tell where it leads. *)
 let holds scope place =
   ((not Sys.win32)
    && (not (List.mem ".." (String.split_on_char '/' scope)))
-   && inside (if Filename.is_relative scope then Filename.concat (Sys.getcwd ()) scope else scope) place)
+   && match if Filename.is_relative scope then Filename.concat (Sys.getcwd ()) scope else scope with
+      | absolute -> inside absolute place
+      | exception Sys_error _ -> false)
   || match !real_path scope with Some s -> inside s place | None -> false
 
 (* A folder of read= or write= holds a path when it holds where the path leads, both resolved: a link in it can't lead
