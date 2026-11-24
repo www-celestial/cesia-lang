@@ -1,9 +1,9 @@
 (** The tests of the functions of std/math, of - and of math.Abs on arrays of floats: each cell gets the bits it gets alone,
-    NaN, infinities and -0.0 included, past the size at which the loop splits among the cores too. *)
+    NaN, infinities and -0.0 included; tests/slow/array-math-large.ce checks it past the size at which the loop splits
+    among the cores. *)
 use std/columns
 use std/list
 use std/math
-use std/num
 use std/value
 
 cellwise(xs, f) = [f(x) for x in xs]
@@ -22,8 +22,3 @@ isAtan() = sameBits(math.Atan(xs), cellwise(xs, math.Atan))
 isAbs() = sameBits(math.Abs(xs), cellwise(xs, math.Abs)) and columns.Kind(math.Abs(xs)) == "float"
 isNeg() = sameBits(-xs, cellwise(xs, x -> -x)) and columns.Kind(-xs) == "float"
 isShape() = value.Equal(value.Size(math.Exp([0.0 1.0; 2.0 3.0])), [2, 2]) and value.Equal(value.Size(-[1.0 2.0; 3.0 4.0]), [2, 2])
-defn isLarge()
-  (** Past the size at which the loop splits among the cores. *)
-  ys = num.Uniform(300000) * 8.0 - 4.0
-  sameBits(math.Exp(ys), cellwise(ys, math.Exp)) and sameBits(-ys, cellwise(ys, y -> -y)) and sameBits(math.Abs(ys), cellwise(ys, math.Abs))
-end

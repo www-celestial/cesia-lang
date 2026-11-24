@@ -1,6 +1,7 @@
 (** The tests of ode.Solve with stiff = true: the two Rosenbrock tables against their order conditions, the solver
     against the table step by step, the other table as an oracle, closed forms, published stiff problems against
-    reference solutions, events, shapes, and every kind of bad input. *)
+    reference solutions, events, shapes, and every kind of bad input. HIRES, OREGO, the error falling with rtol and
+    events at tight tolerances are in tests/slow/ode-stiff-tight.ce. *)
 use std/fiber
 use std/list
 use std/math
@@ -267,14 +268,6 @@ end
    against its BDF at rtol 1e-12: they agree to 1e-10 relative. *)
 rober(t, y) = [-0.04 * y[1] + 1.0e4 * y[2] * y[3], 0.04 * y[1] - 1.0e4 * y[2] * y[3] - 3.0e7 * y[2] * y[2], 3.0e7 * y[2] * y[2]]
 
-defn hires(t, y)
-  [-1.71 * y[1] + 0.43 * y[2] + 8.32 * y[3] + 0.0007, 1.71 * y[1] - 8.75 * y[2], -10.03 * y[3] + 0.43 * y[4] + 0.035 * y[5],
-   8.32 * y[2] + 1.71 * y[3] - 1.12 * y[4], -1.745 * y[5] + 0.43 * y[6] + 0.43 * y[7],
-   -280.0 * y[6] * y[8] + 0.69 * y[4] + 1.71 * y[5] - 0.43 * y[6] + 0.69 * y[7], 280.0 * y[6] * y[8] - 1.81 * y[7],
-   -280.0 * y[6] * y[8] + 1.81 * y[7]]
-end
-
-orego(t, y) = [77.27 * (y[2] + y[1] * (1.0 - 8.375e-6 * y[1] - y[2])), (y[3] - (1.0 + y[1]) * y[2]) / 77.27, 0.161 * (y[1] - y[3])]
 vdp(t, y) = [y[2], 1000.0 * (1.0 - y[1] * y[1]) * y[2] - y[1]]
 relError(y, want) = list.Max(math.Abs(y - want) / math.Abs(want))
 
@@ -282,27 +275,6 @@ defn isRobertson()
   s = solved(ode.Solve(rober, [0.0, 1.0e11], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-8, atol = 1.0e-14))
   relError(s.At(40.0), [0.7158270687194043, 9.185534764557798e-6, 0.2841637457458305]) < 1.0e-6 and
     relError(lastRow(s), [2.083340149700481e-8, 8.333360770331573e-14, 0.9999999791665103]) < 1.0e-5
-end
-
-defn isHires()
-  s = solved(ode.Solve(hires, [0.0, 321.8122], [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0057], stiff = true, rtol = 1.0e-8, atol = 1.0e-12))
-  relError(lastRow(s), [0.000737131257332535, 0.00014424857263161222, 5.88872974096698e-5, 0.0011756513432830895,
-                        0.0023863561988303706, 0.006238968252739786, 0.002849998395185094, 0.002850001604814915]) < 1.0e-5
-end
-
-defn isOrego()
-  s = solved(ode.Solve(orego, [0.0, 360.0], [1.0, 2.0, 3.0], stiff = true, rtol = 1.0e-8, atol = 1.0e-8))
-  relError(lastRow(s), [1.000814870318523, 1228.1785215498974, 132.05549428465338]) < 1.0e-5
-end
-
-defn isProportional()
-  (** Tolerance proportionality on HIRES: the error at the end falls when rtol does, 1900 and 42 times for a hundredfold. *)
-  y0 = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0057]
-  want = [0.000737131257332535, 0.00014424857263161222, 5.88872974096698e-5, 0.0011756513432830895,
-          0.0023863561988303706, 0.006238968252739786, 0.002849998395185094, 0.002850001604814915]
-  errs = [relError(lastRow(solved(ode.Solve(hires, [0.0, 321.8122], y0, stiff = true, rtol = r, atol = r * 1.0e-4))), want) for r in [1.0e-5, 1.0e-7, 1.0e-9]]
-  errs[1] / errs[2] > 10.0 and errs[1] / errs[2] < 5000.0 and errs[2] / errs[3] > 10.0 and errs[2] / errs[3] < 5000.0 and
-    errs[3] < 1.0e-6
 end
 
 defn isVanDerPol()
@@ -357,16 +329,6 @@ defn isAtWalk()
   ts = list.Concat(ts, [0.025 * k for k in 0..200])
   ys = s.At(ts)
   value.Equal(value.Size(ys), [value.Len(ts), 2]) and list.All([value.Equal(ys[j, :], s.At(ts[j])) for j in 1..value.Len(ts)])
-end
-
-defn isEvents()
-  (** Events on the dense output of the Rosenbrock steps: y = exp(-t) at 1/2, a stop, and Robertson's y1 at 1/2. *)
-  half = ode.Event((t, y) -> y - 0.5, stop = true)
-  s = solved(ode.Solve((t, y) -> -y, [0.0, 5.0], 1.0, stiff = true, rtol = 1.0e-10, atol = 1.0e-12, events = [half]))
-  r = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-9, atol = 1.0e-14, events = [ode.Event((t, y) -> y[1] - 0.5, direction = "down")]))
-  fine = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-11, atol = 1.0e-16))
-  value.Len(s.Events) == 1 and math.Near(s.Events[1].T, math.Log(2.0), rel = 1.0e-8) and s.T[value.Len(s.T)] == s.Events[1].T and
-    value.Len(r.Events) == 1 and math.Abs(fine.At(r.Events[1].T)[1] - 0.5) < 1.0e-7
 end
 
 (* What goes wrong: an Err with the solution so far, or a panic for a bad argument. *)

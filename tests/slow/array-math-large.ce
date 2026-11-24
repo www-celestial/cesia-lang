@@ -1,0 +1,17 @@
+(** The functions of std/math, - and math.Abs on an array of 300,000 floats, past the size at which their loop splits
+    among the cores, twice 2^17, beside tests/lang/array-math.ce: each cell gets the bits it gets alone. Slow by nature:
+    the cells one by one in the interpreter, a fifth of a second of the processor; tools/check.sh runs it, past the
+    change loop. *)
+use std/list
+use std/math
+use std/num
+use std/value
+
+cellwise(xs, f) = [f(x) for x in xs]
+sameBits(a, b) = value.Len(a) == value.Len(b) and list.All([(a[k] == b[k] and 1.0 / a[k] == 1.0 / b[k]) or (a[k] != a[k] and b[k] != b[k]) for k in 1..value.Len(a)])
+
+defn isLarge()
+  (** Past the size at which the loop splits among the cores. *)
+  ys = num.Uniform(300000) * 8.0 - 4.0
+  sameBits(math.Exp(ys), cellwise(ys, math.Exp)) and sameBits(-ys, cellwise(ys, y -> -y)) and sameBits(math.Abs(ys), cellwise(ys, math.Abs))
+end

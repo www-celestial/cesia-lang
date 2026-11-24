@@ -1,0 +1,44 @@
+(** Lines made of the pieces of a slider at random, which a file may hold, beside tests/lang/sliders.ce: Analyse never
+    panics on them, and a slider it finds holds a number written at its place, within its min and its max, where Snap
+    writes it at its min, its value and its max. Slow by nature: 300 cases of each, a fifth of a second of the processor;
+    tools/check.sh runs it, past the change loop. *)
+use std/cells
+use std/gen
+use std/list
+use std/test
+use std/text
+
+analysed(source) = cells.Analyse(cells.Parse(source))
+head = "use std/cells\n(* %% Parameters *)\n"
+
+(* Lines of slider pieces at random: Analyse reads untrusted text. *)
+pieces = ["rho", " ", "=", "==", "cells", ".", "Slider", "(", ")", ",", "-", "0", "1", "28.0", "0.5", "1e400", "1e-3", "step", "value", "min", "max",
+  "(*", "*)", "\"", "\\", "x", "\n", "\t", "_", "9", "e", "+", "1e308", "4611686018427387903", "1e-25"]
+lines = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(pieces), max = 40))
+
+defn sane(line)
+  (** Does Analyse read a cell of sliders holding line without a panic, each slider it finds standing where it says, within its range? *)
+  source = "$(head)rho = cells.Slider(28.0, 0.0, 50.0)\n$(line)\nn = cells.Slider(-1, -2, 3)"
+  all = text.Lines(source)
+  a = cells.Analyse(cells.Parse(source))
+  list.All([s.Column <= s.End and text.Number(text.Slice(s.Column, s.End, all[s.Line])) == s.Value and s.Value >= s.Min and s.Value <= s.Max and s.Step > 0 for s in a[2].Sliders])
+end
+isRandomLines() = test.ForAll(sane, lines, cases = 300)
+
+(* Lines of a slider whose numbers are drawn among those that break things: Analyse never panics, and Snap writes each
+   slider it finds without a panic, within its min and its max, in a text that reads back as its value. *)
+numbers = ["0", "3", "-1", "0.5", "28.0", "1e-6", "1e308", "-1e308", "1e-300", "1e-25", "1e400", "4611686018427387903",
+  "-4611686018427387903", "0.1", "1e24", "2.9999999999", "4000000000", "7999999999"]
+sliderLines = gen.Map(xs -> "a = cells.Slider($(xs[1]), $(xs[2]), $(xs[3])$(if xs[4] == "0" "" else ", step = $(xs[4])" end))",
+  gen.List(gen.Pick(numbers), min = 4, max = 4))
+
+defn snapped(s, x)
+  (** Is the position Snap gives near x within the slider, its text read back as its value? *)
+  p = cells.Snap(s, x)
+  p.Value >= s.Min and p.Value <= s.Max and text.Number(p.Text) == p.Value
+end
+defn written(line)
+  (** Does each slider Analyse finds on the line snap well at its min, its value and its max? *)
+  list.All([snapped(s, s.Min) and snapped(s, s.Value) and snapped(s, s.Max) for s in analysed("$(head)$(line)")[2].Sliders])
+end
+isRandomNumbers() = test.ForAll(written, sliderLines, cases = 300)
