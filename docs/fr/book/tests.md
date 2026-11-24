@@ -308,6 +308,14 @@ Les mots qui suivent `cesia` sur la première ligne d'un bloc changent ce qu'on 
 Un bloc `toml` doit être un `cesia.toml` valide, sauf s'il porte lui aussi `norun` : c'est alors le fichier d'un autre
 programme, comme celui d'un serveur.
 
+Un bloc qui dessine montre son image sous lui, comme les graphiques de [Graphiques](graphs.md) : chaque simple nom de fichier
+`.svg` écrit entre guillemets dans son code, comme dans `plot.Save(g, "waves.svg")`, dont son exécution a écrit le
+fichier, est copié dans `images/` du site et montré sous le bloc à sa taille, avec le titre du graphe, ou son nom, pour
+qui ne peut pas le voir. La page française montre la même image. Un fichier que `files/` contenait déjà, ou un chemin
+comme `sub/a.svg`, n'est pas une image du bloc. Le site ne montre qu'un dessin, les éléments qu'écrit [plot.Svg] : une
+image qui contient un script, un lien, un fichier qu'elle chargerait ou tout autre élément arrête la construction, pour
+que rien ne s'exécute dans le site, même une image ouverte seule.
+
 Ce livre est construit ainsi, si bien que ses exemples ne peuvent pas s'écarter du langage : un bloc qui donne une autre
 valeur arrête le build. Chaque page tourne comme un programme du projet, depuis `.cesia/site/`, que `cesia new` tient hors
 de git : ses blocs peuvent utiliser les packages de `src/` et de `deps/`, où que le site soit écrit. Un livre montre les

@@ -124,6 +124,12 @@
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
   as it builds, with no script, in the time the site took before.
+- `cesia doc --site` shows under a block the image it draws: each `.svg` file that the block names between quotes, as
+  `plot.Save(g, "waves.svg")`, and that its run wrote, at its size and with the title of the graph for those who can't
+  see it. Only a drawing is shown, the elements of `plot.Svg`: an image with a script, a link or a file it would load
+  stops the build. Cesia's book shows its graphs so: bars, heatmaps, bands, texts, rules, notes, ticks of your own, polar
+  graphs, surfaces and lines in 3D, an animation, the sun path, and the graphs of the chapters on numerical methods and
+  statistics, where it showed only their code.
 - For those who work on Cesia: the tests added since 1.2.0 had made the change loop 4.8 s again; it takes 4.0 s, 4.4 s
   with two cores busy. Tests slow by nature run with `tools/test.sh --slow`, which `tools/check.sh` runs after the loop:
   nine of the JIT, whose loops are as long as the units and level 2 they check need, those of `install.sh` and `cesia

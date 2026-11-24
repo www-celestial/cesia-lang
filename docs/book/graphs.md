@@ -110,8 +110,9 @@ result.Unwrap(plot.Scene(noisy, 640, 400)).Dropped -->
 [plot.Bars] draws a bar from 0 to each height, one for each name. With a list of lists, the bars of a name stand side by
 side, one series for each list, and `label` and `color` are lists, one for each series:
 
-```cesia norun
-plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])
+```cesia allow=read,write
+bars = plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])
+plot.Save(bars, "bars.svg") -->
 ```
 
 ```python
@@ -158,9 +159,9 @@ default. The counts come from the sorted values, by a binary search for each edg
 beside it. `x` gives the value of each column and `y` of each row, increasing; a cell reaches halfway to its neighbors.
 Without `y`, row 1 is at the top, as the matrix is written, and the rows are numbered down. A NaN leaves its cell empty.
 
-```cesia norun
+```cesia allow=read,write
 m = [-2.0, 0.5, 1.0; 1.5, -0.5, 3.0]
-plot.Heatmap(m, colors = "diverging")
+plot.Save(plot.Heatmap(m, colors = "diverging"), "heatmap.svg") -->
 ```
 
 ```python
@@ -193,10 +194,11 @@ NaN merges by two matrix products, $a \cdot m \cdot b$, where $a$ and $b$ hold a
 [plot.Area] fills the band from `low` to `high` along `x`, at 30 % opacity so that what lies below shows through: a
 confidence interval, the envelope of a signal. A NaN in any of the three cuts the band.
 
-```cesia norun
+```cesia allow=read,write
 mean = math.Sin(t)
 spread = 0.2 + 0.1 * math.Cos(t)
-plot.Of([plot.Area(t, mean - spread, mean + spread, label = "±1 σ"), plot.Line(t, mean, label = "mean")])
+band = plot.Of([plot.Area(t, mean - spread, mean + spread, label = "±1 σ"), plot.Line(t, mean, label = "mean")])
+plot.Save(band, "band.svg") -->
 ```
 
 ```python
@@ -243,10 +245,11 @@ of the text at that place, `"left"`, `"middle"` or `"right"`; `size` is in pixel
 layer as the others: it follows the axes, a text whose point is past `xlim` is left out, and it has no entry in the
 legend. At most 100,000 texts, so that a scene stays small enough for Cemacs; past that, an `Err` says how many.
 
-```cesia
+```cesia allow=read,write
 hour = [7, 8, 9, 10, 11]
 height = [5.0, 14.0, 21.0, 26.0, 28.0]
 morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])])
+plot.Save(morning, "morning.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
@@ -256,8 +259,9 @@ The texts are a list comprehension, `["$h h" for h in hour]`, the short form of 
 the two. It is grey unless `color` says otherwise, takes a `dash` as a line does, and writes its `label` at its end,
 inside the plot. The range of its axis grows to hold it, as for the data; the other axis is left to the other layers.
 
-```cesia
+```cesia allow=read,write
 noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")])
+plot.Save(noon, "noon.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
@@ -268,8 +272,9 @@ of what is drawn; `noteAt` is `"top left"`, the default, `"top right"`, `"bottom
 no frame: its lines are in the ink of the axes, on the *paper*, the background, which hides the grid behind them. Spaces
 are kept, so that the colons of the lines can stand one under the other:
 
-```cesia
+```cesia allow=read,write
 place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984")
+plot.Save(place, "place.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
 ```
 
@@ -279,8 +284,9 @@ by a pass from the top, then by a pass from the bottom for those that would leav
 simplest that keeps the labels in the order of the lines. The margin on the right grows to hold them. Points and bands
 are named at their last point too; bars and histograms have no end, and with `"ends"` they are an `Err`.
 
-```cesia
+```cesia allow=read,write
 three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends")
+plot.Save(three, "three.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
 ```
 
@@ -292,9 +298,10 @@ numbers, increasing, at most 1,000; those inside the range of the axis are drawn
 as the computed ticks are, each the shortest decimal that reads back to it. A log axis takes ticks above 0. Without these
 options nothing changes.
 
-```cesia
+```cesia allow=read,write
 use std/list
 compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])
+plot.Save(compass, "compass.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
 ```
 
@@ -310,8 +317,9 @@ at 90 and on the horizon at 0. Without it, 0, or the least `y` below it, is at t
 more on the rim. Rings stand at the ticks of `y`, written along the ray of 0, and rays at the ticks of `x`, every 30
 degrees unless `xticks` gives them, written outside the rim with a degree sign, as matplotlib's polar axes write them.
 
-```cesia
+```cesia allow=read,write
 dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0])
+plot.Save(dome, "dome.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
 ```
 

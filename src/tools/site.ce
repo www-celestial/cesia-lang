@@ -844,10 +844,11 @@ end
 (* The words of the site itself, in English and in French; the reference, made from the code, is in English on both. *)
 enWords = {Book: "Book", Reference: "Reference", ReferenceLink: "Reference", Skip: "Skip to the text", Search: "Search  /",
   SearchLabel: "Search the docs", Contents: "Contents", Where: "Where", Code: "Code", Output: "Output", RunsWith: "Runs with",
-  Language: "Language", Versions: "The example in other languages"}
+  Language: "Language", Versions: "The example in other languages", Drawn: "The image this code draws:"}
 frWords = {Book: "Livre", Reference: "Référence", ReferenceLink: "Référence (en anglais)", Skip: "Aller au texte",
   Search: "Rechercher  /", SearchLabel: "Rechercher dans la documentation", Contents: "Sommaire", Where: "Chemin",
-  Code: "Code", Output: "Sortie", RunsWith: "S’exécute avec", Language: "Langue", Versions: "L’exemple dans d’autres langages"}
+  Code: "Code", Output: "Sortie", RunsWith: "S’exécute avec", Language: "Langue", Versions: "L’exemple dans d’autres langages",
+  Drawn: "L’image que dessine ce code :"}
 wordsOf(lang) = if lang == "fr" frWords else enWords end
 frAlerts = [["Note", "Remarque"], ["Tip", "Astuce"], ["Important", "Important"], ["Warning", "Attention"], ["Caution", "Prudence"]]
 untranslated = "<p class=\"untranslated\">Cette page n’est pas encore traduite : la voici en anglais.</p>\n"
@@ -1704,7 +1705,7 @@ end
 
 defn ran(job, chosen, name)
   (** Runs the blocks chosen of a page as one program in the folder of runs, in a fresh copy of the files/ of its book, with
-      the permissions its blocks ask for there: {Code, Out, Err, Program, Uses}. *)
+      the permissions its blocks ask for there: {Code, Out, Err, Program, Uses, Work}, Work the folder it ran in. *)
   p = program(job.Runs, chosen, job.Mark, job.Self)
   file = "$(job.Run)/$name.ce"
   work = "$(job.Run)/$name"
@@ -1714,7 +1715,7 @@ defn ran(job, chosen, name)
   grants = [if a == "read" or a == "write" "$a=." else if a == "net" "net=127.0.0.1" else a end for a in list.Unique(list.FlatMap(k -> job.Runs[k].Words.Allow, chosen))]
   allow = if value.Len(grants) == 0 [] else ["--allow", text.Join(",", grants)] end
   r = sys.Run(cesia.Binary(), args = list.Concat(list.Concat(["run", "--limit", "memory=512M"], allow), [file]), dir = work, timeout = 10)?
-  result.Ok({Code: r.Code, Out: r.Out, Err: r.Err, Program: file, Uses: p.Uses})
+  result.Ok({Code: r.Code, Out: r.Out, Err: r.Err, Program: file, Uses: p.Uses, Work: work})
 end
 
 defn stopped(r, source)
@@ -1754,15 +1755,110 @@ defn checked(job, chosen)
   result.Ok(out)
 end
 
+(* The elements of the images the site shows: those plot.Svg writes. *)
+drawnElements = ["svg", "title", "style", "defs", "clipPath", "g", "rect", "path", "circle", "text"]
+nameBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+spaceBytes = " \t\r\n/>"
+
+defn unsafeDrawing(svg)
+  (** What in an image a block drew keeps the site from showing it, or missing. The site shows only the elements of a
+      drawing, as plot.Svg writes them, with no script, no link and no file it would load, so that nothing in it runs, even
+      when the image is opened alone. *)
+  low = text.Lower(svg)
+  if text.Contains("<!", svg) or text.Contains("<?", svg) or text.Contains("@import", low)
+    return "a declaration, an instruction or an @import"
+  end
+  if text.Count("url(", low) != text.Count("url(#", low)
+    return "a url( that leads out of the image"
+  end
+  pieces = text.Split("<", svg)
+  for i in 2..value.Len(pieces)
+    tag = pieces[i]
+    shut = text.ByteFind(">", 1, tag)
+    if value.IsMissing(shut)
+      return "a < that opens no element"
+    end
+    name = if text.StartsWith("/", tag) text.ByteSlice(2, text.ByteLength(tag), tag) else tag end
+    stop = text.ByteFindAny(spaceBytes, 1, name)
+    name = if value.IsMissing(stop) name else text.ByteSlice(1, stop - 1, name) end
+    if not (name in drawnElements)
+      return "the element <$name>"
+    end
+    inside = text.Lower(text.ByteSlice(1, shut, tag))
+    for c in ["\t", "\r", "\n"]
+      inside = text.Replace(c, " ", inside)
+    end
+    if text.Contains("href", inside) or text.Contains(" on", inside)
+      return "a link or an attribute that runs code, in <$name>"
+    end
+  end
+  missing
+end
+
+plainSvg(name) = text.EndsWith(".svg", name) and text.ByteLength(name) > 4 and not text.StartsWith(".", name) and value.IsMissing(text.ByteFindAny(nameBytes, 1, name, not = true))   (** Is a text the plain name of an SVG file, as waves.svg: no folder, no dot first? *)
+
+defn drawnNames(code)
+  (** The plain names of SVG files that a block's code writes between quotes, as plot.Save(g, "waves.svg"), in their order. *)
+  parts = text.Split("\"", code)
+  [parts[i] for i in 1..value.Len(parts) if math.Mod(i, 2) == 0 and plainSvg(parts[i])]
+end
+
+defn attributeOf(name, tag)
+  (** The value of an attribute name="..." in the opening tag of an element, or missing. *)
+  at = text.ByteFind(" $name=\"", 1, tag)
+  if value.IsMissing(at)
+    return missing
+  end
+  first = at + text.ByteLength(name) + 3
+  last = text.ByteFind("\"", first, tag)
+  if value.IsMissing(last) missing else text.ByteSlice(first, last - 1, tag) end
+end
+
+defn drawingOf(k, name, svg)
+  (** An image a block drew, as a page shows it: {Block, Name, Svg, Width, Height, Title}, from the opening tag of the svg
+      and its title, which plot.Svg writes escaped. *)
+  shut = text.ByteFind(">", 1, svg)
+  head = if value.IsMissing(shut) "" else text.ByteSlice(1, shut, svg) end
+  open = text.ByteFind("<title>", 1, svg)
+  close = text.ByteFind("</title>", 1, svg)
+  title = if value.IsMissing(open) or value.IsMissing(close) or close < open missing else text.Replace("\"", "&quot;", text.ByteSlice(open + 7, close - 1, svg)) end
+  {Block: k, Name: name, Svg: svg, Width: attributeOf("width", head), Height: attributeOf("height", head), Title: title}
+end
+
+defn drawn(job, chosen, work)
+  (** The images that the blocks chosen drew in the folder of their run, each under the first block that names it between
+      quotes: Ok({Images, Mistakes}). A file that the files/ of the book already held was not drawn. *)
+  seen = {}
+  images = []
+  mistakes = []
+  for k in chosen
+    for name in drawnNames(job.Runs[k].Text)
+      file = "$work/$name"
+      if not dict.Has(name, seen) and sys.Exists(file) and not sys.Exists("$(job.Files)/$name")
+        seen[name] = true
+        svg = sys.Read(file)?
+        why = unsafeDrawing(svg)
+        if value.IsSome(why)
+          mistakes = list.Append("$(job.Source):$(job.Runs[k].Line): $name holds $why, which the site doesn't show: an image of the site holds only what plot.Svg writes.", mistakes)
+        else
+          images = list.Append(drawingOf(k, name, svg), images)
+        end
+      end
+    end
+  end
+  result.Ok({Images: images, Mistakes: mistakes})
+end
+
 defn pageRun(job)
   (** The runs of a page: the norun blocks checked, the blocks that don't fail as one program, then each block that fails
-      after the blocks before it. Ok({Output: [text of each block], Values: [[line, text]], Said: [text of each block]}), or
-      an Err of the mistakes. *)
+      after the blocks before it. Ok({Output: [text of each block], Values: [[line, text]], Said: [text of each block],
+      Images: the images the blocks drew}), or an Err of the mistakes. *)
   runs = job.Runs
   main = [k for k in 1..value.Len(runs) if not runs[k].Words.Fails]
   runnable = [k for k in main if not runs[k].Words.Norun]
   mistakes = if value.Len(runnable) < value.Len(main) checked(job, main)? else [] end
   got = heard("", job.Mark)
+  images = []
   if value.Len(runnable) > 0
     r = ran(job, runnable, job.Name)?
     why = stopped(r, job.Source)
@@ -1770,6 +1866,9 @@ defn pageRun(job)
       return result.Err(list.Append(why, mistakes))
     end
     got = heard(r.Out, job.Mark)
+    d = drawn(job, runnable, r.Work)?
+    images = d.Images
+    mistakes = list.Concat(mistakes, d.Mistakes)
   end
   mistakes = list.Concat(mistakes, ["$(job.Source):$(w.Line): $(text.Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong])
   output = [dict.GetOr(k, "", got.Output) for k in 1..value.Len(runs)]
@@ -1797,7 +1896,7 @@ defn pageRun(job)
       end
     end
   end
-  if value.Len(mistakes) > 0 result.Err(mistakes) else result.Ok({Output: output, Values: [[n, got.Values[n]] for n in dict.Keys(got.Values)], Said: shown}) end
+  if value.Len(mistakes) > 0 result.Err(mistakes) else result.Ok({Output: output, Values: [[n, got.Values[n]] for n in dict.Keys(got.Values)], Said: shown, Images: images}) end
 end
 
 defn worker(queue, done)
@@ -2153,7 +2252,7 @@ defn parity(site, en, fr)
 end
 
 defn frenchRuns(en, fr, r)
-  (** What the blocks of a French page printed: those of its English page, on the French page's own lines. *)
+  (** What the blocks of a French page printed and drew: those of its English page, on the French page's own lines. *)
   if value.IsMissing(r) or not fr.Translated or value.Len(en.Runs) != value.Len(fr.Runs)
     return r
   end
@@ -2163,7 +2262,7 @@ defn frenchRuns(en, fr, r)
       shift[en.Runs[k].Line + i] = fr.Runs[k].Line + i
     end
   end
-  {Output: r.Output, Values: [[dict.GetOr(v[1], v[1], shift), v[2]] for v in r.Values], Said: dict.GetOr("Said", [], r)}
+  {Output: r.Output, Values: [[dict.GetOr(v[1], v[1], shift), v[2]] for v in r.Values], Said: dict.GetOr("Said", [], r), Images: dict.GetOr("Images", [], r)}
 end
 
 defn bookRuns(pages, site, root, config)
@@ -2232,8 +2331,18 @@ defn folded(part, which, label, words)
   if which in words.Fold "<details><summary>$label</summary>\n$part</details>\n" else part end
 end
 
-defn bookBlock(run, output, values, hooks, said = enWords)
-  (** The HTML of a cesia block of the book: its code, and under it what it printed. *)
+defn figures(images, base, said)
+  (** The images a block drew, under it: each the file of the site under base that holds it, at its size, with its title,
+      or what it is, for those who can't see it. *)
+  sized(i) = if value.IsMissing(i.Width) or value.IsMissing(i.Height) "" else " width=\"$(escape(i.Width))\" height=\"$(escape(i.Height))\"" end
+  alt(i) = if value.IsMissing(i.Title) escape("$(said.Drawn) $(i.Name)") else i.Title end
+  text.Join("", ["<figure class=\"drawn\"><img src=\"$(escape(base))$(escape(i.Name))\"$(sized(i)) alt=\"$(alt(i))\" loading=\"lazy\"></figure>\n" for i in images])
+end
+
+imagesPath(page) = text.Str("images/", text.ByteSlice(1, text.ByteLength(page) - 5, page), "/")   (** The folder of the site that holds the images of a page: images/graphs/ for graphs.html. *)
+
+defn bookBlock(run, output, values, hooks, said = enWords, drawings = "")
+  (** The HTML of a cesia block of the book: its code, under it what it printed, then the HTML of the images it drew. *)
   words = run.Words
   code = if "code" in words.Hide "" else folded(codeBlock(shownCode(run, values)), "code", said.Code, words) end
   body = if text.EndsWith("\n", output) text.ByteSlice(1, text.ByteLength(output) - 1, output) else output end
@@ -2242,7 +2351,7 @@ defn bookBlock(run, output, values, hooks, said = enWords)
   (* The permissions the block ran with, as cesia run takes them: a reader who types it needs them too. *)
   asked = [if a == "net" "net=127.0.0.1" else a end for a in words.Allow]
   allow = if value.Len(asked) == 0 "" else "<p class=\"allow\">$(said.RunsWith) <code>--allow $(escape(text.Join(",", asked)))</code></p>\n" end
-  text.Str(code, allow, out)
+  text.Str(code, allow, out, drawings)
 end
 
 defn bookBody(site, page, results)
@@ -2254,6 +2363,9 @@ defn bookBody(site, page, results)
   hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids)
   r = dict.GetOr(page.Path, {Output: [], Values: []}, results)
   values = dict.Dict([{Key: v[1], Value: v[2]} for v in r.Values])
+  images = dict.GetOr("Images", [], r)
+  (* The images of a French page are those of its English page, from the folder of the French one. *)
+  base = text.Str(text.Repeat(text.Count("/", page.Path), "../"), imagesPath(if page.Lang == "fr" and value.IsSome(dict.GetOr("En", missing, page)) page.En.Path else page.Path end))
   groups = tabGroups(page.Blocks)
   withTabs = dict.Dict([{Key: g.Line, Value: g} for g in groups])
   tabLines = dict.Dict([{Key: t.Line, Value: true} for t in list.FlatMap(g -> g.Tabs, groups)])
@@ -2263,7 +2375,7 @@ defn bookBody(site, page, results)
     end
     k = list.IndexOf(line, [x.Line for x in page.Runs])
     (* A cesia block of a README is shown, not run: its tabs are drawn all the same. *)
-    shown = if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k) hooks.Code(info, s, line) else bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang)) end
+    shown = if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k) hooks.Code(info, s, line) else bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang), drawings = figures([i for i in images if i.Block == k], base, wordsOf(lang))) end
     if dict.Has(line, withTabs) tabbed(withTabs[line], shown, wordsOf(lang)) else shown end
   end
   out = html(page.Text, dict.Put("Code", code, hooks))
@@ -2490,6 +2602,12 @@ defn build(root, folder, cache, runs)
     return result.Err(text.Join("\n", list.Unique(mistakes)))
   end
   pages = list.Append({Path: "search.js", Html: "window.cesiaSearch = $(json.Text(search));\n"}, pages)
+  (* The images the blocks drew, once for a page and its French one, at each build: a page kept as it was shows them too. *)
+  for p in book
+    for i in dict.GetOr("Images", [], dict.GetOr(p.Path, {}, results))
+      pages = list.Append({Path: text.Str(imagesPath(p.Path), i.Name), Html: i.Svg}, pages)
+    end
+  end
   (* What tools/tabs.ce checks: the tabs of the English pages, those of the French ones being the same blocks. *)
   tabs = list.FlatMap(p -> tabsOf(p, dict.Get(p.Path, results)), [p for p in book if not p.Broken])
   if value.Len(tabs) > 0

@@ -657,10 +657,10 @@ plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y 
 À `tol = 1e-4`, la première cell fait 15,6 millions de tirages, presque tout son temps passé dans `f`, comme le montre
 [Vitesse](#vitesse). Le même histogramme, fait ici et dessiné en SVG :
 
-```cesia
+```cesia allow=read,write
 use std/plot
 g = plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y = "draws")
-result.IsOk(plot.Svg(g)) -->
+plot.Save(g, "batch.svg") -->
 ```
 
 ### Comment il est calculé

@@ -99,6 +99,9 @@ pre.signature { font-size: 15px; }
 .c { color: var(--c); font-style: italic; } .f { color: var(--f); }
 pre.output { border-left: 3px solid var(--edge); color: var(--ink); }
 p.allow { margin: -.4em 0 .4em; font-size: .85em; color: var(--muted); }
+/* The image a block drew, under it: black on white as plot.Save writes it, in both themes. */
+figure.drawn { margin: 0 0 1em; }
+figure.drawn img { display: block; max-width: 100%; height: auto; border: 1px solid var(--edge); border-radius: 6px; }
 /* Tabs: the same example in other languages. A radio input for each, hidden but focusable, its label as the tab, and CSS
    shows the panel of the checked one: no script. */
 .tabs { position: relative; margin: 0 0 16px; }

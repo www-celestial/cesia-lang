@@ -1,0 +1,42 @@
+built: 0
+== under the block, at its size, with its title or what it is for those who can't see it
+<figure class="drawn"><img src="images/first/up.svg" width="640" height="400" alt="The image this code draws: up.svg" loading="lazy"></figure>
+<figure class="drawn"><img src="images/first/moving.svg" width="640" height="400" alt="Animation, 2 frames at 30 a second" loading="lazy"></figure>
+== the French page, from its own folder
+<figure class="drawn"><img src="../images/first/up.svg" width="640" height="400" alt="L’image que dessine ce code : up.svg" loading="lazy"></figure>
+<figure class="drawn"><img src="../images/first/moving.svg" width="640" height="400" alt="Animation, 2 frames at 30 a second" loading="lazy"></figure>
+== the files: those plot.Save wrote
+moving.svg
+up.svg
+<svg xmlns="http://www.w3.org/2000/svg" width="640" 
+== a build from the cache, which runs nothing again, still writes them
+nothing ran again
+moving.svg
+up.svg
+== a page with no drawing any more: its images go
+0
+== a script
+docs/book/first.md:75: bad.svg holds the element <script>, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== an attribute that runs code
+docs/book/first.md:75: bad.svg holds a link or an attribute that runs code, in <svg>, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== a link
+docs/book/first.md:75: bad.svg holds the element <a>, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== an element a drawing has no use for
+docs/book/first.md:75: bad.svg holds the element <foreignObject>, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== a file it would load
+docs/book/first.md:75: bad.svg holds a url( that leads out of the image, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== a style that imports
+docs/book/first.md:75: bad.svg holds a declaration, an instruction or an @import, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== an entity declared
+docs/book/first.md:75: bad.svg holds a declaration, an instruction or an @import, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+== a < that opens nothing
+docs/book/first.md:75: bad.svg holds a < that opens no element, which the site doesn't show: an image of the site holds only what plot.Svg writes.
+exit 1
+exit 0
