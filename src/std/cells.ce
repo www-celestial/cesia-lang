@@ -558,12 +558,15 @@ defn position(min, step, k)
   {Value: text.Number(t), Text: t}
 end
 
-defn cellsAlias(first)
-  (** The name that the use of std/cells of the first cell gives, or missing: cells, or the name after as. *)
+(** The name that the use of std/cells of the first cell gives, or missing: cells, or the name after as. *)
+cellsAlias(first) = aliasOf(first, "cells")
+
+defn aliasOf(first, package)
+  (** The name that the use of a package of std/ in the first cell gives, or missing: the package, or the name after as. *)
   for line in text.Lines(first.Source)
     words = text.Split(" ", text.Trim(line))
-    if values.Len(words) >= 2 and words[1] == "use" and words[2] == "std/cells"
-      return if values.Len(words) == 4 and words[3] == "as" words[4] else "cells" end
+    if values.Len(words) >= 2 and words[1] == "use" and words[2] == "std/$package"
+      return if values.Len(words) == 4 and words[3] == "as" words[4] else package end
     end
   end
   missing
@@ -959,6 +962,520 @@ defn valueFault(input, x)
   end
 end
 
+(* ---- Tables written in a cell: a list of maps, [{name: "Ana", age: 31}, ...], or frame.Of of lists, frame.Of({age: [31,
+   20]}), each value written there, which an editor changes by writing a new value in the place of the old one, as it
+   changes an input. They are read by bytes, with the native searches of std/text, so that a large one reads fast. *)
+
+(** The most values of a table written in a cell that Tables reads: a longer one is none. *)
+mostWritten = 100000
+
+(** The bytes of a gap between the parts of a table written in a cell: a space, a tab and the ends of a line. *)
+gapBytes = " \t\n\r"
+
+defn commentEnd(s, i)
+  (** The place after the comment that starts at place i of s, (* ... *), the comments in it nesting, or the place past the
+      end of s when it never ends. *)
+  n = text.ByteLength(s)
+  depth = 0
+  j = i
+  while j < n
+    k = text.ByteFindAny("(*", j, s)
+    if values.IsMissing(k) or k >= n
+      return n + 1
+    end
+    two = text.ByteSlice(k, k + 1, s)
+    if two == "(*"
+      depth += 1
+      j = k + 2
+    else if two == "*)"
+      depth -= 1
+      j = k + 2
+      if depth == 0
+        return j
+      end
+    else
+      j = k + 1
+    end
+  end
+  n + 1
+end
+
+defn skipped(s, i)
+  (** The place of the first byte of s from place i that is neither in a gap nor in a comment, or the place past the end. *)
+  n = text.ByteLength(s)
+  j = i
+  while true
+    j = text.ByteFindAny(gapBytes, j, s, not = true)
+    if values.IsMissing(j)
+      return n + 1
+    end
+    if j < n and text.Byte(j, s) == 40 and text.Byte(j + 1, s) == 42
+      j = commentEnd(s, j)
+    else
+      return j
+    end
+  end
+end
+
+defn textEnd(s, i)
+  (** The place after the text whose quote is at place i of s, as the lines of a cell read it: at its next quote that no \
+      escapes, or the place past the end. *)
+  n = text.ByteLength(s)
+  j = i + 1
+  while j <= n
+    k = text.ByteFindAny("\"\\", j, s)
+    if values.IsMissing(k)
+      return n + 1
+    end
+    if text.Byte(k, s) == 34
+      return k + 1
+    end
+    j = k + 2
+  end
+  n + 1
+end
+
+defn textIn(s, i)
+  (** The text written from place i of s, its quotes, as Cesia reads it, and the place after it: {Value, Next}; or missing
+      when no text starts there, or it is more than a text written, with $name or $(...) in it, doubled quotes, or an end
+      of line, which Cesia refuses or runs. *)
+  n = text.ByteLength(s)
+  if i > n or text.Byte(i, s) != 34
+    return missing
+  end
+  out = []
+  j = i + 1
+  while j <= n
+    k = text.ByteFindAny("\"\\$\n\r", j, s)
+    if values.IsMissing(k)
+      return missing
+    end
+    if k > j
+      out = list.Append(text.ByteSlice(j, k - 1, s), out)
+    end
+    b = text.Byte(k, s)
+    next = if k < n text.ByteSlice(k + 1, k + 1, s) else "" end
+    if b == 34
+      return if next == "\"" missing else {Value: text.Join("", out), Next: k + 1} end
+    else if b == 92 and dict.Has(next, escapes)
+      out = list.Append(escapes[next], out)
+      j = k + 2
+    else if b == 92
+      out = list.Append("\\", out)
+      j = k + 1
+    else if b == 36 and next == "$"
+      out = list.Append("$", out)
+      j = k + 2
+    else if b == 36 and next != "" and (next == "(" or nameStart(next) or text.Byte(k + 1, s) >= 128)
+      return missing
+    else if b == 36
+      out = list.Append("$", out)
+      j = k + 1
+    else
+      return missing
+    end
+  end
+  missing
+end
+
+defn writtenAt(s, i)
+  (** The value written from place i of s, a number, true, false, missing or a text, on one line: {Value, From, To, Next},
+      its first and last places and the place after it, or missing. *)
+  n = text.ByteLength(s)
+  if i > n
+    return missing
+  end
+  if text.Byte(i, s) == 34
+    t = textIn(s, i)
+    return if values.IsMissing(t) missing else {Value: t.Value, From: i, To: t.Next - 1, Next: t.Next} end
+  end
+  k = text.ByteFindAny(" \t\n\r,]})(", i, s)
+  last = if values.IsMissing(k) n else k - 1 end
+  if last < i or last - i >= 64
+    return missing
+  end
+  word = text.ByteSlice(i, last, s)
+  if word == "true" or word == "false"
+    {Value: word == "true", From: i, To: last, Next: last + 1}
+  else if word == "missing"
+    {Value: missing, From: i, To: last, Next: last + 1}
+  else if numeral(word)
+    {Value: text.Number(word), From: i, To: last, Next: last + 1}
+  else
+    missing
+  end
+end
+
+defn digitsAt(w, i)
+  (** The place after the digits of w from place i, or i when none starts there. *)
+  k = text.ByteFindAny("0123456789", i, w, not = true)
+  if values.IsMissing(k) text.ByteLength(w) + 1 else k end
+end
+
+defn numeral(w)
+  (** Is w a number as Cesia writes one, and nothing else: digits, after a minus sign or not, then a point and digits, then
+      e, a sign or not and digits, as 28, -0.5 or 1e-3, which numberEnd reads too? *)
+  n = text.ByteLength(w)
+  i = if n > 0 and text.Byte(1, w) == 45 2 else 1 end
+  k = digitsAt(w, i)
+  if k == i
+    return false
+  end
+  if k <= n and text.Byte(k, w) == 46
+    e = digitsAt(w, k + 1)
+    if e == k + 1
+      return false
+    end
+    k = e
+  end
+  if k <= n and (text.Byte(k, w) == 101 or text.Byte(k, w) == 69)
+    p = if k < n and (text.Byte(k + 1, w) == 43 or text.Byte(k + 1, w) == 45) k + 2 else k + 1 end
+    e = digitsAt(w, p)
+    if e == p
+      return false
+    end
+    k = e
+  end
+  k == n + 1
+end
+
+defn keyAt(s, i)
+  (** The key of a map written from place i of s, a name or a text, and the place after it: {Key, Next}, or missing. *)
+  n = text.ByteLength(s)
+  if i > n
+    return missing
+  end
+  if text.Byte(i, s) == 34
+    t = textIn(s, i)
+    return if values.IsMissing(t) missing else {Key: t.Value, Next: t.Next} end
+  end
+  k = text.ByteFindAny(" \t\n\r:,{}[]()\"", i, s)
+  last = if values.IsMissing(k) n else k - 1 end
+  word = if last < i "" else text.ByteSlice(i, last, s) end
+  cs = text.Chars(word)
+  if values.Len(cs) == 0 or not (nameStart(cs[1]) or text.Code(cs[1]) >= 128) or not list.All([wordChar(c) for c in cs])
+    return missing
+  end
+  {Key: word, Next: last + 1}
+end
+
+defn listed(s, i, close, item)
+  (** The items written from place i of s, after an opening bracket, up to the closing one, close, apart by commas, gaps
+      and comments, each read by item, a function of the place that gives {Next, ...} or missing: {Items, Next}, or
+      missing. *)
+  n = text.ByteLength(s)
+  shut = text.Byte(1, close)
+  items = []
+  j = skipped(s, i)
+  while j <= n and text.Byte(j, s) != shut
+    x = item(j)
+    if values.IsMissing(x) or values.Len(items) >= mostWritten
+      return missing
+    end
+    items = list.Append(x, items)
+    j = skipped(s, x.Next)
+    if j <= n and text.Byte(j, s) == 44
+      j = skipped(s, j + 1)
+    else if j > n or text.Byte(j, s) != shut
+      return missing
+    end
+  end
+  if j > n missing else {Items: items, Next: j + 1} end
+end
+
+defn pairAt(s, i, value)
+  (** A key, a colon and what value reads after it, from place i of s: {Key, Value, Next}, or missing. *)
+  k = keyAt(s, i)
+  if values.IsMissing(k)
+    return missing
+  end
+  j = skipped(s, k.Next)
+  v = if j <= text.ByteLength(s) and text.Byte(j, s) == 58 value(skipped(s, j + 1)) else missing end
+  if values.IsMissing(v) missing else {Key: k.Key, Value: v, Next: v.Next} end
+end
+
+(** Are the keys of pairs all different? *)
+distinct(pairs) = values.Len(list.Unique([p.Key for p in pairs])) == values.Len(pairs)
+
+(** Is a byte that of the opening bracket of a list, [, or of a map, {? *)
+opens(s, i, b) = i <= text.ByteLength(s) and text.Byte(i, s) == b
+
+defn recordsAt(s, i)
+  (** A list of maps written from place i of s, its bracket, [{key: value, ...}, ...], each value written there: {Kind,
+      Columns, Cells, Next}, the keys of its first map, and for each map the value it writes for each of them, as
+      writtenAt reads it, or missing where it writes none; or missing. *)
+  record = j -> (m -> if values.IsMissing(m) or not distinct(m.Items) missing else {Pairs: m.Items, Next: m.Next} end)(if opens(s, j, 123) listed(s, j + 1, "}", k -> pairAt(s, k, p -> writtenAt(s, p))) else missing end)
+  got = listed(s, i + 1, "]", record)
+  if values.IsMissing(got) or values.Len(got.Items) == 0 or values.Len(got.Items[1].Pairs) == 0 or list.Sum([values.Len(m.Pairs) for m in got.Items]) > mostWritten
+    return missing
+  end
+  columns = [p.Key for p in got.Items[1].Pairs]
+  cells = [(m -> [(at -> if values.IsMissing(at) missing else m.Pairs[at].Value end)(list.FindFirst(k -> m.Pairs[k].Key == c, 1..values.Len(m.Pairs))) for c in columns])(r) for r in got.Items]
+  {Kind: "records", Columns: columns, Cells: cells, Next: got.Next}
+end
+
+defn frameAt(s, i)
+  (** A frame written from place i of s, the parenthesis after the name of frame.Of: ({name: [values], ...}), each value
+      written there, its columns of one length, at least one row: {Kind, Columns, Cells, Next}, for each row its value in
+      each column; or missing. *)
+  n = text.ByteLength(s)
+  j = skipped(s, i + 1)
+  if not opens(s, j, 123)
+    return missing
+  end
+  column = p -> if opens(s, p, 91) listed(s, p + 1, "]", q -> writtenAt(s, q)) else missing end
+  got = listed(s, j + 1, "}", k -> pairAt(s, k, column))
+  if values.IsMissing(got) or values.Len(got.Items) == 0 or not distinct(got.Items)
+    return missing
+  end
+  rows = values.Len(got.Items[1].Value.Items)
+  if rows == 0 or values.Len(got.Items) * rows > mostWritten or not list.All([values.Len(p.Value.Items) == rows for p in got.Items])
+    return missing
+  end
+  j = skipped(s, got.Next)
+  if j > n or text.Byte(j, s) != 41
+    return missing
+  end
+  {Kind: "frame", Columns: [p.Key for p in got.Items], Cells: [[p.Value.Items[r] for p in got.Items] for r in 1..rows], Next: j + 1}
+end
+
+(** Can a byte go on with a name: a letter, a digit, _, or a byte of a character past ASCII? *)
+wordByte(b) = (b >= 97 and b <= 122) or (b >= 65 and b <= 90) or (b >= 48 and b <= 57) or b == 95 or b >= 128
+
+defn framed(s, k, head)
+  (** The place where head, the name of frame.Of as the cell writes it, starts, when it stands just before place k of s,
+      spaces between them, as a whole name; or missing. *)
+  p = k - 1
+  while p >= 1 and (text.Byte(p, s) == 32 or text.Byte(p, s) == 9)
+    p -= 1
+  end
+  first = p - text.ByteLength(head) + 1
+  whole = first >= 1 and text.ByteSlice(first, p, s) == head and (first == 1 or not (wordByte(text.Byte(first - 1, s)) or text.Byte(first - 1, s) == 46))
+  if whole first else missing end
+end
+
+defn nameBefore(s, j)
+  (** The name of a line name = that ends just before place j of s, the name at the start of its line, or missing. *)
+  k = j - 1
+  while k >= 1 and (text.Byte(k, s) == 32 or text.Byte(k, s) == 9)
+    k -= 1
+  end
+  if k < 2 or text.Byte(k, s) != 61 or text.ByteSlice(k - 1, k - 1, s) in ["=", "!", "<", ">", "+", "-", "*", "/", "%", ":", "."]
+    return missing
+  end
+  k -= 1
+  while k >= 1 and (text.Byte(k, s) == 32 or text.Byte(k, s) == 9)
+    k -= 1
+  end
+  last = k
+  while k >= 1 and wordByte(text.Byte(k, s))
+    k -= 1
+  end
+  first = k + 1
+  while k >= 1 and (text.Byte(k, s) == 32 or text.Byte(k, s) == 9)
+    k -= 1
+  end
+  if first > last or (k >= 1 and text.Byte(k, s) != 10) or (text.Byte(first, s) >= 48 and text.Byte(first, s) <= 57)
+    return missing
+  end
+  text.ByteSlice(first, last, s)
+end
+
+defn lineOf(p, starts)
+  (** The line, from 1, that holds place p, by the places where the lines start. *)
+  low = 1
+  high = values.Len(starts)
+  while low < high
+    middle = math.Div(low + high + 1, 2)
+    if starts[middle] <= p
+      low = middle
+    else
+      high = middle - 1
+    end
+  end
+  low
+end
+
+defn kindIn(grid, m)
+  (** What the values written in column m of a table hold: "whole", "number", "text", "bool" or "mixed". *)
+  ints = true
+  numbers = true
+  texts = true
+  bools = true
+  any = false
+  for row in grid
+    c = row[m]
+    if values.IsSome(c) and values.IsSome(c.Value)
+      x = c.Value
+      any = true
+      ints = ints and values.IsInt(x)
+      numbers = numbers and values.IsNumber(x)
+      texts = texts and values.IsText(x)
+      bools = bools and values.IsBool(x)
+    end
+  end
+  if not any "mixed" else if ints "whole" else if numbers "number" else if texts "text" else if bools "bool" else "mixed" end
+end
+
+defn Tables(cells, i)
+  (** The tables written in cell i of Parse as values, in the order they start: each list of maps, [{name: "Ana", age:
+      31}, {name: "Bo", age: 20}], and each frame.Of of lists, frame.Of({hour: [7, 8], elevation: [0.48, 9.99]}), through
+      the name that the use of std/frame of the first cell gives, whose values are all written there: numbers, texts,
+      true, false or missing, as an input's are, read from the text and never run. Each {Name, Kind, Line, Column,
+      Columns, Kinds, Count, Cells}: Name the name of a line name = ... that gives it, or missing; Kind "records" or
+      "frame"; Line and Column where it starts; Columns the keys of its first map, or the names of its columns, as Rows
+      gives them; Count its rows; Cells, for each row and each column, {Value, Line, Column, End}, the value and where the
+      file writes it, Column and End its first and last columns on its line, a text with its quotes, or missing for a map
+      that doesn't write that key; Kinds, for each column, what its values hold: "whole" for whole numbers, "number" for
+      numbers one of which at least is written with a point, "text", "bool" for true and false, or "mixed". A table of
+      more than 100,000 values is none. An editor changes one of its values with Edit.
+
+        t = Tables(Parse("use std/frame\n(* %% Day *)\nhours = frame.Of({hour: [7, 8], elevation: [0.48, 9.99]})"), 2)[1]
+        [t.Name, t.Kind, t.Line, t.Count] --> ["hours", "frame", 3, 2]
+        [t.Columns, t.Kinds] --> [["hour", "elevation"], ["whole", "number"]]
+        c = t.Cells[2][2]
+        [c.Value, c.Line, c.Column, c.End] --> [9.99, 3, 51, 54]
+        p = Tables(Parse("people = [\n  {name: \"Ana\", age: 31},\n  {name: \"Bo\"}\n]"), 1)[1]
+        [p.Kind, p.Count, p.Cells[1][1].Line, p.Cells[1][1].Column, p.Cells[1][1].End] --> ["records", 2, 2, 10, 14]
+        values.IsMissing(p.Cells[2][2]) --> true
+        Tables(Parse("use std/frame\nhours = frame.Of({hour: 7..16})"), 1) --> [] *)
+  cell = cells[i]
+  s = cell.Source
+  if not text.Contains("{", s)
+    return []
+  end
+  n = text.ByteLength(s)
+  starts = [1]
+  at = text.ByteFind("\n", 1, s)
+  while values.IsSome(at)
+    starts = list.Append(at + 1, starts)
+    at = text.ByteFind("\n", at + 1, s)
+  end
+  alias = aliasOf(cells[1], "frame")
+  head = if values.IsMissing(alias) missing else "$alias.Of" end
+  out = []
+  j = 1
+  while j <= n
+    k = text.ByteFindAny("\"([", j, s)
+    if values.IsMissing(k)
+      return out
+    end
+    b = text.Byte(k, s)
+    got = missing
+    if b == 34
+      j = textEnd(s, k)
+    else if b == 40 and k < n and text.Byte(k + 1, s) == 42
+      j = commentEnd(s, k)
+    else
+      start = if b == 91 k else if values.IsSome(head) framed(s, k, head) else missing end
+      got = if b == 91 and opens(s, skipped(s, k + 1), 123) recordsAt(s, k) else if b == 40 and values.IsSome(start) frameAt(s, k) else missing end
+      j = if values.IsMissing(got) k + 1 else got.Next end
+    end
+    if values.IsSome(got)
+      out = list.Append(placed(cell, s, starts, got, start, nameBefore(s, start)), out)
+    end
+  end
+  out
+end
+
+defn placed(cell, s, starts, got, start, name)
+  (** A table that Tables read, its values given their lines and their columns in the file, columns of characters on their
+      line, as an editor counts them: in a cell of ASCII alone, by bytes; else each value in the order of the file, its
+      columns counted from the one before. *)
+  rows = values.Len(got.Cells)
+  width = values.Len(got.Columns)
+  grid = missing
+  if text.ByteLength(s) == values.Len(s)
+    at = v -> (k -> {Value: v.Value, Line: cell.From + k - 1, Column: v.From - starts[k] + 1, End: v.To - starts[k] + 1})(lineOf(v.From, starts))
+    grid = [[if values.IsMissing(v) missing else at(v) end for v in row] for row in got.Cells]
+  else
+    spots = []
+    for r in 1..rows
+      for c in 1..width
+        if values.IsSome(got.Cells[r][c])
+          spots = list.Append({R: r, C: c, V: got.Cells[r][c]}, spots)
+        end
+      end
+    end
+    grid = [list.Fill(missing, width) for r in 1..rows]
+    line = 1
+    at = 1
+    column = 1
+    for q in list.Order([x.V.From for x in spots])
+      x = spots[q]
+      while line < values.Len(starts) and starts[line + 1] <= x.V.From
+        line += 1
+        at = starts[line]
+        column = 1
+      end
+      column = column + (if x.V.From > at values.Len(text.ByteSlice(at, x.V.From - 1, s)) else 0 end)
+      at = x.V.From
+      grid[x.R][x.C] = {Value: x.V.Value, Line: cell.From + line - 1, Column: column, End: column + values.Len(text.ByteSlice(x.V.From, x.V.To, s)) - 1}
+    end
+  end
+  first = lineOf(start, starts)
+  {Name: name, Kind: got.Kind, Line: cell.From + first - 1, Column: 1 + (if start > starts[first] values.Len(text.ByteSlice(starts[first], start - 1, s)) else 0 end),
+    Columns: got.Columns, Kinds: [kindIn(grid, m) for m in 1..width], Count: rows, Cells: grid}
+end
+
+defn Edit(table, row, column, words)
+  (** The edit of a value of a table that Tables read: words, as a person types them, made the value of a row and a
+      column, from 1, in an Ok of {Value, Text, Line, Column, End}: the value, its text as the file writes it, and where
+      the old one is written, which Text takes the place of. The kind of the column says what it takes: a column of whole
+      numbers a whole number; a column of numbers a finite number, written as a Float, so that the column stays one of
+      Floats; a column of texts any text, written in quotes as literalOf writes it; a column of true and false one of
+      those. A column of several kinds takes a value of the kind of the one it replaces; in place of missing, a number, true
+      or false, or else a text. An Err that says what the column takes, for words of another kind, or for a row that writes
+      no value there.
+
+        t = Tables(Parse("use std/frame\nhours = frame.Of({hour: [7, 8], elevation: [0.48, 9.99], name: [\"a\", \"b\"]})"), 1)[1]
+        Edit(t, 2, 2, "10").Value.Text --> "10.0"
+        Edit(t, 2, 2, " 1e-3 ").Value.Value --> 0.001
+        Edit(t, 1, 1, "8.0").Value.Text --> "8"
+        Edit(t, 1, 3, "say \"hi\"").Value.Text --> "\"say \\\"hi\\\"\""
+        Edit(t, 2, 2, "ten").Error.Message --> "elevation takes a number: ten is none."
+        Edit(t, 1, 1, "8.5").Error.Message --> "hour takes a whole number: 8.5 is none."
+        Edit(t, 1, 2, "nan").Error.Message --> "elevation takes a number: nan is none." *)
+  if not (values.IsInt(row) and values.IsInt(column) and row >= 1 and row <= table.Count and column >= 1 and column <= values.Len(table.Columns))
+    return result.Err({Kind: "cells", Message: "Row $row, column $column is out of the table."})
+  end
+  name = table.Columns[column]
+  at = table.Cells[row][column]
+  if values.IsMissing(at)
+    return result.Err({Kind: "cells", Message: "Row $row writes no $name: write it in the file first."})
+  end
+  old = at.Value
+  kind = table.Kinds[column]
+  if kind == "mixed"
+    kind = if values.IsInt(old) "whole" else if values.IsNumber(old) "number" else if values.IsText(old) "text" else if values.IsBool(old) "bool" else "any" end
+  end
+  t = text.Trim(words)
+  x = text.Number(t)
+  number = values.IsSome(x) and finite(x)
+  v = missing
+  if kind == "whole"
+    if not (number and (values.IsInt(x) or (x == math.Floor(x) and math.Abs(x) <= 9007199254740992.0)))
+      return result.Err({Kind: "cells", Message: "$name takes a whole number: $t is none."})
+    end
+    v = if values.IsInt(x) x else math.Div(math.Round(x), 1) end
+  else if kind == "number"
+    if not number
+      return result.Err({Kind: "cells", Message: "$name takes a number: $t is none."})
+    end
+    v = 1.0 * x
+  else if kind == "bool"
+    if not (t == "true" or t == "false")
+      return result.Err({Kind: "cells", Message: "$name takes true or false: $t is neither."})
+    end
+    v = t == "true"
+  else if kind == "text"
+    v = words
+  else
+    v = if number x else if t == "true" or t == "false" t == "true" else words end
+  end
+  result.Ok({Value: v, Text: literalOf(v), Line: at.Line, Column: at.Column, End: at.End})
+end
+
 (* ---- A session: a Cesia process that runs the cells of one file, beside the program that asks. *)
 
 (** The byte that starts a message of the session, on a line of its output. *)
@@ -1159,6 +1676,30 @@ defn Rows(session, name, first, last, sort = missing, filter = missing, find = m
   end
   out = {Columns: got.Columns, Rows: got.Rows, Count: got.Count, Total: dict.GetOr("Total", got.Count, got), Positions: dict.GetOr("Positions", [], got)}
   result.Ok(if values.IsSome(find) dict.Put("Found", dict.Get("Found", got), out) else out end)
+end
+
+defn Totals(session, name, filter = missing)
+  (** The totals of a table of the session, the value of a name or the Key of a table that Run showed, as Rows reads it,
+      over the rows that filter keeps, as Rows filters them, in an Ok of {Count, Total, Columns}: Count the rows counted,
+      Total those of the table, and for each of its columns, as Rows gives them, {Name, Count, Missing, Sum, Mean, Min,
+      Max}: Count its values that aren't missing, Missing the missing ones, NaN among them, which none of the others
+      reads; and for a column whose other values are all numbers, their sum, their mean, as a Float, their least and their
+      greatest, Mean, Min and Max missing when there is none. The others are missing for a column of texts or of other
+      values. All is computed in the session, on whole columns: a frame of a million rows never crosses. An Err for a name
+      that holds no table, or a filter that is no text. *)
+  command = {Do: "totals", Name: name}
+  if values.IsSome(filter)
+    command.Filter = filter
+  end
+  ask(session, command)?
+  got = answered(session)?
+  if dict.Has("Error", got)
+    return result.Err({Kind: "cells", Message: got.Error})
+  end
+  number = t -> if values.IsMissing(t) missing else if t == "nan" math.Nan else if t == "inf" math.Inf else if t == "-inf" 0.0 - math.Inf else text.Number(t) end
+  columns = [(x -> {Name: got.Columns[j], Count: x.Count, Missing: x.Missing, Sum: number(dict.GetOr("Sum", missing, x)), Mean: number(dict.GetOr("Mean", missing, x)),
+    Min: number(dict.GetOr("Min", missing, x)), Max: number(dict.GetOr("Max", missing, x))})(got.Totals[j]) for j in 1..values.Len(got.Columns)]
+  result.Ok({Count: got.Count, Total: got.Total, Columns: columns})
 end
 
 defn Scene(session, key, width, frame = 1, view = missing, mark = missing, xlim = missing, ylim = missing, points = false)
@@ -1902,23 +2443,31 @@ end
 (** Is a text the key of a graph or a table that a run showed, as 12 or 12.3, which no name can be? *)
 isKey(k) = values.IsSome(text.ByteFindAny("0123456789", 1, text.ByteSlice(1, 1, k)))
 
+defn tableNamed(name, kept)
+  (** The table of the value of a name of the session, or of a table that a run showed, by its key, as tableOf gives it:
+      {Table}, or {Error} for a name that holds none. *)
+  v = dict.Get(name, kept)
+  if values.IsMissing(v)
+    got = valueOf(name)
+    if result.IsErr(got)
+      return {Error: "Name \"$name\" isn't in the session."}
+    end
+    v = got.Value
+  end
+  t = tableOf(v)
+  if values.IsMissing(t) {Error: "\"$name\" holds no frame, matrix or list."} else {Table: t} end
+end
+
 defn slice(c, kept, views)
   (** The answer to rows: rows First to Last, from 1, of the value of a name of the session, or of a table a run showed,
       by its key, as texts, sorted and filtered, with the position of each in the value; and the views kept for the next
       ask, by name. *)
   name = "$(dict.GetOr("Name", "", c))"
-  v = dict.Get(name, kept)
-  if values.IsMissing(v)
-    got = valueOf(name)
-    if result.IsErr(got)
-      return {Answer: {Kind: "rows", Error: "Name \"$name\" isn't in the session."}, Views: views}
-    end
-    v = got.Value
+  found = tableNamed(name, kept)
+  if dict.Has("Error", found)
+    return {Answer: {Kind: "rows", Error: found.Error}, Views: views}
   end
-  t = tableOf(v)
-  if values.IsMissing(t)
-    return {Answer: {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}, Views: views}
-  end
+  t = found.Table
   sort = dict.GetOr("Sort", missing, c)
   if values.IsSome(sort) and not (values.IsDict(sort) and dict.GetOr("Column", missing, sort) in t.Columns and values.IsBool(dict.GetOr("Descending", missing, sort)))
     return {Answer: {Kind: "rows", Error: "A sort is {Column, Descending}: a column of \"$name\", $(text.Join(", ", t.Columns)), and true or false."}, Views: views}
@@ -1946,6 +2495,81 @@ defn slice(c, kept, views)
     out.Found = if values.IsMissing(order) (if find >= 1 and find <= t.Count find else missing end) else list.IndexOf(find, order) end
   end
   {Answer: out, Views: if values.IsMissing(seen) views else dict.Put(name, seen, views) end}
+end
+
+defn allNumbers(xs)
+  (** Are the values of a list all numbers, and is there one? *)
+  if values.Len(xs) == 0
+    return false
+  end
+  for x in xs
+    if not values.IsNumber(x)
+      return false
+    end
+  end
+  true
+end
+
+defn summed(xs, numeric)
+  (** The totals of the values of a column, as totaled gives them: {Count, Missing}, the values that aren't missing, NaN
+      being one, and the missing ones; for a column of Ints or Floats, numeric, or whose values that aren't missing are
+      numbers, Sum, and Mean, Min and Max when there is one, each as its text, which JSON carries whatever it is. Native
+      work on whole columns: missing values are looked for once a search finds one, NaN once the sum is NaN. *)
+  n = values.Len(xs)
+  present = if col.Kind(xs) == "value" and values.IsSome(list.IndexOf(missing, xs)) col.Present(xs) else xs end
+  if col.Kind(present) == "value" and not (numeric and values.Len(present) == 0) and not allNumbers(present)
+    return {Count: values.Len(present), Missing: n - values.Len(present)}
+  end
+  numbers = present
+  sum = list.Sum(numbers)
+  (* NaN makes the sum NaN: only then are the NaNs looked for, and left out. *)
+  if sum != sum
+    numbers = col.Pick(col.Positions(numbers == numbers), numbers)
+    sum = list.Sum(numbers)
+  end
+  m = values.Len(numbers)
+  out = {Count: m, Missing: n - m, Sum: values.Text(sum, 200)}
+  if m == 0
+    return out
+  end
+  b = bounds(numbers)
+  dict.Merge(out, {Mean: values.Text(1.0 * sum / m, 200), Min: values.Text(b[1], 200), Max: values.Text(b[2], 200)})
+end
+
+defn bounds(xs)
+  (** The least and the greatest of a list of numbers that holds one, [least, greatest]: of Ints through their Floats, which
+      keep their order and give each back whole within 2^53, three times as fast; else as they are. *)
+  if col.Kind(xs) == "int"
+    f = 1.0 * xs
+    low = list.Min(f)
+    high = list.Max(f)
+    if math.Abs(low) < 9007199254740992.0 and math.Abs(high) < 9007199254740992.0
+      return [math.Div(math.Round(low), 1), math.Div(math.Round(high), 1)]
+    end
+  end
+  [list.Min(xs), list.Max(xs)]
+end
+
+defn totaled(c, kept, views)
+  (** The answer to totals: the totals of each column of a table of the session, by name or by key, over the rows that its
+      filter keeps, as rows filters them, and how many rows those are, of how many. A filter that the last ask of rows of
+      this table matched is taken again. *)
+  name = "$(dict.GetOr("Name", "", c))"
+  found = tableNamed(name, kept)
+  if dict.Has("Error", found)
+    return {Kind: "totals", Error: found.Error}
+  end
+  t = found.Table
+  filter = dict.GetOr("Filter", "", c)
+  if not values.IsText(filter)
+    return {Kind: "totals", Error: "A filter is a text: the words that a row holds."}
+  end
+  words = wordsOf(filter)
+  seen = dict.GetOr(name, missing, views)
+  rows = if values.Len(words) == 0 missing else if values.IsSome(seen) and seen.Filter == filter and values.IsSome(seen.Matched) seen.Matched else matching(t, words, 1..t.Count) end
+  count = if values.IsMissing(rows) t.Count else values.Len(rows) end
+  totals = [(xs -> summed(if values.IsMissing(rows) xs else col.Pick(rows, xs) end, col.Kind(xs) != "value"))(columnOf(t, j)) for j in 1..values.Len(t.Columns)]
+  {Kind: "totals", Columns: t.Columns, Totals: totals, Count: count, Total: t.Count}
 end
 
 defn setTo(c)
@@ -2061,6 +2685,8 @@ defn serve()
       got = slice(c, graphs, views)
       views = got.Views
       send(token, got.Answer)
+    else if c.Do == "totals"
+      send(token, totaled(c, graphs, views))
     else if c.Do == "scene" or c.Do == "svg"
       send(token, rescened(c, graphs))
     else if c.Do == "set"

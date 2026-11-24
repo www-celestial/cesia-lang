@@ -1,0 +1,3 @@
+(* The file of a session of totals: cesia run --cells runs none of it, and the commands of totals.stdin total the columns
+   of a frame, a list of maps and a matrix in the session, over every row or over those a filter keeps. *)
+use std/frame

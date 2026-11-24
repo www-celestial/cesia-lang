@@ -1,0 +1,19 @@
+@token TOKEN
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["hour","elevation","name","ok","mixed"],"Totals":[{"Count":4,"Missing":0,"Sum":"34","Mean":"8.5","Min":"7","Max":"10"},{"Count":3,"Missing":1,"Sum":"1.75","Mean":"0.5833333333333334","Min":"-1.0","Max":"2.25"},{"Count":3,"Missing":1},{"Count":3,"Missing":1},{"Count":3,"Missing":1,"Sum":"6.5","Mean":"2.1666666666666665","Min":"1","Max":"3"}],"Count":4,"Total":4,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["hour","elevation","name","ok","mixed"],"Totals":[{"Count":2,"Missing":0,"Sum":"17","Mean":"8.5","Min":"7","Max":"10"},{"Count":2,"Missing":0,"Sum":"-0.5","Mean":"-0.25","Min":"-1.0","Max":"0.5"},{"Count":2,"Missing":0},{"Count":1,"Missing":1},{"Count":2,"Missing":0,"Sum":"4","Mean":"2.0","Min":"1","Max":"3"}],"Count":2,"Total":4,"Mark":"TOKEN"}
+@{"Kind":"rows","Columns":["hour","elevation","name","ok","mixed"],"Rows":[["7","0.5","Jun a","true","1"],["10","-1.0","jun","missing","3"]],"Count":2,"Total":4,"Positions":[1,4],"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["hour","elevation","name","ok","mixed"],"Totals":[{"Count":2,"Missing":0,"Sum":"17","Mean":"8.5","Min":"7","Max":"10"},{"Count":2,"Missing":0,"Sum":"-0.5","Mean":"-0.25","Min":"-1.0","Max":"0.5"},{"Count":2,"Missing":0},{"Count":1,"Missing":1},{"Count":2,"Missing":0,"Sum":"4","Mean":"2.0","Min":"1","Max":"3"}],"Count":2,"Total":4,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["hour","elevation","name","ok","mixed"],"Totals":[{"Count":0,"Missing":0,"Sum":"0"},{"Count":0,"Missing":0,"Sum":"0"},{"Count":0,"Missing":0},{"Count":0,"Missing":0},{"Count":0,"Missing":0}],"Count":0,"Total":4,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"table","Columns":["name","age"],"Rows":[["Ana","31"],["Bo","25"],["Cy","missing"]],"Count":3,"Key":3},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["name","age"],"Totals":[{"Count":3,"Missing":0},{"Count":2,"Missing":1,"Sum":"56","Mean":"28.0","Min":"25","Max":"31"}],"Count":3,"Total":3,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["1","2"],"Totals":[{"Count":2,"Missing":0,"Sum":"4","Mean":"2.0","Min":"1","Max":"3"},{"Count":2,"Missing":0,"Sum":"6.5","Mean":"3.25","Min":"2","Max":"4.5"}],"Count":2,"Total":2,"Mark":"TOKEN"}
+@{"Kind":"totals","Error":"Name \"nope\" isn't in the session.","Mark":"TOKEN"}
+@{"Kind":"totals","Error":"A filter is a text: the words that a row holds.","Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"totals","Error":"\"n\" holds no frame, matrix or list.","Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"totals","Columns":["a"],"Totals":[{"Count":3,"Missing":0,"Sum":"-1","Mean":"-0.3333333333333333","Min":"-9007199254740995","Max":"9007199254740993"}],"Count":3,"Total":3,"Mark":"TOKEN"}
+exit 0

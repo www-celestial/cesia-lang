@@ -1,0 +1,17 @@
+{"Do":"run","Code":"use std/frame","Line":1,"Path":"totals.ce"}
+{"Do":"run","Code":"nan = 0.0 / 0.0\ndf = frame.Of({hour: [7, 8, 9, 10], elevation: [0.5, 2.25, nan, -1.0], name: [\"Jun a\", missing, \"dec\", \"jun\"], ok: [true, false, true, missing], mixed: [1, 2.5, missing, 3]})","Line":4,"Path":"totals.ce"}
+{"Do":"totals","Name":"df"}
+{"Do":"totals","Name":"df","Filter":"jun"}
+{"Do":"rows","Name":"df","First":1,"Last":10,"Filter":"jun"}
+{"Do":"totals","Name":"df","Filter":"jun"}
+{"Do":"totals","Name":"df","Filter":"zz"}
+{"Do":"run","Code":"people = [{name: \"Ana\", age: 31}, {name: \"Bo\", age: 25}, {name: \"Cy\"}]\npeople","Line":6,"Path":"totals.ce"}
+{"Do":"totals","Name":"3"}
+{"Do":"run","Code":"m = [1, 2; 3, 4.5]","Line":8,"Path":"totals.ce"}
+{"Do":"totals","Name":"m"}
+{"Do":"totals","Name":"nope"}
+{"Do":"totals","Name":"df","Filter":3}
+{"Do":"run","Code":"n = 3","Line":9,"Path":"totals.ce"}
+{"Do":"totals","Name":"n"}
+{"Do":"run","Code":"huge = frame.Of({a: [9007199254740993, 1, -9007199254740995]})","Line":10,"Path":"totals.ce"}
+{"Do":"totals","Name":"huge"}

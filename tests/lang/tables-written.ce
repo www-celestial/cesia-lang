@@ -1,0 +1,132 @@
+(** The tests of the tables written in a cell, without a session: the lists of maps and the frames of lists that Tables
+    reads, their names, their columns and the place of each value; what is none, as a range, an expression, a text with
+    $(...), a table in a comment or in a text; Edit for each kind of column, and what it refuses; and an edit, the text of
+    a new value written over the columns of the old one: nothing else in the file moves, and the file reads back the new
+    value and the others as they were. *)
+use std/cells
+use std/gen
+use std/list
+use std/math
+use std/result
+use std/test
+use std/text
+use std/value
+
+written(source) = cells.Tables(cells.Parse(source), 1)
+(** The value of a table at a row and a column, and where it is written: [Value, Line, Column, End]. *)
+spot(t, r, c) = (x -> [x.Value, x.Line, x.Column, x.End])(t.Cells[r][c])
+
+(* What Tables reads. *)
+defn isFrameRead()
+  t = written("use std/frame\nhours = frame.Of({hour: [7, 8, 9], \"elevation\": [0.48, -9.99, 1e-3], ok: [true, false, missing], name: [\"a\", \"é\\\"\", \"\"]})")[1]
+  t.Name == "hours" and t.Kind == "frame" and t.Line == 2 and t.Column == 9 and value.Equal(t.Columns, ["hour", "elevation", "ok", "name"]) and t.Count == 3 and
+    value.Equal(t.Kinds, ["whole", "number", "bool", "text"]) and value.Equal(spot(t, 2, 2), [-9.99, 2, 56, 60]) and value.Equal(spot(t, 2, 4), ["é\"", 2, 110, 114]) and
+    value.IsMissing(t.Cells[3][3].Value)
+end
+defn isRecordsRead()
+  t = written("people = [\n  {name: \"Ana\", age: 31},   (* first *)\n  {age: 20, \"name\": \"Bo\"},\n  {name: \"Cy\", town: \"Lyon\"},\n]")[1]
+  t.Name == "people" and t.Kind == "records" and t.Line == 1 and value.Equal(t.Columns, ["name", "age"]) and t.Count == 3 and value.Equal(t.Kinds, ["text", "whole"]) and
+    value.Equal(spot(t, 2, 1), ["Bo", 3, 21, 24]) and value.Equal(spot(t, 2, 2), [20, 3, 9, 10]) and value.IsMissing(t.Cells[3][2])
+end
+isAliasRead() = written("use std/frame as df\nx = df.Of({a: [1]})")[1].Name == "x" and value.Len(written("use std/frame as df\nx = frame.Of({a: [1]})")) == 0
+defn isEverywhereRead()
+  ts = written("use std/cells\nuse std/frame\ncells.Show(frame.Of({a: [1, 2]}))\n[{x: 1.5}, {x: 2.5}]")
+  value.Equal([[t.Name, t.Kind, t.Line] for t in ts], [[missing, "frame", 3], [missing, "records", 4]])
+end
+isNamesAtLineStart() = value.Equal([t.Name for t in written("f(rows = [{a: 1}])\n  y = [{a: 2}]\nz == [{a: 3}]\nw += [{a: 4}]")], [missing, "y", missing, missing])
+defn isNone()
+  sources = ["use std/frame\nxs = frame.Of({hour: 7..16})", "xs = [{a: 1 + 1}]", "xs = [{a: \"$$(f(x))\"}]", "xs = [{a: \"$$name\"}]", "(* xs = [{a: 1}] *)", "t = \"[{a: 1}]\"",
+    "xs = [{a: 1}, 2]", "xs = [{a: 1, a: 2}]", "xs = [{}]", "use std/frame\nxs = frame.Of({a: [1, 2], b: [3]})", "use std/frame\nxs = frame.Of({a: []})", "xs = [{a: [1, 2]}]",
+    "xs = [{a: \"one\ntwo\"}]", "xs = [{a: 1}"]
+  list.All([value.Len(written(s)) == 0 for s in sources])
+end
+isOtherCell() = value.Len(cells.Tables(cells.Parse("use std/frame\n(* %% A *)\nx = frame.Of({a: [1]})\n(* %% B *)\ny = 2"), 3)) == 0 and
+  cells.Tables(cells.Parse("use std/frame\n(* %% A *)\nx = frame.Of({a: [1]})"), 2)[1].Cells[1][1].Line == 3
+
+(* Edit, by kind. *)
+table = written("use std/frame\nt = frame.Of({n: [7, 8], x: [0.5, 2], s: [\"a\", \"b\"], b: [true, false], m: [1, \"z\"], gone: [missing, missing]})")[1]
+edit(c, words) = (e -> if result.IsErr(e) e.Error.Message else e.Value.Text end)(cells.Edit(table, 1, c, words))
+isEditWhole() = value.Equal([edit(1, w) for w in ["12", " -3 ", "8.0", "1e3"]], ["12", "-3", "8", "1000"])
+isEditWholeRefused() = value.Equal([edit(1, w) for w in ["8.5", "x", "", "inf", "1e300"]], ["n takes a whole number: 8.5 is none.", "n takes a whole number: x is none.",
+  "n takes a whole number:  is none.", "n takes a whole number: inf is none.", "n takes a whole number: 1e300 is none."])
+isEditNumber() = value.Equal([edit(2, w) for w in ["12", "-0.25", "1e-7"]], ["12.0", "-0.25", "1e-7"]) and edit(2, "nan") == "x takes a number: nan is none."
+isEditText() = value.Equal([edit(3, w) for w in [" 12 ", "", "say \"hi\" \\ $$(rm)"]], ["\" 12 \"", "\"\"", "\"say \\\"hi\\\" \\\\ $$$$(rm)\""])
+isEditBool() = edit(4, "false") == "false" and edit(4, "no") == "b takes true or false: no is neither."
+isEditMixed() = edit(5, "3") == "3" and edit(5, "x") == "m takes a whole number: x is none." and cells.Edit(table, 2, 5, "3").Value.Text == "\"3\""
+isEditMissing() = value.Equal([edit(6, w) for w in ["4", "true", "hey"]], ["4", "true", "\"hey\""])
+defn isEditPlace()
+  e = cells.Edit(table, 2, 2, "3").Value
+  value.Equal([e.Line, e.Column, e.End, e.Value], [table.Cells[2][2].Line, table.Cells[2][2].Column, table.Cells[2][2].End, 3.0])
+end
+defn isEditRefusesGaps()
+  r = written("xs = [{a: 1, b: 2}, {a: 3}]")[1]
+  cells.Edit(r, 2, 2, "4").Error.Message == "Row 2 writes no b: write it in the file first." and cells.Edit(r, 3, 1, "4").Error.Message == "Row 3, column 1 is out of the table."
+end
+
+(* An edit: random tables written in a cell, among other lines, a value given a new one of its kind written over the
+   columns of the old one. Nothing else moves: not another line, not the start or the end of its line; and the file reads
+   back the new value, and every other value as it was, in its place. *)
+pieces = ["\"", "\\", "$$", "$$(", "$$x", "(", ")", "\t", "<script>", "(*", "*)", "%%", "a", "é", "日", " ", "{", "}", "[", "]", ",", ":", "&", "'"]
+texts = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(pieces), max = 12))
+(** A value as the file writes it. *)
+lit(x) = if value.IsBool(x) "$x" else cells.Snap({Kind: "field", Value: if value.IsText(x) "" else 0 end}, x).Text end
+defn valueOf(kind, k, f)
+  (** A value of a kind of column for row k, from the numbers and the texts of a case. *)
+  match kind
+    "whole" -> f.Numbers[k] - 100
+    "number" -> f.Numbers[k] / 8.0
+    "bool" -> math.Mod(f.Numbers[k], 2) == 0
+    else -> f.Texts[k]
+  end
+end
+kinds = ["whole", "number", "bool", "text"]
+cases = gen.Of({Frame: gen.Bool(), Kinds: gen.List(gen.Pick(kinds), min = 1, max = 4), Rows: gen.Int(1, 5), Numbers: gen.List(gen.Int(0, 200), min = 6, max = 6),
+  Texts: gen.List(texts, min = 6, max = 6), Spread: gen.Bool(), Row: gen.Int(1, 5), Column: gen.Int(1, 4)})
+defn source(f)
+  (** A file of cells with a table written in its second cell, a frame or a list of maps, on one line or spread on many. *)
+  names = ["c$j" for j in 1..value.Len(f.Kinds)]
+  cut = if f.Spread ",\n    " else ", " end
+  body = if f.Frame
+    "frame.Of({$(text.Join(cut, ["$(names[j]): [$(text.Join(", ", [lit(valueOf(f.Kinds[j], k, f)) for k in 1..f.Rows]))]" for j in 1..value.Len(names)]))})"
+  else
+    "[$(text.Join(cut, ["{$(text.Join(", ", ["$(names[j]): $(lit(valueOf(f.Kinds[j], k, f)))" for j in 1..value.Len(names)]))}" for k in 1..f.Rows]))]"
+  end
+  "use std/frame\n(* %% Before *)\nk = 1\n(* %% Data *)\n(* the data, \"[{x: 1}]\" *)\nt = $body   (* after *)\nu = t\n(* %% After *)\nv = 2"
+end
+defn edited(f)
+  (** Does an edit of a value of a table written in a cell move only that value? *)
+  s = source(f)
+  cs = cells.Parse(s)
+  ts = cells.Tables(cs, 3)
+  if value.Len(ts) != 1
+    return false
+  end
+  t = ts[1]
+  r = list.Min(f.Row, t.Count)
+  c = list.Min(f.Column, value.Len(t.Columns))
+  new = valueOf(t.Kinds[c], 6, f)
+  e = cells.Edit(t, r, c, if value.IsText(new) new else "$new" end).Value
+  old = text.Lines(s)
+  line = old[e.Line]
+  made = text.Str(text.Slice(1, e.Column - 1, line), e.Text, text.Slice(e.End + 1, value.Len(line), line))
+  now = [if n == e.Line made else old[n] end for n in 1..value.Len(old)]
+  u = cells.Tables(cells.Parse(text.Join("\n", now)), 3)[1]
+  others = [x for x in list.Flatten([[[k, j] for j in 1..value.Len(t.Columns)] for k in 1..t.Count]) if not (x[1] == r and x[2] == c) and t.Cells[x[1]][x[2]].Line != e.Line]
+  value.Equal(u.Cells[r][c].Value, e.Value) and value.Equal(e.Value, new) and u.Cells[r][c].Column == e.Column and u.Cells[r][c].End == e.Column + value.Len(e.Text) - 1 and
+    value.Len(now) == value.Len(old) and value.Equal([u.Cells[x[1]][x[2]] for x in others], [t.Cells[x[1]][x[2]] for x in others]) and
+    value.Equal([[x.Value for x in row] for row in u.Cells], [[if k == r and j == c new else t.Cells[k][j].Value end for j in 1..value.Len(t.Columns)] for k in 1..t.Count])
+end
+isEditMovesOnlyItsValue() = test.ForAll(edited, cases, cases = 100)
+
+(* Lines of pieces at random: Tables reads untrusted text, never panics, and each value it finds stands where it says. *)
+bits = ["x", " ", "=", "frame", ".Of", "(", ")", "[", "]", "{", "}", ",", ":", "\"", "\\", "$$", "$$(", "true", "missing", "1", "-", "2.5", "e", "(*", "*)", "é", "\t", "\n", "a"]
+randomLines = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(bits), max = 60))
+defn sane(line)
+  (** Does Tables read a cell holding the line, each value it finds written at its columns? *)
+  s = "use std/frame\n$line"
+  all = text.Lines(s)
+  list.All([list.All([value.IsMissing(x) or (x.Column <= x.End and x.End <= value.Len(all[x.Line]) and same(text.Slice(x.Column, x.End, all[x.Line]), x.Value)) for x in list.Flatten(t.Cells)]) for t in cells.Tables(cells.Parse(s), 1)])
+end
+(** Is a span of a line a value as written: a text in quotes, or the number, true, false or missing of the value? *)
+same(t, x) = text.StartsWith("\"", t) or text.Number(t) == x or t == "$x"
+isRandomLines() = test.ForAll(sane, randomLines, cases = 200)
