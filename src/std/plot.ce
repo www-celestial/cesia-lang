@@ -49,6 +49,7 @@ struct Graph
   perspective = false
   aspect = missing
   axes = true
+  pieces = missing
 end
 
 one(l) = Graph([l])
@@ -179,7 +180,9 @@ defn Mesh(m, color = missing, edges = false, label = missing)
   (** A part made of triangles in 3D, a mesh of std/mesh, as mesh.Box or mesh.ReadStl makes it: each triangle filled in
       the color, shaded flat by the light of Of, so that each face shows how it turns, as a part in a CAD program. The
       parts are ordered whole by the planes between them, and a part that isn't convex by the depth of its triangles,
-      far first; its faces that turn away from the eye, hidden inside a closed part, are left out. color is written
+      far first; its faces that turn away from the eye, hidden inside a closed part, are left out. Of two convex parts
+      that cross, as a shaft through a wheel, one is cut where it enters the other, and what is inside is left out.
+      color is written
       "#rrggbb", a light grey without it; edges = true draws in a darker color the edges where its faces meet at more
       than 30 degrees, the outline where it turns away from the eye and the border of a part that isn't closed, as a
       drawing of a part has them, each hidden where a nearer face covers it. A graph holds several Mesh, with Line3
@@ -240,7 +243,11 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar, light = light, perspective = perspective, aspect = aspect, axes = axes)
+  (* Meshes that cross are cut once, here, as no view changes their pieces. *)
+  ready = [l.Ready for l in ls if l.Fn == "Mesh"]
+  pieces = if value.Len(ready) > 1 and list.All([result.IsOk(r) for r in ready]) lazily(cutParts)([result.Unwrap(r) for r in ready]) else missing end
+  pieces = if value.IsSome(pieces) and value.Len(pieces) == value.Len(ready) missing else pieces end
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar, light = light, perspective = perspective, aspect = aspect, axes = axes, pieces = pieces)
 end
 
 defn Grid(graphs, columns = missing)
@@ -471,7 +478,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z, a1, a2, a3, a4) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z, a1, a2, a3, a4, a5) -> true
   else -> false
 end
 
@@ -3412,6 +3419,9 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     end
   end
   meshes = [p for p in ps if p.Fn == "Mesh"]
+  if value.Len(meshes) > 1 and list.Sum([value.Len(p.A) for p in meshes]) > mostTriangles
+    return fail("plot.Of: its meshes hold $(list.Sum([value.Len(p.A) for p in meshes])) triangles, too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each.")
+  end
   light = lightOf(g, gw)?
   if not value.IsBool(g.perspective)
     return fail("$gw: perspective is $(brief(g.perspective)); give true or false.")
@@ -3562,7 +3572,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     items = list.Append(if value.IsMissing(light) and not g.perspective meshOf(ps[1], b, clip) else lazily(litSurface)(ps[1], b, clip, light) end, items)
   end
   if value.Len(meshes) > 0
-    items = list.Append(lazily(meshItems)(meshes, b, clip, light), items)
+    items = list.Append(lazily(meshItems)(if value.IsMissing(g.pieces) meshes else g.pieces end, b, clip, light), items)
   end
   for p in ps
     if p.Fn == "Line3"
@@ -3684,7 +3694,7 @@ defn meshReady(l, w)
   end
   count = value.Size(t)[1]
   if count > mostTriangles
-    return fail("$w: $count triangles are too many to draw, past $(text.Decimals(0, mostTriangles * 1.0)) in a graph; an SVG holds about 60 bytes for each.")
+    return fail("$w: $count triangles are too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each.")
   end
   if not (value.IsMissing(l.Color) or isColor(l.Color))
     return fail("$w: color is $(brief(l.Color)); write a color as \"#rrggbb\", as \"#b0b4b8\".")
@@ -3743,6 +3753,7 @@ defn meshReady(l, w)
   p.Closed = e.Closed
   p.Convex = e.Closed and convex(xs, ys, zs, a, b, c, f, e)
   p.Axes = if p.Convex directions(f) else [] end
+  p.Planes = if p.Convex planesOf(xs, ys, zs, a, f) else missing end
   p.Rgb = rgbOf(p.Color)
   p.Points = [n, value.Len(a)]
   p.Xlo = list.Min(xs)
@@ -3823,6 +3834,18 @@ defn directions(f)
       as a sphere has hundreds. *)
   g = col.Groups([math.Round(f.Nx * 1e6), math.Round(f.Ny * 1e6), math.Round(f.Nz * 1e6)])
   if g.Count > mostAxes [] else [[f.Nx[k], f.Ny[k], f.Nz[k]] for k in g.Firsts] end
+end
+
+defn planesOf(xs, ys, zs, a, f)
+  (** The planes of the faces of a convex part, each once: their normals, of length 1, and how far each is from 0 along
+      it, so that the part is where n · p <= D for each. *)
+  g = col.Groups([math.Round(f.Nx * 1e6), math.Round(f.Ny * 1e6), math.Round(f.Nz * 1e6)])
+  k = g.Firsts
+  nx = col.Pick(k, f.Nx)
+  ny = col.Pick(k, f.Ny)
+  nz = col.Pick(k, f.Nz)
+  at = col.Pick(k, a)
+  {Nx: nx, Ny: ny, Nz: nz, D: nx * col.Pick(at, xs) + ny * col.Pick(at, ys) + nz * col.Pick(at, zs)}
 end
 
 (** The red, green and blue of a color "#rrggbb", each 0 to 255. *)
@@ -3920,7 +3943,8 @@ defn meshSeen(p, b, light)
   mz = unitOf(b, 3, p.Mz)
   toward = if value.IsMissing(b.D) [b.V[1], b.V[2], b.V[3]] else [b.Eye[1] - mx, b.Eye[2] - my, b.Eye[3] - mz] end
   front = above(nx * toward[1] + ny * toward[2] + nz * toward[3])
-  shown = (1.0 - above(cut)) * (if p.Closed front else 1.0 end)
+  (* A part cut by another shows its pieces, and its ghost nothing. *)
+  shown = (1.0 - above(cut)) * (if p.Closed front else 1.0 end) * (if dict.GetOr("Ghost", false, p) 0.0 else 1.0 end)
   keep = col.Positions(shown == 1.0)
   depth = if value.IsMissing(b.D) mx * b.V[1] + my * b.V[2] + mz * b.V[3] else 0.0 - math.Sqrt(toward[1] * toward[1] + toward[2] * toward[2] + toward[3] * toward[3]) end
   colors = col.Pick(keep, shades(nx, ny, nz, p.Rgb, b, light, toward[1], toward[2], toward[3]))
@@ -3937,7 +3961,12 @@ defn separated(s, t, axes, b)
     ps = s.U[1] * a[1] + s.U[2] * a[2] + s.U[3] * a[3]
     pt = t.U[1] * a[1] + t.U[2] * a[2] + t.U[3] * a[3]
     gap = 1e-9 * (list.Max(math.Abs(ps)) + list.Max(math.Abs(pt)) + 1e-12)
-    low = if list.Max(ps) <= list.Min(pt) + gap 1 else if list.Max(pt) <= list.Min(ps) + gap -1 else 0 end
+    low = 0
+    if list.Max(ps) <= list.Min(pt) + gap
+      low = 1
+    else if list.Max(pt) <= list.Min(ps) + gap
+      low = -1
+    end
     if low != 0
       cut = if low == 1 (list.Max(ps) + list.Min(pt)) / 2.0 else (list.Max(pt) + list.Min(ps)) / 2.0 end
       side = if value.IsMissing(b.D) b.V[1] * a[1] + b.V[2] * a[2] + b.V[3] * a[3] else b.Eye[1] * a[1] + b.Eye[2] * a[2] + b.Eye[3] * a[3] - cut end
@@ -3948,23 +3977,38 @@ defn separated(s, t, axes, b)
   0
 end
 
+defn screenHull(p, x)
+  (** The least and the greatest of x, y, x + y and x - y of the corners of the triangles of a part that show at a view:
+      the octagon around them on the screen, closer than a box, so that fewer parts meet that never cover each other. *)
+  if value.Len(x.Keep) == 0
+    return missing
+  end
+  at = join(join(col.Pick(x.Keep, p.A), col.Pick(x.Keep, p.B)), col.Pick(x.Keep, p.C))
+  xs = col.Pick(at, x.X)
+  ys = col.Pick(at, x.Y)
+  [list.Min(xs), list.Max(xs), list.Min(ys), list.Max(ys), list.Min(xs + ys), list.Max(xs + ys), list.Min(xs - ys), list.Max(xs - ys)]
+end
+
+(** Do two octagons of screenHull overlap, more than touch? *)
+meets(a, b) = value.IsSome(a) and value.IsSome(b) and list.All([a[k] < b[k + 1] and b[k] < a[k + 1] for k in [1, 3, 5, 7]])
+
 (** The root of the group of part k: the parts linked, each to a lesser one, up to the one linked to itself. *)
 rootOf(parent, k) = list.Iterate(j -> parent[j], k, value.Len(parent))[value.Len(parent)]
 
 defn meshOrder(seen, ps, b)
   (** The meshes of a graph in groups painted one after the other, far first: each group a list of their places, a part
       alone or the parts that no plane between them sets apart, which are painted by the depth of their triangles. Two
-      parts whose points meet on the screen are set in order by a plane between them; a cycle of such orders, as three
-      long parts that each lie over the next, makes the parts left one group. A part that shows nothing is left out. *)
+      parts whose triangles may meet on the screen are set in order by a plane between them; a cycle of such orders is
+      broken where it waits the least. A part that shows nothing is left out. *)
   n = value.Len(seen)
   shows = [k for k in 1..n if value.Len(seen[k].Keep) > 0]
-  boxes = [[list.Min(x.X), list.Max(x.X), list.Min(x.Y), list.Max(x.Y)] for x in seen]
+  boxes = [screenHull(ps[k], seen[k]) for k in 1..n]
   sc = [b.L[k] / (b.R[k][2] - b.R[k][1]) for k in 1..3]
   parent = [k for k in 1..n]
   before = []
   for i in shows
     for j in shows
-      if i < j and boxes[i][1] < boxes[j][2] and boxes[j][1] < boxes[i][2] and boxes[i][3] < boxes[j][4] and boxes[j][3] < boxes[i][4]
+      if i < j and not (dict.GetOr("Parent", 0, ps[i]) > 0 and dict.GetOr("Parent", 0, ps[i]) == dict.GetOr("Parent", 0, ps[j])) and meets(boxes[i], boxes[j])
         d = [list.Mean(seen[j].U[k]) - list.Mean(seen[i].U[k]) for k in 1..3]
         size = math.Sqrt(d[1] * d[1] + d[2] * d[2] + d[3] * d[3])
         axes = list.Concat([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], if size > 0.0 [[d[1] / size, d[2] / size, d[3] / size]] else [] end)
@@ -3991,11 +4035,11 @@ defn meshOrder(seen, ps, b)
   out = []
   left = groups
   while value.Len(left) > 0
-    free = [g for g in left if not list.Any([x[2] == g and x[1] in left for x in edges])]
-    if value.Len(free) == 0
-      (* A cycle: the parts left are one group, ordered by depth. *)
-      return list.Append([k for k in shows if roots[k] in left], out)
-    end
+    waits = [value.Len([x for x in edges if x[2] == g and x[1] in left]) for g in left]
+    (* A cycle, as three long parts that each lie over the next, leaves no group free: the one that waits for the
+       fewest others goes first, and of those the farthest, as the depth of its triangles says. *)
+    least = list.Min(waits)
+    free = [left[k] for k in 1..value.Len(left) if waits[k] == least]
     next = list.MinBy(g -> far[list.IndexOf(g, groups)], free)
     out = list.Append([k for k in shows if roots[k] == next], out)
     left = [g for g in left if g != next]
@@ -4006,10 +4050,266 @@ end
 (** Two lists one after the other; either may be empty. *)
 join(a, b) = if value.Len(a) == 0 b else if value.Len(b) == 0 a else list.Concat(a, b) end
 
+(* Parts that cross: two convex parts, as a shaft through a wheel, can't be ordered whole, as no plane has one on each
+   side. One of the two is cut by the planes of the other, as Newell, Newell and Sancha cut a face by the plane of
+   another: what is inside the other is hidden from every eye outside and is left out, and each piece outside lies past
+   one of its planes, which sets it apart from the other part. Cutting one is enough: a face of the other part inside
+   it that turns to the eye is seen through the part cut, through a piece on the side of the eye of the plane that sets
+   it apart, painted after. The part cut is the one that the fewer planes of the other cross, as a shaft by the two
+   faces of a plate, not the plate by the many sides of the shaft. *)
+
+mostCut = 2000000   (** The most work of a cut, its planes times the triangles cut and the pieces ordered; past it, two parts that cross are painted by the depth of their triangles. *)
+
+(** Do the boxes along the axes of two parts overlap, more than touch? *)
+overlap(p, q) = p.Xlo < q.Xhi and q.Xlo < p.Xhi and p.Ylo < q.Yhi and q.Ylo < p.Yhi and p.Zlo < q.Zhi and q.Zlo < p.Zhi
+
+defn crossing(p, q)
+  (** Do two convex parts cross, no plane of the faces of either setting them apart? *)
+  if not (p.Convex and q.Convex and overlap(p, q))
+    return false
+  end
+  for o in [[p, q], [q, p]]
+    s = o[1].Planes
+    t = o[2]
+    for k in 1..value.Len(s.D)
+      if list.Min(t.X * s.Nx[k] + t.Y * s.Ny[k] + t.Z * s.Nz[k]) >= s.D[k] - 1e-9 * (math.Abs(s.D[k]) + 1.0)
+        return false
+      end
+    end
+  end
+  true
+end
+
+defn across(s, q)
+  (** The planes s of a convex part that pass through the box of part q along the axes: the only ones that can cut it,
+      as q lies inside each of the others. *)
+  mid = s.Nx * ((q.Xlo + q.Xhi) / 2.0) + s.Ny * ((q.Ylo + q.Yhi) / 2.0) + s.Nz * ((q.Zlo + q.Zhi) / 2.0) - s.D
+  reach = math.Abs(s.Nx) * ((q.Xhi - q.Xlo) / 2.0) + math.Abs(s.Ny) * ((q.Yhi - q.Ylo) / 2.0) + math.Abs(s.Nz) * ((q.Zhi - q.Zlo) / 2.0)
+  col.Positions((mid - reach < 0.0) * 1 + (mid + reach > 0.0) * 1 == 2)
+end
+
+(** The work of cutting a part of t triangles by k planes: each plane goes over the triangles, and the k pieces it may
+    make are set in order two by two. *)
+cutWork(k, t) = k * (t + 50 * k)
+
+defn cutters(ps)
+  (** For each part, the parts that cut it, each [j, ks], ks the planes of part j that may: of two convex parts that
+      cross, the one the cut of which is the less work, when it is at most mostCut. *)
+  n = value.Len(ps)
+  cuts = [[] for k in 1..n]
+  for i in 1..n
+    for j in i + 1..n
+      if crossing(ps[i], ps[j])
+        ki = across(ps[i].Planes, ps[j])
+        kj = across(ps[j].Planes, ps[i])
+        wi = cutWork(value.Len(ki), value.Len(ps[j].A))
+        wj = cutWork(value.Len(kj), value.Len(ps[i].A))
+        if wi <= wj and wi <= mostCut
+          cuts[j] = list.Append([i, ki], cuts[j])
+        else if wj < wi and wj <= mostCut
+          cuts[i] = list.Append([j, kj], cuts[i])
+        end
+      end
+    end
+  end
+  cuts
+end
+
+(* Pieces: triangles or segments, as columns: X, Y and Z, a list of each corner's, Source, the triangle or the edge of
+   the part each comes from, and Labels, for each part that cut them, the plane each was put past. *)
+
+(** The pieces at places idx. *)
+picked(fs, idx) = {X: [col.Pick(idx, a) for a in fs.X], Y: [col.Pick(idx, a) for a in fs.Y], Z: [col.Pick(idx, a) for a in fs.Z], Source: col.Pick(idx, fs.Source), Labels: [col.Pick(idx, l) for l in fs.Labels]}
+
+(** Two sets of pieces one after the other. *)
+joined(a, b) = {X: [join(a.X[m], b.X[m]) for m in 1..value.Len(a.X)], Y: [join(a.Y[m], b.Y[m]) for m in 1..value.Len(a.Y)], Z: [join(a.Z[m], b.Z[m]) for m in 1..value.Len(a.Z)], Source: join(a.Source, b.Source), Labels: [join(a.Labels[c], b.Labels[c]) for c in 1..value.Len(a.Labels)]}
+
+(** The pieces past plane k: k added to their labels. *)
+labelled(fs, k) = {X: fs.X, Y: fs.Y, Z: fs.Z, Source: fs.Source, Labels: list.Append(list.Fill(k, value.Len(fs.Source)), fs.Labels)}
+
+(** No piece of m corners, with labels for c parts. *)
+noPieces(m, c) = {X: [[] for k in 1..m], Y: [[] for k in 1..m], Z: [[] for k in 1..m], Source: [], Labels: [[] for k in 1..c]}
+
+(** Triangles of the pieces fs, ts a list of [x, corners], x the place of the piece each comes from. *)
+made(fs, ts) = {X: [[t[2][m][1] for t in ts] for m in 1..3], Y: [[t[2][m][2] for t in ts] for m in 1..3], Z: [[t[2][m][3] for t in ts] for m in 1..3], Source: [fs.Source[t[1]] for t in ts], Labels: [[l[t[1]] for t in ts] for l in fs.Labels]}
+
+defn split(c, d, eps)
+  (** A triangle of corners c, three [x, y, z], cut by a plane, d the distance of each corner past it: the polygon past
+      the plane and the one before it, each a list of corners, the corners on it in both. The point where an edge meets
+      the plane is computed from its two ends taken in one order, the lesser first, so that the two triangles that share
+      the edge find the same point. *)
+  out = []
+  inside = []
+  for i in 1..3
+    j = math.Mod(i, 3) + 1
+    if d[i] >= 0.0 - eps
+      out = list.Append(c[i], out)
+    end
+    if d[i] <= eps
+      inside = list.Append(c[i], inside)
+    end
+    if (d[i] > eps and d[j] < 0.0 - eps) or (d[i] < 0.0 - eps and d[j] > eps)
+      first = if value.Text(c[i]) < value.Text(c[j]) i else j end
+      second = if first == i j else i end
+      t = d[first] / (d[first] - d[second])
+      at = [c[first][k] + t * (c[second][k] - c[first][k]) for k in 1..3]
+      out = list.Append(at, out)
+      inside = list.Append(at, inside)
+    end
+  end
+  [out, inside]
+end
+
+(** The triangles of a fan of a convex polygon of corners, from its first. *)
+fan(poly) = [[poly[1], poly[k], poly[k + 1]] for k in 2..value.Len(poly) - 1]
+
+defn cutBy(fs, q, ks, eps)
+  (** Pieces, triangles or segments, cut by the planes ks of a convex part q: those past a plane, whole or what of them
+      is past it, get its number as their label for q, and those inside every plane, inside the part, are left out.
+      Each plane takes whole columns of the pieces, and only those it cuts one by one. *)
+  corners = value.Len(fs.X)
+  active = fs
+  done = noPieces(corners, value.Len(fs.Labels) + 1)
+  for k in ks
+    if value.Len(active.Source) == 0
+      break
+    end
+    d = [q.Nx[k] * active.X[m] + q.Ny[k] * active.Y[m] + q.Nz[k] * active.Z[m] - q.D[k] for m in 1..corners]
+    lo = if corners == 3 list.Min(list.Min(d[1], d[2]), d[3]) else list.Min(d[1], d[2]) end
+    hi = if corners == 3 list.Max(list.Max(d[1], d[2]), d[3]) else list.Max(d[1], d[2]) end
+    done = joined(done, labelled(picked(active, col.Positions(lo >= 0.0 - eps)), k))
+    next = picked(active, col.Positions(hi <= eps))
+    cut = col.Positions((lo < 0.0 - eps) * 1 + (hi > eps) * 1 == 2)
+    if value.Len(cut) > 0
+      if corners == 3
+        outs = []
+        ins = []
+        for x in cut
+          two = split([[active.X[m][x], active.Y[m][x], active.Z[m][x]] for m in 1..3], [d[1][x], d[2][x], d[3][x]], eps)
+          outs = list.Concat(outs, [[x, t] for t in fan(two[1])])
+          ins = list.Concat(ins, [[x, t] for t in fan(two[2])])
+        end
+        done = joined(done, labelled(made(active, outs), k))
+        next = joined(next, made(active, ins))
+      else
+        (* A segment cut: the point on the plane, and of its two halves the one past it and the one inside. *)
+        c = picked(active, cut)
+        da = col.Pick(cut, d[1])
+        t = da / (da - col.Pick(cut, d[2]))
+        w = above(da)
+        at = [c.X[1] + t * (c.X[2] - c.X[1]), c.Y[1] + t * (c.Y[2] - c.Y[1]), c.Z[1] + t * (c.Z[2] - c.Z[1])]
+        past = {X: [c.X[1] * w + at[1] * (1.0 - w), at[1] * w + c.X[2] * (1.0 - w)], Y: [c.Y[1] * w + at[2] * (1.0 - w), at[2] * w + c.Y[2] * (1.0 - w)], Z: [c.Z[1] * w + at[3] * (1.0 - w), at[3] * w + c.Z[2] * (1.0 - w)], Source: c.Source, Labels: c.Labels}
+        before = {X: [at[1] * w + c.X[1] * (1.0 - w), c.X[2] * w + at[1] * (1.0 - w)], Y: [at[2] * w + c.Y[1] * (1.0 - w), c.Y[2] * w + at[2] * (1.0 - w)], Z: [at[3] * w + c.Z[1] * (1.0 - w), c.Z[2] * w + at[3] * (1.0 - w)], Source: c.Source, Labels: c.Labels}
+        done = joined(done, labelled(past, k))
+        next = joined(next, before)
+      end
+    end
+    active = next
+  end
+  done
+end
+
+defn piecesOf(p, i, f, s, planes)
+  (** The pieces of part p, the i-th of the graph, once cut: a part for each label, the triangles past the same plane of
+      each part that cut it, with the segments of its edges there; the directions of those planes join its Axes. *)
+  nf = value.Len(f.Source)
+  if nf == 0
+    return []
+  end
+  ns = value.Len(s.Source)
+  g = col.Groups([join(f.Labels[c], s.Labels[c]) for c in 1..value.Len(f.Labels)])
+  fid = g.Ids[1..nf]
+  sid = if ns == 0 [] else g.Ids[nf + 1..nf + ns] end
+  out = []
+  for id in 1..g.Count
+    sel = col.Positions(fid == id)
+    m = value.Len(sel)
+    if m > 0
+      ssel = if ns == 0 [] else col.Positions(sid == id) end
+      r = value.Len(ssel)
+      three = xs -> join(join(col.Pick(sel, xs[1]), col.Pick(sel, xs[2])), col.Pick(sel, xs[3]))
+      two = xs -> join(col.Pick(ssel, xs[1]), col.Pick(ssel, xs[2]))
+      q = p
+      q.Ghost = false
+      q.Edges = false
+      q.Parent = i
+      q.X = join(three(f.X), two(s.X)) * 1.0
+      q.Y = join(three(f.Y), two(s.Y)) * 1.0
+      q.Z = join(three(f.Z), two(s.Z)) * 1.0
+      q.A = 1..m
+      q.B = (1..m) + m
+      q.C = (1..m) + 2 * m
+      q.Source = col.Pick(sel, f.Source)
+      q.Nx = col.Pick(q.Source, p.Nx)
+      q.Ny = col.Pick(q.Source, p.Ny)
+      q.Nz = col.Pick(q.Source, p.Nz)
+      q.Mx = (col.Pick(sel, f.X[1]) + col.Pick(sel, f.X[2]) + col.Pick(sel, f.X[3])) / 3.0
+      q.My = (col.Pick(sel, f.Y[1]) + col.Pick(sel, f.Y[2]) + col.Pick(sel, f.Y[3])) / 3.0
+      q.Mz = (col.Pick(sel, f.Z[1]) + col.Pick(sel, f.Z[2]) + col.Pick(sel, f.Z[3])) / 3.0
+      q.SegA = (1..r) + 3 * m
+      q.SegB = (1..r) + 3 * m + r
+      q.SegEdge = col.Pick(ssel, s.Source)
+      at = sel[1]
+      q.Axes = list.Concat([[planes[c].Nx[f.Labels[c][at]], planes[c].Ny[f.Labels[c][at]], planes[c].Nz[f.Labels[c][at]]] for c in 1..value.Len(planes)], p.Axes)
+      out = list.Append(q, out)
+    end
+  end
+  out
+end
+
+defn cutParts(ps)
+  (** The meshes of a graph, each convex part cut by the convex parts it crosses, as cutters chooses, replaced by a ghost
+      that shows no triangle, and its pieces after the parts, each a part of its own with Parent the place of the ghost. *)
+  n = value.Len(ps)
+  if n < 2
+    return ps
+  end
+  cuts = cutters(ps)
+  out = ps
+  for i in 1..n
+    if value.Len(cuts[i]) > 0
+      p = ps[i]
+      span = math.Sqrt((p.Xhi - p.Xlo) ^ 2 + (p.Yhi - p.Ylo) ^ 2 + (p.Zhi - p.Zlo) ^ 2) + list.Max([math.Abs(p.Xlo), math.Abs(p.Xhi), math.Abs(p.Ylo), math.Abs(p.Yhi), math.Abs(p.Zlo), math.Abs(p.Zhi)])
+      eps = 1e-9 * span
+      f = {X: [col.Pick(p.A, p.X), col.Pick(p.B, p.X), col.Pick(p.C, p.X)], Y: [col.Pick(p.A, p.Y), col.Pick(p.B, p.Y), col.Pick(p.C, p.Y)], Z: [col.Pick(p.A, p.Z), col.Pick(p.B, p.Z), col.Pick(p.C, p.Z)], Source: 1..value.Len(p.A), Labels: []}
+      s = {X: [col.Pick(p.Ea, p.X), col.Pick(p.Eb, p.X)], Y: [col.Pick(p.Ea, p.Y), col.Pick(p.Eb, p.Y)], Z: [col.Pick(p.Ea, p.Z), col.Pick(p.Eb, p.Z)], Source: 1..value.Len(p.Ea), Labels: []}
+      for c in cuts[i]
+        f = cutBy(f, ps[c[1]].Planes, c[2], eps)
+        s = cutBy(s, ps[c[1]].Planes, c[2], eps)
+      end
+      ghost = p
+      ghost.Ghost = true
+      out[i] = ghost
+      out = list.Concat(out, piecesOf(p, i, f, s, [ps[c[1]].Planes for c in cuts[i]]))
+    end
+  end
+  out
+end
+
+defn latest(sources, ranks, t)
+  (** For each of t triangles, the rank in the painting of the latest of the pieces cut from it, sources the triangle of
+      each piece and ranks its rank; 0 for a triangle of which none is painted. Sorted by rank, then by triangle, the
+      last of each triangle is its latest; columns.Groups finds it for each of the t. *)
+  m = value.Len(sources)
+  if m == 0
+    return list.Fill(0, t)
+  end
+  o = list.Order(ranks)
+  o = col.Pick(list.Order(col.Pick(o, sources)), o)
+  s = col.Pick(o, sources)
+  last = if m == 1 [1] else col.Positions(list.Concat((s[2..m] != s[1..m - 1]) * 1.0, [1.0]) == 1.0) end
+  ls = col.Pick(last, s)
+  lr = col.Pick(col.Pick(last, o), ranks)
+  g = col.Groups([join(ls, 1..t)])
+  n = value.Len(ls)
+  first = col.Pick(col.Pick((1..t) + n, g.Ids), g.Firsts)
+  col.Pick(list.Min(first, n), lr) * ((first <= n) * 1)
+end
+
 defn meshItems(ps, b, clip, light)
   (** The meshes of a graph at a view as one item "triangles": the places of their points, their triangles that show,
       painted far to near, a color each, and their edges, each drawn after the later of its triangles, so that a nearer
-      face covers it as it covers the face. *)
+      face covers it as it covers the face. Convex parts that cross come cut, by cutParts. *)
   seen = [meshSeen(p, b, light) for p in ps]
   n = value.Len(ps)
   vstart = [0]
@@ -4059,23 +4359,34 @@ defn meshItems(ps, b, clip, light)
   (* The rank of each triangle in the painting, 0 for one not painted: the first place of each among the painted, then
      all of them, which columns.Groups gives. *)
   lines = [[], [], [], []]
+  parents = [dict.GetOr("Parent", 0, p) for p in ps]
   if list.Any([p.Edges for p in ps]) and painted > 0
     g = col.Groups([join(ids, 1..total)])
     first = col.Pick(col.Pick(painted + 1..painted + total, g.Ids), g.Firsts)
     rank = first * ((first <= painted) * 1)
     for k in 1..n
       p = ps[k]
-      if p.Edges
-        front = seen[k].Front
-        two = (p.T2 > 0) * 1.0
-        f2 = col.Pick(list.Max(p.T2, 1), front) * two
-        outline = (col.Pick(p.T1, front) != f2) * two
-        r1 = col.Pick(p.T1 + tstart[k], rank)
-        r2 = col.Pick(list.Max(p.T2, 1) + tstart[k], rank) * (p.T2 > 0) * 1
+      ranks = col.Pick((1..value.Len(p.A)) + tstart[k], rank)
+      (* The edges of a part, or of a piece of a part cut, the segments of the edges of its part there, each drawn after
+         the latest piece of its triangles in it. A ghost draws none. *)
+      e = if parents[k] > 0 and ps[parents[k]].Edges
+        o = ps[parents[k]]
+        {Ea: p.SegA, Eb: p.SegB, T1: col.Pick(p.SegEdge, o.T1), T2: col.Pick(p.SegEdge, o.T2), Feature: col.Pick(p.SegEdge, o.Feature), Front: seen[parents[k]].Front, Ranks: latest(p.Source, ranks, value.Len(o.A)), Rgb: o.Rgb}
+      else if p.Edges and not dict.GetOr("Ghost", false, p)
+        {Ea: p.Ea, Eb: p.Eb, T1: p.T1, T2: p.T2, Feature: p.Feature, Front: seen[k].Front, Ranks: ranks, Rgb: p.Rgb}
+      else
+        missing
+      end
+      if value.IsSome(e) and value.Len(e.Ea) > 0
+        two = (e.T2 > 0) * 1.0
+        f2 = col.Pick(list.Max(e.T2, 1), e.Front) * two
+        outline = (col.Pick(e.T1, e.Front) != f2) * two
+        r1 = col.Pick(e.T1, e.Ranks)
+        r2 = col.Pick(list.Max(e.T2, 1), e.Ranks) * (e.T2 > 0) * 1
         after = list.Max(r1, r2)
-        drawn = col.Positions((list.Min(p.Feature + outline, 1.0) * (after > 0)) == 1.0)
-        dark = math.Div(p.Rgb[1], 4) * 65536 + math.Div(p.Rgb[2], 4) * 256 + math.Div(p.Rgb[3], 4)
-        lines = [join(lines[1], col.Pick(drawn, p.Ea) + vstart[k]), join(lines[2], col.Pick(drawn, p.Eb) + vstart[k]), join(lines[3], col.Pick(drawn, after)), join(lines[4], list.Fill(dark, value.Len(drawn)))]
+        drawn = col.Positions((list.Min(e.Feature + outline, 1.0) * (after > 0)) == 1.0)
+        dark = math.Div(e.Rgb[1], 4) * 65536 + math.Div(e.Rgb[2], 4) * 256 + math.Div(e.Rgb[3], 4)
+        lines = [join(lines[1], col.Pick(drawn, e.Ea) + vstart[k]), join(lines[2], col.Pick(drawn, e.Eb) + vstart[k]), join(lines[3], col.Pick(drawn, after)), join(lines[4], list.Fill(dark, value.Len(drawn)))]
       end
     end
   end
