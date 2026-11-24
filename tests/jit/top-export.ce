@@ -1,0 +1,5 @@
+(* The variables of a file's top, computed in loops, as another file reads them: the last values, with machine code too,
+   which takes the loops, the variables written back to the frame the top exports at its end. *)
+use std/io
+use tests/jit/topcount
+io.Print(topcount.Long, topcount.Short, topcount.Sum)

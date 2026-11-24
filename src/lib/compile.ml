@@ -2514,9 +2514,15 @@ and cu c (e : expr) : ctx -> unit =
   | Destructure (pt, v) ->
     let v = ce c v and bind = cpat c pt e.pos in
     fun ctx -> bind ctx (v ctx)
-  | For { var = { b = Local i; _ }; iter = { e = Range (a, b); pos; _ }; fbody; f_break }
-    when c.tv.(i) == TI && cell_of c i < 0 ->
-    let l = bound c a pos and h = bound c b pos and k = c.map.(i) in
+  (* A variable of a module counts too, with native code: one of the file that a function reads, or one of code run before
+     at a prompt, which native code keeps in a register while it runs. *)
+  | For { var = { b = vb; _ } as var; iter = { e = Range (a, b); pos; _ }; fbody; f_break }
+    when (match vb with
+        | Local i -> (c.tv.(i) == TI && cell_of c i < 0) || (cell_of c i >= 0 && Tier.on ())
+        | Cell { stable = false; _ } -> Tier.on ()
+        | _ -> false) ->
+    let k = match vb with Local i when cell_of c i < 0 -> c.map.(i) | _ -> -1 and set = setter c var in
+    let l = bound c a pos and h = bound c b pos in
     let st = Tier.loop e and outer = c.loops in
     c.loops <- st :: outer;
     let stmts = Array.map (cu c) fbody in
@@ -2583,12 +2589,12 @@ and cu c (e : expr) : ctx -> unit =
                 (* Its first steps, a few: then its calls through a value have met the functions they take turns
                    with, which the JIT bets on. *)
                 while !n < min (hi - 1) (lo + Tier.warm_steps - 1) do
-                  ctx.i.(ctx.b + k) <- !n;
+                  if k >= 0 then ctx.i.(ctx.b + k) <- !n else set ctx (Int !n);
                   body ctx;
                   turn ctx at;
                   incr n
                 done;
-                ctx.i.(ctx.b + k) <- !n;
+                if k >= 0 then ctx.i.(ctx.b + k) <- !n else set ctx (Int !n);
                 body ctx;
                 turn ctx at;
                 (match Tier.warmed ctx st ver outer with
@@ -2600,7 +2606,7 @@ and cu c (e : expr) : ctx -> unit =
                  steps of a loop of calls are: the count of the steps before the next full one moves. *)
               let seen = ref ctx.until in
               while !going do
-                ctx.i.(ctx.b + k) <- !n;
+                if k >= 0 then ctx.i.(ctx.b + k) <- !n else set ctx (Int !n);
                 body ctx;
                 let f = ctx.fuel - 1 in
                 ctx.fuel <- f;

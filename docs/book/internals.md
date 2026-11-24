@@ -380,7 +380,11 @@ program that never gets hot never pays for it.
 - A version of a function whose result inference proves to be a number, an integer or a float, after 1,000 calls; when
   its calls from the interpreter make fewer steps than coming into machine code and going back costs, as one with a loop
   of two turns does, they go back to the interpreter, which keeps its machine code and tries it again now and then, and
-  its calls inside it, as a recursion's, stay machine code.
+  its calls inside it, as a recursion's, stay machine code. The top of a file, a cell or code typed at a prompt is never
+  one: once it ran, its variables are copied from its frame to their cells, where other files, the functions defined
+  later and the variables of a session read them, and machine code of the whole of it would keep them in registers,
+  written to the frame only at a checkpoint: under `CESIA_JIT=always`, which made it so at its first run, the cells got
+  the numbers of the last checkpoint. Its loops get machine code of their own, which writes them back when they end.
 - A loop, at the second checkpoint met inside it: after 10,000 to 20,000 turns of a loop that runs alone. A loop that runs
   often but briefly, as in a function called for each request, gets hot once its runs add up to 100,000 steps; one whose
   runs make fewer steps than coming into machine code and going back costs, about a dozen, stays in the interpreter
@@ -419,6 +423,44 @@ accumulator in a register. With it, a register read after the calls of the write
 slot for the whole loop, so the run now writes its numbers back before those calls: `total` lives in a register, and a
 turn of `dyn` costs 64 instructions and 18 cycles of the processor, against 126 and 34 before this part and the next
 (the processor's counters, the cost of one more turn, measured as the difference of 10 and 20 million turns).
+
+**A variable of a module in a register.** A variable of a file that one of its functions reads lives in the file's
+module, where the function finds it, and so does a name that code typed at a prompt gave a value, which code typed there
+later gives a new one in place. The interpreter writes the module at each assignment, and a loop that assigned such a
+variable stayed in the interpreter: `n = n + 1` over 10^6 turns at the top of a file took 21.7 ms, against 8.9 with `n`
+read by no function, and the same loop typed a second time at a prompt 26.8 ms, against 3.6 the first time. Now a loop
+of a file's top keeps each variable of a module that it assigns, the variable of its `for` too when it is one, in a
+register of the kind the variable holds when the loop compiles, an integer or a float. Before each run the engine reads
+the variable into the register's slot, and after each run that wrote its variables back it writes it to its module: at
+the end of the loop; at each checkpoint, where another fiber, a stop or the variables of a session may look at it; at a
+guard that failed and at a statement left to the interpreter, which go on from there; and at an error, so that the
+variable holds what the interpreter would have left. This is *register promotion*, as Lu and Cooper (1997) made it for
+the scalars of C, a load before the loop and a store after it, for a variable that nothing else in the loop can reach,
+and as Lo, Chow and others (1998) place those loads and stores where they are needed, and only there. Here what can
+reach the variable is a function the loop calls: one inlined reads the register, and one called, which would read the
+module, leaves the loop to the interpreter, as an assignment of another kind does, a Float given to an Int.
+
+Measured on 2026-11-24, `release` profile, 21 runs of each alternated with main's binary, from the start of the process
+to its end, or the run's own time for code typed at a prompt; the medians and their 95% intervals, in ms:
+
+| Loop | Before | Now |
+|---|---:|---:|
+| `n = n + 1`, 10^6 turns at the top of a file, `n` read by a function | 21.7 (21.3–25.8) | 8.4 (8.1–8.8) |
+| the same, `n` read by no function | 8.9 (8.1–9.5) | 8.6 (8.3–9.5) |
+| the same over 10^7 turns, `n` read by a function | 161.9 (158.5–168.4) | 17.3 (16.7–18.3) |
+| the loop of 10^6 turns typed a second time at a prompt | 26.8 (26.4–27.3) | 2.96 (2.89–3.05) |
+| a branch left to the interpreter every 4 turns, 10^6 turns | 47.7 (47.2–48.9) | 47.8 (47.2–48.7) |
+| a call that isn't inlined reads `n`, 3 × 10^5 turns | 83.1 (80.8–84.3) | 82.2 (80.8–83.0) |
+
+Where it gains nothing, it loses nothing either: a loop whose statement left to the interpreter runs every few turns
+goes back to the interpreter for good, as below, and one whose call reads the variable stays there, both as fast as
+before. Beside the giants, the same loop over a global variable, the whole process: 10^6 turns take 7.8 ms, Python 3.14
+114, Node 26 43.6, Lua 5.5 23.1 and LuaJIT 3.2; 10^7 turns 16.9, Python 982, Node 49.3, Lua 206 and LuaJIT 11.4.
+LuaJIT wins: it starts in about a millisecond, where Cesia loads its JIT at the first hot loop, and a turn then costs
+each about a nanosecond. The tests run these loops with the JIT off, hot and always, and compare: another fiber that
+reads the variables at each checkpoint, a stop in the middle of the loop, an error and an overflow, a guard that fails
+in a loop of the loop, the variable of a `for`, a slider set, and a function inlined that reads them; the fuzzer makes
+such loops at random.
 
 **A value is marked shared once.** A list or map read from a list into a variable is held twice, so it must lose its
 *owned* bit ([copy-on-write](#value-semantics-and-copy-on-write)) before anything may write it in place. Machine code
@@ -794,6 +836,8 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
   need such a call, with every value written back to its slot first and read again after; what native code could save
   is the interpreter's own share of `bench/maps.ce`, a tenth of its time in its profile, and those calls would take much
   of it back;
+- a loop of a file's top that assigns a variable of the module which a function it calls, and doesn't inline, reads:
+  that function would read the variable in its module while the machine code holds it in a register;
 - under a debugger, the functions that hold a breakpoint and the code you step through;
 - everything on arm64, as Apple's chips, for now: programs run in the interpreter there, with the same results.
 

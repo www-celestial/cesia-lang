@@ -225,9 +225,20 @@
   bytes at a time: a part of 1,000 bytes at the end of 100 MB of text is found in 105 ms instead of 650, a miss in 1 MB
   of `a` by `aa...ab` takes 0.44 ms instead of 10; `text.Count` and `text.Split` work on such a part once, not at each
   place found, and count a part of 32 bytes in 1 MB of it in 3.1 ms instead of 9.1 (medians of 21 runs, alternated).
+- A loop at the top of a file that assigns a variable a function reads, or a name that code typed at a prompt before
+  gave a value, the variable of its `for` included, is machine code, the variable kept in a register and written back
+  to its module at the end of the loop, at each checkpoint, where another fiber or a stop sees it, at a statement left to
+  the interpreter and at an error: `n = n + 1` over 10^6 turns, `n` read by a function, in 8.4 ms instead of 21.7, over
+  10^7 in 17.3 instead of 161.9, and the same loop typed a second time at a prompt in 2.96 ms instead of 26.8 (medians of
+  21 runs, alternated). A loop that only reads such a variable of the file is machine code too.
 
 ### Fixes
 
+- Under `CESIA_JIT=always`, a loop at the top of a file, of a cell or of code typed at a prompt gives its variables
+  their last values: the top was machine code as a whole from its first run, which kept them in registers and wrote them
+  to the frame only at a checkpoint, so a variable read after it, by another file, a function defined later or the
+  variables of a session, held its number of the last checkpoint, `9999801` for `10000000`, or `0` after a loop shorter
+  than a quantum. The default JIT never made a file's top machine code as a whole, which it does only after 1,000 calls.
 - Code typed at a prompt, that of `cesia run --repl`, `debug.Eval` at the file level, as a debugger runs it while the
   program runs, and a session of std/cells at line 0, as Cemacs's `C-c e r` and `*repl*` send it, gives a name that code
   typed there before gave a value its new one in place: `x = x + 1` reads the x before, and so do `xs[2] = 7` and `p.X =

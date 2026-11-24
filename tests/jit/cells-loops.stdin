@@ -1,0 +1,17 @@
+{"Do": "run", "Code": "n = 0\ni = 0\nx = 0.5", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "for i in 1..1000000\n  n = n + 1\n  x = x * 1.0000001\nend\n[n, i, x]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "for i in 1..1000000\n  n = n + 1\n  x = x * 1.0000001\nend\n[n, i, x]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "defn readN()\n  n\nend\n[readN(), i]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "for i in 1..1000000\n  n = n + 1\n  if i == 500000\n    n = n + [1][2]\n  end\nend", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "[n, i, readN()]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "n = 4611686018427387000\nfor i in 1..1000000\n  n = n + 1\nend", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "[n, i]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "use std/fiber\nstart = fiber.Channel()\ndefn watch()\n  _ = fiber.Receive(start)\n  bad = 0\n  changes = 0\n  last = -1\n  looks = 0\n  while looks < 2500000\n    if n != i\n      bad += 1\n    end\n    if n != last\n      changes += 1\n      last = n\n    end\n    looks += 1\n  end\n  [bad, changes]\nend\ntask = fiber.Spawn(watch)", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "n = 0\ni = 0\nfiber.Send(1, start)\nfor i in 1..3000000\n  n = n + 1\nend\n[n, i]", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "fiber.Wait(task).Value", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "use std/cells", "Line": 3, "Path": "cells-loops.ce"}
+{"Do": "run", "Code": "(* %% Knob *)\nknob = cells.Slider(3, 0, 10)", "Line": 5, "Path": "cells-loops.ce"}
+{"Do": "set", "Name": "knob", "Text": "7"}
+{"Do": "run", "Code": "for i in 1..100000\n  knob = knob + 1\nend\nknob", "Line": 0, "Path": "cells-loops.ce"}
+{"Do": "variables"}
+{"Do": "stop"}

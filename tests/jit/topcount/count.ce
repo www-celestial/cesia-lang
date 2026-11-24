@@ -1,0 +1,19 @@
+(** Counts at the top of the file, over many quanta of steps: a fiber may switch at each. *)
+Long = 0
+for i in 1..300000
+  Long = Long + 1
+end
+(** A sum of floats, in a while loop. *)
+Sum = 0.0
+j = 0
+while j < 100000
+  Sum = Sum + 0.5
+  j += 1
+end
+(** Counts fewer steps than a quantum, last: no checkpoint comes after it. *)
+Short = 0
+for i in 1..100
+  Short = Short + 1
+end
+(* The value of the file's top is a number: machine code could take the whole of it. *)
+Short

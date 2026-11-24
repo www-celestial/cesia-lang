@@ -122,8 +122,11 @@ let on () = !mode <> off && !available
 (* Native code runs no hook: with a debugger, it runs only while the program runs without steps. *)
 let free (w : world) = (not w.hooks) || (w.debug.mode == Running && not w.debug.stopped)
 
+(* A file's top is never native code as a whole: its variables are copied from its frame to their cells after its run
+   ([Compile.run_main]), and such code keeps them in registers, written to the frame only at a checkpoint, so the cells
+   would get the numbers of the last one. Its loops get regions, which write them back when they end. *)
 let watch (w : world) (ver : version) =
-  if on () && (ver.ret == TI || ver.ret == TF) then begin
+  if on () && (ver.ret == TI || ver.ret == TF) && ver.owner.func.export_of = [||] then begin
     let ri = ver.ri and rf = ver.rf and rv = ver.rv in
     let promote () =
       ver.ri <- ri;

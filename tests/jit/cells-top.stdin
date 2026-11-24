@@ -1,0 +1,8 @@
+{"Do":"run","Code":"n = 0\nfor i in 1..300000\n  n = n + 1\nend\nn","Line":0,"Path":"cells-top.ce"}
+{"Do":"run","Code":"defn readN()\n  n\nend\nreadN()","Line":0,"Path":"cells-top.ce"}
+{"Do":"run","Code":"x = 0.0\nj = 0\nwhile j < 100000\n  x = x + 0.5\n  j += 1\nend\nj","Line":0,"Path":"cells-top.ce"}
+{"Do":"run","Code":"defn readX()\n  x\nend\nreadX()","Line":0,"Path":"cells-top.ce"}
+{"Do":"run","Code":"(* %% Count *)\nc = 0\nfor i in 1..300000\n  c = c + 1\nend\nc","Line":4,"Path":"cells-top.ce"}
+{"Do":"run","Code":"(* %% Read *)\ndefn readC()\n  c\nend\nreadC()","Line":11,"Path":"cells-top.ce"}
+{"Do":"variables"}
+{"Do":"stop"}

@@ -1,0 +1,123 @@
+(* Variables of the file that functions read, so that each lives in its cell, assigned in loops of the file's top that
+   machine code takes: each kept in a register while a run lasts, and written back to its cell at its end, at each
+   checkpoint, at a guard that fails and at a statement left to the interpreter. Each print must be the interpreter's. *)
+use std/fiber
+use std/io
+use std/math
+total = 0
+f = 1.0
+k = 0
+defn show()
+  "$total $f $k"
+end
+defn small(a)
+  a + total
+end
+for i in 1..100000
+  total = total + i
+  if math.Mod(i, 3) == 0
+    f = f * 1.0000001
+  else
+    total = total - 1
+  end
+end
+io.Print(show())
+(* Nested loops, a while, a break. *)
+for i in 1..300
+  j = 0
+  while j < 300
+    k = k + j
+    j += 1
+    if k > 10000000
+      break
+    end
+  end
+end
+io.Print(show())
+(* An inlined function that reads the variable reads the register. *)
+for i in 1..100000
+  total = small(1)
+end
+io.Print(show())
+(* A statement left to the interpreter, now and then, reads the cell. *)
+for i in 1..200000
+  total = total + 1
+  if math.Mod(i, 50000) == 0
+    io.Print("at $i: $total")
+  end
+end
+(* The loop gives the variable another kind: the interpreter's. *)
+for i in 1..1000
+  total = total + 0.5
+end
+io.Print(show())
+(* A guard that fails inside a loop of the loop: the interpreter makes that loop again, the variable put back as it was
+   at its start. *)
+vals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+n = 0
+s = 0
+defn get()
+  n
+end
+for i in 1..100000
+  for j in 1..10
+    n = n + 1
+    s = s + vals[j]
+  end
+  if i == 50000
+    vals[5] = 2.5
+  end
+end
+io.Print(get(), s)
+m = 0
+w = 0
+defn getM()
+  m + w
+end
+while w < 300000
+  w += 1
+  m = m + w * 2
+end
+io.Print(getM())
+(* The variable of a for, which a function reads: the counter, written to its cell. An empty range leaves it. *)
+a = 0
+b = 0
+c = 0
+defn abc()
+  [a, b, c]
+end
+for a in 1..300
+  for b in 1..a
+    c = c + a * b
+  end
+end
+io.Print(abc())
+for a in 5..4
+  c = 0
+end
+io.Print(abc())
+(* Another fiber reads the variables at each checkpoint of the loop: as the loop left them, n equal to i. *)
+n = 0
+i = 0
+defn watch()
+  bad = 0
+  changes = 0
+  last = -1
+  looks = 0
+  while looks < 2500000
+    if n != i
+      bad += 1
+    end
+    if n != last
+      changes += 1
+      last = n
+    end
+    looks += 1
+  end
+  [bad, changes]
+end
+task = fiber.Spawn(watch)
+for i in 1..3000000
+  n = n + 1
+end
+io.Print(fiber.Wait(task).Value, n, i)
