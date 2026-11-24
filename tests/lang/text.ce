@@ -131,7 +131,7 @@ isByteFindFoldNotBool() = fails(() -> text.ByteFind("a", 1, "a", fold = 1), "typ
    not, the same answer as a search byte by byte, on texts of two or three letters, where the periods of a part and its
    halves matter most: random parts, powers of a short unit with a tail before or after, a run of one letter then
    another; texts with the part, the part changed at one byte, twice, or a run of its unit. text.Count finds the same
-   places without overlaps, text.Find the first, text.Contains whether there is one. *)
+   places without overlaps, text.Split cuts there, text.Find finds the first, text.Contains whether there is one. *)
 defn longPart(c)
   u = if c.Unit == "" "ab" else c.Unit end
   run = text.ByteSlice(1, 32 + text.ByteLength(c.Extra), text.Repeat(48, u))
@@ -161,7 +161,11 @@ defn sameLong(c)
   apart = list.Reduce((acc, i) -> if value.Len(acc) == 0 or i >= list.Last(acc) + m list.Append(i, acc) else acc end, [], at)
   finds = list.All([value.Equal(text.ByteFind(p, f, s, fold = c.Fold), list.FindFirst(it >= f, at)) for f in 1..text.ByteLength(s)])
   others = c.Fold or (text.Count(p, s) == value.Len(apart) and value.Equal(text.Find(p, s), list.First(at)) and text.Contains(p, s) == (value.Len(at) > 0))
-  finds and others
+  starts = list.Prepend(1, [a + m for a in apart])
+  stops = list.Append(text.ByteLength(s) + 1, apart)
+  pieces = text.Split(p, s)
+  split = c.Fold or (value.Equal([text.ByteLength(t) for t in pieces], [stops[k] - starts[k] for k in 1..(value.Len(apart) + 1)]) and text.Join(p, pieces) == s)
+  finds and others and split
 end
 someLong(al) = gen.Of({Al: () -> al, Rand: gen.Map(cs -> text.Join("", cs), gen.List(gen.Pick(text.Chars(al)), min = 32, max = 48)), Unit: gen.Text(max = 5, chars = al), Extra: gen.Text(max = 12, chars = al), Kind: gen.Int(0, 3), Pre: gen.Text(max = 40, chars = al), Post: gen.Text(max = 40, chars = al), Mid: gen.Int(0, 4), At: gen.Int(0, 63), Fold: gen.Bool()})
 isByteFindLongAsSlow() = test.ForAll(sameLong, gen.Then(someLong, gen.Pick(["ab", "aAbB", "abc", "a\nb"])), cases = 300)

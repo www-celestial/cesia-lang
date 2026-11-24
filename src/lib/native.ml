@@ -716,39 +716,39 @@ let rec next fold s c mask want j =
    window after a miss in the left half remembers in [mem] how many of its first bytes are known to match. A window with
    nothing remembered first moves to the next place of the rarest byte of the part, by [ranks]: the places it skips
    start no match, and a byte of [s] is still compared at most once in a right half, so the search compares at most
-   2 (n - from) bytes and skips each at most once. It exits before any work if the part can't fit: its callers pay for
-   all it does by paying for the bytes of [s] it could read. *)
-let find_long fold s part from =
+   2 (n - from) bytes and skips each at most once. [long_finder] does the work on the part once, for many searches. *)
+let long_finder fold s part =
   let n = String.length s and m = String.length part in
-  if m > n - from then -1
-  else begin
-    let c1, p1 = max_suffix fold part false and c2, p2 = max_suffix fold part true in
-    let crit, p = if c2 < c1 then c1, p1 else c2, p2 in
-    let rec same i = i >= crit || (low fold part.[i] = low fold part.[i + p] && same (i + 1)) in
-    let periodic = same 0 in
-    let period = if periodic then p else (if crit > m - crit then crit else m - crit) + 1 in
-    let rank k = ranks.[Char.code (low fold part.[k])] in
-    let rec rarest k r = if k >= m || rank r = '\000' then r else rarest (k + 1) (if rank k < rank r then k else r) in
-    let r = rarest 1 0 in
-    let c = low fold part.[r] in
-    let mask = if fold && c >= 'a' && c <= 'z' then Int64.mul 0x20L ones else 0L in
-    let want = Int64.mul (Int64.of_int (Char.code c)) ones in
-    let rec go j mem =
-      let j = if mem = 0 then next fold s c mask want (j + r) - r else j in
-      if j > n - m then -1
+  let c1, p1 = max_suffix fold part false and c2, p2 = max_suffix fold part true in
+  let crit, p = if c2 < c1 then c1, p1 else c2, p2 in
+  let rec same i = i >= crit || (low fold part.[i] = low fold part.[i + p] && same (i + 1)) in
+  let periodic = same 0 in
+  let period = if periodic then p else (if crit > m - crit then crit else m - crit) + 1 in
+  let rank k = ranks.[Char.code (low fold part.[k])] in
+  let rec rarest k r = if k >= m || rank r = '\000' then r else rarest (k + 1) (if rank k < rank r then k else r) in
+  let r = rarest 1 0 in
+  let c = low fold part.[r] in
+  let mask = if fold && c >= 'a' && c <= 'z' then Int64.mul 0x20L ones else 0L in
+  let want = Int64.mul (Int64.of_int (Char.code c)) ones in
+  let rec go j mem =
+    let j = if mem = 0 then next fold s c mask want (j + r) - r else j in
+    if j > n - m then -1
+    else begin
+      let i = ref (if crit > mem then crit else mem) in
+      while !i < m && low fold part.[!i] = low fold s.[j + !i] do incr i done;
+      if !i < m then go (j + !i - crit + 1) 0
       else begin
-        let i = ref (if crit > mem then crit else mem) in
-        while !i < m && low fold part.[!i] = low fold s.[j + !i] do incr i done;
-        if !i < m then go (j + !i - crit + 1) 0
-        else begin
-          let i = ref (crit - 1) in
-          while !i >= mem && low fold part.[!i] = low fold s.[j + !i] do decr i done;
-          if !i < mem then j else go (j + period) (if periodic then m - period else 0)
-        end
+        let i = ref (crit - 1) in
+        while !i >= mem && low fold part.[!i] = low fold s.[j + !i] do decr i done;
+        if !i < mem then j else go (j + period) (if periodic then m - period else 0)
       end
-    in
-    go from 0
-  end
+    end
+  in
+  fun from -> if m > n - from then -1 else go from 0
+
+(* It exits before any work if the part can't fit: its callers pay for all it does by paying for the bytes of [s] it
+   could read. *)
+let find_long fold s part from = if String.length part > String.length s - from then -1 else long_finder fold s part from
 
 (* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. With [fold], the ASCII letters match
    in either case, in both. The rarest byte of [part], by [ranks], is looked for eight bytes at a time (SWAR): the word
@@ -777,10 +777,16 @@ let find_from ?(fold = false) s part from =
     words (from + r)
   end
 
+(* The searches of [part] in [s] from one byte then another, as [count] and [pieces] make: a long part that fits in [s]
+   is worked on once, which they pay for by paying for all of [s]. *)
+let finder s part =
+  if String.length part >= 32 && String.length part <= String.length s then long_finder false s part else find_from s part
+
 (* The pieces of [s] between the occurrences of [sep]. *)
 let pieces s sep =
+  let find = finder s sep in
   let rec go from acc =
-    match find_from s sep from with
+    match find from with
     | -1 -> List.rev (String.sub s from (String.length s - from) :: acc)
     | p -> go (p + String.length sep) (String.sub s from (p - from) :: acc)
   in
@@ -976,7 +982,8 @@ let count part s =
     done;
     !total
   end else begin
-    let rec go from k = match find_from s part from with -1 -> k | p -> go (p + String.length part) (k + 1) in
+    let find = finder s part in
+    let rec go from k = match find from with -1 -> k | p -> go (p + String.length part) (k + 1) in
     go 0 0
   end
 

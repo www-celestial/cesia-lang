@@ -141,6 +141,10 @@
   each of its arrays that long was made of a young value, which OCaml moves out first by a collection that promoted all
   that was read, three of them at each load and then a major cycle. Cemacs, whose cells passed 256 functions, reaches
   its first frame in 30.84 ms instead of 32.96, as fast as before them (30.86), medians of 21 runs, alternated.
+- A search for a part of 32 bytes or more is 3.5 to 9 times faster, by Two-Way and a skip to the part's rarest byte, eight
+  bytes at a time: a part of 1,000 bytes at the end of 100 MB of text is found in 105 ms instead of 650, a miss in 1 MB
+  of `a` by `aa...ab` takes 0.44 ms instead of 10; `text.Count` and `text.Split` work on such a part once, not at each
+  place found, and count a part of 32 bytes in 1 MB of it in 3.1 ms instead of 9.1 (medians of 21 runs, alternated).
 
 ### Fixes
 
