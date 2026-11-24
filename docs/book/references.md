@@ -213,10 +213,12 @@ and, as there, a C library is outside the sandbox.
 - Henry S. Warren, Jr. *Hacker's Delight*, 2nd edition, Addison-Wesley, 2013, section 6–1, "Find First 0-Byte". ISBN
   978-0-321-84268-8. The test that sets the high bit of exactly the zero bytes of a word, which [text.Count] adds up and
   [text.ByteFind] uses to find the rarest byte of a part.
-- Donald E. Knuth, James H. Morris Jr., Vaughan R. Pratt. "Fast Pattern Matching in Strings". *SIAM Journal on
-  Computing* 6(2):323–350, 1977. <https://doi.org/10.1137/0206024>. A search in time linear in the text and the part,
-  which never reads a byte of the text twice: [text.ByteFind] and the other searches of [std/text] for a part of 32 bytes
-  or more.
+- Maxime Crochemore, Dominique Perrin. "Two-way string-matching". *Journal of the ACM* 38(3):650–674, 1991.
+  <https://doi.org/10.1145/116825.116845>. A search in time linear in the text, with a few words of memory whatever the
+  part: the part is cut at its *critical factorization*, a place found from its two maximal suffixes, and each window is
+  compared right piece first, then left piece, shifting by the part's period, the smallest shift at which
+  it lies on itself. [text.ByteFind] and the other searches of
+  [std/text] for a part of 32 bytes or more, as glibc's `memmem` and Rust's `str::find`.
 - Ulf Adams. "Ryū: fast float-to-string conversion". *PLDI 2018*, ACM, 270–282.
   <https://doi.org/10.1145/3192366.3192369>. A float and the bounds of the decimals that read back to it, scaled to a
   power of 10 at once by products with 126-bit powers of 5 from a table: the text of every float Cesia writes, in the bytes

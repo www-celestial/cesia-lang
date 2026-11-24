@@ -296,8 +296,13 @@ The search first looks for the *rarest* byte of the part, by a table of how comm
 code (`z` before `e`, a capital or a digit before any small letter), eight bytes at a time as [text.Count] does
 ([SWAR](glossary.md#swar)), and compares the part whole at each place where that byte is. With `fold`, when that byte is
 a letter, the eight bytes are first or'ed with 32, `0x20`: a capital and its small letter differ by that one bit only,
-so both become the small one, and no other byte becomes it. A part of 32 bytes or more is searched by the method of
-Knuth, Morris and Pratt, whose time is linear in the text whatever the part. A word at the end of a text of 100 MB is
+so both become the small one, and no other byte becomes it. A part of 32 bytes or more is searched by the *two-way*
+method of Crochemore and Perrin, as glibc's `memmem` and Rust's `str::find` do: the part is cut in two at a place found
+once from its own bytes, each window of the text is compared with the right piece from left to right, then with the left
+piece from right to left, and a mismatch moves the window on by as much as the part's repeats allow. Its time is linear
+in the text whatever the part, and it keeps no table: a part of 10 MB costs no memory of its size, under
+`--limit memory` or not, and a part that can't fit in what is left of the text costs no work at all. Where nothing of the
+last window is known to match, it first skips to the next place of the part's rarest byte. A word at the end of a text of 100 MB is
 found in 39 ms, 41 ms with `fold`, against 317 ms for a lower-case copy of the text then a search;
 [Speed](speed.md#texts-and-files) puts these beside Python, Node and Go.
 
@@ -364,8 +369,8 @@ which decodes every byte (medians of 3 runs, same machine).
 
 - F. Yergeau, *UTF-8, a transformation format of ISO 10646*, RFC 3629, 2003: what valid UTF-8 is. Randall J. Fisher and
   Henry G. Dietz, *Compiling for SIMD Within a Register*, 1999, and Henry S. Warren, *Hacker's Delight*, 2013, section
-  6–1: the work on eight bytes at once of [text.Count], [text.IsUtf8] and [text.ByteFind]. Donald E. Knuth, James H.
-  Morris and Vaughan R. Pratt, *Fast Pattern Matching in Strings*, 1977: the search of a long part.
+  6–1: the work on eight bytes at once of [text.Count], [text.IsUtf8] and [text.ByteFind]. Maxime Crochemore and
+  Dominique Perrin, *Two-way string-matching*, 1991: the search of a long part.
 - Ken Thompson, *Regular expression search algorithm*, 1968, and Russ Cox, *Regular Expression Matching Can Be Simple
   And Fast*, 2007, and *the Virtual Machine Approach*, 2009: the method of [std/regex]. See [References](references.md#texts-and-formats).
 

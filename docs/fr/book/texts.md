@@ -314,8 +314,15 @@ un texte anglais et dans du code (`z` avant `e`, une majuscule ou un chiffre ava
 fois comme le fait [text.Count] ([SWAR](glossary.md#swar)), puis elle compare la partie entière à chaque endroit où se
 trouve cet octet. Avec `fold`, quand cet octet est une lettre, les huit octets passent d'abord par un or bit à bit avec
 32, `0x20` : une majuscule et sa minuscule ne diffèrent que par ce seul bit, les deux deviennent donc la minuscule, et
-aucun autre octet ne devient cette minuscule. Une partie de 32 octets ou plus est cherchée par la méthode de Knuth,
-Morris et Pratt, dont le temps est linéaire en la longueur du texte, quelle que soit la partie. Un mot à la fin d'un
+aucun autre octet ne devient cette minuscule. Une partie de 32 octets ou plus est cherchée par la méthode *two-way*
+(« à deux sens ») de Crochemore et Perrin, comme le font `memmem` de la glibc et `str::find` de Rust : la partie est
+coupée en deux à un endroit trouvé une seule fois d'après ses propres octets, chaque fenêtre du texte est comparée au
+morceau de droite de gauche à droite, puis au morceau de gauche de droite à gauche, et une différence avance la fenêtre
+d'autant que les répétitions de la partie le permettent. Son temps est linéaire en la longueur du texte, quelle que soit
+la partie, et elle ne garde aucune table : une partie de 10 MB ne coûte aucune mémoire de sa taille, sous
+`--limit memory` ou non, et une partie qui ne peut pas tenir dans ce qui reste du texte ne coûte aucun travail. Là où rien
+de la fenêtre précédente n'est connu comme égal, elle saute d'abord au prochain endroit de l'octet le plus rare de la
+partie. Un mot à la fin d'un
 texte de 100 MB est trouvé en 39 ms, 41 ms avec `fold`, contre 317 ms pour une copie du texte en minuscules suivie
 d'une recherche ; [Vitesse](speed.md#textes-et-fichiers) met ces temps à côté de Python, Node et Go.
 
@@ -387,9 +394,8 @@ sur 33 a un accent, contre 116 ms pour `String.is_valid_utf_8`, la fonction d'OC
 
 - F. Yergeau, *UTF-8, a transformation format of ISO 10646*, RFC 3629, 2003 : ce qu'est l'UTF-8 valide. Randall J.
   Fisher et Henry G. Dietz, *Compiling for SIMD Within a Register*, 1999, et Henry S. Warren, *Hacker's Delight*, 2013,
-  section 6–1 : le travail sur huit octets à la fois de [text.Count], [text.IsUtf8] et [text.ByteFind]. Donald E.
-  Knuth, James H. Morris et Vaughan R. Pratt, *Fast Pattern Matching in Strings*, 1977 : la recherche d'une longue
-  partie.
+  section 6–1 : le travail sur huit octets à la fois de [text.Count], [text.IsUtf8] et [text.ByteFind]. Maxime
+  Crochemore et Dominique Perrin, *Two-way string-matching*, 1991 : la recherche d'une longue partie.
 - Ken Thompson, *Regular expression search algorithm*, 1968, et Russ Cox, *Regular Expression Matching Can Be Simple
   And Fast*, 2007, et *the Virtual Machine Approach*, 2009 : la méthode de [std/regex]. Voyez
   [Références](references.md#textes-et-formats).

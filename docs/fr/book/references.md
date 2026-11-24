@@ -246,10 +246,13 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
 - Henry S. Warren, Jr. *Hacker's Delight*, 2e édition, Addison-Wesley, 2013, section 6–1, "Find First 0-Byte". ISBN
   978-0-321-84268-8. Le test qui met à 1 le bit de poids fort des octets nuls d'un mot, et d'eux seuls, que
   [text.Count] additionne et dont [text.ByteFind] se sert pour trouver l'octet le plus rare d'une partie cherchée.
-- Donald E. Knuth, James H. Morris Jr., Vaughan R. Pratt. "Fast Pattern Matching in Strings". *SIAM Journal on
-  Computing* 6(2):323–350, 1977. <https://doi.org/10.1137/0206024>. Une recherche en un temps linéaire en la longueur du
-  texte et de la partie cherchée, qui ne lit jamais deux fois un octet du texte : [text.ByteFind] et les autres
-  recherches de [std/text] pour une partie de 32 octets ou plus.
+- Maxime Crochemore, Dominique Perrin. "Two-way string-matching". *Journal of the ACM* 38(3):650–674, 1991.
+  <https://doi.org/10.1145/116825.116845>. Une recherche en un temps linéaire en la longueur du texte, avec quelques mots
+  de mémoire quelle que soit la partie : la partie est coupée à sa *critical factorization* (« factorisation
+  critique »), un endroit trouvé d'après ses deux plus grands suffixes, et chaque fenêtre est comparée au morceau de
+  droite d'abord, puis à celui de gauche, en avançant de la période de la partie, le plus petit décalage où elle
+  se recouvre elle-même. [text.ByteFind] et les autres
+  recherches de [std/text] pour une partie de 32 octets ou plus, comme `memmem` de la glibc et `str::find` de Rust.
 - Ulf Adams. "Ryū: fast float-to-string conversion". *PLDI 2018*, ACM, 270–282.
   <https://doi.org/10.1145/3192366.3192369>. Un float et les bornes des décimaux qui se relisent en lui, mis d'un coup à
   l'échelle d'une puissance de 10 par des produits avec des puissances de 5 de 126 bits tirées d'une table : le texte de

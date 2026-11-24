@@ -144,6 +144,12 @@
 
 ### Fixes
 
+- A search for a part of 32 bytes or more, by `text.Find`, `Contains`, `Count`, `Split`, `Replace` or `ByteFind`,
+  allocates nothing of the part's length and does nothing when the part can't fit in what is left of the text: the
+  method of Knuth, Morris and Pratt built a table of 8 bytes a byte of the part outside `--limit memory`, and its work
+  outside `--limit steps`, where Two-Way, of Crochemore and Perrin, needs no table. A part of 10 MB searched in 100 bytes
+  under `--limit memory=16M` took 94 MB, now 18 MB, the two texts; 2,000 searches of a part of 1 MB in `"x"` under
+  `--limit steps=100000` took 15.5 s, now 0.00 s. With `fold`, the part is no longer copied in lower case.
 - `cells.Analyse` gives the error of rule 5 for a slider written with no argument, `x = cells.Slider()`, where it
   panicked, so an editor that analysed such a file stopped.
 - `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
