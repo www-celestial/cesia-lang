@@ -610,7 +610,7 @@ errors = [
   [plot.Of([plot.Line([1], [1])], polar = 1), "plot.Line: polar is 1; give true or false."],
   [plot.Of([plot.Line([1], [1])], polar = true, yscale = "log"), "plot.Line: yscale is \"log\"; a polar graph has linear axes."],
   [plot.Of([plot.Surface([1, 2; 3, 4])], polar = true), "plot.Surface: polar is true; a 3D graph has its box, and a polar graph is flat: give one or the other."],
-  [plot.Of([plot.Line([1], [1])], polar = true, view = [0, 90]), "plot.Line: view is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Of([plot.Line([1], [1])], polar = true, view = [0, 90]), "plot.Line: view is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
   [plot.Of([plot.Line([1], [1])], polar = true, size = [120, 90]), "plot.Line: 120 by 90 pixels leave no room for the plot; give a larger size."],
   [plot.Rule(x = 1, y = 2), "plot.Rule: give x or y, one of them, not both."],
   [plot.Rule(), "plot.Rule: give x or y, one of them, as x = 180 for a line upright at 180."],
@@ -673,16 +673,16 @@ errors = [
   [plot.Surface([1, 2; 3, 4], colors = "jet"), "plot.Surface: colors is \"jet\"; it is \"viridis\" or \"diverging\"."],
   [plot.Surface([math.Nan, math.Nan; math.Nan, math.Nan]), "plot.Surface: no value is finite."],
   [plot.Of([plot.Line([1], [1]), plot.Surface([1, 2; 3, 4], x = [2, 2])]), "plot.Surface (layer 2): x[2] is 2.0; give finite values, increasing or decreasing."],
-  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 2 is plot.Line3."],
-  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Surface([1, 2; 3, 4])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 2 is plot.Surface."],
-  [plot.Of([plot.Line([1], [1]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 1 is plot.Line."],
+  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer 2 is plot.Line3."],
+  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Surface([1, 2; 3, 4])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer 2 is plot.Surface."],
+  [plot.Of([plot.Line([1], [1]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer 1 is plot.Line."],
   [plot.Of([plot.Surface([1, 2; 3, 4])], yscale = "log"), "plot.Surface: yscale is \"log\"; a 3D graph has linear axes."],
   [plot.Of([plot.Surface([1, 2; 3, 4])], view = [0, 100]), "plot.Surface: view is [0, 100]; give [az, el] in degrees, el from -90 to 90."],
   [plot.Of([plot.Surface([1, 2; 3, 4])], view = [math.Nan, 0]), "plot.Surface: view is [nan, 0]; give [az, el] in degrees, el from -90 to 90."],
   [plot.Of([plot.Surface([1, 2; 3, 4])], zlim = [2, 1]), "plot.Surface: zlim is [2, 1]; give [low, high], finite, low below high."],
   [plot.Of([plot.Line3([1], [1], [1])], z = 3), "plot.Line3: z is 3; give a text."],
-  [plot.Of([plot.Line([1], [1])], view = [1, 2]), "plot.Line: view is for a 3D graph, of plot.Surface or plot.Line3."],
-  [plot.Of([plot.Line([1], [1])], zlim = [1, 2]), "plot.Line: zlim is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Of([plot.Line([1], [1])], view = [1, 2]), "plot.Line: view is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
+  [plot.Of([plot.Line([1], [1])], zlim = [1, 2]), "plot.Line: zlim is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
   [plot.Line3([1, 2], [1], [1]), "plot.Line3: x has 2 values, y 1 and z 1; give all three the same number."],
   [plot.Line3([math.Nan], [1], [1]), "plot.Line3: no point has a finite x, y and z."],
   [plot.Line3([1], [1], [1], width = 0), "plot.Line3: width is 0; give the width of the line in pixels, above 0."],
@@ -756,7 +756,7 @@ isSceneLimitErrors() = message0(plot.Scene(pointy, 640, 400, points = 1)) == "pl
 
 isSceneErrors() = message0(plot.Scene(1, 640, 400)) == "plot.Scene needs a graph, as plot.Line or plot.Of makes, not 1." and message0(plot.Scene(plot.Line([1], [1]), 50, 400)) == "plot.Scene needs at least 100 by 80 pixels, not 50 by 400."
 isFrameErrors() = message0(plot.Scene(anim, 640, 400, frame = 4)) == "plot.Scene: frame is 4; this animation has frames 1 to 3." and message0(plot.Scene(anim, 640, 400, frame = 1.0)) == "plot.Scene: frame is 1.0; this animation has frames 1 to 3." and message0(plot.Scene(plot.Line([1], [1]), 640, 400, frame = 2)) == "plot.Scene: frame is 2; a graph that is no animation has frame 1 only." and message0(plot.Scene(plot.Frames([]), 640, 400)) == "plot.Frames needs 1 to 300 graphs, not 0."
-isViewErrors() = message0(plot.Scene(plot.Line([1], [1]), 640, 400, view = [1, 2])) == "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D." and message0(plot.Scene(plot.Surface([1, 2; 3, 4]), 640, 400, view = [1, 200])) == "plot.Scene: view is [1, 200]; give [az, el] in degrees, el from -90 to 90." and message0(plot.Scene(plot.Grid([plot.Surface([1, 2; 3, 4])]), 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; a grid shows each of its graphs at the view of their code." and message0(plot.Scene(waves, 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; an animation shows its frames at the view of their code."
+isViewErrors() = message0(plot.Scene(plot.Line([1], [1]), 640, 400, view = [1, 2])) == "plot.Scene: view turns a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh; this graph is 2D." and message0(plot.Scene(plot.Surface([1, 2; 3, 4]), 640, 400, view = [1, 200])) == "plot.Scene: view is [1, 200]; give [az, el] in degrees, el from -90 to 90." and message0(plot.Scene(plot.Grid([plot.Surface([1, 2; 3, 4])]), 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; a grid shows each of its graphs at the view of their code." and message0(plot.Scene(waves, 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; an animation shows its frames at the view of their code."
 isSaveNeedsSvg() = message0(plot.Save(plot.Line([1], [1]), "a.png")) == "plot.Save writes SVG, to a name that ends in .svg, not \"a.png\"."
 isDropped() = scene(plot.Points([1, math.Nan, 3], [1, 2, missing]), 640, 400).Dropped == 2
 

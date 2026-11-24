@@ -45,6 +45,10 @@ struct Graph
   yticks = missing
   ylabels = missing
   polar = false
+  light = missing
+  perspective = false
+  aspect = missing
+  axes = true
 end
 
 one(l) = Graph([l])
@@ -171,18 +175,42 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing, polar = false)
+defn Mesh(m, color = missing, edges = false, label = missing)
+  (** A part made of triangles in 3D, a mesh of std/mesh, as mesh.Box or mesh.ReadStl makes it: each triangle filled in
+      the color, shaded flat by the light of Of, so that each face shows how it turns, as a part in a CAD program. The
+      parts are ordered whole by the planes between them, and a part that isn't convex by the depth of its triangles,
+      far first; its faces that turn away from the eye, hidden inside a closed part, are left out. color is written
+      "#rrggbb", a light grey without it; edges = true draws in a darker color the edges where its faces meet at more
+      than 30 degrees, the outline where it turns away from the eye and the border of a part that isn't closed, as a
+      drawing of a part has them, each hidden where a nearer face covers it. A graph holds several Mesh, with Line3
+      layers, drawn over them, but never a Surface, and at most 200,000 triangles; a graph with a mesh draws a unit as
+      long on each axis, unless its aspect says otherwise. A triangle with a corner past xlim, ylim or zlim is left out,
+      and one of no area too. label names it in the legend.
+
+        Svg(Mesh(1)) --> result.Err({Kind: "plot", Message: "plot.Mesh: m is 1, not a mesh, as mesh.Box or mesh.ReadStl makes."}) *)
+  l = {Fn: "Mesh", Mesh: m, Label: label, Color: color, Edges: edges}
+  one(dict.Put("Ready", lazily(meshReady)(l, "plot.Mesh"), l))
+end
+
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing, polar = false, light = missing, perspective = false, aspect = missing, axes = true)
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
       legend, which shows when a layer has a label, and legend = "ends" writes each label right of the last point of its
       line in the plot, as a curve is named at its end, the labels moved apart when two would overlap; size is [width,
       height] in pixels, 640 by 400 by default. The options
-      of an Of given as a layer are left aside: those of this Of apply. A 3D graph, of Surface or Line3, has three more:
+      of an Of given as a layer are left aside: those of this Of apply. A 3D graph, of Surface, Line3 or Mesh, has more:
       z names its third axis, zlim is its range, and view is where it is seen from, [az, el] in degrees as MATLAB's view:
       the azimuth az turns from the -y axis, counterclockwise seen from above, and the elevation el, from -90 to 90, is
       the angle above the x-y plane; [-37.5, 30] by default. Its axes are linear and cover the data exactly, unless their
-      lim gives them. note is a text in a box at a corner of the plot, one line for each line of the text, as the name, the
+      lim gives them. light is where the light comes from, [x, y, z] along the axes of the box, fixed as the graph
+      turns; without it, a mesh is lit from the eye, turned 30 degrees up, a light that follows the view as it turns,
+      and a surface keeps its colors unlit. perspective = true draws the graph as a camera sees it, the near parts
+      larger, through a pinhole 4 times as far from the middle of the box as its corners; without it, from far away, so
+      that lines parallel in space stay parallel. aspect = "equal" draws a unit as long on each axis, as a part must be
+      drawn, and aspect = "box" stretches the data to a box of 1 by 1 by 0.75, as matplotlib's; a graph with a mesh is
+      "equal" by default, the others "box". axes = false leaves out the box, its grid, its ticks and the titles of the
+      axes, as a drawing of a part has none. note is a text in a box at a corner of the plot, one line for each line of the text, as the name, the
       place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right". xticks and
       yticks are the ticks of an axis, a list of numbers, increasing, in place of those computed: those inside its range
       are drawn; xlabels and ylabels their labels, as many texts as ticks, else the numbers, written as the computed ones.
@@ -197,7 +225,8 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
         result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
         Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true
         [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"]
-        Svg(Of([Line([90, 180, 270], [10, 60, 10])], polar = true, ylim = [90, 0])) then result.IsOk() --> true *)
+        Svg(Of([Line([90, 180, 270], [10, 60, 10])], polar = true, ylim = [90, 0])) then result.IsOk() --> true
+        Svg(Of([Line([1, 2], [1, 4])], light = [1, -1, 2])) --> result.Err({Kind: "plot", Message: "plot.Line: light is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."}) *)
   ls = []
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
@@ -211,7 +240,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar)
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar, light = light, perspective = perspective, aspect = aspect, axes = axes)
 end
 
 defn Grid(graphs, columns = missing)
@@ -290,7 +319,11 @@ defn Scene(g, width, height, frame = 1, view = missing, mark = missing, xlim = m
       Xs and Ys, the place of each of the (Rows + 1) by (Columns + 1) points, column by column, to a hundredth of a pixel;
       Palette, its colors; Colors, for each quad column by column, its place in Palette from 0, or -1 for a hole; Order,
       [rowStep, columnStep], each 1 or -1: a back-end draws the rows in that order, from the first or the last, and in
-      each row the columns, so that the near quads cover the far ones) or "text" (X, Y on the baseline, Text, Size, Color,
+      each row the columns, so that the near quads cover the far ones), "triangles" (the triangles of meshes, and of a
+      surface lit or seen through a pinhole: Xs and Ys, the places of their points, to a hundredth of a pixel;
+      Triangles, three places among them for each triangle, from 1, in the order they are painted, far first; Colors,
+      one for each, an integer 0xRRGGBB; Lines, two places for each edge drawn, After, for each, how many triangles are
+      painted before it, in order, and LineColors, one 0xRRGGBB each; Width, the width of the lines) or "text" (X, Y on the baseline, Text, Size, Color,
       Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's items have Clip, the
       rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink", "grid" and "paper", which a
       back-end gives the colors of its theme: the ink of the axes, the texts and the layers without a color, the grid,
@@ -438,7 +471,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y, z, a1, a2, a3, a4) -> true
   else -> false
 end
 
@@ -629,6 +662,7 @@ defn prepare(l, at, count)
     "Heatmap" -> heatmapOf(l, w)
     "Surface" -> renamed(l.Ready, w)
     "Line3" -> line3Of(l, w)
+    "Mesh" -> renamed(l.Ready, w)
     "Text" -> lazily(textsOf)(l, w)
     "Rule" -> lazily(ruleOf)(l, w)
     else -> densityOf(l, w)
@@ -2071,13 +2105,18 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if list.Any([is3d(p) for p in ps])
     return drawGraph3(g, ps, ox, oy, w, h, note, view)
   end
-  for o in [["z", g.ztitle], ["zlim", g.zlim], ["view", g.view]]
+  for o in [["z", g.ztitle], ["zlim", g.zlim], ["view", g.view], ["light", g.light], ["aspect", g.aspect]]
     if not value.IsMissing(o[2])
-      return fail("$gw: $(o[1]) is for a 3D graph, of plot.Surface or plot.Line3.")
+      return fail("$gw: $(o[1]) is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh.")
+    end
+  end
+  for o in [["perspective", g.perspective, false], ["axes", g.axes, true]]
+    if not value.Equal(o[2], o[3])
+      return fail("$gw: $(o[1]) is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh.")
     end
   end
   if not value.IsMissing(view)
-    return fail("plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D.")
+    return fail("plot.Scene: view turns a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh; this graph is 2D.")
   end
   if not value.IsBool(g.polar)
     return fail("$gw: polar is $(brief(g.polar)); give true or false.")
@@ -2925,15 +2964,15 @@ end
 mostQuads = 200   (** The most quads of a surface in each direction: past them, its points become the means of blocks. *)
 mostPoints3 = 1000000   (** The most points of a plot.Line3. *)
 codeView = [-37.5, 30.0]   (** The view of a 3D graph that gives none: MATLAB's view(3). *)
-sphere = 0.800390529679106   (** The radius of the sphere around the box, the square root of 0.5² + 0.5² + 0.375². *)
+sphereBox = 0.800390529679106   (** The radius of the sphere around the box of 1 by 1 by 0.75, the square root of 0.5² + 0.5² + 0.375². *)
 
-is3d(p) = p.Fn == "Surface" or p.Fn == "Line3"   (** Is a layer drawn in 3D? *)
+is3d(p) = p.Fn == "Surface" or p.Fn == "Line3" or p.Fn == "Mesh"   (** Is a layer drawn in 3D? *)
 
 defn renamed(r, w)
   (** A surface that Surface checked when it made it, named as its graph names it: by its layer when the graph has several. *)
   if result.IsErr(r)
     m = r.Error.Message
-    return fail("$w$(text.ByteSlice(13, text.ByteLength(m), m))")
+    return fail("$w$(text.ByteSlice(text.ByteFind(": ", 1, m), text.ByteLength(m), m))")
   end
   p = r.Value
   p.W = w
@@ -3160,20 +3199,35 @@ end
 
 sgn(t) = if t >= 0.0 1.0 else -1.0 end   (** The side of a number: 1 from 0 up, -1 below. *)
 
-defn box3(ranges, view, cx, cy, s)
+defn box3(ranges, view, cx, cy, s, shape = missing, far = missing)
   (** How a 3D graph meets the screen: its ranges, the center of its box on the screen and its pixels a unit, and the
-      directions of the view, as MATLAB's: V toward the viewer, E1 the screen's right and E2 its up. *)
+      directions of the view, as MATLAB's: V toward the viewer, E1 the screen's right and E2 its up. L is the length of
+      each side of the box, H half of it, and with far, the distance of the eye from the middle of the box, D, the eye
+      Eye, D along V, and S the pixels a unit of the plane through the middle of the box that faces the eye. *)
   a = view[1] * math.Pi / 180.0
   e = view[2] * math.Pi / 180.0
-  {R: ranges, Cx: cx, Cy: cy, S: s, V: [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)],
-   E1: [math.Cos(a), math.Sin(a)], E2: [0.0 - math.Sin(e) * math.Sin(a), math.Sin(e) * math.Cos(a), math.Cos(e)]}
+  l = if value.IsMissing(shape) boxSides else shape end
+  v = [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)]
+  {R: ranges, Cx: cx, Cy: cy, S: s, V: v, E1: [math.Cos(a), math.Sin(a)], E2: [0.0 - math.Sin(e) * math.Sin(a), math.Sin(e) * math.Cos(a), math.Cos(e)],
+   L: l, H: [l[1] / 2.0, l[2] / 2.0, l[3] / 2.0], D: far, Eye: if value.IsMissing(far) missing else [far * v[1], far * v[2], far * v[3]] end}
 end
 
-(** A value of axis k in the unit box: from -0.5 to 0.5 for x and y, from -0.375 to 0.375 for z; xs may be an array. *)
-unitOf(b, k, xs) = (xs - (b.R[k][1] + b.R[k][2]) / 2.0) * ((if k == 3 0.75 else 1.0 end) / (b.R[k][2] - b.R[k][1]))
+boxSides = [1.0, 1.0, 0.75]   (** The sides of the box of a 3D graph that stretches its data to it, as matplotlib's. *)
 
-(** A point of the unit box on the screen, {X, Y}: s pixels a unit from the center, right along E1 and up along E2. *)
-shown3(b, u, v, w) = {X: b.Cx + b.S * (u * b.E1[1] + v * b.E1[2]), Y: b.Cy - b.S * (u * b.E2[1] + v * b.E2[2] + w * b.E2[3])}
+(** A value of axis k in the unit box: from -L[k] / 2 to L[k] / 2, -0.5 to 0.5 for x and y and -0.375 to 0.375 for z in
+    the box of 1 by 1 by 0.75; xs may be an array. *)
+unitOf(b, k, xs) = (xs - (b.R[k][1] + b.R[k][2]) / 2.0) * (b.L[k] / (b.R[k][2] - b.R[k][1]))
+
+(** A point of the unit box on the screen, {X, Y}: s pixels a unit from the center, right along E1 and up along E2;
+    through a pinhole at the eye, the farther the smaller, as D over its distance from the eye along V. *)
+shown3(b, u, v, w) = if value.IsMissing(b.D) {X: b.Cx + b.S * (u * b.E1[1] + v * b.E1[2]), Y: b.Cy - b.S * (u * b.E2[1] + v * b.E2[2] + w * b.E2[3])} else pinhole(b, u, v, w) end
+
+defn pinhole(b, u, v, w)
+  (** A point of the unit box through the pinhole of a camera at the eye, as on the plane through the middle of the box
+      that faces it: its place across, times D over its depth from the eye, as a pinhole camera draws, x / z. *)
+  f = b.D / (b.D - (u * b.V[1] + v * b.V[2] + w * b.V[3]))
+  {X: b.Cx + b.S * f * (u * b.E1[1] + v * b.E1[2]), Y: b.Cy - b.S * f * (u * b.E2[1] + v * b.E2[2] + w * b.E2[3])}
+end
 
 (** The segment between two points of the unit box, as a line item. *)
 segment3(b, p, q, color, role) = line([shown3(b, p[1], p[2], p[3]).X, shown3(b, q[1], q[2], q[3]).X], [shown3(b, p[1], p[2], p[3]).Y, shown3(b, q[1], q[2], q[3]).Y], color, 1.0, role)
@@ -3192,13 +3246,14 @@ defn edges3(b)
       the bottom edge in front seen from above, at the back seen from below, the lowest on the screen; for z, the one
       most to the left. *)
   v = b.V
+  h = b.H
   up = sgn(v[3])
-  yx = 0.5 * sgn(v[2]) * up
-  xy = 0.5 * sgn(v[1]) * up
-  one = [0.5 * sgn(v[1]), -0.5 * sgn(v[2])]
-  two = [-0.5 * sgn(v[1]), 0.5 * sgn(v[2])]
+  yx = h[2] * sgn(v[2]) * up
+  xy = h[1] * sgn(v[1]) * up
+  one = [h[1] * sgn(v[1]), (0.0 - h[2]) * sgn(v[2])]
+  two = [(0.0 - h[1]) * sgn(v[1]), h[2] * sgn(v[2])]
   zat = if shown3(b, one[1], one[2], 0.0).X <= shown3(b, two[1], two[2], 0.0).X one else two end
-  [{Axis: 1, At: [yx, -0.375], Out: outward(b, [0.0, sgn(yx), -1.0])}, {Axis: 2, At: [xy, -0.375], Out: outward(b, [sgn(xy), 0.0, -1.0])},
+  [{Axis: 1, At: [yx, 0.0 - h[3]], Out: outward(b, [0.0, sgn(yx), -1.0])}, {Axis: 2, At: [xy, 0.0 - h[3]], Out: outward(b, [sgn(xy), 0.0, -1.0])},
    {Axis: 3, At: zat, Out: [-1.0, 0.0]}]
 end
 
@@ -3242,7 +3297,7 @@ defn ticks3(b, e)
   if value.IsMissing(e.Out)
     return none
   end
-  half = if e.Axis == 3 0.375 else 0.5 end
+  half = b.H[e.Axis]
   p0 = edgePoint(b, e, 0.0 - half)
   p1 = edgePoint(b, e, half)
   length = math.Sqrt((p1.X - p0.X) * (p1.X - p0.X) + (p1.Y - p0.Y) * (p1.Y - p0.Y))
@@ -3312,9 +3367,9 @@ defn meshOf(p, b, clip)
   if b.R[1][1] > p.Xlo or b.R[1][2] < p.Xhi or b.R[2][1] > p.Ylo or b.R[2][2] < p.Yhi or b.R[3][1] > p.Zlo or b.R[3][2] < p.Zhi or p.Vlo != p.Painted[1] or p.Vhi != p.Painted[2]
     uz = unitOf(b, 3, p.M)
     edge = 1e-9
-    outx = (ux < -0.5 - edge) * 1.0 + (ux > 0.5 + edge) * 1.0
-    outy = (uy < -0.5 - edge) * 1.0 + (uy > 0.5 + edge) * 1.0
-    bad = (uz < -0.375 - edge) * 1.0 + (uz > 0.375 + edge) * 1.0 + matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, cols], outx)) + matrix.Matmul(matrix.Reshape([rows, 1], outy), matrix.Ones(1, cols))
+    outx = (ux < 0.0 - b.H[1] - edge) * 1.0 + (ux > b.H[1] + edge) * 1.0
+    outy = (uy < 0.0 - b.H[2] - edge) * 1.0 + (uy > b.H[2] + edge) * 1.0
+    bad = (uz < 0.0 - b.H[3] - edge) * 1.0 + (uz > b.H[3] + edge) * 1.0 + matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, cols], outx)) + matrix.Matmul(matrix.Reshape([rows, 1], outy), matrix.Ones(1, cols))
     colors = quadColors(p, bad)
   end
   across = matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, cols], ux))
@@ -3335,7 +3390,7 @@ defn lines3(p, b, clip)
   uy = unitOf(b, 2, p.Y)
   uz = unitOf(b, 3, p.Z)
   edge = 1e-9
-  out = (ux < -0.5 - edge) * 1.0 + (ux > 0.5 + edge) * 1.0 + (uy < -0.5 - edge) * 1.0 + (uy > 0.5 + edge) * 1.0 + (uz < -0.375 - edge) * 1.0 + (uz > 0.375 + edge) * 1.0
+  out = (ux < 0.0 - b.H[1] - edge) * 1.0 + (ux > b.H[1] + edge) * 1.0 + (uy < 0.0 - b.H[2] - edge) * 1.0 + (uy > b.H[2] + edge) * 1.0 + (uz < 0.0 - b.H[3] - edge) * 1.0 + (uz > b.H[3] + edge) * 1.0
   (* A point past a limit is divided by 0: no longer finite, it cuts the line as a NaN does. *)
   keep = 1.0 - list.Min(out, 1.0)
   at = shown3(b, ux / keep, uy / keep, uz / keep)
@@ -3352,10 +3407,22 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   gw = if count == 1 ps[1].W else "plot.Of" end
   surface = ps[1].Fn == "Surface"
   for k in 1..count
-    if (surface and k > 1) or (not surface and ps[k].Fn != "Line3")
-      return fail("plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer $k is plot.$(ps[k].Fn).")
+    if (surface and k > 1) or (not surface and not (ps[k].Fn == "Line3" or ps[k].Fn == "Mesh"))
+      return fail("plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer $k is plot.$(ps[k].Fn).")
     end
   end
+  meshes = [p for p in ps if p.Fn == "Mesh"]
+  light = lightOf(g, gw)?
+  if not value.IsBool(g.perspective)
+    return fail("$gw: perspective is $(brief(g.perspective)); give true or false.")
+  end
+  if not value.IsBool(g.axes)
+    return fail("$gw: axes is $(brief(g.axes)); give true or false.")
+  end
+  if not (value.IsMissing(g.aspect) or g.aspect == "equal" or g.aspect == "box")
+    return fail("$gw: aspect is $(brief(g.aspect)); give \"equal\", a unit as long on each axis, or \"box\", the box of 1 by 1 by 0.75.")
+  end
+  equal = if value.IsMissing(g.aspect) value.Len(meshes) > 0 else g.aspect == "equal" end
   title = checkText(g.title, "title", gw)?
   titles = [checkText(g.xtitle, "x", gw)?, checkText(g.ytitle, "y", gw)?, checkText(g.ztitle, "z", gw)?]
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
@@ -3380,6 +3447,15 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     seen = viewOf(view, "plot.Scene")?
   end
   ranges = [range3("x", ps, g.xlim, gw)?, range3("y", ps, g.ylim, gw)?, range3("z", ps, g.zlim, gw)?]
+  (* The sides of the box: 1 by 1 by 0.75, or the lengths of the ranges, the longest 1; the radius of the sphere around
+     it, which the plot fits. *)
+  shape = boxSides
+  sphere = sphereBox
+  if equal
+    longest = list.Max([r[2] - r[1] for r in ranges])
+    shape = [(r[2] - r[1]) / longest for r in ranges]
+    sphere = math.Sqrt(shape[1] * shape[1] + shape[2] * shape[2] + shape[3] * shape[3]) / 2.0
+  end
   ps = colored(ps)
   entries = if g.legend == false [] else legendEntries(ps) end
   legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
@@ -3414,16 +3490,22 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   if aw < 20 or guess < 20.0
     return fail(roomless)
   end
-  full = [linearTicks(lineAxis(widened(ranges[k])), guess / sphere * (if k == 3 0.75 else 1.0 end), true) for k in 1..3]
-  (* The labels of x and y go below the box, those of z on its left: the margins hold the widest label of the edges at
-     their longest, and the titles. A label goes out from its edge, slanted or not, by at most its width and a quarter
-     of its height, or its height and a quarter of its width. *)
-  wl = list.Max([widest(t.Labels, tickSize) for t in full])
   hl = tickSize * lineRatio
-  tt = if list.All([value.IsMissing(t) for t in titles]) 0.0 else 4.0 + axisSize * lineRatio end
-  top = if list.Any([not value.IsMissing(t.Factor) for t in full]) hl + 4.0 else 4.0 end
-  bottom = tickLen + tickGap + hl + wl / 4.0 + tt
-  side = tickLen + tickGap + wl + hl / 4.0
+  tt = 0.0
+  top = 4.0
+  bottom = 4.0
+  side = 4.0
+  if g.axes
+    full = [linearTicks(lineAxis(widened(ranges[k])), guess / sphere * shape[k], true) for k in 1..3]
+    (* The labels of x and y go below the box, those of z on its left: the margins hold the widest label of the edges at
+       their longest, and the titles. A label goes out from its edge, slanted or not, by at most its width and a quarter
+       of its height, or its height and a quarter of its width. *)
+    wl = list.Max([widest(t.Labels, tickSize) for t in full])
+    tt = if list.All([value.IsMissing(t) for t in titles]) 0.0 else 4.0 + axisSize * lineRatio end
+    top = if list.Any([not value.IsMissing(t.Factor) for t in full]) hl + 4.0 else 4.0 end
+    bottom = tickLen + tickGap + hl + wl / 4.0 + tt
+    side = tickLen + tickGap + wl + hl / 4.0
+  end
   rad = list.Min((aw - side - tt - side) / 2.0, (ah - top - bottom) / 2.0)
   if rad < 20.0
     return fail(roomless)
@@ -3431,18 +3513,24 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   (* The box, its margins, the color bar and the legend, side by side in the middle of the width. *)
   gw = side + tt + 2.0 * rad + side
   gx = ax + math.Floor((aw - gw) / 2.0)
-  b = box3(ranges, seen, gx + side + tt + rad, ay + top + (ah - top - bottom) / 2.0, rad / sphere)
+  (* Through a pinhole the eye sees the sphere under the angle 2 asin(1 / eyeFar): its pixels a unit shrink by
+     sqrt(D^2 - r^2) / D, so that its outline, the farthest it reaches on the screen, still fits. *)
+  far = if g.perspective eyeFar * sphere else missing end
+  unit = if g.perspective rad / sphere * math.Sqrt(far * far - sphere * sphere) / far else rad / sphere end
+  b = box3(ranges, seen, gx + side + tt + rad, ay + top + (ah - top - bottom) / 2.0, unit, shape = shape, far = far)
   clip = [gx, ay, math.Ceil(gw), ah]
   v = b.V
-  back = [-0.5 * sgn(v[1]), -0.5 * sgn(v[2]), -0.375 * sgn(v[3])]
+  hb = b.H
+  back = [(0.0 - hb[1]) * sgn(v[1]), (0.0 - hb[2]) * sgn(v[2]), (0.0 - hb[3]) * sgn(v[3])]
   edges = edges3(b)
-  ticks = [ticks3(b, e) for e in edges]
+  ticks = if g.axes [ticks3(b, e) for e in edges] else [{Values: [], Labels: [], Factor: missing} for e in edges] end
 
   (* The far sides of the box, and their grid at the ticks. *)
   items = []
-  for corners in [[[back[1], -0.5, -0.375], [back[1], 0.5, -0.375], [back[1], 0.5, 0.375], [back[1], -0.5, 0.375]],
-      [[-0.5, back[2], -0.375], [0.5, back[2], -0.375], [0.5, back[2], 0.375], [-0.5, back[2], 0.375]],
-      [[-0.5, -0.5, back[3]], [0.5, -0.5, back[3]], [0.5, 0.5, back[3]], [-0.5, 0.5, back[3]]]]
+  lo = [0.0 - hb[1], 0.0 - hb[2], 0.0 - hb[3]]
+  for corners in if g.axes [[[back[1], lo[2], lo[3]], [back[1], hb[2], lo[3]], [back[1], hb[2], hb[3]], [back[1], lo[2], hb[3]]],
+      [[lo[1], back[2], lo[3]], [hb[1], back[2], lo[3]], [hb[1], back[2], hb[3]], [lo[1], back[2], hb[3]]],
+      [[lo[1], lo[2], back[3]], [hb[1], lo[2], back[3]], [hb[1], hb[2], back[3]], [lo[1], hb[2], back[3]]]] else [] end
     at = [shown3(b, c[1], c[2], c[3]) for c in corners]
     items = list.Append({Kind: "area", Xs: [q.X for q in at], Ys: [q.Y for q in at], Color: "grid", Opacity: 0.5, Clip: missing, Role: "pane"}, items)
   end
@@ -3450,18 +3538,18 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     for t in ticks[k].Values
       u = unitOf(b, k, t)
       ends = match k
-        1 -> [[[u, back[2], -0.375], [u, back[2], 0.375]], [[u, -0.5, back[3]], [u, 0.5, back[3]]]]
-        2 -> [[[back[1], u, -0.375], [back[1], u, 0.375]], [[-0.5, u, back[3]], [0.5, u, back[3]]]]
-        else -> [[[back[1], -0.5, u], [back[1], 0.5, u]], [[-0.5, back[2], u], [0.5, back[2], u]]]
+        1 -> [[[u, back[2], lo[3]], [u, back[2], hb[3]]], [[u, lo[2], back[3]], [u, hb[2], back[3]]]]
+        2 -> [[[back[1], u, lo[3]], [back[1], u, hb[3]]], [[lo[1], u, back[3]], [hb[1], u, back[3]]]]
+        else -> [[[back[1], lo[2], u], [back[1], hb[2], u]], [[lo[1], back[2], u], [hb[1], back[2], u]]]
       end
       items = list.Concat(items, [segment3(b, s[1], s[2], "grid", "grid") for s in ends])
     end
   end
 
   (* The edges of the labels and their ticks, then the data. *)
-  for k in 1..3
+  for k in if g.axes 1..3 else [] end
     e = edges[k]
-    half = if k == 3 0.375 else 0.5 end
+    half = hb[k]
     p0 = edgePoint(b, e, 0.0 - half)
     p1 = edgePoint(b, e, half)
     items = list.Append(line([p0.X, p1.X], [p0.Y, p1.Y], "ink", 1.0, "axis"), items)
@@ -3470,14 +3558,22 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
       items = list.Append(line([p.X, p.X + e.Out[1] * tickLen], [p.Y, p.Y + e.Out[2] * tickLen], "ink", 1.0, "tick"), items)
     end
   end
+  if surface
+    items = list.Append(if value.IsMissing(light) and not g.perspective meshOf(ps[1], b, clip) else lazily(litSurface)(ps[1], b, clip, light) end, items)
+  end
+  if value.Len(meshes) > 0
+    items = list.Append(lazily(meshItems)(meshes, b, clip, light), items)
+  end
   for p in ps
-    items = list.Concat(items, if surface [meshOf(p, b, clip)] else lines3(p, b, clip) end)
+    if p.Fn == "Line3"
+      items = list.Concat(items, lines3(p, b, clip))
+    end
   end
 
   (* The texts of the axes: the titles and the powers of ten first, then the labels that meet none of them, each kept
      inside the plot. *)
   texts = []
-  for k in 1..3
+  for k in if g.axes 1..3 else [] end
     e = edges[k]
     t = ticks[k]
     d = if value.IsMissing(e.Out) [0.0, 1.0] else e.Out end
@@ -3485,7 +3581,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     for i in 1..value.Len(t.Values)
       reach = list.Max(reach, math.Abs(d[1]) * textWidth(t.Labels[i], tickSize) + math.Abs(d[2]) * hl)
     end
-    half = if k == 3 0.375 else 0.5 end
+    half = hb[k]
     p0 = edgePoint(b, e, 0.0 - half)
     p1 = edgePoint(b, e, half)
     size = math.Sqrt((p1.X - p0.X) ^ 2 + (p1.Y - p0.Y) ^ 2)
@@ -3544,8 +3640,545 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   end
   zs = "z from $(sig3(list.Min([p.Zlo for p in ps]))) to $(sig3(list.Max([p.Zhi for p in ps])))"
   points = list.Sum([value.Len(p.X) for p in ps if p.Fn == "Line3"])
-  summary = if surface "Surface, $(ps[1].Points[1]) × $(ps[1].Points[2]) points, $zs" else if count == 1 "3D line, $points points, $zs" else "3D lines, $count lines of $points points in all, $zs" end
+  lines = count - value.Len(meshes)
+  summary = if surface "Surface, $(ps[1].Points[1]) × $(ps[1].Points[2]) points, $zs" else if value.Len(meshes) > 0 lazily(meshSummary)(meshes, lines, points, zs) else if count == 1 "3D line, $points points, $zs" else "3D lines, $count lines of $points points in all, $zs" end
   result.Ok({Items: items, Dropped: dropped, View: seen, Summary: summary})
+end
+
+(* Meshes: parts of triangles, lit and shaded flat, ordered from far to near. What no view changes is made once, when
+   Mesh makes the layer: the triangles checked, their normals, their edges and the two triangles of each, whether the
+   part is closed and convex. A view projects the points, keeps the faces that turn to the eye, shades them, orders
+   the parts whole by the planes between them, and the triangles of a part that isn't convex by their depth. *)
+
+mostTriangles = 200000   (** The most triangles of the meshes of a graph. *)
+meshGrey = "#b0b4b8"   (** The color of a plot.Mesh that gives none: a light grey, as of metal. *)
+featureCos = 0.8660254037844387   (** The cosine of 30 degrees: two faces that meet at more than it make an edge. *)
+ambient = 0.3   (** The light that every face gets, from all around: a face in shadow shows 30 % of its color. *)
+diffuse = 0.7   (** The light of Lambert's law, as the cosine between the normal and the light: a face to the light, all of its color. *)
+shine = 0.2   (** The highlight of Blinn's model at its brightest: a fifth of white over the color. *)
+shininess = 20.0   (** The power of the cosine of the highlight: the higher, the smaller the spot. *)
+eyeFar = 4.0   (** How far the eye of a perspective is from the middle of the box, in radii of the sphere around it. *)
+mostAxes = 32   (** The most directions of the faces of a convex part tried as planes between two parts. *)
+
+defn meshReady(l, w)
+  (** A mesh checked and measured once, when Mesh makes the layer, in an Ok: its points and triangles, its normals, its
+      edges, whether it is closed and convex; an Err that says what is wrong with it. *)
+  m = l.Mesh
+  fields = if value.IsStruct(m) dict.Fields(m) else missing end
+  if value.IsMissing(fields) or not (dict.Has("Vertices", fields) and dict.Has("Triangles", fields))
+    return fail("$w: m is $(brief(m)), not a mesh, as mesh.Box or mesh.ReadStl makes.")
+  end
+  v = fields.Vertices
+  t = fields.Triangles
+  if not (value.IsArray(v) and value.Len(value.Size(v)) == 2 and value.Size(v)[2] == 3 and value.Size(v)[1] > 0 and col.Kind(v) in ["float", "int"])
+    return fail("$w: its Vertices are $(brief(v)), not a matrix of numbers of a row x, y, z for each point.")
+  end
+  if list.Sum(v * 0.0) != 0.0
+    k = list.FindFirst(k -> v[k] - v[k] != 0.0, 1..value.Len(v))
+    rows = value.Size(v)[1]
+    return fail("$w: its point $(math.Mod(k - 1, rows) + 1) has $(["x", "y", "z"][math.Div(k - 1, rows) + 1]) = $(value.Text(v[k])); give finite numbers.")
+  end
+  n = value.Size(v)[1]
+  if not (value.IsArray(t) and value.Len(value.Size(t)) == 2 and value.Size(t)[2] == 3 and value.Size(t)[1] > 0 and col.Kind(t) in ["float", "int"]) or list.Sum(math.Abs(t - math.Floor(t * 1.0))) != 0.0 or list.Min(t) < 1 or list.Max(t) > n
+    return fail("$w: its Triangles are $(brief(t)), not a matrix of a row of three corners for each triangle, each a row of its $n points.")
+  end
+  count = value.Size(t)[1]
+  if count > mostTriangles
+    return fail("$w: $count triangles are too many to draw, past $(text.Decimals(0, mostTriangles * 1.0)) in a graph; an SVG holds about 60 bytes for each.")
+  end
+  if not (value.IsMissing(l.Color) or isColor(l.Color))
+    return fail("$w: color is $(brief(l.Color)); write a color as \"#rrggbb\", as \"#b0b4b8\".")
+  end
+  if not value.IsBool(l.Edges)
+    return fail("$w: edges is $(brief(l.Edges)); give true or false.")
+  end
+  p = base(l, w)
+  p.Color = if value.IsMissing(l.Color) meshGrey else text.Lower(l.Color) end
+  p.Edges = l.Edges
+  xs = matrix.Reshape([1, n], v[:, 1] * 1.0)
+  ys = matrix.Reshape([1, n], v[:, 2] * 1.0)
+  zs = matrix.Reshape([1, n], v[:, 3] * 1.0)
+  corner = k -> matrix.Reshape([1, count], t[:, k] * 1.0)
+  a = corner(1)
+  b = corner(2)
+  c = corner(3)
+  (* A triangle of no area, its corners on one line, covers no pixel: it is left out. *)
+  f = faces(xs, ys, zs, a, b, c)
+  keep = col.Positions(f.Size > 0.0)
+  if value.Len(keep) == 0
+    return fail("$w: none of its $count triangles has an area.")
+  end
+  if value.Len(keep) < count
+    a = col.Pick(keep, a)
+    b = col.Pick(keep, b)
+    c = col.Pick(keep, c)
+    f = faces(xs, ys, zs, a, b, c)
+  end
+  e = meshEdges(a, b, c, f)
+  (* A closed part turned inside out, its volume below 0 by the theorem of divergence, is turned back. *)
+  if e.Closed and list.Sum(col.Pick(a, xs) * (col.Pick(b, ys) * col.Pick(c, zs) - col.Pick(b, zs) * col.Pick(c, ys)) + col.Pick(a, ys) * (col.Pick(b, zs) * col.Pick(c, xs) - col.Pick(b, xs) * col.Pick(c, zs)) + col.Pick(a, zs) * (col.Pick(b, xs) * col.Pick(c, ys) - col.Pick(b, ys) * col.Pick(c, xs))) < 0.0
+    swap = b
+    b = c
+    c = swap
+    f = faces(xs, ys, zs, a, b, c)
+    e = meshEdges(a, b, c, f)
+  end
+  p.X = xs
+  p.Y = ys
+  p.Z = zs
+  p.A = a
+  p.B = b
+  p.C = c
+  p.Nx = f.Nx
+  p.Ny = f.Ny
+  p.Nz = f.Nz
+  p.Mx = (col.Pick(a, xs) + col.Pick(b, xs) + col.Pick(c, xs)) / 3.0
+  p.My = (col.Pick(a, ys) + col.Pick(b, ys) + col.Pick(c, ys)) / 3.0
+  p.Mz = (col.Pick(a, zs) + col.Pick(b, zs) + col.Pick(c, zs)) / 3.0
+  p.Ea = e.Ea
+  p.Eb = e.Eb
+  p.T1 = e.T1
+  p.T2 = e.T2
+  p.Feature = e.Feature
+  p.Closed = e.Closed
+  p.Convex = e.Closed and convex(xs, ys, zs, a, b, c, f, e)
+  p.Axes = if p.Convex directions(f) else [] end
+  p.Rgb = rgbOf(p.Color)
+  p.Points = [n, value.Len(a)]
+  p.Xlo = list.Min(xs)
+  p.Xhi = list.Max(xs)
+  p.Ylo = list.Min(ys)
+  p.Yhi = list.Max(ys)
+  p.Zlo = list.Min(zs)
+  p.Zhi = list.Max(zs)
+  result.Ok(p)
+end
+
+defn faces(xs, ys, zs, a, b, c)
+  (** The normal of each triangle, (b - a) × (c - a), of length 1, and its length, twice the area of the triangle. *)
+  ux = col.Pick(b, xs) - col.Pick(a, xs)
+  uy = col.Pick(b, ys) - col.Pick(a, ys)
+  uz = col.Pick(b, zs) - col.Pick(a, zs)
+  vx = col.Pick(c, xs) - col.Pick(a, xs)
+  vy = col.Pick(c, ys) - col.Pick(a, ys)
+  vz = col.Pick(c, zs) - col.Pick(a, zs)
+  nx = uy * vz - uz * vy
+  ny = uz * vx - ux * vz
+  nz = ux * vy - uy * vx
+  size = math.Sqrt(nx * nx + ny * ny + nz * nz)
+  safe = size + (size == 0.0) * 1.0
+  {Nx: nx / safe, Ny: ny / safe, Nz: nz / safe, Size: size}
+end
+
+defn meshEdges(a, b, c, f)
+  (** The edges of the triangles, each once: its two points Ea and Eb, its triangles T1 and T2, places among the
+      triangles, T2 0 for an edge of one triangle; Feature, 1 where it is an edge of a drawing: its faces meet at more
+      than 30 degrees, as VTK's feature edges, or it has one triangle, or more than two; and Closed, whether each edge
+      has two triangles that take it in opposite ways, as the faces of a solid do. columns.Groups numbers the edges, by
+      their two points, the lesser first. *)
+  t = value.Len(a)
+  from = list.Concat(list.Concat(a, b), c)
+  to = list.Concat(list.Concat(b, c), a)
+  lo = list.Min(from, to)
+  hi = list.Max(from, to)
+  g = col.Groups([lo, hi])
+  o = list.Order(g.Ids)
+  ids = col.Pick(o, g.Ids)
+  h = value.Len(o)
+  starts = col.Positions(list.Concat([1.0], math.Sign(math.Abs(ids[2..h] - ids[1..h - 1]))) == 1.0)
+  counts = list.Concat(starts[2..g.Count] - starts[1..g.Count - 1], [h + 1 - starts[g.Count]])
+  (* Half-edge k, from 1, is on triangle (k - 1) mod t + 1. *)
+  tri = k -> k - t * math.Floor((k - 1.0) / t)
+  first = col.Pick(starts, o)
+  second = col.Pick(list.Min(starts + 1, h), o)
+  two = (counts == 2) * 1.0
+  t1 = whole(tri(first))
+  t2 = whole(tri(second) * above(counts - 1.5))
+  forward = (from < to) * 1.0
+  closed = list.Min(counts) == 2 and list.Max(counts) == 2 and list.All(col.Pick(first, forward) != col.Pick(second, forward))
+  cosine = col.Pick(t1, f.Nx) * col.Pick(list.Max(t2, 1), f.Nx) + col.Pick(t1, f.Ny) * col.Pick(list.Max(t2, 1), f.Ny) + col.Pick(t1, f.Nz) * col.Pick(list.Max(t2, 1), f.Nz)
+  feature = list.Min((cosine < featureCos) * 1.0 + (1.0 - two), 1.0)
+  {Ea: col.Pick(first, lo), Eb: col.Pick(first, hi), T1: t1, T2: t2, Feature: feature, Closed: closed, Count: g.Count}
+end
+
+defn convex(xs, ys, zs, a, b, c, f, e)
+  (** Is a closed part convex? Each edge bends outward, the third corner of its second triangle on or behind the plane
+      of its first, and its points, edges and faces count V - E + F = 2, one piece shaped as a sphere: a closed surface
+      convex at each edge is the surface of a convex solid (Tietze). Its faces that turn to the eye then never cover
+      each other, and need no order. *)
+  used = value.Len(col.Groups([list.Concat(list.Concat(a, b), c)]).Firsts)
+  if used - e.Count + value.Len(a) != 2
+    return false
+  end
+  third = col.Pick(e.T2, a) + col.Pick(e.T2, b) + col.Pick(e.T2, c) - e.Ea - e.Eb
+  dx = col.Pick(third, xs) - col.Pick(e.Ea, xs)
+  dy = col.Pick(third, ys) - col.Pick(e.Ea, ys)
+  dz = col.Pick(third, zs) - col.Pick(e.Ea, zs)
+  span = math.Sqrt((list.Max(xs) - list.Min(xs)) ^ 2 + (list.Max(ys) - list.Min(ys)) ^ 2 + (list.Max(zs) - list.Min(zs)) ^ 2)
+  list.Max(col.Pick(e.T1, f.Nx) * dx + col.Pick(e.T1, f.Ny) * dy + col.Pick(e.T1, f.Nz) * dz) <= 1e-9 * span
+end
+
+defn directions(f)
+  (** The directions of the faces of a convex part, each once, to a millionth, at most mostAxes of them; none past that,
+      as a sphere has hundreds. *)
+  g = col.Groups([math.Round(f.Nx * 1e6), math.Round(f.Ny * 1e6), math.Round(f.Nz * 1e6)])
+  if g.Count > mostAxes [] else [[f.Nx[k], f.Ny[k], f.Nz[k]] for k in g.Firsts] end
+end
+
+(** The red, green and blue of a color "#rrggbb", each 0 to 255. *)
+rgbOf(c) = [channel(c, 2), channel(c, 4), channel(c, 6)]
+
+(** A color 0xRRGGBB as "#rrggbb", from the texts of the 256 pairs of hexadecimal digits. *)
+rgbText(c, pairs) = "#$(pairs[math.Div(c, 65536) + 1])$(pairs[math.Mod(math.Div(c, 256), 256) + 1])$(pairs[math.Mod(c, 256) + 1])"
+
+(** Floats of whole values as integers, through their bytes. *)
+whole(xs) = text.Numbers("i32", text.FromNumbers("i32", xs))
+
+defn lightOf(g, w)
+  (** The light of a 3D graph, in an Ok: missing, or a direction [x, y, z] of length 1. *)
+  l = g.light
+  if value.IsMissing(l)
+    return result.Ok(missing)
+  end
+  if not (value.IsArray(l) and value.Len(l) == 3 and list.All([value.IsNumber(x) and x - x == 0 for x in l]))
+    return fail("$w: light is $(brief(l)); give the direction the light comes from, [x, y, z], as [1, -1, 2].")
+  end
+  size = math.Sqrt(l[1] * l[1] + l[2] * l[2] + l[3] * l[3])
+  if size == 0.0
+    return fail("$w: light is $(brief(l)), of length 0; give the direction the light comes from, as [1, -1, 2].")
+  end
+  result.Ok([l[1] / size, l[2] / size, l[3] / size])
+end
+
+defn shades(nx, ny, nz, rgb, b, light, tx, ty, tz)
+  (** The color of each face of normals (nx, ny, nz), of length 1 in the box, toward the eye along (tx, ty, tz): a
+      face seen from behind is lit as its other side, as a sheet is. The light of Phong (1975), as Blinn (1977) writes
+      its highlight: ambient + diffuse max(0, n · l), Lambert's cosine, + shine max(0, n · h)^shininess, h halfway
+      between the light and the eye, each channel of the color times the first two, white times the third. rgb is
+      [r, g, b] for all, or three lists, one value for each face. Integers 0xRRGGBB. *)
+  side = above(nx * tx + ny * ty + nz * tz) * 2.0 - 1.0
+  nx = nx * side
+  ny = ny * side
+  nz = nz * side
+  l = if value.IsMissing(light) headlight(b) else light end
+  v = b.V
+  hx = l[1] + v[1]
+  hy = l[2] + v[2]
+  hz = l[3] + v[3]
+  hs = math.Sqrt(hx * hx + hy * hy + hz * hz)
+  hs = if hs == 0.0 1.0 else hs end
+  lit = nx * l[1] + ny * l[2] + nz * l[3]
+  spot = positive(nx * (hx / hs) + ny * (hy / hs) + nz * (hz / hs)) ^ shininess * above(lit) * shine * 255.0
+  i = ambient + diffuse * positive(lit)
+  (* Each channel rounded to a whole number, half to even, by adding 1.5 times 2^52 and taking it away; at most 255,
+     the least of it and 255 by (a + b - |a - b|) / 2. *)
+  channel = k -> rgb[k] * i + spot + 6755399441055744.0 - 6755399441055744.0
+  most = x -> (x + 255.0 - math.Abs(x - 255.0)) * 0.5
+  whole(most(channel(1)) * 65536.0 + most(channel(2)) * 256.0 + most(channel(3)))
+end
+
+defn headlight(b)
+  (** The light that follows the view: from the eye, turned 30 degrees up, toward the top of the screen, as a lamp
+      over a camera, so that the faces that turn to the eye are lit and the tops of parts the most. *)
+  [0.8660254037844387 * b.V[k] + 0.5 * b.E2[k] for k in 1..3]
+end
+
+(** 1 where a number is above 0, else 0, as floats: (x + |x|) / 2|x|, whole arrays of floats without booleans. *)
+above(xs) = (xs + math.Abs(xs)) / (math.Abs(xs) * 2.0 + 1e-300)
+
+(** The greater of each number and 0: (x + |x|) / 2. *)
+positive(xs) = (xs + math.Abs(xs)) * 0.5
+
+defn meshSeen(p, b, light)
+  (** One mesh at a view: its points on the screen, X and Y; its triangles that show, Keep, places among its triangles:
+      not past a limit, and of a closed part only those that turn to the eye; their Depth, of their middle, the higher
+      the nearer; their Colors; Front, 1 for each triangle that turns to the eye; and its points in the box, U. What a
+      view doesn't change, the middles of the triangles and their normals, was made with the layer: a view takes whole
+      arrays of them, and picks among them once. *)
+  ux = unitOf(b, 1, p.X)
+  uy = unitOf(b, 2, p.Y)
+  uz = unitOf(b, 3, p.Z)
+  at = shown3(b, ux, uy, uz)
+  (* A triangle with a corner past a limit is left out; when the limits hold the whole part, none is. *)
+  cut = p.Mx * 0.0
+  if b.R[1][1] > p.Xlo or b.R[1][2] < p.Xhi or b.R[2][1] > p.Ylo or b.R[2][2] < p.Yhi or b.R[3][1] > p.Zlo or b.R[3][2] < p.Zhi
+    edge = 1e-9
+    out = above(math.Abs(ux) - b.H[1] - edge) + above(math.Abs(uy) - b.H[2] - edge) + above(math.Abs(uz) - b.H[3] - edge)
+    cut = col.Pick(p.A, out) + col.Pick(p.B, out) + col.Pick(p.C, out)
+  end
+  (* A normal in the box: the scales of the axes divide it, as the inverse transpose of the scaling. *)
+  sc = [b.L[k] / (b.R[k][2] - b.R[k][1]) for k in 1..3]
+  nx = p.Nx / sc[1]
+  ny = p.Ny / sc[2]
+  nz = p.Nz / sc[3]
+  size = math.Sqrt(nx * nx + ny * ny + nz * nz)
+  nx = nx / size
+  ny = ny / size
+  nz = nz / size
+  mx = unitOf(b, 1, p.Mx)
+  my = unitOf(b, 2, p.My)
+  mz = unitOf(b, 3, p.Mz)
+  toward = if value.IsMissing(b.D) [b.V[1], b.V[2], b.V[3]] else [b.Eye[1] - mx, b.Eye[2] - my, b.Eye[3] - mz] end
+  front = above(nx * toward[1] + ny * toward[2] + nz * toward[3])
+  shown = (1.0 - above(cut)) * (if p.Closed front else 1.0 end)
+  keep = col.Positions(shown == 1.0)
+  depth = if value.IsMissing(b.D) mx * b.V[1] + my * b.V[2] + mz * b.V[3] else 0.0 - math.Sqrt(toward[1] * toward[1] + toward[2] * toward[2] + toward[3] * toward[3]) end
+  colors = col.Pick(keep, shades(nx, ny, nz, p.Rgb, b, light, toward[1], toward[2], toward[3]))
+  {X: at.X, Y: at.Y, Keep: keep, Depth: col.Pick(keep, depth), Colors: colors, Front: front, U: [ux, uy, uz]}
+end
+
+defn separated(s, t, axes, b)
+  (** The order of two parts at a view, by a plane between them: 1 when s is painted first, -1 when t is, 0 when no
+      plane of the axes tried has one on each side, and 2 when the plane passes through the eye, so that their order
+      doesn't matter. An axis a separates them when the greatest a · p of the points of one is at most the least of the
+      other's: the theorem of the separating hyperplane, tried on the axes of the box, the line between their middles
+      and the directions of the faces of a convex part, as Newell, Newell and Sancha test a plane between two faces. *)
+  for a in axes
+    ps = s.U[1] * a[1] + s.U[2] * a[2] + s.U[3] * a[3]
+    pt = t.U[1] * a[1] + t.U[2] * a[2] + t.U[3] * a[3]
+    gap = 1e-9 * (list.Max(math.Abs(ps)) + list.Max(math.Abs(pt)) + 1e-12)
+    low = if list.Max(ps) <= list.Min(pt) + gap 1 else if list.Max(pt) <= list.Min(ps) + gap -1 else 0 end
+    if low != 0
+      cut = if low == 1 (list.Max(ps) + list.Min(pt)) / 2.0 else (list.Max(pt) + list.Min(ps)) / 2.0 end
+      side = if value.IsMissing(b.D) b.V[1] * a[1] + b.V[2] * a[2] + b.V[3] * a[3] else b.Eye[1] * a[1] + b.Eye[2] * a[2] + b.Eye[3] * a[3] - cut end
+      (* The eye on the side of the higher part sees the lower one behind it: the lower one first. *)
+      return if side == 0.0 2 else if side > 0.0 low else 0 - low end
+    end
+  end
+  0
+end
+
+(** The root of the group of part k: the parts linked, each to a lesser one, up to the one linked to itself. *)
+rootOf(parent, k) = list.Iterate(j -> parent[j], k, value.Len(parent))[value.Len(parent)]
+
+defn meshOrder(seen, ps, b)
+  (** The meshes of a graph in groups painted one after the other, far first: each group a list of their places, a part
+      alone or the parts that no plane between them sets apart, which are painted by the depth of their triangles. Two
+      parts whose points meet on the screen are set in order by a plane between them; a cycle of such orders, as three
+      long parts that each lie over the next, makes the parts left one group. A part that shows nothing is left out. *)
+  n = value.Len(seen)
+  shows = [k for k in 1..n if value.Len(seen[k].Keep) > 0]
+  boxes = [[list.Min(x.X), list.Max(x.X), list.Min(x.Y), list.Max(x.Y)] for x in seen]
+  sc = [b.L[k] / (b.R[k][2] - b.R[k][1]) for k in 1..3]
+  parent = [k for k in 1..n]
+  before = []
+  for i in shows
+    for j in shows
+      if i < j and boxes[i][1] < boxes[j][2] and boxes[j][1] < boxes[i][2] and boxes[i][3] < boxes[j][4] and boxes[j][3] < boxes[i][4]
+        d = [list.Mean(seen[j].U[k]) - list.Mean(seen[i].U[k]) for k in 1..3]
+        size = math.Sqrt(d[1] * d[1] + d[2] * d[2] + d[3] * d[3])
+        axes = list.Concat([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], if size > 0.0 [[d[1] / size, d[2] / size, d[3] / size]] else [] end)
+        axes = list.Concat(axes, [[x[1] / sc[1], x[2] / sc[2], x[3] / sc[3]] for x in list.Concat(ps[i].Axes, ps[j].Axes)])
+        o = separated(seen[i], seen[j], axes, b)
+        if o == 0
+          ri = rootOf(parent, i)
+          rj = rootOf(parent, j)
+          parent[list.Max(ri, rj)] = list.Min(ri, rj)
+          parent = [rootOf(parent, k) for k in 1..n]
+        else if o == 1
+          before = list.Append([i, j], before)
+        else if o == -1
+          before = list.Append([j, i], before)
+        end
+      end
+    end
+  end
+  roots = [rootOf(parent, k) for k in 1..n]
+  groups = list.Unique([roots[k] for k in shows])
+  (* Kahn's order of the groups, the farthest of those free first, by the mean depth of their triangles. *)
+  far = [list.Mean(list.Flatten([seen[k].Depth for k in shows if roots[k] == g])) for g in groups]
+  edges = list.Unique([[roots[x[1]], roots[x[2]]] for x in before if roots[x[1]] != roots[x[2]]])
+  out = []
+  left = groups
+  while value.Len(left) > 0
+    free = [g for g in left if not list.Any([x[2] == g and x[1] in left for x in edges])]
+    if value.Len(free) == 0
+      (* A cycle: the parts left are one group, ordered by depth. *)
+      return list.Append([k for k in shows if roots[k] in left], out)
+    end
+    next = list.MinBy(g -> far[list.IndexOf(g, groups)], free)
+    out = list.Append([k for k in shows if roots[k] == next], out)
+    left = [g for g in left if g != next]
+  end
+  out
+end
+
+(** Two lists one after the other; either may be empty. *)
+join(a, b) = if value.Len(a) == 0 b else if value.Len(b) == 0 a else list.Concat(a, b) end
+
+defn meshItems(ps, b, clip, light)
+  (** The meshes of a graph at a view as one item "triangles": the places of their points, their triangles that show,
+      painted far to near, a color each, and their edges, each drawn after the later of its triangles, so that a nearer
+      face covers it as it covers the face. *)
+  seen = [meshSeen(p, b, light) for p in ps]
+  n = value.Len(ps)
+  vstart = [0]
+  tstart = [0]
+  for k in 1..n - 1
+    vstart = list.Append(vstart[k] + value.Len(ps[k].X), vstart)
+    tstart = list.Append(tstart[k] + value.Len(ps[k].A), tstart)
+  end
+  total = tstart[n] + value.Len(ps[n].A)
+  ids = []
+  a = []
+  bs = []
+  c = []
+  colors = []
+  for g in meshOrder(seen, ps, b)
+    gi = []
+    ga = []
+    gb = []
+    gc = []
+    gcol = []
+    gd = []
+    for k in g
+      x = seen[k]
+      gi = join(gi, x.Keep + tstart[k])
+      ga = join(ga, col.Pick(x.Keep, ps[k].A) + vstart[k])
+      gb = join(gb, col.Pick(x.Keep, ps[k].B) + vstart[k])
+      gc = join(gc, col.Pick(x.Keep, ps[k].C) + vstart[k])
+      gcol = join(gcol, x.Colors)
+      gd = join(gd, x.Depth)
+    end
+    (* A convex part alone needs no order; the triangles of the others, by depth, far first: list.Order is stable. *)
+    if not (value.Len(g) == 1 and ps[g[1]].Convex)
+      o = list.Order(gd)
+      gi = col.Pick(o, gi)
+      ga = col.Pick(o, ga)
+      gb = col.Pick(o, gb)
+      gc = col.Pick(o, gc)
+      gcol = col.Pick(o, gcol)
+    end
+    ids = join(ids, gi)
+    a = join(a, ga)
+    bs = join(bs, gb)
+    c = join(c, gc)
+    colors = join(colors, gcol)
+  end
+  painted = value.Len(ids)
+  (* The rank of each triangle in the painting, 0 for one not painted: the first place of each among the painted, then
+     all of them, which columns.Groups gives. *)
+  lines = [[], [], [], []]
+  if list.Any([p.Edges for p in ps]) and painted > 0
+    g = col.Groups([join(ids, 1..total)])
+    first = col.Pick(col.Pick(painted + 1..painted + total, g.Ids), g.Firsts)
+    rank = first * ((first <= painted) * 1)
+    for k in 1..n
+      p = ps[k]
+      if p.Edges
+        front = seen[k].Front
+        two = (p.T2 > 0) * 1.0
+        f2 = col.Pick(list.Max(p.T2, 1), front) * two
+        outline = (col.Pick(p.T1, front) != f2) * two
+        r1 = col.Pick(p.T1 + tstart[k], rank)
+        r2 = col.Pick(list.Max(p.T2, 1) + tstart[k], rank) * (p.T2 > 0) * 1
+        after = list.Max(r1, r2)
+        drawn = col.Positions((list.Min(p.Feature + outline, 1.0) * (after > 0)) == 1.0)
+        dark = math.Div(p.Rgb[1], 4) * 65536 + math.Div(p.Rgb[2], 4) * 256 + math.Div(p.Rgb[3], 4)
+        lines = [join(lines[1], col.Pick(drawn, p.Ea) + vstart[k]), join(lines[2], col.Pick(drawn, p.Eb) + vstart[k]), join(lines[3], col.Pick(drawn, after)), join(lines[4], list.Fill(dark, value.Len(drawn)))]
+      end
+    end
+  end
+  o = list.Order(lines[3])
+  pairs = if value.Len(o) == 0 [] else whole(matrix.Reshape([1, 2 * value.Len(o)], matrix.Transpose(vertexMatrix2(col.Pick(o, lines[1]), col.Pick(o, lines[2]))))) end
+  three = if painted == 0 [] else whole(matrix.Reshape([1, 3 * painted], matrix.Transpose(vertexMatrix3(a, bs, c)))) end
+  {Kind: "triangles", Xs: hundredths(list.Flatten([x.X for x in seen])), Ys: hundredths(list.Flatten([x.Y for x in seen])), Triangles: three, Colors: colors,
+   Lines: pairs, After: col.Pick(o, lines[3]), LineColors: col.Pick(o, lines[4]), Width: 1.0, Clip: clip, Role: "data"}
+end
+
+(** The matrix of a row for each element of two or three lists, as products with rows of the identity, which keep the
+    floats unboxed. *)
+vertexMatrix2(xs, ys) = matrix.Matmul(matrix.Reshape([value.Len(xs), 1], xs * 1.0), matrix.Reshape([1, 2], [1.0, 0.0])) + matrix.Matmul(matrix.Reshape([value.Len(ys), 1], ys * 1.0), matrix.Reshape([1, 2], [0.0, 1.0]))
+vertexMatrix3(xs, ys, zs) = matrix.Matmul(matrix.Reshape([value.Len(xs), 1], xs * 1.0), matrix.Reshape([1, 3], [1.0, 0.0, 0.0])) + matrix.Matmul(matrix.Reshape([value.Len(ys), 1], ys * 1.0), matrix.Reshape([1, 3], [0.0, 1.0, 0.0])) + matrix.Matmul(matrix.Reshape([value.Len(zs), 1], zs * 1.0), matrix.Reshape([1, 3], [0.0, 0.0, 1.0]))
+
+defn trianglesSvg(item)
+  (** The triangles of meshes, each a path of its three corners in its color, in the order the item gives, far first,
+      and after each triangle the edges drawn after it, those of one color in one path. Sharp edges, as the quads of a
+      surface have, so that no hairline shows between two triangles; the lines keep their smooth edges. *)
+  xt = [num(x) for x in item.Xs]
+  yt = [num(y) for y in item.Ys]
+  corner = v -> "$(xt[v]) $(yt[v])"
+  pairs = [hex2(k) for k in 0..255]
+  t = item.Triangles
+  n = math.Div(value.Len(t), 3)
+  m = value.Len(item.After)
+  parts = []
+  e = 1
+  for k in 1..n
+    parts = list.Append("<path d=\"M$(corner(t[3 * k - 2]))L$(corner(t[3 * k - 1]))L$(corner(t[3 * k]))Z\" fill=\"$(rgbText(item.Colors[k], pairs))\"/>", parts)
+    while e <= m and item.After[e] == k
+      run = e
+      while run < m and item.After[run + 1] == k and item.LineColors[run + 1] == item.LineColors[e]
+        run += 1
+      end
+      d = text.Join("", ["M$(corner(item.Lines[2 * i - 1]))L$(corner(item.Lines[2 * i]))" for i in e..run])
+      parts = list.Append("<path d=\"$d\" fill=\"none\" stroke=\"$(rgbText(item.LineColors[e], pairs))\" stroke-width=\"$(num(item.Width))\" stroke-linecap=\"round\" shape-rendering=\"auto\"/>", parts)
+      e = run + 1
+    end
+  end
+  "<g shape-rendering=\"crispEdges\">$(text.Join("", parts))</g>"
+end
+
+defn litSurface(p, b, clip, light)
+  (** A surface lit, or seen through a pinhole, as one item "triangles": each quad two triangles in the color of its
+      height, shaded by the light with the normal of the quad, the cross product of its two diagonals, as Newell's
+      method takes the normal of a polygon of four corners. Painted in the order of the quads from the far side; through
+      a pinhole, in the order of McMillan (1995) for a projection from a point: the rows from the farthest from the foot
+      of the eye on the grid, and in each the columns, so that a quad behind another along a ray still comes first. *)
+  q = meshOf(p, b, clip)
+  qr = q.Rows
+  qc = q.Columns
+  rows = qr + 1
+  across = matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, qc + 1], unitOf(b, 1, p.Gx)))
+  along = matrix.Matmul(matrix.Reshape([rows, 1], unitOf(b, 2, p.Gy)), matrix.Ones(1, qc + 1))
+  up = unitOf(b, 3, p.Filled)
+  u = [matrix.Reshape([1, rows * (qc + 1)], x) for x in [across, along, up]]
+  (* Quad q, from 1, column by column: its row i and column j, and v, the place of its corner (i, j) among the points. *)
+  k = (0..qr * qc - 1) * 1.0
+  js = math.Floor(k / qr)
+  is = k - js * qr + 1.0
+  js = js + 1.0
+  v = (js - 1.0) * rows + is
+  painted = col.Positions(q.Colors >= 0)
+  if value.Len(painted) == 0
+    return {Kind: "triangles", Xs: q.Xs, Ys: q.Ys, Triangles: [], Colors: [], Lines: [], After: [], LineColors: [], Width: 1.0, Clip: clip, Role: "data"}
+  end
+  o = if value.IsMissing(b.D)
+    col.Pick(list.Order(col.Pick(painted, (if q.Order[1] > 0 is else qr + 1.0 - is end) * (qc + 1.0) + (if q.Order[2] > 0 js else qc + 1.0 - js end))), painted)
+  else
+    foot = (axis, us, n) -> list.Sum((if us[n] > us[1] us < b.Eye[axis] else us > b.Eye[axis] end) * 1.0) - 0.5
+    fy = foot(2, unitOf(b, 2, p.Gy), rows)
+    fx = foot(1, unitOf(b, 1, p.Gx), qc + 1)
+    byCol = col.Pick(list.Order(col.Pick(painted, 0.0 - math.Abs(js - 0.5 - fx))), painted)
+    col.Pick(list.Order(col.Pick(byCol, 0.0 - math.Abs(is - 0.5 - fy))), byCol)
+  end
+  vs = col.Pick(o, v)
+  corner = (d, axis) -> col.Pick(vs + d, u[axis])
+  d1 = [corner(rows + 1.0, a) - corner(0.0, a) for a in 1..3]
+  d2 = [corner(rows * 1.0, a) - corner(1.0, a) for a in 1..3]
+  nx = d1[2] * d2[3] - d1[3] * d2[2]
+  ny = d1[3] * d2[1] - d1[1] * d2[3]
+  nz = d1[1] * d2[2] - d1[2] * d2[1]
+  size = math.Sqrt(nx * nx + ny * ny + nz * nz)
+  size = size + (size == 0.0) * 1.0
+  mid = [(corner(0.0, a) + corner(rows + 1.0, a)) / 2.0 for a in 1..3]
+  toward = if value.IsMissing(b.D) [b.V[1], b.V[2], b.V[3]] else [b.Eye[1] - mid[1], b.Eye[2] - mid[2], b.Eye[3] - mid[3]] end
+  palette = [rgbOf(c) for c in q.Palette]
+  idx = col.Pick(o, q.Colors) + 1
+  rgb = [col.Pick(idx, [c[a] for c in palette]) for a in 1..3]
+  colors = shades(nx / size, ny / size, nz / size, rgb, b, light, toward[1], toward[2], toward[3])
+  n = value.Len(o)
+  six = matrix.Matmul(matrix.Reshape([n, 1], vs), matrix.Ones(1, 6)) + matrix.Matmul(matrix.Ones(n, 1), matrix.Reshape([1, 6], [0.0, 1.0, rows + 1.0, 0.0, rows + 1.0, rows * 1.0]))
+  {Kind: "triangles", Xs: q.Xs, Ys: q.Ys, Triangles: whole(matrix.Reshape([1, 6 * n], matrix.Transpose(six))), Colors: whole(matrix.Reshape([1, 2 * n], matrix.Transpose(matrix.Matmul(matrix.Reshape([n, 1], colors * 1.0), matrix.Ones(1, 2))))),
+   Lines: [], After: [], LineColors: [], Width: 1.0, Clip: clip, Role: "data"}
+end
+
+defn meshSummary(meshes, lines, points, zs)
+  (** The words of the <title> of a graph of meshes: how many, their triangles, its 3D lines and the range of z. *)
+  n = value.Len(meshes)
+  tris = list.Sum([value.Len(p.A) for p in meshes])
+  more = if lines == 0 "" else if lines == 1 ", a 3D line of $points points" else ", $lines 3D lines of $points points in all" end
+  "$(if n == 1 "Mesh, $tris triangles" else "$n meshes, $tris triangles in all" end)$more, $zs"
 end
 
 (* Animations: the frames checked once, when Frames makes the graph, with the ranges they share; one frame drawn at a
@@ -3562,7 +4195,7 @@ defn ordinal(k)
 end
 
 (** The fields of a layer that hold its data, which a frame changes; its other fields stay as the first frame has them. *)
-dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready", "Texts"]
+dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready", "Texts", "Mesh"]
 
 (** A field of a layer as its function names the option. *)
 optionOf(key) = if key == "Xs" "x" else if key == "Ys" "y" else text.Lower(key) end
@@ -3573,7 +4206,8 @@ defn differs(first, g)
     ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
     ["legend", first.legend, g.legend], ["size", first.size, g.size], ["z", first.ztitle, g.ztitle], ["zlim", first.zlim, g.zlim],
     ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt], ["xticks", first.xticks, g.xticks],
-    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels], ["polar", first.polar, g.polar]]
+    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels], ["polar", first.polar, g.polar],
+    ["light", first.light, g.light], ["perspective", first.perspective, g.perspective], ["aspect", first.aspect, g.aspect], ["axes", first.axes, g.axes]]
   for o in options
     if not value.Equal(o[2], o[3])
       return "differs from frame 1 in its option $(o[1])"
@@ -3864,6 +4498,7 @@ defn itemSvg(item)
     "marks" -> marksSvg(item)
     "cells" -> cellsSvg(item)
     "mesh" -> meshSvg(item)
+    "triangles" -> lazily(trianglesSvg)(item)
     else -> textSvg(item)
   end
 end

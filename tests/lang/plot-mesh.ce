@@ -1,0 +1,176 @@
+(** std/plot with meshes of std/mesh: the SVG of parts, lit, with their edges, through a pinhole and without axes, kept
+    byte for byte in plot-mesh.snap, with a surface lit and one through a pinhole; the faces culled, the edges drawn; the
+    shade of a face from the light; the order of the triangles, which a test checks against the depth computed here,
+    at random views of parts apart; and every error. *)
+use std/columns as col
+use std/dict
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/mesh
+use std/plot
+use std/random
+use std/result
+use std/test
+use std/text
+use std/value
+
+svg(g) = result.Unwrap(plot.Svg(g))
+scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+tris(g) = list.FindFirst(x -> x.Kind == "triangles", scene(g, 640, 400).Items)
+message(g) = match plot.Svg(g)
+  result.Err(e) -> e.Message
+  else -> "no error"
+end
+
+box = mesh.Box([0, 0, 0], [40, 20, 10])
+shaft = mesh.Cylinder([20, 10, 10], 4, 30, segments = 16)
+ball = mesh.Sphere([8, 6, 16], 5, segments = 12)
+machine = plot.Of([plot.Mesh(ball, color = "#3cb043", edges = true), plot.Mesh(box, edges = true), plot.Mesh(shaft, edges = true)], light = [1, -1, 2], perspective = true, title = "Machine")
+
+(* Golden files: each option, byte for byte. *)
+
+isBoxSvg() = test.Snapshot(svg(plot.Mesh(box, edges = true)))
+isMachineSvg() = test.Snapshot(svg(machine))
+isNoAxesSvg() = test.Snapshot(svg(plot.Of([plot.Mesh(box, color = "#d55e00"), plot.Mesh(shaft, edges = true, label = "shaft")], axes = false, aspect = "box", view = [30, 20])))
+isMeshLineSvg() = test.Snapshot(svg(plot.Of([plot.Mesh(box), plot.Line3([0, 40], [0, 20], [10, 30], color = "#0072b2")], x = "x", y = "y", z = "z")))
+defn table(rows, cols, f)
+  m = matrix.Zeros(rows, cols)
+  for i in 1..rows
+    for j in 1..cols
+      m[i, j] = f(i, j)
+    end
+  end
+  m
+end
+wavy = table(5, 6, (i, j) -> math.Sin(i * 0.9) * math.Cos(j * 0.6))
+isSurfaceLitSvg() = test.Snapshot(svg(plot.Of([plot.Surface(wavy)], light = [1, -1, 2])))
+isSurfacePinholeSvg() = test.Snapshot(svg(plot.Of([plot.Surface(wavy, colors = "diverging")], perspective = true, view = [20, 35])))
+(* A surface that gives neither keeps its item "mesh", the same bytes as before. *)
+isSurfacePlain() = list.Any([x.Kind == "mesh" for x in scene(plot.Surface(wavy), 640, 400).Items]) and not list.Any([x.Kind == "triangles" for x in scene(plot.Surface(wavy), 640, 400).Items])
+
+(* What shows: the faces of a closed part that turn to the eye; the edges of a drawing. *)
+
+(* A box seen from a corner shows three faces, six triangles, and nine edges: the six of its outline and the three
+   where its faces meet. *)
+isBoxCulled() = value.Len(tris(plot.Mesh(box)).Colors) == 6 and value.Len(tris(plot.Mesh(box, edges = true)).After) == 9 and value.Len(tris(plot.Mesh(box)).After) == 0
+(* An open sheet shows both sides: none is culled. *)
+sheet = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 1, 1, 0; 0, 1, 0], [1, 2, 3; 1, 3, 4]))
+isSheetBothSides() = value.Len(tris(plot.Of([plot.Mesh(sheet)], view = [0, -60])).Colors) == 2 and value.Len(tris(plot.Of([plot.Mesh(sheet, edges = true)], view = [0, 60])).After) == 4
+(* Each edge comes after the triangle it names, which a nearer face then covers. *)
+defn edgesFollow(g)
+  t = tris(g)
+  list.All([a >= 1 and a <= value.Len(t.Colors) for a in t.After]) and value.Equal(t.After, list.Sort(t.After))
+end
+isEdgesFollow() = edgesFollow(machine) and edgesFollow(plot.Of([plot.Mesh(box, edges = true), plot.Mesh(shaft, edges = true)], view = [120, -20]))
+
+(* The light: Lambert's cosine, Blinn's highlight, a face lit as its other side when seen from behind. *)
+
+flat = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], [1, 2, 3]))
+shade(light, view) = tris(plot.Of([plot.Mesh(flat, color = "#808080")], light = light, view = view)).Colors[1]
+(* Seen from above, the light above: 128 x (0.3 + 0.7) + 0.2 x 255 = 179, 0xb3; the light below: 128 x 0.3 = 38.4,
+   0x26; at 60 degrees: 128 x (0.3 + 0.7 x 0.5) = 83.2, and the halfway vector at 30 degrees, cos^20 = 0.0563, 2.9
+   more: 86. Seen from below, the face turns its other side: the light above lights it no more. *)
+isShades() = shade([0, 0, 1], [0, 90]) == 0xb3b3b3 and shade([0, 0, -1], [0, 90]) == 0x262626 and shade([0, math.Sqrt(3.0), 1], [0, 90]) == 0x565656 and shade([0, 0, 1], [0, -90]) == 0x262626
+isHeadlight() = tris(plot.Of([plot.Mesh(flat, color = "#808080")], view = [0, 90])).Colors[1] != tris(plot.Of([plot.Mesh(flat, color = "#808080")], view = [0, 30])).Colors[1]
+
+(* The order: at points of the screen that two triangles or more cover, the one painted last is the nearest, its depth
+   computed here from the view, apart from std/plot. Parts apart from each other, boxes, cylinders and spheres, each on
+   a cell of a grid, at random views; the depth along the view, without perspective, is linear on a triangle. *)
+
+defn orderHolds(c)
+  ps = []
+  for k in 1..c.Count
+    at = [(k - 1) * 12.0 + c.Dx[k], c.Dy[k], c.Dz[k]]
+    ps = list.Append(match c.Kinds[k]
+      1 -> mesh.Box(at, [c.S[k], c.S[k] + 1.0, c.S[k] * 0.5 + 1.0])
+      2 -> mesh.Cylinder(at, c.S[k] * 0.5, c.S[k] + 2.0, segments = 9)
+      else -> mesh.Sphere(at, c.S[k] * 0.5, segments = 8)
+    end, ps)
+  end
+  t = list.FindFirst(x -> x.Kind == "triangles", scene(plot.Of([plot.Mesh(p) for p in ps], view = [c.Az, c.El]), 640, 400).Items)
+  (* The points of the item are those of the parts, one after the other; the box is as long on each axis. *)
+  xs = list.Flatten([p.Vertices[:, 1] for p in ps])
+  ys = list.Flatten([p.Vertices[:, 2] for p in ps])
+  zs = list.Flatten([p.Vertices[:, 3] for p in ps])
+  r = [list.Max(xs) - list.Min(xs), list.Max(ys) - list.Min(ys), list.Max(zs) - list.Min(zs)]
+  a = c.Az * math.Pi / 180
+  e = c.El * math.Pi / 180
+  v = [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)]
+  depth = xs * v[1] + ys * v[2] + zs * v[3]
+  n = math.Div(value.Len(t.Triangles), 3)
+  if n < 2
+    return true
+  end
+  k = 0..n - 1
+  corner = j -> col.Pick(3 * k + j, t.Triangles)
+  sx = [col.Pick(corner(j), t.Xs) for j in 1..3]
+  sy = [col.Pick(corner(j), t.Ys) for j in 1..3]
+  dz = [col.Pick(corner(j), depth) for j in 1..3]
+  ax = sx[2] - sx[1]
+  ay = sy[2] - sy[1]
+  bx = sx[3] - sx[1]
+  by = sy[3] - sy[1]
+  den = ax * by - ay * bx
+  for s in 1..c.Samples
+    px = list.Min(t.Xs) + (list.Max(t.Xs) - list.Min(t.Xs)) * random.Float()
+    py = list.Min(t.Ys) + (list.Max(t.Ys) - list.Min(t.Ys)) * random.Float()
+    cx = px - sx[1]
+    cy = py - sy[1]
+    w1 = (cx * by - cy * bx) / den
+    w2 = (ax * cy - ay * cx) / den
+    w0 = 1.0 - w1 - w2
+    hit = col.Positions((math.Abs(den) > 1e-9) * 1 + (w0 > 1e-6) * 1 + (w1 > 1e-6) * 1 + (w2 > 1e-6) * 1 == 4)
+    if value.Len(hit) >= 2
+      d = col.Pick(hit, w0 * dz[1] + w1 * dz[2] + w2 * dz[3])
+      (* The last painted is the nearest, to a millionth of the size of the parts. *)
+      if list.Max(d) - d[value.Len(d)] > 1e-6 * list.Max(r)
+        return false
+      end
+    end
+  end
+  true
+end
+scenes = gen.Of({Count: gen.Int(1, 4), Kinds: gen.List(gen.Int(1, 3), min = 4, max = 4), Dx: gen.List(gen.Float(0, 2), min = 4, max = 4), Dy: gen.List(gen.Float(-3, 3), min = 4, max = 4),
+  Dz: gen.List(gen.Float(-3, 3), min = 4, max = 4), S: gen.List(gen.Float(1, 6), min = 4, max = 4), Az: gen.Float(-180, 180), El: gen.Float(-89, 89), Samples: gen.Int(60, 60)})
+isOrderHolds() = test.ForAll(orderHolds, scenes, cases = 10)
+
+(* Parts that touch, as a shaft standing on a block, are set apart by the plane between them: the shaft, nearer at
+   every view from above, is painted after the block, and the block after it from below. *)
+defn after(g)
+  t = tris(g)
+  n = value.Len(t.Colors)
+  t.Triangles[3 * n - 2] > 8
+end
+isTouching() = after(plot.Of([plot.Mesh(box), plot.Mesh(shaft)], view = [-37.5, 30])) and not after(plot.Of([plot.Mesh(box), plot.Mesh(shaft)], view = [-37.5, -30]))
+
+(* Limits, a pinhole, sizes: a part cut by a limit leaves out the triangles past it, and its places stay finite, as the
+   eye is outside the sphere around the box. *)
+isCut() = value.Len(tris(plot.Of([plot.Mesh(box)], zlim = [0, 5], xlim = [10, 30], perspective = true)).Colors) == 0 and list.All([x - x == 0.0 for x in tris(plot.Of([plot.Mesh(mesh.Box([0, 0, 0], [1000, 1, 1])), plot.Mesh(box)], xlim = [0, 40], perspective = true)).Xs])
+isEqualAspect() = value.Equal(dict.GetOr("View", missing, scene(plot.Mesh(box), 640, 400)), [-37.5, 30.0]) and text.Contains("<title>Mesh, 12 triangles, z from 0 to 10</title>", svg(plot.Mesh(box))) and text.Contains("<title>3 meshes, ", svg(machine))
+isDegenerate() = value.Len(tris(plot.Mesh(result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0; 2, 0, 0], [1, 2, 3; 1, 2, 4])))).Colors) == 1
+isFrames() = result.IsOk(plot.Svg(plot.Frames([plot.Of([plot.Mesh(mesh.Move(box, [k, 0, 0]))], title = "k = $k") for k in [0, 10]])))
+isScene() = value.Equal(result.Unwrap(plot.Scene(machine, 640, 400, view = [10, 20])).View, [10.0, 20.0])
+
+(* Every error, word for word. *)
+
+many = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], matrix.Reshape([200001, 3], list.Fill(1, 600003)) * 0 + 1))
+errors = [
+  [plot.Mesh(1), "plot.Mesh: m is 1, not a mesh, as mesh.Box or mesh.ReadStl makes."],
+  [plot.Mesh(box, color = "green"), "plot.Mesh: color is \"green\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Mesh(box, edges = 1), "plot.Mesh: edges is 1; give true or false."],
+  [plot.Of([plot.Mesh(box)], light = [0, 0, 0]), "plot.Mesh: light is [0, 0, 0], of length 0; give the direction the light comes from, as [1, -1, 2]."],
+  [plot.Of([plot.Mesh(box)], light = [1, 2]), "plot.Mesh: light is [1, 2]; give the direction the light comes from, [x, y, z], as [1, -1, 2]."],
+  [plot.Of([plot.Mesh(box)], perspective = 1), "plot.Mesh: perspective is 1; give true or false."],
+  [plot.Of([plot.Mesh(box)], axes = "no"), "plot.Mesh: axes is \"no\"; give true or false."],
+  [plot.Of([plot.Mesh(box)], aspect = "square"), "plot.Mesh: aspect is \"square\"; give \"equal\", a unit as long on each axis, or \"box\", the box of 1 by 1 by 0.75."],
+  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Mesh(box)]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer 2 is plot.Mesh."],
+  [plot.Of([plot.Line([1], [1]), plot.Mesh(box)]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 and plot.Mesh layers; layer 1 is plot.Line."],
+  [plot.Of([plot.Line([1], [1])], perspective = true), "plot.Line: perspective is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
+  [plot.Of([plot.Line([1], [1])], axes = false), "plot.Line: axes is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
+  [plot.Of([plot.Line([1], [1])], aspect = "equal"), "plot.Line: aspect is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
+  [plot.Mesh(many), "plot.Mesh: 200001 triangles are too many to draw, past 200000 in a graph; an SVG holds about 60 bytes for each."],
+  [plot.Mesh(result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 2, 0, 0], [1, 2, 3]))), "plot.Mesh: none of its 1 triangles has an area."],
+  [plot.Of([plot.Line3([1], [1], [1]), plot.Mesh(box, label = 3)]), "plot.Mesh (layer 2): label is 3; give a text."]]
+isEachError() = value.Equal([message(e[1]) for e in errors], [e[2] for e in errors])

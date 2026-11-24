@@ -23,7 +23,7 @@ Err({Kind: "cells", Message: "plot.Scene: frame is 5; this animation has frames 
 Err({Kind: "cells", Message: "plot.Scene: frame is 2; a graph that is no animation has frame 1 only."})
 surface: view [10.0, 20.0], its scene's [10.0, 20.0]
 turned: 400 wide, view [-62.5, 20.0], 1 mesh
-Err({Kind: "cells", Message: "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D."})
+Err({Kind: "cells", Message: "plot.Scene: view turns a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh; this graph is 2D."})
 Err({Kind: "cells", Message: "plot.Scene: view is [0, 91]; give [az, el] in degrees, el from -90 to 90."})
 shown: ["before", "after"], [1, 2], ["graph", "text"], 3, value 4
 shown again: 300 wide, key 13.1
