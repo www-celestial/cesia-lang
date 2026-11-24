@@ -333,7 +333,38 @@ let tops st =
   p "end\nio.Print(fuzzShow())\n";
   Buffer.contents b
 
-let shaped st = match Random.State.int st 5 with 0 -> csc st | 1 -> thunks st | 2 -> tops st | _ -> odes st
+(* Calls of functions with defaults in a hot loop, which machine code makes directly: arguments left out, given, or
+   named in any order; defaults of literals, of a parameter before, and of a division that fails late or never; a
+   callee with a loop, called and not inlined; and a self tail call that gives the argument its first frame took by
+   default, a call into another version. *)
+let defaults st =
+  let b = Buffer.create 1024 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let turns = int 21000 30000 in
+  let lit () = pick st [| string_of_int (int 0 9); Printf.sprintf "%d.5" (int 0 4) |] in
+  let plus = pick st [| lit (); "x * 2"; "by + 1"; Printf.sprintf "math.Div(12, x - %d)" (int 15000 (turns + 9000)) |] in
+  p "use std/io\nuse std/math\n\ndefn fuzzA(x, by = %s, plus = %s)\n  x * by + plus\nend\n\n" (lit ()) plus;
+  p "defn fuzzLoop(n, from = %d, by = %s)\n  t = 0\n  for k in from..n\n    t = t + by * k\n  end\n  t\nend\n\n" (int 0 3) (lit ());
+  p "defn fuzzCount(n, acc = %d)\n  if n <= 0\n    return acc\n  end\n  fuzzCount(n - 1, acc + %s)\nend\n\n" (int 0 5)
+    (pick st [| "1"; "n"; "0.5" |]);
+  let call () =
+    match int 0 7 with
+    | 0 -> "fuzzA(i)"
+    | 1 -> Printf.sprintf "fuzzA(i, %s)" (lit ())
+    | 2 -> Printf.sprintf "fuzzA(i, plus = %s)" (lit ())
+    | 3 -> Printf.sprintf "fuzzA(plus = %s, x = i)" (lit ())
+    | 4 -> Printf.sprintf "fuzzA(by = math.Mod(i, %d), x = i)" (int 1 9)
+    | 5 -> Printf.sprintf "fuzzLoop(math.Mod(i, %d)%s)" (int 1 9) (pick st [| ""; ", by = 2"; ", 1, 3"; ", by = 0.5, from = 2" |])
+    | _ -> Printf.sprintf "fuzzCount(math.Mod(i, %d))" (int 1 30)
+  in
+  p "defn fuzzRun(turns)\n  acc = 0.0\n  for i in 1..turns\n";
+  for _ = 1 to int 1 3 do p "    acc = acc + %s\n" (call ()) done;
+  p "  end\n  acc\nend\nio.Print(fuzzRun(%d))\n" turns;
+  Buffer.contents b
+
+let shaped st =
+  match Random.State.int st 6 with 0 -> csc st | 1 -> thunks st | 2 -> tops st | 3 -> defaults st | _ -> odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"

@@ -1,0 +1,82 @@
+use std/io
+use std/math
+
+(* Native code calls a function with defaults directly: an argument left out, given, or named, in any order, the
+   default made in the callee's frame after its step, as the interpreter's. The same results, errors, steps and depth. *)
+defn step(x, by = 1)
+  x + by
+end
+
+defn scaled(x, by = 0.5, plus = x * by)
+  x * by + plus
+end
+
+(** A leaf test that reads a default: made at the call when the default is a literal. *)
+defn tally(n, lim = 3)
+  if n < lim
+    n
+  else
+    t = 0
+    for i in 1..n
+      t = t + i
+    end
+    t
+  end
+end
+
+(** Its arguments made in the order of the parameters, whatever the order of the names: the first error is a's. *)
+defn order(a, b = 10, c = 20)
+  a * 100 + b * 10 + c
+end
+
+(** A default that fails at a call: its error names the callee's frame, after its step. *)
+defn picked(i, x = [1, 2, 3][i])
+  x * 2
+end
+
+defn divided(i, x = math.Div(12, i))
+  x + 1
+end
+
+(** Too big to be inlined, with a loop: called. *)
+defn summed(n, from = 1, by = 2)
+  t = 0
+  for i in from..n
+    t = t + by * i
+  end
+  t
+end
+
+defn run(n)
+  t = 0
+  u = 0.0
+  for i in 1..n
+    t = t + step(i) + step(i, 2) + step(i, by = 3) + step(by = 4, x = i)
+    u = u + scaled(i * 1.0) + scaled(i * 1.0, plus = 1.0) + scaled(by = 2.0, x = 1.5)
+    t = t + order(i) + order(i, c = 1) + order(c = math.Mod(i, 3), a = i) + summed(math.Mod(i, 7)) + summed(5, by = i)
+    t = t + tally(math.Mod(i, 6)) + tally(math.Mod(i, 6), lim = 5) + tally(lim = 0, n = 2)
+  end
+  io.Print(t, u)
+end
+
+run(3000)
+io.Print(tally(2), tally(9), tally(9, lim = 10))
+
+defn failing(n)
+  t = 0
+  for i in 1..n
+    t = t + picked(math.Mod(i, 4) + 1)
+  end
+  t
+end
+defn shared(n)
+  t = 0
+  for i in 1..n
+    t = t + divided(4001 - i) + divided(i, x = 1)
+  end
+  t
+end
+io.Print(shared(3000))
+io.Print(shared(6000))
+io.Print(failing(2))
+io.Print(failing(5000))
