@@ -416,7 +416,12 @@ hot, donc un programme qui ne devient jamais hot ne le paie jamais.
 ### Quand le code devient hot
 
 - Une version d'une fonction dont l'inférence prouve que le résultat est un nombre, un entier ou un float, après
-  1 000 appels.
+  1 000 appels. Le haut d'un fichier, une cell ou du code tapé à un prompt n'en est jamais une : une fois qu'il a
+  tourné, ses variables sont copiées de sa frame (la place de ses variables sur la pile) vers son module, où les autres
+  fichiers, les fonctions définies ensuite et les variables d'une session les lisent, et du code machine de lui tout
+  entier les garderait dans des registres, écrites dans la frame seulement à un checkpoint : sous `CESIA_JIT=always`,
+  qui le faisait dès son premier lancement, le module recevait les nombres du dernier checkpoint. Ses boucles ont leur
+  propre code machine, qui les réécrit quand elles finissent.
 - Une boucle, au deuxième checkpoint rencontré à l'intérieur : après 10 000 à 20 000 tours d'une boucle qui tourne
   seule. Une boucle qui tourne souvent mais brièvement, comme dans une fonction appelée pour chaque requête, devient
   hot une fois que ses runs font 100 000 pas en tout.
@@ -462,6 +467,47 @@ collector au courant) était gardé par MIR dans un slot de la stack pendant tou
 maintenant ses nombres avant ces appels : `total` vit dans un registre, et un tour de `dyn` coûte 64 instructions et
 18 cycles du processeur, contre 126 et 34 avant cette partie et la suivante (les compteurs du processeur, le coût d'un
 tour de plus, mesuré comme la différence entre 10 et 20 millions de tours).
+
+**Une variable d'un module dans un registre.** Une variable d'un fichier que lit l'une de ses fonctions vit dans le
+module du fichier, où la fonction la trouve, et c'est aussi le cas d'un nom que du code tapé à un prompt a reçu, auquel
+du code tapé ensuite donne une nouvelle valeur en place. L'interpréteur écrit le module à chaque affectation, et une
+boucle qui affectait une telle variable restait dans l'interpréteur : `n = n + 1` sur 10^6 tours en haut d'un fichier
+prenait 21,7 ms, contre 8,9 quand aucune fonction ne lit `n`, et la même boucle tapée une deuxième fois à un prompt 26,8
+ms, contre 3,6 la première fois. Désormais une boucle du haut d'un fichier garde chaque variable d'un module qu'elle
+affecte, la variable de son `for` aussi quand c'en est une, dans un registre de la sorte que la variable tient quand la
+boucle est compilée, un entier ou un float. Avant chaque exécution, le moteur lit la variable dans le slot du registre,
+et après chaque exécution qui a réécrit ses variables, il la réécrit dans son module : à la fin de la boucle ; à chaque
+checkpoint, où une autre fiber, un stop ou les variables d'une session peuvent la regarder ; à un guard qui a échoué et
+à une instruction laissée à l'interpréteur, qui repartent de là ; et à une erreur, pour que la variable tienne ce que
+l'interpréteur aurait laissé. C'est la *register promotion* (la promotion d'une variable en mémoire dans un registre),
+comme Lu et Cooper (1997) l'ont faite pour les scalaires du C, un chargement avant la boucle et un rangement après, pour
+une variable que rien d'autre dans la boucle ne peut atteindre, et comme Lo, Chow et leurs coauteurs (1998) placent ces
+chargements et ces rangements là où on en a besoin, et seulement là. Ici, ce qui peut atteindre la variable, c'est une
+fonction que la boucle appelle : une fonction inlinée lit le registre, et une fonction appelée, qui lirait le module,
+laisse la boucle à l'interpréteur, comme le fait une affectation d'une autre sorte, un Float donné à un Int.
+
+Mesuré le 2026-11-24, profil `release`, 21 lancements de chacun en alternance avec le binaire de la branche main, du
+début du processus à sa fin, ou le temps du lancement lui-même pour du code tapé à un prompt ; les médianes et leurs
+intervalles à 95 %, en ms :
+
+| Boucle | Avant | Maintenant |
+|---|---:|---:|
+| `n = n + 1`, 10^6 tours en haut d'un fichier, `n` lu par une fonction | 21,7 (21,3–25,8) | 8,4 (8,1–8,8) |
+| la même, `n` lu par aucune fonction | 8,9 (8,1–9,5) | 8,6 (8,3–9,5) |
+| la même sur 10^7 tours, `n` lu par une fonction | 161,9 (158,5–168,4) | 17,3 (16,7–18,3) |
+| la boucle de 10^6 tours tapée une deuxième fois à un prompt | 26,8 (26,4–27,3) | 2,96 (2,89–3,05) |
+| une branche laissée à l'interpréteur tous les 4 tours, 10^6 tours | 47,7 (47,2–48,9) | 47,8 (47,2–48,7) |
+| un appel non inliné lit `n`, 3 × 10^5 tours | 83,1 (80,8–84,3) | 82,2 (80,8–83,0) |
+
+Là où elle ne gagne rien, elle ne perd rien non plus : une boucle dont l'instruction laissée à l'interpréteur tourne tous
+les quelques tours retourne à l'interpréteur pour de bon, comme plus bas, et une boucle dont l'appel lit la variable y
+reste, toutes deux aussi rapides qu'avant. À côté des géants, la même boucle sur une variable globale, le processus
+entier : 10^6 tours prennent 7,8 ms, Python 3.14 114, Node 26 43,6, Lua 5.5 23,1 et LuaJIT 3,2 ; 10^7 tours 16,9,
+Python 982, Node 49,3, Lua 206 et LuaJIT 11,4. LuaJIT gagne : il démarre en une milliseconde environ, là où Cesia charge
+son JIT à la première boucle hot, et un tour coûte ensuite à chacun environ une nanoseconde. Les tests lancent ces
+boucles avec le JIT éteint, hot et always, et comparent : une autre fiber qui lit les variables à chaque checkpoint, un
+stop au milieu de la boucle, une erreur et un overflow, un guard qui échoue dans une boucle de la boucle, la variable d'un
+`for`, un slider changé, et une fonction inlinée qui les lit ; le fuzzer fait de telles boucles au hasard.
 
 **Une valeur est marquée partagée une seule fois.** Une liste ou une map lue d'une liste dans une variable est tenue deux
 fois, donc elle doit perdre son bit *owned* ([copy-on-write](#value-semantics-et-copy-on-write)) avant que rien ne
@@ -890,6 +936,9 @@ une différence est un bug du JIT.
   dans son slot avant et relue après ; ce que le code natif pourrait épargner, c'est la part propre de l'interpréteur
   dans `bench/maps.ce`, un dixième de son temps dans son profil (la mesure de l'endroit où passe le temps), et ces appels
   en reprendraient une bonne partie ;
+- une boucle du haut d'un fichier qui affecte une variable du module qu'une fonction qu'elle appelle, sans l'inliner
+  (sans copier son corps sur place), lit : cette fonction lirait la variable dans son module pendant que le code machine
+  la tient dans un registre ;
 - sous un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables), les fonctions qui
   tiennent un breakpoint (une ligne où le programme doit s'arrêter) et le code que vous parcourez pas à pas ;
 - tout sur arm64, comme les puces d'Apple, pour l'instant : les programmes y tournent dans l'interpréteur, avec les mêmes

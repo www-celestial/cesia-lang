@@ -96,6 +96,15 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
 - Urs Hölzle, David Ungar. "Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback". *PLDI 1994*, 326–336.
   <https://doi.org/10.1145/178243.178478>. Compiler pour les types vraiment rencontrés pendant que le programme tournait :
   les suppositions que le JIT de Cesia tire de la frame (les slots des variables d'un appel).
+- John Lu, Keith D. Cooper. "Register Promotion in C Programs". *PLDI 1997*, ACM, 308–319.
+  <https://doi.org/10.1145/258915.258943>. Un scalaire gardé en mémoire, comme une variable globale, tenu dans un registre
+  pendant une boucle qu'aucune autre référence de la boucle ne peut atteindre : chargé avant la boucle, rangé après. Le
+  JIT de Cesia le fait pour les variables d'un module qu'affecte une boucle du haut d'un fichier, rangées à chaque sortie
+  de son code machine.
+- Raymond Lo, Fred Chow, Robert Kennedy, Shin-Ming Liu, Peng Tu. "Register Promotion by Sparse Partial Redundancy
+  Elimination of Loads and Stores". *PLDI 1998*, ACM, 26–37. <https://doi.org/10.1145/277650.277659>. Les chargements et
+  les rangements d'une variable promue placés seulement là où un chemin en a besoin : le moteur de Cesia charge une
+  telle variable quand une exécution du code machine commence et la range quand elle en sort, jamais à un tour.
 - Andreas Gal et d'autres. "Trace-based Just-in-Time Type Specialization for Dynamic Languages". *PLDI 2009*, 465–478.
   <https://doi.org/10.1145/1542476.1542528>. Le tracing JIT, qui compile un seul chemin hot à travers le programme. Cesia
   compile plutôt des fonctions et des boucles entières, avec des guards (les tests que le code machine fait avant de se

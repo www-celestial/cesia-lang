@@ -83,6 +83,14 @@ publisher moves it.
 - Urs Hölzle, David Ungar. "Optimizing Dynamically-Dispatched Calls with Run-Time Type Feedback". *PLDI 1994*, 326–336.
   <https://doi.org/10.1145/178243.178478>. Compiling for the types really met while the program ran: the guesses that
   Cesia's JIT takes from the frame.
+- John Lu, Keith D. Cooper. "Register Promotion in C Programs". *PLDI 1997*, ACM, 308–319.
+  <https://doi.org/10.1145/258915.258943>. A scalar kept in memory, as a global, held in a register through a loop that
+  no other reference in it can reach: loaded before the loop, stored after it. Cesia's JIT does so for the variables of
+  a module that a loop of a file's top assigns, stored at each way out of its machine code.
+- Raymond Lo, Fred Chow, Robert Kennedy, Shin-Ming Liu, Peng Tu. "Register Promotion by Sparse Partial Redundancy
+  Elimination of Loads and Stores". *PLDI 1998*, ACM, 26–37. <https://doi.org/10.1145/277650.277659>. The loads and
+  stores of a promoted variable placed only where a path needs them: Cesia's engine loads such a variable when a run
+  of machine code starts and stores it when the run leaves, never at a turn.
 - Andreas Gal and others. "Trace-based Just-in-Time Type Specialization for Dynamic Languages". *PLDI 2009*, 465–478.
   <https://doi.org/10.1145/1542476.1542528>. The tracing JIT, which compiles one hot path through the program. Cesia
   compiles whole functions and loops instead, with guards, which keeps its speed steady on code full of branches.
