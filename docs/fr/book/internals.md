@@ -1269,9 +1269,13 @@ entrée est écrite dans un nouveau fichier à côté d'elle, qu'aucun autre fic
 `O_EXCL`), puis renommée à la place de l'ancienne, qui est d'abord retirée : btrfs (un système de fichiers de Linux)
 écrit tout de suite sur le disque un fichier renommé par-dessus un autre, environ 8 ms. Un run qui lit une entrée
 pendant qu'un autre l'écrit voit l'ancienne, la nouvelle ou aucune, jamais une moitié, et deux runs qui l'écrivent en
-même temps en écrivent chacun une entière. À la première écriture d'un run, au-delà de 256 MB d'entrées, celles qui ont
-servi le moins récemment partent, jusqu'à 128 MB ; lire une entrée garde sa date fraîche, une fois par jour. Le dossier
-peut être supprimé à tout moment, comme n'importe quel cache.
+même temps en écrivent chacun une entière. Le dossier garde le compte de ses octets dans son fichier `total`, auquel
+chaque écriture ajoute sous un verrou (un lock : un seul run à la fois le tient) : c'est seulement quand le compte
+dépasserait 256 MB, ou qu'il est inconnu, que le dossier est passé en revue, par un run pendant que les autres
+attendent, et les entrées qui ont servi le moins récemment partent, jusqu'à 128 MB. Avant, la première écriture de
+chaque run passait en revue toutes les entrées, 40 000 fichiers sur une machine qui sert : des centaines de runs qui
+finissaient en même temps, comme une suite de tests, les lisaient chacun toutes et bloquaient le disque. Lire une entrée
+garde sa date fraîche, une fois par jour. Le dossier peut être supprimé à tout moment, comme n'importe quel cache.
 
 **Ce que ça fait gagner.** Du début du processus à sa fin, la médiane de 21 runs de chacun et son intervalle à 95 %,
 les trois à tour de rôle, le 2026-11-12 pendant que d'autres travaux tournaient sur la machine : avant le cache ; le

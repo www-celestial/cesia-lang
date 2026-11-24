@@ -255,11 +255,47 @@ let () =
   write (Filename.concat dir "old.tmp") "x";
   Unix.utimes (Filename.concat dir "old.tmp") (now -. 200000.) (now -. 200000.);
   write (Filename.concat dir "new.tmp") "x";
-  Cesia_sys.Entries.prune ~limit:1000 dir;
-  check "under the limit, every entry stays" (Array.length (Sys.readdir dir) = 11);
-  Cesia_sys.Entries.prune ~limit:800 dir;
+  check "under the limit, every entry stays, counted"
+    (Cesia_sys.Entries.prune ~limit:1000 dir = 1000 && Array.length (Sys.readdir dir) = 11);
+  check "past the limit, the oldest go, down to half" (Cesia_sys.Entries.prune ~limit:800 dir = 400);
   let left = List.sort compare (Array.to_list (Sys.readdir dir)) in
-  check "past the limit, the oldest go, down to half" (left = [ "e6"; "e7"; "e8"; "e9"; "new.tmp" ])
+  check "the newest stay" (left = [ "e6"; "e7"; "e8"; "e9"; "new.tmp" ]);
+  (* The count of the folder: kept in its file total, it is looked over only when the count would pass the limit. *)
+  let total = Filename.concat dir "total" in
+  let count () = Int64.to_int (String.get_int64_le (In_channel.with_open_bin total In_channel.input_all) 0) in
+  let account n = Cesia_sys.Entries.account ~limit:800 dir n in
+  check "no count yet: the folder is looked over" (account 50 && count () = 450);
+  write (Filename.concat dir "big") (String.make 1000 'x');
+  check "under the limit, the count only grows" (account 100 && count () = 550 && Sys.file_exists (Filename.concat dir "big"));
+  check "past it, the folder is pruned and counted again"
+    (account 300 && count () = 300 && not (Sys.file_exists (Filename.concat dir "big")));
+  (* Runs that end at once: each adds under the lock, and no addition is lost. *)
+  let run () = for _ = 1 to 100 do ignore (Cesia_sys.Entries.account ~limit:100000 dir 1) done in
+  let kids = List.init 8 (fun _ -> match Unix.fork () with 0 -> run (); Unix._exit 0 | pid -> pid) in
+  List.iter (fun pid -> ignore (Unix.waitpid [] pid)) kids;
+  check "eight runs at once lose no count" (count () = 1100);
+  (* A count spoilt, near the largest number or below zero, is no count: the folder is looked over again. *)
+  let spoil v =
+    let b = Bytes.create 8 in
+    Bytes.set_int64_le b 0 v;
+    Out_channel.with_open_bin total (fun o -> Out_channel.output_bytes o b)
+  in
+  spoil (Int64.of_int max_int);
+  check "a count near the largest number is counted again" (account 1 && count () = 1);
+  spoil (-5L);
+  check "a count below zero is counted again" (account 1 && count () = 1);
+  (* A folder just under the limit, whose entry is written again at the same size, goes down to half once, not looked
+     over again at each write. *)
+  List.iteri
+    (fun i name ->
+       let path = Filename.concat dir name in
+       write path (String.make 100 'x');
+       Unix.utimes path (now -. float (10 * (10 - i))) (now -. float (10 * (10 - i))))
+    [ "f0"; "f1"; "f2"; "f3"; "f4"; "f5"; "f6" ];
+  write (Filename.concat dir "f7") (String.make 90 'x');
+  spoil (-1L);
+  check "an entry that would pass the limit takes the folder down to half"
+    (account 20 && count () = 410 && not (Sys.file_exists (Filename.concat dir "f3")))
 
 (* The copy that writes the entries at the end of a run: the program's descriptors are closed in it before anything else,
    so a pipe ends, a port is free and nothing is written where the program writes, while the copy still runs. *)

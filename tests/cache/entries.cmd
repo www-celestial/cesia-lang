@@ -2,7 +2,7 @@
 # the same error; an entry damaged, cut, swapped with another, made a link or opened to others is not used, and is
 # written again as it was; one changed while a run that read it runs changes nothing for that run; a changed file is
 # read again; a folder that isn't the person's alone is neither read nor written; one that can't be written changes
-# nothing; four runs at once agree.
+# nothing; four runs at once agree; the count of the folder is the bytes of its entries.
 top=$(mktemp -d)
 trap 'chmod -R u+rwx "$top"; rm -rf "$top"' EXIT
 export XDG_CACHE_HOME="$top/cache"
@@ -23,24 +23,28 @@ run() {
   for i in $(seq 1 500); do pgrep -f -- "$app/main.ce" > /dev/null || return 0; sleep 0.01; done
   echo "the entries were not written in 5 s"
 }
+# The entries of a folder: its file total is the count of their bytes, not one of them.
+entries() { for f in "$1"/*; do [ "${f##*/}" = total ] || printf '%s\n' "$f"; done; }
 # Each entry as it was when written, or not.
 kept() { for f in "$top"/good/*; do cmp -s "$f" "$load/${f##*/}" || { echo "$1: an entry differs"; return; }; done; echo "$1: every entry as it was"; }
 same() { [ "$(run)" = "$expected" ] && echo "$1: the same output and error" || echo "$1: another output"; }
 expected=$(XDG_CACHE_HOME=/proc/none run)
 echo "$expected"
 same "cold"
-echo "entries: $(ls "$load" | wc -l | tr -d ' ')"
-cp "$load"/* "$top/good"
+echo "entries: $(entries "$load" | wc -l | tr -d ' ')"
+[ "$(od -An -td8 "$load/total" | tr -d ' ')" = "$(cat $(entries "$load") | wc -c | tr -d ' ')" ] &&
+  echo "cold: the count of the folder is the bytes of its entries"
+cp $(entries "$load") "$top/good"
 same "warm"
 kept "warm"
 size() { wc -c < "$1" | tr -d ' '; }
-for f in "$load"/*; do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
+for f in $(entries "$load"); do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
 same "damaged"
 kept "damaged"
-for f in "$load"/*; do head -c $(($(size "$f") / 2)) "$f" > "$top/cut"; cat "$top/cut" > "$f"; done
+for f in $(entries "$load"); do head -c $(($(size "$f") / 2)) "$f" > "$top/cut"; cat "$top/cut" > "$f"; done
 same "cut"
 kept "cut"
-set -- "$load"/*
+set -- $(entries "$load")
 cp "$1" "$top/swap"; cp "$2" "$1"; cp "$top/swap" "$2"
 same "swapped"
 kept "swapped"
@@ -67,7 +71,7 @@ for i in 1 2 3 4; do run > "$top/out$i" & done
 wait
 expected=$(run)
 for i in 1 2 3 4; do [ "$(cat "$top/out$i")" = "$expected" ] || echo "run $i at once: another output"; done
-echo "four runs at once: $(ls "$top/race/cesia/load" | grep -c -v tmp) entries"
+echo "four runs at once: $(entries "$top/race/cesia/load" | grep -c -v '\.tmp$') entries"
 same "after them"
 # An entry changed on the disk while a run that read it still runs, before it reads the bodies of its functions: it reads
 # them from the bytes it checked, and the next run reads the package from its sources and writes the entry as it was.
@@ -80,13 +84,13 @@ mkfifo "$top/fifo"
 later < "$top/fifo" > "$top/later-out" &
 exec 9> "$top/fifo"
 for i in $(seq 1 500); do [ -s "$top/later-out" ] && break; sleep 0.01; done
-for f in "$top/later/cesia/load"/*; do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
+for f in $(entries "$top/later/cesia/load"); do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
 echo x >&9
 exec 9>&-
 wait
 echo "changed on the disk as it ran: $(paste -sd ' ' "$top/later-out")"
 echo "the next run: $(later < /dev/null | paste -sd ' ' -)"
-for f in "$top/later-good"/*; do cmp -s "$f" "$top/later/cesia/load/${f##*/}" || echo "the next run: an entry differs"; done
+for f in $(entries "$top/later-good"); do cmp -s "$f" "$top/later/cesia/load/${f##*/}" || echo "the next run: an entry differs"; done
 # The copy that writes the entries holds none of the program's descriptors once the program has ended: the port it
 # listened on is free, a lock it held is free, a pipe it wrote to ends, and a file it wrote gets nothing more. Each run
 # starts with an empty cache, so that a copy writes.

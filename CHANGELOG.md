@@ -154,6 +154,13 @@
   outside `--limit steps`, where Two-Way, of Crochemore and Perrin, needs no table. A part of 10 MB searched in 100 bytes
   under `--limit memory=16M` took 94 MB, now 18 MB, the two texts; 2,000 searches of a part of 1 MB in `"x"` under
   `--limit steps=100000` took 15.5 s, now 0.00 s. With `fold`, the part is no longer copied in lower case.
+- The cache of loaded packages keeps the count of its bytes in its file `total`, which each write adds to under a lock,
+  and is looked over only when the count would pass 256 MB, by one run while the others wait: the first write of each
+  run read all its entries, 40,000 files on a machine in use, so hundreds of runs that ended at once, as a suite of
+  tests, stalled the disk. 60 runs of new files ended at once on a copy of such a cache, 154 MB: the copies that save
+  their entries all end within 0.16 to 0.27 s, where they took 2.1 to 2.5 s (3 turns each, alternated), the same entries
+  saved. A folder just under the limit whose entries are written again at the same size goes down to half once, where
+  it would be looked over at each write.
 - `cells.Analyse` gives the error of rule 5 for a slider written with no argument, `x = cells.Slider()`, where it
   panicked, so an editor that analysed such a file stopped.
 - `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the

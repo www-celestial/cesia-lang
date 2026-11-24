@@ -53,14 +53,15 @@ let read name =
         end
     with Unix.Unix_error _ | End_of_file -> None
 
-let prune ~limit dir =
+let prune ?(adding = 0) ~limit dir =
   match Sys.readdir dir with
-  | exception Sys_error _ -> ()
+  | exception Sys_error _ -> 0
   | names ->
     let now = Unix.time () in
     let entry name =
       let path = Filename.concat dir name in
       match Unix.lstat path with
+      | _ when name = "total" -> None
       | st when st.st_kind = Unix.S_REG && Filename.check_suffix name ".tmp" ->
         if st.st_mtime < now -. day then (try Unix.unlink path with Unix.Unix_error _ -> ());
         None
@@ -69,20 +70,38 @@ let prune ~limit dir =
     in
     let entries = List.filter_map entry (Array.to_list names) in
     let total = List.fold_left (fun n (_, size, _) -> n + size) 0 entries in
-    if total > limit then
-      ignore
-        (List.fold_left
-           (fun left (_, size, path) ->
-              if left <= limit / 2 then left else try Unix.unlink path; left - size with Unix.Unix_error _ -> left)
-           total (List.sort compare entries))
+    (* With the entry about to be written: a folder just under the limit, whose entries are written again at the same
+       size, would else be looked over at each write. *)
+    if total + adding <= limit then total
+    else
+      List.fold_left
+        (fun left (_, size, path) ->
+           if left <= limit / 2 then left else try Unix.unlink path; left - size with Unix.Unix_error _ -> left)
+        total (List.sort compare entries)
 
-let pruned = ref false
+(* The bytes written since the folder was last looked over, counted in its file [total] under a lock, so that hundreds
+   of runs that end at once don't each read 40,000 entries: the count unknown or past the limit, the folder is pruned
+   and counted again. *)
+let account ~limit dir n =
+  match Unix.openfile (Filename.concat dir "total") [ O_RDWR; O_CREAT; O_CLOEXEC ] 0o600 with
+  | exception Unix.Unix_error _ -> false
+  | fd ->
+    Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
+    try
+      Unix.lockf fd F_LOCK 0;
+      let b = Bytes.make 8 '\000' in
+      let before = if Unix.read fd b 0 8 = 8 then Int64.to_int (Bytes.get_int64_le b 0) else limit in
+      (* Compared as [before > limit - n], not [before + n > limit]: a count spoilt near the largest number would wrap. *)
+      let after = (if before < 0 || before > limit - n then prune ~adding:n ~limit dir else before) + n in
+      Bytes.set_int64_le b 0 (Int64.of_int after);
+      Unix.lseek fd 0 SEEK_SET = 0 && Unix.write fd b 0 8 = 8
+    with Unix.Unix_error _ -> false
+
 let written = ref 0
 
 let write name data =
   match Lazy.force folder with
-  | Some dir when String.length data <= largest ->
-    if not !pruned then (pruned := true; prune ~limit dir);
+  | Some dir when String.length data <= largest && account ~limit dir (String.length data) ->
     incr written;
     let tmp = Filename.concat dir (Printf.sprintf "%s.%d.%d.tmp" name (Unix.getpid ()) !written) in
     (try

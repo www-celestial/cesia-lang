@@ -7,8 +7,14 @@
 val store : string -> Cesia.Cache.store
 
 (** Past [limit] bytes of entries, the ones used least lately go, down to half of it; temporary files that a run cut short
-    left go after a day. Run once by a run that writes. *)
-val prune : limit:int -> string -> unit
+    left go after a day; with [adding], when they and [adding] more bytes would pass it. Gives the bytes of entries
+    left. *)
+val prune : ?adding:int -> limit:int -> string -> int
+
+(** Before an entry of [n] bytes is written: adds them to the count of the folder, its file [total], under a lock, and
+    prunes the folder first when the count is unknown or would pass [limit]. [false] if the count can't be kept, and the
+    entry is then not written. *)
+val account : limit:int -> string -> int -> bool
 
 (** At the end of a run, [save] runs in a copy of the process that the end doesn't wait for: the run ends as soon as
     without a cache. The copy closes every descriptor of the program before anything else, puts its input and output on

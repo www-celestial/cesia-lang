@@ -1126,9 +1126,12 @@ on Windows, which has no `fork`: the next run reads its packages as without a ca
 time, as a server, writes its entries when it stops. Each entry is written to a new file beside it, which no other file
 can be (Cesia makes it with `O_EXCL`), then renamed in place of the old one, which is removed first: btrfs writes a file
 renamed over another to the disk at once, about 8 ms. A run that reads an entry while another writes it sees the old
-one, the new one or none, never a half, and two runs that write it at once both write a whole one. At the first write of
-a run, past 256 MB of entries, those used least lately go, down to 128 MB; reading an entry keeps its date fresh, once a
-day. The folder can be deleted at any time, as any cache.
+one, the new one or none, never a half, and two runs that write it at once both write a whole one. The folder keeps the
+count of its bytes in its file `total`, which each write adds to under a lock: only when the count would pass 256 MB, or
+is unknown, is the folder looked over, by one run while the others wait, and the entries used least lately go, down to
+128 MB. Before, the first write of each run looked over every entry, 40,000 files on a machine in use: hundreds of runs
+that ended at once, as a suite of tests, each read them all and stalled the disk. Reading an entry keeps its date
+fresh, once a day. The folder can be deleted at any time, as any cache.
 
 **What it saves.** From the start of the process to its end, the median of 21 runs of each and its 95 % interval, the
 three taking turns, on 2026-11-12 while other work ran on the machine: before the cache; the first run, with an empty

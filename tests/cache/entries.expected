@@ -7,6 +7,7 @@ src/shapes/broken.ce:6:25: broken 1
 exit 1
 cold: the same output and error
 entries: 2
+cold: the count of the folder is the bytes of its entries
 warm: the same output and error
 warm: every entry as it was
 damaged: the same output and error
