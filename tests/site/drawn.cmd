@@ -23,6 +23,7 @@ fresh() {
 fresh
 printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"><rect width="4" height="2"/></svg>' > docs/book/files/kept.svg
 draw 'plot.Save(plot.Of([plot.Line([1, 2, 3], [2, 1, 3])]), "up.svg") -->' \
+  'plot.Save(plot.Of([plot.Line([1, 2], [2, 1])], title = "Going down"), "down.svg") -->' \
   'plot.Save(plot.Frames([plot.Line([1, 2], [1, k]) for k in [1, 2]]), "moving.svg") -->' \
   'sys.Mkdir("sub") then result.IsOk() -->' \
   'plot.Save(plot.Line([1, 2], [1, 2]), "sub/deep.svg") -->' \

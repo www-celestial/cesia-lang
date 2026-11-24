@@ -1,16 +1,20 @@
 built: 0
 == under the block, at its size, with its title or what it is for those who can't see it
 <figure class="drawn"><img src="drawn/first/up.svg" width="640" height="400" alt="The image this code draws: up.svg" loading="lazy"></figure>
+<figure class="drawn"><img src="drawn/first/down.svg" width="640" height="400" alt="Going down" loading="lazy"></figure>
 <figure class="drawn"><img src="drawn/first/moving.svg" width="640" height="400" alt="Animation, 2 frames at 30 a second" loading="lazy"></figure>
 == the French page, from its own folder
 <figure class="drawn"><img src="../drawn/first/up.svg" width="640" height="400" alt="L’image que dessine ce code : up.svg" loading="lazy"></figure>
+<figure class="drawn"><img src="../drawn/first/down.svg" width="640" height="400" alt="Going down" loading="lazy"></figure>
 <figure class="drawn"><img src="../drawn/first/moving.svg" width="640" height="400" alt="Animation, 2 frames at 30 a second" loading="lazy"></figure>
 == the files: those plot.Save wrote
+down.svg
 moving.svg
 up.svg
 <svg xmlns="http://www.w3.org/2000/svg" width="640" 
 == a build from the cache, which runs nothing again, still writes them
 nothing ran again
+down.svg
 moving.svg
 up.svg
 == a page with no drawing any more: its images go

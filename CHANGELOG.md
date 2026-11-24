@@ -161,6 +161,9 @@
 
 ### Fixes
 
+- `plot.Svg` and `plot.Save` write the title of a graph of two dimensions as the `<title>` of its SVG, which a screen
+  reader reads, as they wrote the words of a 3D graph: the image that a block of the book draws had, for those who can't
+  see it, only its file name where the title of the graph was meant.
 - A search for a part of 32 bytes or more, by `text.Find`, `Contains`, `Count`, `Split`, `Replace` or `ByteFind`,
   allocates nothing of the part's length and does nothing when the part can't fit in what is left of the text: the
   method of Knuth, Morris and Pratt built a table of 8 bytes a byte of the part outside `--limit memory`, and its work
