@@ -106,7 +106,7 @@ end
 isUtf8EveryPlace() = list.All([not text.IsUtf8(badAt(n)) and text.IsUtf8(goodAt(n)) for n in 0..20])
 isUtf8NotText() = fails(() -> text.IsUtf8(1), "type")
 (* text.ByteFind: the rarest byte of the part eight bytes at a time, then the part whole; from every byte, the same answer
-   as a search byte by byte; with fold, the same as on both texts in lower case; a part of 32 bytes or more by KMP. *)
+   as a search byte by byte; with fold, the same as on both texts in lower case; a part of 32 bytes or more by Two-Way. *)
 defn slowFind(p, from, s)
   n = text.ByteLength(p)
   for i in from..(text.ByteLength(s) - n + 1)
@@ -127,6 +127,47 @@ isByteFindFoldCases() = text.ByteFind("World", 1, "hello WORLD", fold = true) ==
 isByteFindFoldOnlyLetters() = value.IsMissing(text.ByteFind("[", 1, "{", fold = true)) and value.IsMissing(text.ByteFind("@", 1, "`", fold = true))
 isByteFindEdges() = text.ByteFind("", 3, "abc") == 3 and value.IsMissing(text.ByteFind("a", 4, "abc")) and value.IsMissing(text.ByteFind("a", 1, ""))
 isByteFindFoldNotBool() = fails(() -> text.ByteFind("a", 1, "a", fold = 1), "type")
+(* A part of 32 bytes or more: Two-Way, the search of Crochemore and Perrin, in constant space. From every byte, folded or
+   not, the same answer as a search byte by byte, on texts of two or three letters, where the periods of a part and its
+   halves matter most: random parts, powers of a short unit with a tail before or after, a run of one letter then
+   another; texts with the part, the part changed at one byte, twice, or a run of its unit. text.Count finds the same
+   places without overlaps, text.Find the first, text.Contains whether there is one. *)
+defn longPart(c)
+  u = if c.Unit == "" "ab" else c.Unit end
+  run = text.ByteSlice(1, 32 + text.ByteLength(c.Extra), text.Repeat(48, u))
+  if c.Kind == 0
+    c.Rand
+  else if c.Kind == 1
+    "$(run)$(c.Extra)"
+  else if c.Kind == 2
+    "$(c.Extra)$(run)"
+  else
+    "$(text.Repeat(32 + text.ByteLength(c.Extra), text.ByteSlice(1, 1, c.Al)))$(text.ByteSlice(text.ByteLength(c.Al), text.ByteLength(c.Al), c.Al))"
+  end
+end
+defn longText(c, p)
+  m = text.ByteLength(p)
+  k = math.Mod(c.At, m) + 1
+  other = text.ByteSlice(math.Mod(c.At, text.ByteLength(c.Al)) + 1, math.Mod(c.At, text.ByteLength(c.Al)) + 1, c.Al)
+  mid = [p, "$(text.ByteSlice(1, k - 1, p))$(other)$(text.ByteSlice(k + 1, m, p))", "$(p)$(p)", "", text.Repeat(math.Div(m, text.ByteLength(c.Unit) + 1) + 3, "$(c.Unit)a")][c.Mid + 1]
+  "$(c.Pre)$(mid)$(c.Post)"
+end
+defn sameLong(c)
+  p = longPart(c)
+  s = longText(c, p)
+  m = text.ByteLength(p)
+  low(t) = if c.Fold text.Lower(t) else t end
+  at = [i for i in 1..(text.ByteLength(s) - m + 1) if low(text.ByteSlice(i, i + m - 1, s)) == low(p)]
+  apart = list.Reduce((acc, i) -> if value.Len(acc) == 0 or i >= list.Last(acc) + m list.Append(i, acc) else acc end, [], at)
+  finds = list.All([value.Equal(text.ByteFind(p, f, s, fold = c.Fold), list.FindFirst(it >= f, at)) for f in 1..text.ByteLength(s)])
+  others = c.Fold or (text.Count(p, s) == value.Len(apart) and value.Equal(text.Find(p, s), list.First(at)) and text.Contains(p, s) == (value.Len(at) > 0))
+  finds and others
+end
+someLong(al) = gen.Of({Al: () -> al, Rand: gen.Map(cs -> text.Join("", cs), gen.List(gen.Pick(text.Chars(al)), min = 32, max = 48)), Unit: gen.Text(max = 5, chars = al), Extra: gen.Text(max = 12, chars = al), Kind: gen.Int(0, 3), Pre: gen.Text(max = 40, chars = al), Post: gen.Text(max = 40, chars = al), Mid: gen.Int(0, 4), At: gen.Int(0, 63), Fold: gen.Bool()})
+isByteFindLongAsSlow() = test.ForAll(sameLong, gen.Then(someLong, gen.Pick(["ab", "aAbB", "abc", "a\nb"])), cases = 300)
+isByteFindLongPeriodic() = text.ByteFind("$(text.Repeat(40, "a"))b", 1, "$(text.Repeat(100000, "a"))b") == 99961 and value.IsMissing(text.ByteFind("$(text.Repeat(20, "ab"))b", 1, text.Repeat(50000, "ab")))
+isByteFindLongFold() = text.ByteFind("$(text.Repeat(20, "aB"))C", 2, "x$(text.Repeat(30, "Ab"))c", fold = true) == 22 and value.IsMissing(text.ByteFind("$(text.Repeat(20, "aB"))C", 23, "x$(text.Repeat(30, "Ab"))c", fold = true))
+isByteFindLongLonger() = value.IsMissing(text.ByteFind(text.Repeat(33, "a"), 1, text.Repeat(32, "a"))) and value.IsMissing(text.ByteFind(text.Repeat(32, "a"), 2, text.Repeat(32, "a"))) and text.ByteFind(text.Repeat(32, "a"), 1, text.Repeat(32, "a")) == 1
 (* text.ByteFindAny: through a table of the 256 bytes, eight at a time; from any byte, with not or without, the same
    answer as a loop over the bytes, on any bytes, UTF-8 or not, with sets of a few bytes, none or all 256. *)
 defn slowFindAny(set, from, s, out)

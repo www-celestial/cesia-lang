@@ -672,26 +672,6 @@ let flag_arg ctx name (a : t array) k =
   | Undef | Missing | False -> false
   | v -> Runtime.fail ctx Type (Messages.need_flag name (Value.describe v))
 
-(* Knuth, Morris and Pratt: linear, for the long patterns where the plain search could be quadratic. [at i] is the byte i
-   of the text, folded or not, of [n] bytes. *)
-let find_long at n part from =
-  let m = String.length part in
-  let fail = Array.make (m + 1) 0 in
-  let k = ref 0 in
-  for i = 1 to m - 1 do
-    while !k > 0 && part.[i] <> part.[!k] do k := fail.(!k) done;
-    if part.[i] = part.[!k] then incr k;
-    fail.(i + 1) <- !k
-  done;
-  let rec go i k =
-    if k = m then i - m
-    else if i >= n then -1
-    else if at i = part.[k] then go (i + 1) (k + 1)
-    else if k > 0 then go i fail.(k)
-    else go (i + 1) 0
-  in
-  go from 0
-
 let lows = 0x7F7F7F7F7F7F7F7FL
 let ones = 0x0101010101010101L
 
@@ -705,16 +685,81 @@ let ranks =
   String.iteri (fun i c -> Bytes.set r (Char.code c) (Char.chr (33 - i))) " \n().,etaoinsrhldcumfpgwybvkxjqz";
   Bytes.to_string r
 
+(* Crochemore and Perrin's Two-Way search, "Two-way string-matching", J. ACM 38(3):650-674, 1991, as glibc's memmem
+   and Rust's str::find: linear time, constant space, for the parts of 32 bytes or more, where the plain search could be
+   quadratic. Bytes are folded as they are read: a long part is never copied. *)
+let[@inline] low fold c = if fold then Char.lowercase_ascii c else c
+
+(* The start and the period of the largest suffix of [part], by the order of the bytes or, with [rev], its reverse: the
+   paper's maximal suffix, as glibc's critical_factorization computes it. *)
+let max_suffix fold part rev =
+  let m = String.length part in
+  let rec go ms j k p =
+    if j + k >= m then ms + 1, p
+    else
+      let a = low fold part.[j + k] and b = low fold part.[ms + k] in
+      if a = b then if k = p then go ms (j + p) 1 p else go ms j (k + 1) p
+      else if (a < b) <> rev then go ms (j + k) 1 (j + k - ms)
+      else go j (j + 1) 1 1
+  in
+  go (-1) 0 1 1
+
+(* The first place from [j] whose byte, folded, is [c], or the end: past one that isn't, eight bytes at a time as
+   [find_from] does. *)
+let rec next fold s c mask want j =
+  if j >= String.length s || low fold s.[j] = c then j
+  else if j + 9 <= String.length s && Int64.equal (zero_bytes (Int64.logxor (Int64.logor (String.get_int64_le s (j + 1)) mask) want)) 0L then next fold s c mask want (j + 9)
+  else next fold s c mask want (j + 1)
+
+(* The part is cut where the shorter of its two maximal suffixes starts, [crit]: a window compares the right half from
+   left to right, then the left half from right to left. When the whole part has the period [p] of its right half, a
+   window after a miss in the left half remembers in [mem] how many of its first bytes are known to match. A window with
+   nothing remembered first moves to the next place of the rarest byte of the part, by [ranks]: the places it skips
+   start no match, and a byte of [s] is still compared at most once in a right half, so the search compares at most
+   2 (n - from) bytes and skips each at most once. It exits before any work if the part can't fit: its callers pay for
+   all it does by paying for the bytes of [s] it could read. *)
+let find_long fold s part from =
+  let n = String.length s and m = String.length part in
+  if m > n - from then -1
+  else begin
+    let c1, p1 = max_suffix fold part false and c2, p2 = max_suffix fold part true in
+    let crit, p = if c2 < c1 then c1, p1 else c2, p2 in
+    let rec same i = i >= crit || (low fold part.[i] = low fold part.[i + p] && same (i + 1)) in
+    let periodic = same 0 in
+    let period = if periodic then p else (if crit > m - crit then crit else m - crit) + 1 in
+    let rank k = ranks.[Char.code (low fold part.[k])] in
+    let rec rarest k r = if k >= m || rank r = '\000' then r else rarest (k + 1) (if rank k < rank r then k else r) in
+    let r = rarest 1 0 in
+    let c = low fold part.[r] in
+    let mask = if fold && c >= 'a' && c <= 'z' then Int64.mul 0x20L ones else 0L in
+    let want = Int64.mul (Int64.of_int (Char.code c)) ones in
+    let rec go j mem =
+      let j = if mem = 0 then next fold s c mask want (j + r) - r else j in
+      if j > n - m then -1
+      else begin
+        let i = ref (if crit > mem then crit else mem) in
+        while !i < m && low fold part.[!i] = low fold s.[j + !i] do incr i done;
+        if !i < m then go (j + !i - crit + 1) 0
+        else begin
+          let i = ref (crit - 1) in
+          while !i >= mem && low fold part.[!i] = low fold s.[j + !i] do decr i done;
+          if !i < mem then j else go (j + period) (if periodic then m - period else 0)
+        end
+      end
+    in
+    go from 0
+  end
+
 (* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. With [fold], the ASCII letters match
    in either case, in both. The rarest byte of [part], by [ranks], is looked for eight bytes at a time (SWAR): the word
    xor that byte repeated has a zero byte where it is; a letter is or'ed with 0x20 in each byte first, which turns its
    capital into it and no other byte. Each place found is then compared whole. *)
 let find_from ?(fold = false) s part from =
-  let part = if fold then String.lowercase_ascii part else part in
-  let n = String.length s and m = String.length part in
-  let at i = if fold then Char.lowercase_ascii s.[i] else s.[i] in
-  if m >= 32 then find_long at n part from
+  if String.length part >= 32 then find_long fold s part from
   else begin
+    let part = if fold then String.lowercase_ascii part else part in
+    let n = String.length s and m = String.length part in
+    let at i = if fold then Char.lowercase_ascii s.[i] else s.[i] in
     let rank c = ranks.[Char.code c] in
     let r = ref 0 in
     String.iteri (fun k c -> if rank c < rank part.[!r] then r := k) part;

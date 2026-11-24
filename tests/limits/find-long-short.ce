@@ -1,0 +1,14 @@
+(** A part longer than the text is not looked for: each search reads one byte, pays for it, and does nothing more. Knuth,
+    Morris and Pratt built the table of the part first, 8 bytes for each of its million bytes and as much work, which no
+    limit counted: these 8,000 searches took 51 s and 64 GB of tables. *)
+use std/io
+use std/text
+
+p = text.Repeat(1000000, "a")
+for i in 1..2000
+  text.Contains(p, "x")
+  text.Find(p, "x")
+  text.ByteFind(p, 1, "x", fold = true)
+  text.Count(p, "x")
+end
+io.Print("done")

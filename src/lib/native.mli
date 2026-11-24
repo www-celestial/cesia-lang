@@ -15,6 +15,10 @@ val length : t -> int
     in either case. *)
 val find_from : ?fold:bool -> string -> string -> int -> int
 
+(** [find_long fold s part from]: the same, by Two-Way, which [find_from] runs for the parts of 32 bytes or more; it works
+    for a part of any length, which is how the tests check it on every short part. *)
+val find_long : bool -> string -> string -> int -> int
+
 (** The number that a text writes, or [missing]. *)
 val number : string -> t
 

@@ -37,3 +37,8 @@
  (name float_test)
  (modules float_test)
  (libraries cesia))
+
+(test
+ (name find_test)
+ (modules find_test)
+ (libraries cesia))
