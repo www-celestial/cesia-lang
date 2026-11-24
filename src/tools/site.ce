@@ -1481,11 +1481,10 @@ defn arrows(code)
     at = 1
     for tok in r.Tokens
       last = at + text.ByteLength(tok[2]) - 1
-      if tok[1] == syntax.Comment or tok[1] == syntax.Text
-        (* not code *)
-      else if value.Len(inCode) > 0 and inCode[value.Len(inCode)].To + 1 == at
+      code = not (tok[1] == syntax.Comment or tok[1] == syntax.Text)
+      if code and value.Len(inCode) > 0 and inCode[value.Len(inCode)].To + 1 == at
         inCode[value.Len(inCode)].To = last
-      else
+      else if code
         inCode = list.Append({From: at, To: last}, inCode)
       end
       at += text.ByteLength(tok[2])

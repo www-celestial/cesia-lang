@@ -18,6 +18,9 @@ val arrow_outside : t
 val number_too_big : string -> t
 val expected : string -> string -> t
 val too_nested : t
+
+(** An if whose branch before its else is empty. *)
+val empty_branch : t
 val colon_range : t
 val cant_assign : t
 val break_outside : t

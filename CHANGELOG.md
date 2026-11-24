@@ -2,6 +2,13 @@
 
 ## 1.3.0
 
+### Language
+
+- An `if` with nothing before its `else` is an error when the file loads, which says to write the value in parentheses or
+  on a line of its own: a value that starts with a minus sign right after the condition was read as part of it, so that
+  `if x < 0 -1 else 0 end` meant `if x < 0 - 1 (nothing) else 0 end`, and gave `missing` where -1 was meant, with no
+  error. Cesia's own code held three such mistakes, fixed below; an `if` left empty on purpose is written with `not`.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
@@ -202,6 +209,13 @@
 
 ### Fixes
 
+- `stats.MonteCarlo` gives its estimate when its draws add up below 0, where it stopped at its first block with "A
+  condition must be true or false, not missing": the rounding step of its sums wrote |x| as `if x < 0.0 -x else x end`.
+- `ode.Solve` with `stiff = true` solves back in time with steps longer than 1, where it stopped with "f gave [missing] at
+  t = missing", and takes the derivative in t on the side the solution goes, where shorter steps took it on the other:
+  the sign of the step was `if s < 0.0 -1.0 else 1.0 end`.
+- For those who work on Cesia: `tools/tabs.ce` reads a negative power of ten, as `1.25e-07`, as negative, where it read
+  it as positive on both sides of a comparison, so that a tab that printed 1.25e7 for 1.25e-7 agreed.
 - `frame.SortBy` keeps equal values in their order when it sorts decreasing too, as its documentation said, where it
   reversed them, and puts the NaNs last both ways, as pandas, R, numpy and the tables of Cemacs do, where they came
   first in an increasing sort. A program that read a NaN at the top of an increasing sort finds it at the bottom.

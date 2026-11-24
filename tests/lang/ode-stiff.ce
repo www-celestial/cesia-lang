@@ -218,6 +218,13 @@ defn isOracle()
   math.Near(lastRow(s), want, rel = 1.0e-7, abs = 1.0e-9)
 end
 
+defn isBackLongSteps()
+  (** Back in time with steps longer than 1: the time of the derivative in t was t plus missing, as the sign of the step
+      was read wrong, and the solver stopped. y' = -1e-6 t y from t = 1000 back to 0, y(0) = 1. *)
+  s = solved(ode.Solve((t, y) -> -1.0e-6 * t * y, [1000.0, 0.0], [math.Exp(-0.5)], stiff = true))
+  math.Near(lastRow(s), [1.0], rel = 1.0e-5)
+end
+
 defn isOrdersSeen()
   (** In fixed steps on a rotation, which is not stiff, halving h divides the error by about 2^4 for Rodas4 and 2^5
       for Rodas5P: here 4.0 and 5.9. On the probe, stiff, both lose some of it, as Rosenbrock methods do. *)

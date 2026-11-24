@@ -590,7 +590,7 @@ defn jacobianAt(f, p, t, y, fy, s)
   end
   dt = root * math.Abs(s)
   least = 4.0 * eps * math.Abs(t)
-  t2 = t + (if s < 0.0 -1.0 else 1.0 end) * (if dt > least dt else least end)
+  t2 = t + (if s < 0.0 (-1.0) else 1.0 end) * (if dt > least dt else least end)
   f2 = f(t2, y)
   calls += 1
   if not (value.Len(f2) == n and col.Kind(f2) == "float")

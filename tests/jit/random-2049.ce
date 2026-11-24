@@ -12,7 +12,7 @@ defn h0(p0, p1)
   end
 end
 defn h1(p0)
-  if ((if -811 >= p0 -1 else 4 end) != (if 4 != p0 468 else 3 end) and (-2 - -3) != (4 + -6))
+  if ((if -811 >= p0 (-1) else 4 end) != (if 4 != p0 468 else 3 end) and (-2 - -3) != (4 + -6))
     p0
   else
     p0
@@ -74,7 +74,7 @@ end
 defn f1(n, m, x, a, b)
   t = m
   y = x
-  x = math.Sqrt(h0((-(n)), (if -359 > -5 -8 else m end)))
+  x = math.Sqrt(h0((-(n)), (if -359 > -5 (-8) else m end)))
   y = (x - y)
   n = (if (-(m)) < t (math.Div(n, -3) - n) else (-(m)) end)
   t + n

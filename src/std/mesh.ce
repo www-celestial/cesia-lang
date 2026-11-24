@@ -491,9 +491,8 @@ defn textStl(s, path)
   inside = false
   for i in 1..value.Len(lines)
     line = text.Trim(lines[i])
-    if line == ""
-      (* A blank line says nothing. *)
-    else if not inside
+    (* A blank line says nothing. *)
+    if line != "" and not inside
       if not (line == "solid" or text.StartsWith("solid ", line))
         return stlFail(path, "has \"$(value.Text(line, 30))\" at line $i, where a solid begins")
       end
@@ -503,7 +502,7 @@ defn textStl(s, path)
         return stlFail(path, "ends a solid at line $i inside a facet")
       end
       inside = false
-    else
+    else if line != ""
       for w in text.Split(" ", line)
         if w != ""
           words = list.Append(w, words)

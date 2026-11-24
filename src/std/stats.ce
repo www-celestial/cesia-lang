@@ -2807,7 +2807,7 @@ struct Estimate
 end
 
 finite(x) = x - x == 0.0   (** is x a number, neither NaN nor an infinity? *)
-abs(x) = if x < 0.0 -x else x end   (** |x|, written out so that machine code makes it *)
+abs(x) = if x < 0.0 (-x) else x end   (** |x|, written out so that machine code makes it *)
 
 defn blockMoments(xs, lo, hi)
   (** [k, mean, q] of the floats xs[lo..hi], k of them, q the sum of the squares of their distances from the mean, by

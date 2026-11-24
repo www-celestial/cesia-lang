@@ -30,5 +30,13 @@
 "Code": "import os\nprint(os.environ.get(\"TABS_SECRET\", \"absent\"), os.environ[\"HOME\"] == os.getcwd())\n",
 "Want": "absent true\n",
 "Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 20,
+"Lang": "python",
+"Code": "print(1.25e-07, -3e-05)\n",
+"Want": "0.000000125 -0.00003\n",
+"Files": "files"
 }
 ]

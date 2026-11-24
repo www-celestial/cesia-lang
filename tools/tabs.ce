@@ -86,7 +86,7 @@ defn number(s, i)
   signed = byteAt(s, j + 1) == 43 or byteAt(s, j + 1) == 45
   if (e == 101 or e == 69) and (isDigit(byteAt(s, j + 1)) or (signed and isDigit(byteAt(s, j + 2))))
     start = if signed j + 2 else j + 1 end
-    power = text.Number(slice(s, start, digitsFrom(s, start) - 1)) * (if byteAt(s, j + 1) == 45 -1 else 1 end)
+    power = text.Number(slice(s, start, digitsFrom(s, start) - 1)) * (if byteAt(s, j + 1) == 45 (-1) else 1 end)
     point = true
     j = digitsFrom(s, start)
   end
@@ -142,15 +142,14 @@ defn valuesOf(s, lang = "")
       if w == "Ok" and slice(s, j, j + 8) == "(missing)"
         (* What an action that went well gives, as plot.Save: nothing, as a tab that does the same prints. *)
         j += 9
-      else if w == "Ok" and byteAt(s, j) == 40
-        (* Cesia's Ok( around a result: other languages give the result itself, or stop. *)
       else if low == "nan"
         out = list.Append({K: "nan", S: w}, out)
       else if low == "inf" or low == "infinity"
         out = list.Append({K: "inf", S: w, T: "inf"}, out)
       else if low == "true" or low == "false"
         out = list.Append({K: "word", S: w, T: low}, out)
-      else
+      else if not (w == "Ok" and byteAt(s, j) == 40)
+        (* Not Cesia's Ok( around a result: other languages give the result itself, or stop. *)
         out = list.Append({K: "word", S: w, T: w}, out)
       end
       i = j
@@ -216,12 +215,11 @@ defn copied(source, target)
   end
   for n in sys.List(source)?
     info = sys.Stat("$source/$n")?
-    if info.IsLink
-      (* not copied: a link of the book could lead anywhere *)
-    else if info.IsDir
+    (* A link is not copied: a link of the book could lead anywhere. *)
+    if info.IsDir and not info.IsLink
       sys.Mkdir("$target/$n", private = true)?
       copied("$source/$n", "$target/$n")?
-    else
+    else if not info.IsLink
       sys.Write("$target/$n", sys.Read("$source/$n")?, private = true)?
     end
   end

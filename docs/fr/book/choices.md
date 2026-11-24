@@ -52,6 +52,15 @@ Sans `else`, un `if` dont la condition est fausse donne `missing` :
 if 1 > 2 "never" end -->
 ```
 
+Une valeur qui commence par un signe moins, juste après la condition, serait lue comme une partie de celle-ci : dans
+`if x < 0 -1 else 0 end`, la condition est `x < 0 - 1`, et il ne reste rien avant le `else`. Un tel `if` ne se charge
+pas, et son message dit quoi écrire : la valeur entre parenthèses, `(-1)`, ou sur une ligne à elle.
+
+```cesia
+direction(x) = if x > 0 1 else if x < 0 (-1) else 0 end
+direction(-5) -->
+```
+
 ### La forme courte : a if c else b
 
 La valeur d'abord, puis la condition, comme en Python : `a if c else b` est une façon courte d'écrire

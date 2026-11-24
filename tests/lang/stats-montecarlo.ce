@@ -52,6 +52,14 @@ defn isBatchIsTTest()
     near(e.Interval[1], t.Interval[1], 1e-15) and near(e.Interval[2], t.Interval[2], 1e-15)
 end
 
+defn isNegativeMean()
+  (** Draws whose running sum is below 0: the sum's rounding step compared |sum| with |x|, and |x| of a negative x was
+      missing, so MonteCarlo stopped at its first block. *)
+  e = stats.MonteCarlo(() -> [-1.0, -2.0, -3.0, -4.0], n = 8).Value
+  t = stats.TTest([-1.0, -2.0, -3.0, -4.0, -1.0, -2.0, -3.0, -4.0]).Value
+  e.Mean == -2.5 and near(e.Interval[1], t.Interval[1], 1e-15)
+end
+
 defn isLevel()
   e = stats.MonteCarlo(() -> [1.0, 2.0, 3.0, 4.0], n = 8, level = 0.99).Value
   t = stats.TTest([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0], level = 0.99).Value

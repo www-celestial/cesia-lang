@@ -887,6 +887,8 @@ and text p pos parts =
 and if_expr p pos =
   let cond = head p in
   let yes = block p (fun t -> t == ELSE || t == END) in
+  (* Nothing before the else: the condition took what was meant as the branch, as -1 in if x < 0 -1 else 0 end. *)
+  if Array.length yes = 0 && (cur p).t == ELSE then error p (cur p).pos Messages.empty_branch;
   let no =
     if (cur p).t == ELSE then begin
       let else_pos = (cur p).pos in

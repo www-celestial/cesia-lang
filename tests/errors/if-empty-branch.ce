@@ -1,0 +1,5 @@
+(* if c -1 else 0 end: the condition takes -1, read as c - 1, and the branch before else is empty. *)
+use std/io
+
+sign(x) = if x > 0 1 else if x < 0 -1 else 0 end
+io.Print(sign(-5))

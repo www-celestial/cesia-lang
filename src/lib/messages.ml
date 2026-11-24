@@ -18,6 +18,9 @@ let arrow_outside =
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)
 let expected what got = plain (Printf.sprintf "Expected %s, found %s." what got)
 let too_nested = plain "This code is nested too deeply."
+let empty_branch =
+  hinted "This if gives nothing before its else: its condition may have taken the value, as -1 in if x < 0 -1 else 0 end, read as x < 0 - 1."
+    "Put the value on a line of its own, or write it (-1); for an if that only acts when its condition is false, write if not."
 let colon_range = plain "A range is written with two dots, as in 1..n, which is list.Range(1, n), and a method is reached with one dot."
 let cant_assign = plain "Only a variable can be assigned here."
 let break_outside = plain "break can only be used inside a loop."
