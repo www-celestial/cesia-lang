@@ -1,6 +1,8 @@
 (* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Cesia errors are allowed. The two
    paths, typed and --no-spec, must also give the same result; with CESIA_JIT=always, the typed path runs natively all it
-   can, and with --jit the programs are of the shapes the JIT compiles, whose loops get hot on the typed path. Usage:
+   can, and with --jit the programs are of the shapes the JIT compiles, whose loops get hot on the typed path. The
+   entries of the cache of loaded packages are fuzzed too: random bytes, real ones changed, and real ones changed in
+   their records with their checksums made again. Usage:
    fuzz.exe --seconds N --seed S [--jit], from the
    repository root. Failures go to _build/fuzz_fail/. *)
 open Cesia
@@ -17,7 +19,7 @@ let limits =
 
 type outcome = { code : int; out : string; err : string }
 
-let run ~no_spec path =
+let run ?(after = ignore) ~no_spec path =
   let out = Buffer.create 256 and err = Buffer.create 256 in
   let sink b s = if Buffer.length b < 1 lsl 20 then Buffer.add_string b s in
   let options =
@@ -30,6 +32,7 @@ let run ~no_spec path =
   let w = Runtime.create_world options in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~max_sleep:0.001 w in
   let code = Loader.run_file ~strict:true w path [] in
+  after w;
   { code; out = Buffer.contents out; err = Buffer.contents err }
 
 let contains text s =
@@ -355,6 +358,135 @@ let attempt_toml src =
     if Result.is_ok result then incr toml_accepted;
     None
 
+(* Entries of the cache of loaded packages, in memory: those of some packages of std/, made at the start by a program
+   that names one function of each, which loads its Cesia code. *)
+let mem : (string, string) Hashtbl.t = Hashtbl.create 16
+let part k off len = String.sub (Option.value (Hashtbl.find_opt mem k) ~default:"") off len
+let store = { Cache.build = "fuzz"; map = (fun k -> Option.map (fun s -> String.length s, part k) (Hashtbl.find_opt mem k)); write = Hashtbl.replace mem }
+let entry_file = Filename.concat fail_dir "entry.ce"
+let tail s = if String.length s < 24 then String.length s else 24 + Int64.to_int (String.get_int64_le s 16)
+
+(* Where each record of an entry is named: a byte 1, the record's place in the tail and its length, then its checksum,
+   in the head or in a record. A place that only looks so has a checksum that doesn't match: none is found by chance. *)
+let records s =
+  let t = tail s and n = String.length s in
+  let rec uint p acc shift = if p >= n || shift > 56 then None else let c = Char.code s.[p] in
+    if c < 128 then Some (acc lor (c lsl shift), p + 1) else uint (p + 1) (acc lor ((c land 127) lsl shift)) (shift + 7) in
+  let found = ref [] in
+  for p = 24 to n - 1 do
+    if s.[p] = '\001' then
+      match uint (p + 1) 0 0 with
+      | Some (at, q) ->
+        (match uint q 0 0 with
+         | Some (len, q) when at >= 0 && len > 0 && q + 8 <= n && at <= n - t - len
+                              && Int64.equal (String.get_int64_le s q) (Cache.checksum s (t + at) len) ->
+           found := (at, len, q) :: !found
+         | _ -> ())
+      | None -> ()
+  done;
+  List.sort compare !found
+
+(* An entry whose records changed, sealed again: the checksum of each record, inner ones first, as they come in the
+   tail, then that of the head. *)
+let reseal s refs =
+  let b = Bytes.of_string s and t = tail s in
+  List.iter (fun (at, len, q) -> Bytes.set_int64_le b q (Cache.checksum (Bytes.to_string b) (t + at) len)) refs;
+  Bytes.set_int64_le b 8 (Cache.checksum (Bytes.to_string b) 24 (t - 24));
+  Bytes.to_string b
+
+let first_function src =
+  List.find_map
+    (fun line ->
+       let line = if String.starts_with ~prefix:"defn " line then String.sub line 5 (String.length line - 5) else line in
+       let n = String.length line in
+       let rec stop i = if i < n && (match line.[i] with 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' -> true | _ -> false) then stop (i + 1) else i in
+       let i = stop 0 in
+       if i > 0 && i < n && line.[i] = '(' && (match line.[0] with 'A' .. 'Z' -> true | _ -> false) then Some (String.sub line 0 i) else None)
+    (String.split_on_char '\n' src)
+
+(* Each package: its program, what it gives without a cache, and its entries with where their records are named. *)
+let entries_corpus () =
+  List.filter_map
+    (fun name ->
+       match Option.bind (Embedded.file name) first_function with
+       | None -> None
+       | Some f ->
+         let src = Printf.sprintf "use std/%s\n\nfuzzEntry = %s.%s\n" name name f in
+         write entry_file src;
+         let plain = run ~no_spec:false entry_file in
+         Hashtbl.reset mem;
+         Cache.store := Some store;
+         ignore (run ~no_spec:false entry_file);
+         Cache.save ();
+         Cache.store := None;
+         let entries = Hashtbl.fold (fun k v acc -> (k, v, records v) :: acc) mem [] in
+         if plain.code = 0 && entries <> [] then Some (src, plain, entries) else None)
+    [ "plot"; "stats"; "frame"; "markdown"; "special"; "syntax"; "algo"; "heap" ]
+
+let mutate_entry st s =
+  let n = String.length s in
+  let b = Bytes.of_string s in
+  let at () = Random.State.int st (max n 1) in
+  match Random.State.int st 4 with
+  | 0 -> random_bytes st
+  | 1 -> String.sub s 0 (at ())
+  | 2 -> let k = at () in String.sub s 0 k ^ String.make 1 (Char.chr (Random.State.int st 256)) ^ String.sub s k (n - k)
+  | _ ->
+    for _ = 0 to Random.State.int st 8 do
+      let k = at () in
+      if k < n then Bytes.set b k (Char.chr (Char.code s.[k] lxor (1 lsl Random.State.int st 8)))
+    done;
+    Bytes.to_string b
+
+(* Bytes of the tail changed in place, flipped or set at random. *)
+let mutate_tail st s =
+  let b = Bytes.of_string s and t = tail s and n = String.length s in
+  if n > t then
+    for _ = 0 to Random.State.int st 16 do
+      let k = t + Random.State.int st (n - t) in
+      Bytes.set b k (if Random.State.bool st then Char.chr (Random.State.int st 256) else Char.chr (Char.code s.[k] lxor 1))
+    done;
+  Bytes.to_string b
+
+let rec read_all (f : Ast.func) =
+  Array.iter (fun (p : Ast.param) -> Option.iter read_expr p.default) f.params;
+  Array.iter read_expr (Lazy.force f.body)
+and read_expr (e : Ast.expr) = match e.e with Lambda g | Fn_def (_, g) -> read_all g | _ -> Resolve.children read_expr e
+
+(* One entry of a package, changed: random bytes, changed or cut, are not used; changed in its records and sealed again,
+   each body read after the run still reads or is taken from its source. The program gives what it gives without a
+   cache, and nothing raises but a Cesia error. *)
+let entry_trials = ref 0 and sealed_trials = ref 0
+
+let attempt_entry st (src, plain, entries) =
+  incr entry_trials;
+  write entry_file src;
+  Hashtbl.reset mem;
+  List.iter (fun (k, v, _) -> Hashtbl.replace mem k v) entries;
+  let k, v, refs = List.nth entries (Random.State.int st (List.length entries)) in
+  let changed = if Random.State.bool st then mutate_entry st v else (incr sealed_trials; reseal (mutate_tail st v) refs) in
+  Hashtbl.replace mem k changed;
+  Cache.store := Some store;
+  let read w =
+    Array.iter
+      (fun (md : Types.modul) ->
+         Array.iter (function Types.Fun { proto; _ } -> (try read_all proto.func with Pos.Load_error _ -> ()) | _ -> ()) md.cells)
+      w.Types.modules
+  in
+  match
+    ignore (Unix.alarm trial_alarm);
+    let o = run ~after:read ~no_spec:false entry_file in
+    ignore (Unix.alarm 0);
+    o
+  with
+  | exception e ->
+    ignore (Unix.alarm 0);
+    Cache.store := None;
+    Some ("entry exception: " ^ Printexc.to_string e)
+  | o ->
+    Cache.store := None;
+    if o = plain then None else Some (Printf.sprintf "an entry changed the output\n--- without\n%s%s\n--- with\n%s%s" plain.out plain.err o.out o.err)
+
 let args () =
   let seconds = ref 60. and seed = ref 1 and jit = ref false in
   Arg.parse
@@ -377,7 +509,7 @@ let () =
   (try Sys.mkdir fail_dir 0o755 with Sys_error _ -> ());
   Array.iter (fun f -> Sys.remove (Filename.concat fail_dir f)) (Sys.readdir fail_dir);
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout));
-  let corpus = corpus () and tomls = toml_corpus () in
+  let corpus = corpus () and tomls = toml_corpus () and entries = if jit then [] else entries_corpus () in
   if Array.length corpus = 0 then failwith "no corpus: run from the root of the repository";
   let master = Random.State.make [| seed |] in
   let stop = Unix.gettimeofday () +. seconds in
@@ -399,9 +531,15 @@ let () =
     report trial_seed ".ce" src (attempt src);
     if not jit then begin
       let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
-      report trial_seed ".toml" toml (attempt_toml toml)
+      report trial_seed ".toml" toml (attempt_toml toml);
+      if entries <> [] then begin
+        let st = Random.State.make [| trial_seed |] in
+        let e = List.nth entries (Random.State.int st (List.length entries)) in
+        let (src, _, _) = e in
+        report trial_seed ".ce" src (attempt_entry st e)
+      end
     end
   done;
-  Printf.printf "%d trials, %d finished normally, %d toml accepted, %d failures\n" !trials !finished !toml_accepted
-    !failures;
+  Printf.printf "%d trials, %d finished normally, %d toml accepted, %d entries (%d of packages, %d sealed again), %d failures\n"
+    !trials !finished !toml_accepted !entry_trials (List.length entries) !sealed_trials !failures;
   if !failures > 0 then exit 1
