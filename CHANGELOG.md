@@ -194,6 +194,16 @@
 
 ### Speed
 
+- The cache of loaded packages reads the code of a function only when that function first runs: an entry is a head,
+  which the load reads and checks, then a record for each function, its body with the names of its variables, which the
+  run maps from the file and checks at that function's first call alone. `use std/plot` reads 25 KB of its entry of
+  236 KB, none of its 260 records, and takes 3.85 ms instead of 4.22, the 0.33 ms that the 3D graphs had added; every
+  package of Cemacs loads in 11.33 ms instead of 11.80; a first `plot.Svg`, which reads 105 records, takes the same time
+  (medians of 101 runs, alternated).
+  An entry's name holds the build of Cesia too: two versions used in turn, as an old binary kept beside a new one, keep
+  each their own entries, where each run wrote over the other's and read its packages from their sources: `use
+  std/plot` in 3.75 ms instead of 33.76, the two versions taking turns (medians of 21 runs). The entries
+  of earlier versions are no longer read, and go once the folder passes 256 MB, as the least used.
 - A native called with three or four arguments, as `text.ByteFind`, `text.ByteSlice` or `text.PadLeft`, gets them in
   an array made in place, as one with one or two always did, where a map made a closure and called into C at each call:
   20 ns less a call, `text.ByteFind` of a byte near in 125 ns instead of 145, `text.ByteSlice` of 5 bytes in 90 instead
@@ -209,6 +219,9 @@
 
 ### Fixes
 
+- A function whose record in the cache of loaded packages doesn't read when it first runs, as when another process
+  changed the file in place, is taken from its file parsed and resolved again from the source the load read, and the
+  run goes on with the same output, where it stopped with "The cache of loaded packages kept this function damaged".
 - `stats.MonteCarlo` gives its estimate when its draws add up below 0, where it stopped at its first block with "A
   condition must be true or false, not missing": the rounding step of its sums wrote |x| as `if x < 0.0 -x else x end`.
 - `ode.Solve` with `stiff = true` solves back in time with steps longer than 1, where it stopped with "f gave [missing] at

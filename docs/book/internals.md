@@ -1064,8 +1064,8 @@ lexed, parsed nor resolved again: its trees are read back, and its statements ru
 same output, the same errors on the same lines, and the same speed once the program runs. The code is in `cache.ml` and
 `src/sys/entries.ml`.
 
-**What an entry holds.** One file per package, named by a digest of where the package is (its folder, or the name of a
-file of `std/` inside the binary), and replaced when the package changes: the tree of each of its files after the
+**What an entry holds.** One file per package, named by a digest of the build of Cesia that wrote it and of where the
+package is (its folder, or the name of a file of `std/` inside the binary), and replaced when the package changes: the tree of each of its files after the
 resolver, the names each file reads from each package it uses, and the questions the resolver asked about other modules,
 with their answers. A name that the resolver tied to a module of another package keeps that module by its place: the
 j-th module, counted from the end, of the package of the file's u-th use. In another run, the modules get other numbers,
@@ -1073,16 +1073,19 @@ and the places find them. A package of `std/` with natives keeps them last, and 
 file that names something of it, goes before them: counted from the end, a place stays the same whether or not another
 package of the run loaded that code. Nothing is kept for what the debugger adds (`--debugger`), what `cesia check` and
 the verdicts of `cesia test` read with their own rules, and packages of less than 512 bytes, which parse faster than
-their entry is found and checked.
+their entry is found and checked. Since the name holds the build, two versions of Cesia used in turn, as an old binary
+kept beside a new one, keep each their own entries; until 2026-11-24 they had the same names, and each run wrote over the
+other's, so every run read its packages from their sources.
 
 **What a run checks before it uses an entry**, in this order:
 
 - the file is the person's own, and no one else's: a plain file, not a link, that no one else may read or write, in a
   folder that is theirs alone, which Cesia makes so (permissions 0700 for the folder, 0600 for each file); the file
   opened is the one looked at, the same device and inode, so a link put in its place in between isn't followed;
-- its *checksum* is the one written at its start. A checksum is a number made from all the bytes of a file, which
-  changes when any of them does; Cesia's is XXH64, by Yann Collet, of 8 bytes, the one zstd and lz4 check their frames
-  with. A damaged or cut entry is never decoded. Until 2026-11-19 it was BLAKE2b, of 16 bytes, a cryptographic digest:
+- the *checksum* of its head is the one written at its start, and its length the one its head says. A checksum is a
+  number made from all the bytes it is made of, which changes when any of them does; Cesia's is XXH64, by Yann Collet,
+  of 8 bytes, the one zstd and lz4 check their frames with. A damaged head, or an entry cut or grown, is never decoded;
+  the record of each function in its tail has a checksum of its own, checked when the record is read (below). Until 2026-11-19 it was BLAKE2b, of 16 bytes, a cryptographic digest:
   XXH64 finds a damage as well, with a chance of $2^{-64}$ to miss one, and is 7 times faster here, 4.1 GB/s against
   0.57, 32 µs instead of 232 for the 133 KB of the entry of [std/plot]. Neither keeps out someone who can write the
   folder, who can write an entry and its sum as well: the folder is the person's own, as above. The digests of the
@@ -1108,16 +1111,53 @@ frame, calls 262 of the 1,118 functions of its packages. Reading every tree of a
 them all to the major heap: 723,000 words promoted at Cemacs's start, 318,000 now. So the load reads the tree of each function but
 for its body, which it skips: the body is read from the entry the first time something needs it, its first call most
 often, or the JIT when it looks at a function it may inline. The body of a file, whose statements run at once, and the
-one of a struct, which the load reads to know its fields, are read with the rest. In the entry, a body comes after its
-length, and its places and the numbers of its nodes are counted from those before it, each most often in a byte, so
-that skipping it changes nothing else; the texts of the
-entry, its names among them, come once at its start, so that a body read later finds them. The bytes it is read from
-are those of the entry checked when the package loaded, kept in memory: an entry changed on the disk since, or rewritten
-by another run, changes nothing for this run. A body is read by the same reader, which checks every count and reference
-against those bytes and must end where its length says. One that doesn't, which only a bug of Cesia or a change of the
-bytes in memory could make, the checksum having been checked, stops the program with an error at its function, "The cache
-of loaded packages kept this function damaged", and the entry is removed, so that the next run reads the package from
-its sources. A body that the load doesn't read hides no error: an entry is written only for a package that loaded from
+one of a struct, which the load reads to know its fields, are read with the rest. The places of a body and the numbers
+of its nodes are counted from those of its function's header, each most often in a byte, so that it reads alone.
+
+**Records, mapped.** Since 2026-11-24, an entry is in two parts. Its *head* is what the load needs: the texts the head
+names, the build, the digests, the uses, the questions, and the tree of each file, each function with its name, its
+parameters, its sizes and what its callers read of it. Its *tail* holds a *record* for each function whose body waits for
+its first need: the body, the names of its variables and those that can be read before they are set, which only the
+function's own code reads, and the texts that only the record names, once each at its start. The header of the function,
+in the head, says where its record is, its length and its checksum. A function inside another has a record of its own,
+written before the one around it. The load doesn't read the file: it *maps* it, through OCaml's `Unix.map_file`, the
+system's `mmap`, which makes the file's bytes part of the program's memory and reads from the disk, or takes from the
+system's cache of files, only the pages the program touches; its descriptor is closed at once. Of the 236 KB of the entry
+of [std/plot], the load reads its head, 25 KB, and checks it; a run of `use std/plot` then reads none of its 260 records,
+and a first [plot.Svg] of a line 105 of them, 91 KB, each the first time its function runs. An entry is 3 % larger than
+before, as a short name that several records use is written in each. A record is copied out of the
+mapping, then checked, then read: the copy, in `src/sys/entries.ml`, goes 8 bytes at a time by the compiler's own loads,
+9 GB/s for a record of 800 bytes, after one check that the range is inside the file; the checksum and the reader then work
+on that copy as on any text. What is checked is what is read, whatever another process writes into the file meanwhile.
+Reading in place, from the mapping, would have checked the bytes 4 times slower, as the core of Cesia may not use those
+loads, and would have left a moment between the check and the read.
+
+On POSIX, a file mapped stays as it was for the run that maps it when another run removes it or renames a new entry over
+it: "The mmap() function shall add an extra reference to the file associated with the file descriptor fildes which is not
+removed by a subsequent close() on that file descriptor" (POSIX.1-2024, `mmap`), and Cesia never writes an entry in place.
+A process that changes an entry in place changes it under the mapping too, which POSIX leaves open for a private mapping
+and Linux shows: the record changed fails its checksum when it is read. One that cuts an entry in place while a run maps
+it ends that run with the signal SIGBUS if the run then reads a record past the new end, as POSIX says: "References within
+the address range [...] to whole pages following the end of an object shall result in delivery of a SIGBUS signal". Only
+a process of the person, who can already write a valid entry in the folder, can do either. On Windows, a file mapped can't
+be removed or replaced until the run ends; no entry is written there today (below), so none is mapped.
+
+**A record that doesn't read**, its checksum wrong, its range past the file, or its reading not ending where its length
+says, no longer stops the program, as it did until 2026-11-24 with "The cache of loaded packages kept this function
+damaged". The files of the package are parsed and resolved again from the very sources the load read, which the run keeps:
+the texts of `std/` inside the binary, a project's files as they were read and checked against their digests, never the
+disk as it is now. They are resolved with the same lookups, the function is found there by its place, its name and its
+sizes, its body and the names of its variables are taken from it, and the run goes on with the same output; the entry is
+removed at once, and written again from those trees when the run ends. Only if that failed too, which can't happen as the
+load asked the same questions, would the message above stop the program. A record is read only on the main domain, where
+Cesia code runs; another domain never needs a body, and one that did would take the function from its source. The
+functions that read the names of a function's variables first read its body: `Cache.ready`, in the compiler, the
+inference, the JIT and the debugger. Cesia is not the first to wait for a function's first call: V8 parses the body of a
+function of JavaScript only then, "When a preparsed function is later called, it is fully parsed and compiled on-demand"
+(Verwaest and Hölttä, *Blazingly fast parsing, part 2: lazy parsing*, 2019); here the parse was already done once, and
+what waits is reading it back.
+
+A body that the load doesn't read hides no error: an entry is written only for a package that loaded from
 its sources without one, and every error that a load finds, it finds then; the same functions run, with the same
 results, the same errors on the same lines and the same stack traces.
 
@@ -1195,17 +1235,46 @@ the animations, which grew [std/plot] from 2,277 lines to 2,983; Cesia with them
 The programs that compute run as before: `bench/fib.ce` 60.0 ms before and 60.9 now, `bench/structs.ce` 43.6 and
 42.8, `bench/real/csv.ce` 434.8 and 439.6, the medians of 11 runs taking turns, within what the runs spread.
 
+**Records.** Measured on 2026-11-24, the binary before the records, at 8cf2caf, and the one with them taking turns, from
+the start of the process to its end, the cache full, the median of 101 runs of each and its 95 % interval; Cemacs is its
+packages loaded, those that `src/cemacs.ce` uses, without opening its window:
+
+| Program | Before | With records |
+|---|---:|---:|
+| `use std/io` and `io.Print(1)` | 2.83 ms [2.78, 2.91] | 2.89 ms [2.84, 2.97] |
+| `use std/plot` | 4.22 ms [4.14, 4.30] | 3.85 ms [3.82, 3.96] |
+| a first [plot.Svg] of a line of 3 points | 7.63 ms [7.49, 7.84] | 7.61 ms [7.50, 7.76] |
+| `use std/cells`, naming [cells.Parse] | 3.86 ms [3.81, 3.90] | 3.78 ms [3.73, 3.90] |
+| Cemacs's `src/notebook` and `src/sdl` | 8.75 ms [8.70, 8.80] | 8.22 ms [8.14, 8.29] |
+| every package of Cemacs | 11.80 ms [11.70, 11.91] | 11.33 ms [11.25, 11.44] |
+| `use std/plot`, two versions of Cesia taking turns, 21 runs | 33.76 ms [32.46, 34.87] | 3.75 ms [3.65, 3.98] |
+| `tools/test.sh`, the change loop, 21 runs | 5.61 s [5.26, 5.71] | 5.60 s [5.13, 5.82] |
+
+`use std/plot` takes back the 0.33 ms that the 3D graphs had added to it; a package that a program loads and little
+calls, as Cemacs's, gains what reading and checking its bodies cost. A first graph gains nothing that the runs can tell
+apart, 0.02 to 0.23 ms in four series of 101: it reads 43 % of the bytes of the bodies of [std/plot], and what it does
+with them, inferring and compiling the functions it runs, no cache removes. `io.Print(1)` reads no entry, and its two
+times are within what the runs spread. Two versions taking turns used to read every package from its sources at each
+run, as each found the other's entry under its name. The change loop is the same: its time is that of the tests.
+
 **Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it
-with another and reads it with another build, each time with the same output and the entry written again as it was,
-changes a file and a dependency, runs in turn two programs that load the Cesia code of `std/list` before and after a
+with another and reads it with another build, each time with the same output and the entry written again as it was, or
+left as it was when the byte is in a record that no run reads; reads the entries of two builds in turn, each keeping its
+own; changes a file and a dependency, runs in turn two programs that load the Cesia code of `std/list` before and after a
 package that reads only its natives, with nothing resolved again, checks that the bodies of the functions a run never
 calls stay unread, in a package with recursion, closures and a function inside a function, that a function that only
 a function never called calls stays unread too, and that one that gives back the number of a call keeps its type, an
-Int, checks the checksum against the values of `xxhsum`, and damages an entry in memory once it was checked, which
-stops the run at the first call that needs a body of it; by
-`tests/cache/entries.cmd`, the same with the binary, and with a link, an entry that others may read, a folder that
-others may read and one that can't be written, four runs at once, and an entry changed on the disk while a run that
-read it runs; and by the golden tests, run once with no cache, once with an empty one and once with it full.
+Int, checks the checksum against the values of `xxhsum`, damages every record of the entries, cuts their tails or removes
+them once they were read, each time with the same output and the entries written again, reads a body on another domain,
+and checks, for each package of `std/`, that every function read from its entry, and every function taken from its
+source when all its records are damaged, is the tree its sources give; by `tests/cache/entries.cmd`, the same with the
+binary, and with a link, an entry that others may read, a folder that others may read and one that can't be written,
+four runs at once, and an entry changed on the disk while a run that read it runs; by `tests/cache/midrun.cmd`, where
+the entry of [std/plot] is removed, replaced or changed in every record under a run that read its head, also with the
+JIT on every function and under `--limit memory=2M`, and the run draws the same graph; by `tests/cache/versions.cmd`,
+two versions of Cesia in turn, ten runs, none writing an entry again; by the fuzzer, which gives the reader random
+entries, real ones changed, and real ones changed in their records with their checksums made again; and by the golden
+tests, run once with no cache, once with an empty one and once with it full.
 
 ## Reloading code: --watch
 
