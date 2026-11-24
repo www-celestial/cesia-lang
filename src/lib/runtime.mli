@@ -99,6 +99,11 @@ val deny : ctx -> perm -> string option -> 'a
     folder of read= or write= holds a path only when it holds where the path leads too. *)
 val real_path : (string -> string option) ref
 
+(** The words of an error of the system that a native let out instead of giving an Err, or [None] for another exception:
+    a [Sys_error], and those of the calls of the system that src/sys adds. [Native.nat] makes it a panic of the kind io
+    at the call. *)
+val stray : (exn -> string option) ref
+
 (** Is the permission granted, for this path if any? [name] and [at] as for {!check_perm}. *)
 val granted : ?name:bool -> ?at:string -> world -> perm -> string option -> bool
 

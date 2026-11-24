@@ -1038,6 +1038,19 @@ and call_expr st e (call : call) =
        let a = args_of call 1 in
        (match expr st a.(0) with
         | x, Kfloat -> fresh st Kfloat (fun r -> Math ("fabs", r, x))
+        | x, Kint ->
+          (* As Native.abs_value: a negative integer negated, checked, so that min_int is the interpreter's error, at
+             the call. A loop that took it stayed interpreted, 31 ns a call. *)
+          let r = reg st Kint and neg = block st and join = block st in
+          let base = facts st st.cur in
+          emit st (Move (r, x));
+          close st (Branch (Lt, Kint, x, Int 0, neg, join));
+          carry st base neg;
+          st.cur <- neg;
+          emit st (Neg (r, x, site st e.pos));
+          goto st join;
+          carry st base join;
+          Ir.Reg r, Kint
         | _ -> raise No)
      | Native { nname = "Len"; _ } ->
        let a = args_of call 1 in

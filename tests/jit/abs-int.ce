@@ -1,0 +1,27 @@
+use std/io
+use std/math
+
+(* math.Abs of an integer in native code: a negative one negated, checked, and the smallest integer the interpreter's
+   error, at the call. *)
+defn run(n)
+  t = 0
+  for i in 1..n
+    t = t + math.Abs(-5) + math.Abs(i - 50) + math.Abs(3)
+  end
+  t
+end
+io.Print(run(100000))
+
+defn edge(n)
+  t = 0
+  low = -4611686018427387903 - 1
+  for i in 1..n
+    x = 1 - i
+    if i == n
+      x = low
+    end
+    t = t + math.Abs(x)
+  end
+  t
+end
+io.Print(edge(50000))

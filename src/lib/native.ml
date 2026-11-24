@@ -1,13 +1,22 @@
 open Types
 
 (* A direct call doesn't share its arguments, so that measuring a variable leaves it owned. A native returning one of
-   its inputs therefore creates the second reference here. *)
+   its inputs therefore creates the second reference here: only an owned list, struct or map has one to create, so a
+   number, a text or one already shared never looks through the arguments, a fifth of the call of math.Abs. An error of
+   the system that the native let out, instead of an Err, is a panic of the kind io at its call: the handler costs
+   nothing measurable when nothing is raised. *)
 let any (_ : ty array) = TA
 
 let nat ?perm ?(params = [||]) ?(ret = any) ?(result = false) nname min_args max_args run =
   let run ctx (a : t array) =
-    let r = run ctx a in
-    if Array.memq r a then Value.share r else r
+    match run ctx a with
+    | (Array { a_owned = true; _ } | Struct { r_owned = true; _ } | Dict { d_owned = true; _ }) as r when Array.memq r a ->
+      Value.share r
+    | r -> r
+    | exception e ->
+      (match !Runtime.stray e with
+       | Some why -> Runtime.fail ctx Io (Messages.stray nname why)
+       | None -> raise e)
   in
   Native { nname; perm; params; min_args; max_args; ret_ty = ret; run; f1 = None; i2 = None; gives_result = result }
 

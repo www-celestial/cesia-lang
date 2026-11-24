@@ -357,6 +357,9 @@ let scope_matches perm scope target =
    it a path is taken as written. *)
 let real_path = ref (fun (p : string) -> Some p)
 
+(* The words of an error of the system that a native let out: src/sys adds those of its calls. *)
+let stray = ref (function Sys_error m -> Some m | _ -> None)
+
 (* Where a path leads when the act is on the name itself, a link that it names not followed (removed, renamed, read as a
    link): its folder resolved, then the name as written. A name that ends in a / or is . or .. is followed, as the system
    does. *)

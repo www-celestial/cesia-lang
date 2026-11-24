@@ -79,6 +79,10 @@ let run ?(perms = []) ?(all = false) src =
                   match a.(0), a.(1) with
                   | Dict { keys = { deep = Flat; _ } as x; _ }, Dict { keys = { deep = Flat; _ } as y; _ } -> if x == y then True else False
                   | _ -> False) });
+  (* A native that lets an error of the system out, as one that forgot a case of Sys.getcwd would. *)
+  register "Stray" (Native.nat "Stray" 0 0 (fun _ _ -> raise (Sys_error "getcwd: No such file or directory")));
+  (* One that gives back the owned list it was given: the call shares it, so a write to either copies. *)
+  register "Same" (Native.nat "Same" 1 1 (fun _ a -> a.(0)));
   w.native_modules <- ("test", !natives) :: w.native_modules;
   let path = Filename.temp_file "cesia" ".ce" in
   Out_channel.with_open_bin path (fun oc -> output_string oc (with_uses src));
@@ -173,6 +177,13 @@ let () =
   check "read=/ covers every absolute path" (code = 0);
   let code, _, _ = run ~perms:[ Read, Some "/tmp" ] "io.Print(test.ReadPath(\"/tmp/../etc/passwd\"))\n" in
   check "read=/tmp denies escape through .." (code = 1);
+  let code, _, err = run "io.Print(1)\ntest.Stray()\n" in
+  check "an error of the system that a native lets out is a panic of the kind io, at its call"
+    (code = 1 && has "2:5: Stray met an error of the system that it didn't expect: getcwd: No such file or directory." err);
+  let _, out, _ = run "match fiber.Wait(fiber.Spawn(() -> test.Stray()))\n  result.Err(e) -> io.Print(e.Kind)\n  result.Ok(_) -> io.Print(\"ok\")\nend\n" in
+  check "it stops its fiber alone, as any panic" (out = "io\n");
+  let code, out, _ = run "defn f(n)\n  xs = [1, 2]\n  ys = test.Same(xs)\n  ys[1] = n\n  xs[1] + ys[1]\nend\nio.Print(f(5))\n" in
+  check "a native that gives back an owned argument shares it" (code = 0 && out = "6\n");
   let code, _, err = run "f = test.ReadIt\nio.Print(f())\n" in
   check "also denied through a dynamic call" (code = 1 && has "Permission \"read\" denied" err);
   let code, _, err = run "io.Print(list.Map(test.ReadIt, [1]))\n" in
