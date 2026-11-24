@@ -4130,43 +4130,74 @@ labelled(fs, k) = {X: fs.X, Y: fs.Y, Z: fs.Z, Source: fs.Source, Labels: list.Ap
 (** No piece of m corners, with labels for c parts. *)
 noPieces(m, c) = {X: [[] for k in 1..m], Y: [[] for k in 1..m], Z: [[] for k in 1..m], Source: [], Labels: [[] for k in 1..c]}
 
-(** Triangles of the pieces fs, ts a list of [x, corners], x the place of the piece each comes from. *)
-made(fs, ts) = {X: [[t[2][m][1] for t in ts] for m in 1..3], Y: [[t[2][m][2] for t in ts] for m in 1..3], Z: [[t[2][m][3] for t in ts] for m in 1..3], Source: [fs.Source[t[1]] for t in ts], Labels: [[l[t[1]] for t in ts] for l in fs.Labels]}
+(** The columns [x, y, z] of a where w is 1 and of b where it is 0, w a column of 0 and 1: exact, as x * 1 + y * 0 is x. *)
+blend(w, a, b) = [a[k] * w + b[k] * (1.0 - w) for k in 1..3]
 
-defn split(c, d, eps)
-  (** A triangle of corners c, three [x, y, z], cut by a plane, d the distance of each corner past it: the polygon past
-      the plane and the one before it, each a list of corners, the corners on it in both. The point where an edge meets
-      the plane is computed from its two ends taken in one order, the lesser first, so that the two triangles that share
-      the edge find the same point. *)
-  out = []
-  inside = []
-  for i in 1..3
-    j = math.Mod(i, 3) + 1
-    if d[i] >= 0.0 - eps
-      out = list.Append(c[i], out)
-    end
-    if d[i] <= eps
-      inside = list.Append(c[i], inside)
-    end
-    if (d[i] > eps and d[j] < 0.0 - eps) or (d[i] < 0.0 - eps and d[j] > eps)
-      first = if value.Text(c[i]) < value.Text(c[j]) i else j end
-      second = if first == i j else i end
-      t = d[first] / (d[first] - d[second])
-      at = [c[first][k] + t * (c[second][k] - c[first][k]) for k in 1..3]
-      out = list.Append(at, out)
-      inside = list.Append(at, inside)
-    end
-  end
-  [out, inside]
+defn cutPoint(u, v, du, dv)
+  (** The points where the segments from u to v meet a plane, u and v columns [x, y, z], du and dv the distances of
+      their ends past it: each computed from its two ends taken in one order, the lesser by x, then y, then z, first,
+      so that the two triangles that share an edge find the same point. A segment that doesn't cross gives a point of
+      it, which the caller leaves out. *)
+  e1 = (u[1] == v[1]) * 1.0
+  e2 = (u[2] == v[2]) * 1.0
+  lt = (u[1] < v[1]) * 1.0 + e1 * ((u[2] < v[2]) * 1.0 + e2 * ((u[3] < v[3]) * 1.0))
+  f = blend(lt, u, v)
+  g = blend(lt, v, u)
+  df = du * lt + dv * (1.0 - lt)
+  dg = dv * lt + du * (1.0 - lt)
+  den = df - dg
+  den = den + (den == 0.0) * 1.0
+  t = list.Min(list.Max(df / den, 0.0), 1.0)
+  [f[k] + t * (g[k] - f[k]) for k in 1..3]
 end
 
-(** The triangles of a fan of a convex polygon of corners, from its first. *)
-fan(poly) = [[poly[1], poly[k], poly[k + 1]] for k in 2..value.Len(poly) - 1]
+defn splitAll(fs, x, d, eps)
+  (** The triangles at places x of fs, each with a corner on each side of a plane, d the distances of their corners
+      past it, cut along it: [those past it, those inside]. A triangle with a corner on the plane, A, makes one on each
+      side, A B P and A P C, P on B C; one with a corner A alone on its side makes A P Q there, P on A B and Q on A C,
+      and the quad P B C Q, two triangles, on the other. Whole columns: each corner, point and triangle taken by
+      arithmetic with 0 and 1, as blend does. *)
+  n = value.Len(x)
+  c = picked(fs, x)
+  dd = [col.Pick(x, d[m]) for m in 1..3]
+  on = [(math.Abs(dd[m]) <= eps) * 1.0 for m in 1..3]
+  up = [(dd[m] > eps) * 1.0 for m in 1..3]
+  zero = list.Min(on[1] + on[2] + on[3], 1.0)
+  alone = [math.Abs(up[m] - up[math.Mod(m, 3) + 1]) * math.Abs(up[m] - up[math.Mod(m + 1, 3) + 1]) for m in 1..3]
+  pivot = [zero * on[m] + (1.0 - zero) * alone[m] for m in 1..3]
+  k = pivot[1] + 2.0 * pivot[2] + 3.0 * pivot[3]
+  i = (1..n) * 1.0
+  all = [join(join(a[1], a[2]), a[3]) for a in [c.X, c.Y, c.Z]]
+  dall = join(join(dd[1], dd[2]), dd[3])
+  at = j -> whole((j - 3.0 * math.Floor((j - 1.0) / 3.0) - 1.0) * n + i)
+  ia = at(k)
+  ib = at(k + 1.0)
+  ic = at(k + 2.0)
+  corner = ix -> [col.Pick(ix, a) for a in all]
+  a = corner(ia)
+  b = corner(ib)
+  cc = corner(ic)
+  da = col.Pick(ia, dall)
+  db = col.Pick(ib, dall)
+  dc = col.Pick(ic, dall)
+  lone = 1.0 - zero
+  p = blend(lone, cutPoint(a, b, da, db), cutPoint(b, cc, db, dc))
+  q = cutPoint(a, cc, da, dc)
+  past = lone * (da > 0.0) * 1.0 + zero * (db > 0.0) * 1.0
+  tris = [[a, blend(lone, p, b), blend(lone, q, p)], [blend(lone, p, a), blend(lone, b, p), cc], [p, cc, q]]
+  ways = [[past, 1.0 - past], [1.0 - past, past], [lone * (1.0 - past), lone * past]]
+  tri = (t, w) -> made(t, col.Positions(w == 1.0), c)
+  [joined(joined(tri(tris[1], ways[1][1]), tri(tris[2], ways[2][1])), tri(tris[3], ways[3][1])),
+   joined(joined(tri(tris[1], ways[1][2]), tri(tris[2], ways[2][2])), tri(tris[3], ways[3][2]))]
+end
+
+(** The triangles t, three corners each a column [x, y, z], at places pos, with the source and labels of c there. *)
+made(t, pos, c) = {X: [col.Pick(pos, t[m][1]) for m in 1..3], Y: [col.Pick(pos, t[m][2]) for m in 1..3], Z: [col.Pick(pos, t[m][3]) for m in 1..3], Source: col.Pick(pos, c.Source), Labels: [col.Pick(pos, l) for l in c.Labels]}
 
 defn cutBy(fs, q, ks, eps)
   (** Pieces, triangles or segments, cut by the planes ks of a convex part q: those past a plane, whole or what of them
       is past it, get its number as their label for q, and those inside every plane, inside the part, are left out.
-      Each plane takes whole columns of the pieces, and only those it cuts one by one. *)
+      Each plane takes whole columns of the pieces. *)
   corners = value.Len(fs.X)
   active = fs
   done = noPieces(corners, value.Len(fs.Labels) + 1)
@@ -4182,15 +4213,9 @@ defn cutBy(fs, q, ks, eps)
     cut = col.Positions((lo < 0.0 - eps) * 1 + (hi > eps) * 1 == 2)
     if value.Len(cut) > 0
       if corners == 3
-        outs = []
-        ins = []
-        for x in cut
-          two = split([[active.X[m][x], active.Y[m][x], active.Z[m][x]] for m in 1..3], [d[1][x], d[2][x], d[3][x]], eps)
-          outs = list.Concat(outs, [[x, t] for t in fan(two[1])])
-          ins = list.Concat(ins, [[x, t] for t in fan(two[2])])
-        end
-        done = joined(done, labelled(made(active, outs), k))
-        next = joined(next, made(active, ins))
+        two = splitAll(active, cut, d, eps)
+        done = joined(done, labelled(two[1], k))
+        next = joined(next, two[2])
       else
         (* A segment cut: the point on the plane, and of its two halves the one past it and the one inside. *)
         c = picked(active, cut)
