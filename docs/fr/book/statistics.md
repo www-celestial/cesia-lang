@@ -24,6 +24,17 @@ d.Quantile(0.95) -->
 d.Pdf([85, 100, 115]) -->
 ```
 
+```cesia allow=read,write
+use std/plot
+use std/num
+lawX = num.Linspace(40.0, 160.0, 241)
+below = num.Linspace(40.0, 130.0, 181)
+law = plot.Of([plot.Area(below, 0.0 * below, d.Pdf(below), label = "X ≤ 130"), plot.Line(lawX, d.Pdf(lawX)),
+  plot.Rule(x = d.Quantile(0.95), label = "Quantile(0.95)", dash = "dashed")],
+  title = "Normal(100, 15): density, P(X ≤ 130) shaded, 95 % quantile", x = "x", y = "density", size = [640, 360])
+plot.Save(law, "statistics-normal.svg") -->
+```
+
 Chaque loi a les quatre mêmes méthodes :
 
 | Cesia | Ce qu'elle donne | R | Python, `scipy.stats` | MATLAB |
@@ -217,6 +228,15 @@ fit.Coefficients -->
 fit.Sigma -->
 fit.RSquared -->
 fit.F.PValue -->
+```
+
+Chaque voiture à son `mpg` ajusté et au sien : plus elle est près de la ligne en tirets, meilleur est l'ajustement.
+
+```cesia allow=read,write
+seen = plot.Of([plot.Points(fit.Fitted, frame.Column("mpg", cars)),
+  plot.Line([14, 25], [14, 25], dash = "dashed", label = "observed = fitted")],
+  title = "Ten cars: mpg observed against mpg fitted on wt and hp", x = "fitted mpg", y = "observed mpg", size = [640, 360])
+plot.Save(seen, "statistics-fit.svg") -->
 ```
 
 `fit.Coefficients` est le `coef(summary(fit))` de R sous forme de frame : une ligne pour chaque terme, son estimation,
@@ -779,6 +799,17 @@ R 4.6.2, et scipy 1.18.1 avec numpy 2.5.4. Chaque temps est pris à l'intérieur
 | `ChiSquared(10).Quantile(p)` | 23,4 µs (22,5 à 24,3) | `qchisq` 2,55 µs | `chi2(10).ppf` 78,7 µs |
 | `Beta(2, 3).Quantile(p)` | 36,7 µs (36,1 à 38,8) | `qbeta` 3,2 µs | `beta(2, 3).ppf` 82,6 µs |
 | `Lm` de $10^6$ lignes sur 10 colonnes, avec sa table | 559 ms (546 à 619) | `lm` et `summary` 1 279 ms | `linalg.lstsq` et la QR des erreurs 656 ms |
+
+Les quantiles du tableau sur une échelle logarithmique, la loi normale de scipy par `norm.ppf` :
+
+```cesia allow=read,write
+quantiles = plot.Of([plot.Points([x - 0.15 for x in 1..4], [1.13, 61.7, 23.4, 36.7], label = "Cesia", color = "#3a5ad9"),
+  plot.Points(1..4, [1.39, 2.65, 2.55, 3.2], label = "R", shape = "square"),
+  plot.Points([x + 0.15 for x in 1..4], [88, 77.9, 78.7, 82.6], label = "scipy", shape = "triangle")],
+  title = "One quantile: microseconds, median of 21 runs", y = "microseconds (log scale)", yscale = "log",
+  xticks = 1..4, xlabels = ["Normal", "StudentT(10)", "ChiSquared(10)", "Beta(2, 3)"], size = [640, 360])
+plot.Save(quantiles, "statistics-quantiles.svg") -->
+```
 
 **Là où Cesia gagne.** Le modèle linéaire prend moins de la moitié du temps de R, et moins que celui de scipy : les
 réflexions de Householder, colonne par colonne, sont du code machine. Un seul quantile normal coûte moins que le `qnorm`

@@ -31,6 +31,8 @@ sys.Now() - start < 0.3 --> true
 
 The two waits overlap: the whole takes the time of the longest, `0.2` seconds, not their sum, `0.3`.
 
+![A timeline: the main program spawns bread and cake and waits for bread; bread sleeps 0.2 s and cake 0.1 s, each parked on a timer, at the same time; cake ends at 0.1 s, bread at 0.2 s and wakes the main program, which gets both results at once: 0.2 s in all.](images/fibers-timeline.svg)
+
 ## What waits
 
 A fiber that waits lets the others run: [sys.Sleep], a read from the network, a call to [fiber.Wait], [fiber.Receive] or

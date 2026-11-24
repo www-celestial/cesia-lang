@@ -52,6 +52,8 @@ Lancez-le :
 cesia run hello.ce
 ```
 
+![Un terminal : cesia version écrit cesia 1.3.0+dev, la version de cette build, et cesia run hello.ce écrit Hello, world!](../../book/images/install-terminal.svg)
+
 [io.Print] écrit ses arguments sur une ligne, séparés par un espace, avec une fin de ligne après le dernier. Cette
 fonction prend n'importe quelle valeur, pas seulement des textes :
 

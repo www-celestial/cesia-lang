@@ -115,6 +115,8 @@ end
 http.Handler(http.Wrap(servedBy, shop))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers -->
 ```
 
+![A GET / request goes through the middleware servedBy, which calls next(request), to the routes of shop, where the first that fits, GET /, leads to its handler, which gives 200 and Welcome; the response comes back through servedBy, which adds the header x-served-by, and leaves with 2 headers.](images/http-middleware.svg)
+
 ## Serving
 
 [http.Serve] serves an application until the program gets a stop signal, as Ctrl-C: see [Stopping](#stopping). It listens on port 8080 unless `port`
@@ -177,6 +179,16 @@ server on two physical cores and their two hyperthreads, and the load client on 
 | tiny route, 1,000 kept connections | 34,752 | 67,890 | 84,188 | 89,337 |
 | JSON route, 100 kept connections | 41,340 | 80,020 | 72,132 | 78,988 |
 | a new connection per request, 100 | 28,674 | 45,850 | 38,690 | 29,750 |
+
+```cesia allow=read,write
+use std/plot
+workers = plot.Bars(["tiny 100", "tiny 1,000", "JSON 100", "new 100"], [[57215, 34752, 41340, 28674],
+  [116982, 67890, 80020, 45850], [94978, 84188, 72132, 38690], [98479, 89337, 78988, 29750]],
+  label = ["1 process", "--workers 2", "--workers 4", "Go, 4 cores"], color = ["#9aaae8", "#3a5ad9", "#1d2d6c", "#000000"])
+cores = plot.Of([workers], title = "Requests per second on four cores, one run",
+  x = "route, connections", y = "requests per second", size = [640, 360])
+plot.Save(cores, "http-workers.svg") -->
+```
 
 Two workers double one process. Four gain only at 1,000 connections, since the machine has four physical cores, two of
 which ran the client.
@@ -593,6 +605,16 @@ runs' p50, with its 95 % interval:
 | 100 | 50 | 1.25 ms [1.17, 1.27] | 2.67 ms [2.40, 2.84] | 7.5 ms |
 | 1,000 | 50 | 5.7 ms [5.6, 5.9] | 12.3 ms [11.8, 13.3] | 40 ms |
 | 10,000 | 5 | 42 ms [42, 44] | 294 ms [285, 318] | 612 ms |
+
+```cesia allow=read,write
+screens = [1, 100, 1000, 10000]
+delays = plot.Of([plot.Line(screens, [0.44, 1.25, 5.7, 42], label = "hub, p50", dash = "dashed"),
+  plot.Line(screens, [0.58, 2.67, 12.3, 294], label = "std/live, p50", color = "#3a5ad9"),
+  plot.Line(screens, [0.74, 7.5, 40, 612], label = "std/live, p99", color = "#3a5ad9", dash = "dotted")],
+  title = "From a change to each screen: ms, median of 21 runs", x = "screens (log scale)", y = "milliseconds (log scale)",
+  xscale = "log", yscale = "log", note = "50 changes a second, 5 at 10,000 screens", size = [640, 380])
+plot.Save(delays, "http-live.svg") -->
+```
 
 A screen of std/live takes about twice the hub's time. It does more: each screen is a fiber of its own that writes its
 page's messages itself, so a page that reads nothing holds no other back, where the hub waits for it.

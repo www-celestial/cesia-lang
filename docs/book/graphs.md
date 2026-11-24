@@ -833,6 +833,15 @@ the median of 21 runs on a desktop of 8 cores:
 | a heatmap of 100 by 100 | 17 ms |
 | a heatmap of 1,000 by 1,000 | 298 ms |
 
+```cesia allow=read,write
+linePoints = [1000, 100000, 1000000, 10000000]
+lineMs = [2.0, 7.4, 37, 324]
+lineTimes = plot.Of([plot.Line(linePoints, lineMs), plot.Points(linePoints, lineMs)],
+  title = "plot.Svg of a line: milliseconds, median of 21 runs", x = "points (log scale)", y = "milliseconds (log scale)",
+  xscale = "log", yscale = "log", size = [640, 340])
+plot.Save(lineTimes, "graphs-lines.svg") -->
+```
+
 All of it is Cesia, made fast by the JIT; for a long line, the pass over the points that finds their range and the pass
 of M4 take most of the time.
 
@@ -858,6 +867,15 @@ the median of 101 runs alternated, and the 95 % interval of that median:
 | a line of 1,000,000 points, to SVG | **28.2 ms** (28.1 to 28.2) | 113.1 ms (112.8 to 113.4) |
 | a surface of 100 by 100 quads, a new view | **3.17 ms** (3.15 to 3.18), a scene | 75.27 ms (74.98 to 75.46), `view_init` and a draw |
 | the same surface, to SVG | **33.9 ms** (33.8 to 34.1) | 804.1 ms (801.2 to 809.5) |
+
+```cesia allow=read,write
+drawings = ["a line, 10⁶ points", "a surface, a view", "the surface, SVG"]
+beside = plot.Of([plot.Points([x - 0.1 for x in 1..3], [28.2, 3.17, 33.9], label = "Cesia", color = "#3a5ad9"),
+  plot.Points([x + 0.1 for x in 1..3], [113.1, 75.27, 804.1], label = "matplotlib", shape = "square")],
+  title = "Beside matplotlib: milliseconds, median of 101 runs", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..3, xlabels = drawings, xlim = [0.5, 3.5], size = [640, 340])
+plot.Save(beside, "graphs-matplotlib.svg") -->
+```
 
 matplotlib draws the line with its path simplification, on by default, and the surface with every point,
 `rstride = cstride = 1`, as Cesia draws every quad; at its default of 50 points a direction it would draw a quarter of

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300">
+<title>A GET / request goes through the middleware servedBy to the routes of shop and the handler; the response comes back through servedBy, which adds a header</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.h{font-weight:600}
+.s{fill:#57606a}
+.bx{fill:#fff;stroke:#1f2328;stroke-width:1.2}
+.mw{fill:#f6f8fa;stroke:#1f2328;stroke-width:1.2}
+.hit{fill:#eef1fc;stroke:#3a5ad9;stroke-width:1.2}
+.br{stroke:#57606a;stroke-width:1.2;fill:none}
+</style>
+<rect width="640" height="300" fill="#fff"/>
+<path class="br" d="M150 34 L150 28 L626 28 L626 34"/>
+<text class="c s" x="388" y="20" text-anchor="middle">http.Handler(http.Wrap(servedBy, shop))</text>
+<rect class="mw" x="150" y="42" width="140" height="208" rx="5"/>
+<rect class="bx" x="306" y="42" width="160" height="208" rx="5"/>
+<rect class="bx" x="482" y="42" width="144" height="208" rx="5"/>
+<text class="h" x="220.0" y="62" text-anchor="middle"><tspan class="c">servedBy</tspan></text>
+<text class="s" x="220.0" y="79" text-anchor="middle">the middleware</text>
+<text class="h" x="386.0" y="62" text-anchor="middle">the routes of <tspan class="c">shop</tspan></text>
+<text class="s" x="386.0" y="79" text-anchor="middle">in order: the first wins</text>
+<text class="h" x="554.0" y="62" text-anchor="middle">the handler</text>
+<text class="s" x="554.0" y="79" text-anchor="middle">of <tspan class="c">GET /</tspan></text>
+<text class="h" x="14" y="72">request</text>
+<text class="c" x="14" y="90">GET /</text>
+<line x1="60" y1="96" x2="141.0" y2="96.0" stroke="#3a5ad9" stroke-width="1.4"/><polygon fill="#3a5ad9" points="148,96 140.0,100.0 140.0,92.0"/>
+<text class="c" x="220.0" y="120" text-anchor="middle">next(request)</text>
+<line x1="284" y1="96" x2="297.0" y2="96.0" stroke="#3a5ad9" stroke-width="1.4"/><polygon fill="#3a5ad9" points="304,96 296.0,100.0 296.0,92.0"/>
+<rect class="hit" x="314" y="87" width="144" height="20" rx="3"/>
+<text class="c" x="322" y="102">GET /</text>
+<text class="c" x="322" y="124">GET /hello/:name</text>
+<text class="c" x="322" y="146">GET /stock</text>
+<text class="c" x="322" y="168">GET /shout/:word</text>
+<text class="c" x="322" y="190">POST /orders</text>
+<line x1="458" y1="96" x2="473.0" y2="96.0" stroke="#3a5ad9" stroke-width="1.4"/><polygon fill="#3a5ad9" points="480,96 472.0,100.0 472.0,92.0"/>
+<text class="c" x="492" y="100">r -&gt; http.Plain(</text>
+<text class="c" x="508" y="118">"Welcome")</text>
+<text class="c" x="554.0" y="192" text-anchor="middle">200, "Welcome"</text>
+<text class="s" x="554.0" y="210" text-anchor="middle">a <tspan class="c">content-type</tspan></text>
+<line x1="490" y1="222" x2="475.0" y2="222.0" stroke="#1f2328" stroke-width="1.4"/><polygon fill="#1f2328" points="468,222 476.0,218.0 476.0,226.0"/>
+<text class="s" x="386.0" y="226" text-anchor="middle">as it came</text>
+<line x1="314" y1="222" x2="299.0" y2="222.0" stroke="#1f2328" stroke-width="1.4"/><polygon fill="#1f2328" points="292,222 300.0,218.0 300.0,226.0"/>
+<text class="s" x="220.0" y="192" text-anchor="middle">adds a header:</text>
+<text class="c" x="220.0" y="210" text-anchor="middle">x-served-by</text>
+<line x1="156" y1="222" x2="69.0" y2="222.0" stroke="#1f2328" stroke-width="1.4"/><polygon fill="#1f2328" points="62,222 70.0,218.0 70.0,226.0"/>
+<text class="h" x="14" y="192">response</text>
+<text class="c" x="14" y="210">200 "Welcome"</text>
+<text class="s" x="14" y="244">2 headers</text>
+<text class="s" x="14" y="276">A path that no route takes gets a <tspan class="c">404</tspan>; the middleware sees that response too.</text>
+<text class="s" x="14" y="294">The response here: <tspan class="c">content-type</tspan> from <tspan class="c">http.Plain</tspan>, then <tspan class="c">x-served-by: cesia</tspan>.</text>
+</svg>

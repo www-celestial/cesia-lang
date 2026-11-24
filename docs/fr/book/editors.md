@@ -74,6 +74,15 @@ Helix n'a pas de grammaire de Cesia, donc il ne colore pas le code ; les erreurs
 `init.el`. Il dit à Eglot, le client LSP qui vient avec Emacs, comment lancer le serveur : `M-x eglot` dans un fichier
 `.ce` le lance.
 
+## Cemacs
+
+[Cemacs](https://www-celestial.github.io/cemacs/), un éditeur écrit en Cesia, lance `cesia lsp` lui-même, sans
+configuration, pour la définition d'un nom, `M-.`, et sa documentation, `C-c c i` ; les erreurs sous le code viennent
+de [cesia check](commands.md#cesia-check), qu'il lance lui-même. [Son livre](https://www-celestial.github.io/cemacs/names.html)
+dit le reste.
+
+![Cemacs après C-c c i sur list.Map dans un fichier de Cesia : la liste Doc of list.Map(f, xs) avec sa signature, list.Map(f, xs), son texte, Applies f to each element, keeping the shape, et son exemple, list.Map(it * 2, [1, 2]) --> [2, 4], tels que cesia lsp les donne ; un prompt Filter dessous.](../../book/images/editors-cemacs.png)
+
 ## Zed et VS Code
 
 Les deux ne lancent un language server que par une extension à eux, et Cesia n'en a pas encore. Celle de Zed demande

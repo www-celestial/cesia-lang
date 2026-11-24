@@ -44,6 +44,8 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `debug` | the breakpoints and the code run by [std/debug]; `cesia run --debugger` and `cesia run --repl` give it by themselves, with no `--allow` |
 | `all` | everything |
 
+![What cesia run --allow read=./data,write=./out program.ce opens: reading files under ./data and writing files under ./out; every other file, the network, other programs, environment variables, C libraries, the engine of a native package and the breakpoints stay closed. The program computes and prints always; exec, ffi and native are total trust.](images/permissions-allow.svg)
+
 ### This machine or the network
 
 A server listens on 127.0.0.1 by default, which only programs of the same machine reach, and `net=:8080` allows that alone.

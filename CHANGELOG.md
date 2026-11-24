@@ -137,6 +137,15 @@
   stops the build. Cesia's book shows its graphs so: bars, heatmaps, bands, texts, rules, notes, ticks of your own, polar
   graphs, surfaces and lines in 3D, an animation, the sun path, and the graphs of the chapters on numerical methods and
   statistics, where it showed only their code.
+- The book shows pictures in nearly every chapter. Diagrams, SVG drawings of `docs/book/images/`: a value and its two
+  names, the store of a list, a slice, an array of three dimensions in memory, the three forms of a dictionary and a
+  `dict.Put` on its trie, a struct copied, closures, `?`, two fibers on a timeline, a middleware, the folders of a
+  project and its uses, what `--allow` opens, the path of a program through the engine, two transactions, `cesia test`
+  and a first run. Charts that its blocks draw from the numbers of its tables: speed beside Python, Node, Go, Java and
+  the others, C, native packages, duplicates, servers, JSON, graphs, numbers, numerical methods, statistics and data.
+  And Cemacs at work, in pictures it takes of itself: cells, a table and its graph, sliders, inputs, the debugger and
+  the documentation from `cesia lsp`. The French pages show the same ones, the diagrams and pictures with their words
+  in French. An image of a page is never wider than the page, on a phone too.
 - For those who work on Cesia: the tests added since 1.2.0 had made the change loop 4.8 s again; it takes 4.0 s, 4.4 s
   with two cores busy. Tests slow by nature run with `tools/test.sh --slow`, which `tools/check.sh` runs after the loop:
   nine of the JIT, whose loops are as long as the units and level 2 they check need, those of `install.sh` and `cesia

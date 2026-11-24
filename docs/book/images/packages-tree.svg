@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="490" viewBox="0 0 640 490">
+<title>The folders of the project shop and the use that names each package: src/prices, src/prices/old, std/csv and deps/someone/geometry/src/shapes</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.h{font-weight:600}
+.s{fill:#57606a}
+.pk{fill:#3a5ad9;font-weight:600}
+.br{stroke:#57606a;stroke-width:1.2;fill:none}
+</style>
+<rect width="640" height="490" fill="#fff"/>
+<text class="h" x="14" y="24">the project</text>
+<text class="h" x="300" y="24">a use, and the name it gives</text>
+<text class="s" x="300" y="42">each names a folder from the root of the project</text>
+<text class="c" x="14" y="58">shop/</text>
+<text class="c" x="32" y="79">cesia.toml</text>
+<text class="c" x="32" y="100">src/</text>
+<text class="c" x="50" y="121">main.ce</text>
+<text class="c pk" x="50" y="142">prices/</text>
+<line x1="292" y1="138" x2="119.6" y2="138.0" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="112.6,138 120.6,134.0 120.6,142.0"/>
+<text class="c" x="300" y="142">use src/prices</text>
+<text class="s" x="300" y="158">in the code: <tspan class="c">prices.WithTax(10.25)</tspan></text>
+<text class="c" x="68" y="163">tax.ce</text>
+<text class="c" x="68" y="184">round.ce</text>
+<text class="c pk" x="68" y="205">old/</text>
+<line x1="292" y1="201" x2="114.2" y2="201.0" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="107.2,201 115.2,197.0 115.2,205.0"/>
+<text class="c" x="300" y="205">use src/prices/old</text>
+<text class="s" x="300" y="221">in the code: <tspan class="c">old</tspan></text>
+<text class="c" x="32" y="226">std/</text>
+<text class="c pk" x="50" y="247">csv/</text>
+<line x1="292" y1="243" x2="96.2" y2="243.0" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="89.2,243 97.2,239.0 97.2,247.0"/>
+<text class="c" x="300" y="247">use std/csv</text>
+<text class="s" x="300" y="263">in the code: <tspan class="c">csv</tspan>; this copy, else Cesia's own</text>
+<text class="c" x="68" y="268">csv.ce</text>
+<text class="c" x="32" y="289">deps/</text>
+<text class="c" x="50" y="310">someone/</text>
+<text class="c" x="68" y="331">geometry/</text>
+<text class="c" x="86" y="352">cesia.toml</text>
+<text class="c" x="86" y="373">src/</text>
+<text class="c pk" x="104" y="394">shapes/</text>
+<line x1="292" y1="390" x2="173.6" y2="390.0" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="166.6,390 174.6,386.0 174.6,394.0"/>
+<text class="c" x="300" y="394">use deps/someone/geometry/src/shapes</text>
+<text class="s" x="300" y="410">in the code: <tspan class="c">shapes</tspan></text>
+<path class="br" d="M134 150 L140 150 L140 188 L134 188 M140 169 L146 169"/>
+<text class="s" x="152" y="173">one package</text>
+<text x="14" y="440"><tspan class="c">use std/io</tspan><tspan class="s">: a module of the cesia binary, written in OCaml, no folder.</tspan></text>
+<text class="s" x="14" y="460">A file sees its own package and the packages it uses: <tspan class="c">cents</tspan>, a small name</text>
+<text class="s" x="14" y="478">of <tspan class="c">round.ce</tspan>, stays inside <tspan class="c">prices/</tspan>.</text>
+</svg>

@@ -198,6 +198,16 @@ by_city <- data.frame(city = levels(city), units = as.vector(tapply(df$units, ci
 print(by_city[order(-by_city$units), ], row.names = FALSE)
 ```
 
+[plot.Bars] dessine les unités de chaque ville à partir de deux colonnes du frame, triées :
+
+```cesia allow=read,write
+use std/plot
+ranked = frame.SortBy("units", byCity, descending = true)
+cities = plot.Of([plot.Bars(frame.Column("city", ranked), frame.Column("units", ranked))],
+  title = "Units sold by city, from sales.csv", y = "units", size = [640, 300])
+plot.Save(cities, "data-cities.svg") -->
+```
+
 ### Des colonnes entières
 
 Une colonne est une liste, et les opérateurs du langage agissent sur une liste entière d'un coup, une

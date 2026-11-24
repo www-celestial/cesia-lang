@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="290" viewBox="0 0 640 290">
+<title>After q = p and q.X = 10: p and q have values of their own, 1 and 2 against 10 and 2, and share the shape of Point</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.n{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:15px;font-weight:600}
+.s{fill:#57606a}
+.cell{fill:#fff;stroke:#1f2328;stroke-width:1.2}
+.new{fill:#eef1fc;stroke:#3a5ad9;stroke-width:1.6}
+.sh{fill:#f6f8fa;stroke:#1f2328;stroke-width:1.2}
+</style>
+<rect width="640" height="290" fill="#fff"/>
+<text class="c" x="14" y="22">p = Point(1, 2)</text><text class="c" x="14" y="40">q = p</text><text class="c" x="14" y="58">q.X = 10</text>
+<text class="n" x="20" y="120">p</text>
+<line x1="36" y1="115" x2="67.0" y2="115.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="74,115 66.0,119.0 66.0,111.0"/>
+<rect class="cell" x="76" y="96" width="56" height="38"/><text class="c" x="104" y="120" text-anchor="middle">1</text>
+<rect class="cell" x="132" y="96" width="56" height="38"/><text class="c" x="160" y="120" text-anchor="middle">2</text>
+<text class="s" x="104" y="90" text-anchor="middle">X</text><text class="s" x="160" y="90" text-anchor="middle">Y</text>
+<rect class="cell" x="188" y="96" width="84" height="38"/><text class="s" x="200" y="120">shape</text><circle cx="258" cy="115" r="3.5" fill="#1f2328"/>
+<text class="n" x="20" y="200">q</text>
+<line x1="36" y1="195" x2="67.0" y2="195.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="74,195 66.0,199.0 66.0,191.0"/>
+<rect class="new" x="76" y="176" width="56" height="38"/><text class="c" x="104" y="200" text-anchor="middle" fill="#3a5ad9">10</text>
+<rect class="cell" x="132" y="176" width="56" height="38"/><text class="c" x="160" y="200" text-anchor="middle">2</text>
+<text class="s" x="104" y="170" text-anchor="middle">X</text><text class="s" x="160" y="170" text-anchor="middle">Y</text>
+<rect class="cell" x="188" y="176" width="84" height="38"/><text class="s" x="200" y="200">shape</text><circle cx="258" cy="195" r="3.5" fill="#1f2328"/>
+<rect class="sh" x="420" y="118" width="196" height="76" rx="5"/>
+<text x="518" y="142" text-anchor="middle">the shape of <tspan class="c">Point</tspan></text>
+<rect class="cell" x="458" y="152" width="60" height="28"/><rect class="cell" x="518" y="152" width="60" height="28"/>
+<text class="c" x="488" y="171" text-anchor="middle">"X"</text><text class="c" x="548" y="171" text-anchor="middle">"Y"</text>
+<line x1="258" y1="115" x2="413.1" y2="144.7" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="420,146 411.4,148.4 412.9,140.6"/>
+<line x1="258" y1="195" x2="413.1" y2="167.2" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="420,166 412.8,171.3 411.4,163.5"/>
+<text class="s" x="14" y="252"><tspan class="c">q = p</tspan> shares the struct; <tspan class="c">q.X = 10</tspan> copies its values first, so p keeps 1.</text>
+<text class="s" x="14" y="272">The shape, the names of its fields, is one for every <tspan class="c">Point</tspan>: it is never copied.</text>
+</svg>

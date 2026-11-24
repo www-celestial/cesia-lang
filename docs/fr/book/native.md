@@ -267,6 +267,17 @@ un nouvel enregistrement des quatre ; elle est appelée un million de fois depui
 | Java 21 (HotSpot), JNI | 9,4 ns | 174,0 ns | +165,1 ns (+164,5 à +166,8) |
 | OCaml 5.5, un `external` en C | 6,3 ns | 24,2 ns | +17,9 ns (+17,8 à +18,4) |
 
+```cesia allow=read,write
+use std/plot
+host = [50.0, 209.0, 19.2, 9.4, 6.3]
+through = [164.9, 203.8, 1307.8, 174.0, 24.2]
+crossing = plot.Of([plot.Points([x - 0.1 for x in 1..5], host, label = "host function"),
+  plot.Points([x + 0.1 for x in 1..5], through, label = "native interface", shape = "square")],
+  title = "A million calls that make a record: ns a call", y = "nanoseconds (log scale)", yscale = "log",
+  xticks = 1..5, xlabels = ["Cesia", "CPython", "Node", "Java", "OCaml"], size = [640, 360])
+plot.Save(crossing, "native-giants.svg") -->
+```
+
 Là où un géant gagne, et pourquoi :
 
 - **L'`external` d'OCaml** traverse pour 18 ns : un appel direct à C, qui lit et fabrique sur place les propres valeurs

@@ -238,6 +238,14 @@ chaque programme, la médiane de 101 lancements alternés et l'intervalle à 95 
 | Python 3.14.10, `json.loads` | 3,34 ms (3,34 à 3,35) |
 | Node 26.13, `JSON.parse` | 1,06 ms (1,05 à 1,06) |
 
+```cesia allow=read,write
+use std/plot
+parsers = plot.Bars(["Cesia", "Python", "Node"], [3.36, 3.34, 1.06])
+parsing = plot.Of([parsers], title = "Parsing 192 KB of JSON: milliseconds, median of 101 runs", y = "milliseconds",
+  size = [640, 300])
+plot.Save(parsing, "json-parse.svg") -->
+```
+
 Le parser (le code qui lit le texte et en fait des valeurs) de Cesia est en OCaml, dans son binaire : il cherche la fin
 d'un texte huit octets à la fois, et lit un décimal de 15 chiffres ou moins, avec une puissance de dix de $10^{-22}$ à
 $10^{22}$, par un seul produit ou un seul quotient de deux doubles qui les tiennent exactement, qu'IEEE 754 arrondit

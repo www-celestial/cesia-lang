@@ -76,6 +76,8 @@ end
 squares -->
 ```
 
+![The store of squares as the loop appends 1, 4, 9, 16 and 25: the first Append makes a list of one cell; the second finds no free cell and makes a store of 8, the 1 copied into it; 9, 16 and 25 go into free cells and nothing is copied; 3 cells stay free.](images/lists-append.svg)
+
 ### Changing one element
 
 To change one element, give its position. Only this name sees the change:
@@ -106,6 +108,8 @@ In the brackets of a list, a range takes a part of it, and `end` is its last pos
 names[1..2] --> list.Take(2, names)
 names[2..end] --> list.Skip(1, names)
 ```
+
+![names holds Ana, Bo and Cyril; its part 1..2, which is list.Take(2, names), is a new list of Ana and Bo, and its part 2..end, which is list.Skip(1, names), a new list of Bo and Cyril: their cells are copied, and names keeps its three.](images/lists-slice.svg)
 
 ## Sorting
 
@@ -359,6 +363,8 @@ a = zeros(2, 3, 4);
 a(1, 2, 3) = 5;
 disp(a(15))
 ```
+
+![The 24 cells of a = matrix.Zeros(2, 3, 4), drawn as four 2 by 3 matrices, one for each k, then as they lie in memory, column by column: a[1, 2, 3], where 5.0 was written, is the 15th cell, a[15].](images/lists-column-major.svg)
 
 Such an array isn't written in the code: [matrix.Reshape] gives the elements of a list the shape of a list of sizes. It
 shows each matrix of its first two dimensions, then `;;;` before the next along the third, and `;;;;` along the fourth:

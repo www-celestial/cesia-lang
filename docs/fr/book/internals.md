@@ -32,6 +32,8 @@ Les étapes se font par fichier, quand le programme en a besoin pour la premièr
 appelée pour la première fois : une fonction qui ne tourne jamais n'est jamais compilée. `cesia check` fait les trois
 premières étapes et ses propres vérifications des appels et des types (`check.ml`), et n'exécute jamais le programme.
 
+![Le chemin de total = price * (1 + tax) dans Cesia : par fichier, quand le programme en a besoin, le lexer fait ses tokens, le parser son arbre de syntaxe et le resolver lie chaque nom à sa place ; par fonction, à son premier appel, l'inférence donne les types et le compilateur des closures OCaml ; quand elle devient chaude, le JIT l'écrit pour MIR, qui fait le code machine ; une garde qui échoue revient à l'interpréteur.](../../book/images/internals-path.svg)
+
 ## Lire : le lexer et le parser
 
 Le *lexer* découpe le texte en *tokens*, les mots du langage : `count`, `=`, `42`, `"a text"`. Il lit l'UTF-8 et refuse
@@ -355,6 +357,8 @@ root: 32 places, each a node, by bits 1-5 of the hash
         ├── "apple" -> 3, "pear" -> 9, ...      the keys alone at their place, inline
         └── place 12: a node of the 3 keys that share it
 ```
+
+![Une map m de 100 000 clés, puis dict.Put de la clé City : la nouvelle map copie les trois nœuds sur le chemin de la clé, la racine, le nœud de la place 17 et celui de la place 4, qui reçoit City inline, et partage le reste avec m, comme le nœud de la place 12 ; m ne change pas.](../../book/images/maps-trie-put.svg)
 
 Quand plus rien d'autre ne tient une map devenue un trie, son bit owned permet à une écriture de changer ses propres
 nœuds sur place : chaque nœud porte la marque de la map qui l'a fait, et ses arrays gardent de la place pour quelques

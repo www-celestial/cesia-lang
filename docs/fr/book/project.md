@@ -43,6 +43,8 @@ file = "src/main.ce"
 allow = ["read=data", "write=data", "net=:8080"]
 ```
 
+![Le projet notes : la task serve de cesia.toml lance src/main.ce et permet read=data, write=data et net=:8080 ; data/ contient la base de données, le seul dossier que le serveur peut lire et écrire ; main.ce utilise src/notes et sert notes.App(db) sur le port 8080 ; store.ce, routes.ce et routes.test.ce forment un seul package, dont cesia test lance les tests.](../../book/images/project-notes.svg)
+
 ## Le stockage
 
 `src/notes/store.ce` garde les notes dans une table. Une struct (une forme déclarée, aux champs nommés) dit ce qu'est une

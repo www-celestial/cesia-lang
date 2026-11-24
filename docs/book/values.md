@@ -222,6 +222,8 @@ a -->
 b -->
 ```
 
+![Three steps: a = [1, 2, 3] gives a its list; after b = a, both names lead to the same list and nothing is copied; b[1] = 100 copies the list for b first, so b holds [100, 2, 3] and a keeps [1, 2, 3].](images/values-copy.svg)
+
 So a function that gets your list can't change it: it gives a new one back. The chapter [Lists and arrays](lists.md) comes back
 to this.
 

@@ -189,6 +189,8 @@ one, at a small cost; the change of form costs about 0.25 s for a million keys, 
 The hash takes a seed drawn at each run, so nobody can send a server keys chosen to collide.
 [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie) shows the details.
 
+![The three forms of a dictionary: up to 32 keys, one block of its keys, their hashes and its values; past 32 keys, while one name alone holds it, a hash table of slots and of entries in the order they came, changed in place; once shared and written, as by dict.Put, a CHAMP trie for good, each level chosen by 5 bits of a hash, about log32 n steps, 3 for 30,000 keys.](images/maps-forms.svg)
+
 A dictionary that nothing else holds is changed in place, so the loop of [Counting](#counting) copies nothing. 500,000
 text keys written then read take 0.28 s, against 0.41 s for Python's `dict`, 0.27 s for Go's map and 0.22 s for Java's
 `HashMap`, as [Speed](speed.md#computing) measures.

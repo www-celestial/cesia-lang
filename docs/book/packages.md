@@ -72,6 +72,8 @@ WithTax(10.25) -->
   `cents`, stays inside its folder.
 - A subfolder is another package: `src/prices/old/` is used as `use src/prices/old`, and named `old` in the code.
 
+![The folders of the project shop beside the use that names each package: use src/prices for src/prices/, whose tax.ce and round.ce are one package, named prices in the code; use src/prices/old, named old; use std/csv, named csv, the copy of the project or else Cesia's own; use deps/someone/geometry/src/shapes, named shapes. use std/io is a module of the binary, with no folder.](images/packages-tree.svg)
+
 ### No name without a use
 
 No name is seen by every file: a file sees the names of its package, the names of the packages it uses, and the words of

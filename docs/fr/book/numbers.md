@@ -188,6 +188,17 @@ disp([2 1; 1 3] \ [3; 5])
 disp(det([1 2; 3 4]))
 ```
 
+[num.Trapezoid] relie les points par des segments et additionne les aires des trapèzes sous eux :
+
+```cesia allow=read,write
+use std/plot
+tx = [0.0, 1.0, 2.0]
+ty = [0.0, 1.0, 4.0]
+area = plot.Of([plot.Area(tx, 0.0 * tx, ty, label = "area $(num.Trapezoid(tx, ty))"), plot.Line(tx, ty), plot.Points(tx, ty)],
+  title = "num.Trapezoid: the area under lines through the points", x = "x", y = "y", size = [640, 340])
+plot.Save(area, "numbers-trapezoid.svg") -->
+```
+
 ### Comment il calcule
 
 - [num.Solve], [num.Det] et [num.Inverse] utilisent l'*élimination de Gauss avec pivot partiel* : à chaque colonne, la

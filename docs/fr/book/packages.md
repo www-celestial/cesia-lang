@@ -75,6 +75,8 @@ WithTax(10.25) -->
 - Un sous-dossier est un autre package : `src/prices/old/` s'utilise par `use src/prices/old`, et s'appelle `old` dans
   le code.
 
+![Les dossiers du projet shop à côté du use qui nomme chaque package : use src/prices pour src/prices/, dont tax.ce et round.ce font un seul package, nommé prices dans le code ; use src/prices/old, nommé old ; use std/csv, nommé csv, la copie du projet ou sinon celle de Cesia ; use deps/someone/geometry/src/shapes, nommé shapes. use std/io est un module du binaire, sans dossier.](../../book/images/packages-tree.svg)
+
 ### Pas de nom sans use
 
 Aucun nom n'est vu par tous les fichiers : un fichier voit les noms de son package, les noms des packages qu'il utilise,

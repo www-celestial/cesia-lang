@@ -228,6 +228,17 @@ Les mêmes dossiers, la même méthode :
 | 200 | 3 204 (3 172 à 3 391) | 54,2 (53,1 à 59,4) | 68 MB |
 | 400 | 16 087 (15 989 à 16 231) | 112,6 (111,0 à 113,8) | 131 MB |
 
+```cesia allow=read,write
+use std/plot
+counts = [100, 200, 400]
+naiveMs = [1107, 3204, 16087]
+onceMs = [32.3, 54.2, 112.6]
+once = plot.Of([plot.Line(counts, naiveMs, label = "naive"), plot.Line(counts, onceMs, label = "read once", dash = "dashed"),
+  plot.Points(counts, naiveMs), plot.Points(counts, onceMs)], title = "Reading each file once: ms, median of 11 runs",
+  x = "files", y = "milliseconds (log scale)", yscale = "log", xticks = counts, size = [640, 360])
+plot.Save(once, "duplicates-once.svg") -->
+```
+
 La prédiction a tenu. À 400 fichiers, les mêmes comparaisons, dans le même ordre, prennent 113 ms au lieu de 16,1 s :
 99,3 % du temps de la façon naïve passait à relire les mêmes fichiers. L'hypothèse aurait pu échouer, et ne l'a pas
 fait : elle tient donc. Lire une seule fois n'est pas pour autant une solution : cela garde tout le dossier en mémoire à
@@ -506,6 +517,16 @@ Médianes de 11 runs et leur intervalle à 95 %, en millisecondes, avec un cache
 | 200 fichiers | 3 204 (3 172 à 3 391) | **25,6** (25,0 à 26,0) | 32,6 (31,8 à 33,1) |
 | 400 fichiers | 16 087 (15 989 à 16 231) | 40,3 (39,8 à 40,6) | 41,0 (40,7 à 41,5) |
 | 1 000 fichiers, 192 MB | | 94,3 (93,6 à 97,1) | **70,4** (69,8 à 70,9) |
+
+```cesia allow=read,write
+folders = [100, 200, 400, 1000]
+after = plot.Of([plot.Line(counts, naiveMs, label = "naive"),
+  plot.Line(folders, [17.2, 25.6, 40.3, 94.3], label = "Duplicates", color = "#3a5ad9"),
+  plot.Line(folders, [27.4, 32.6, 41.0, 70.4], label = "Python", dash = "dashed")],
+  title = "Finding the copies: ms, median of 11 runs", x = "files (log scale)", y = "milliseconds (log scale)",
+  xscale = "log", yscale = "log", size = [640, 380])
+plot.Save(after, "duplicates-after.svg") -->
+```
 
 De 16,1 s à 40 ms à 400 fichiers : 400 fois plus rapide, et l'écart grandit avec le dossier, puisqu'un coût est en
 $O(n^2)$ et l'autre environ en $O(n)$. `Duplicates` y lit 59 des 400 fichiers, 13,2 MB sur 80,7 : les copies, puisque

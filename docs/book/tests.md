@@ -217,6 +217,8 @@ has nothing to run: such a file is only read, and none of it runs. A test that c
 on: a test tells its verdict by its value, and only the run ends the program. Each folder is one package, so its examples and its tests run together. Files and packages run side
 by side, each in a process of its own: a crash or a test that hangs stops only its own, and is named.
 
+![cesia test in the project shop: it finds the two examples of tax.ce and the two test functions of tax.test.ce in src/prices, leaves out std/ and deps/, runs the package in a process of its own, and reports the example of line 6 that failed, then 3 passed, 1 failed, with the exit code 1.](images/tests-run.svg)
+
 | Option | What it does |
 |---|---|
 | `--seed N` | the cases and the random numbers of an earlier run again |

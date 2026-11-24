@@ -229,6 +229,14 @@ markdown.Parse("# Prices")[1].Kind -->
 | Python 3.14.10, `json.loads` | 3.34 ms (3.34 to 3.35) |
 | Node 26.13, `JSON.parse` | 1.06 ms (1.05 to 1.06) |
 
+```cesia allow=read,write
+use std/plot
+parsers = plot.Bars(["Cesia", "Python", "Node"], [3.36, 3.34, 1.06])
+parsing = plot.Of([parsers], title = "Parsing 192 KB of JSON: milliseconds, median of 101 runs", y = "milliseconds",
+  size = [640, 300])
+plot.Save(parsing, "json-parse.svg") -->
+```
+
 Cesia's parser is OCaml, in its binary: it looks at a text eight bytes at a time for the end of a string, and reads a
 decimal of 15 digits or fewer, with a power of ten from $10^{-22}$ to $10^{22}$, by one product or one quotient of two
 doubles that hold them exactly, which IEEE 754 rounds correctly: the *fast path* of Clinger (1990). Rows of a document

@@ -233,6 +233,8 @@ a -->
 b -->
 ```
 
+![Trois étapes : a = [1, 2, 3] donne à a sa liste ; après b = a, les deux noms mènent à la même liste et rien n'est copié ; b[1] = 100 copie d'abord la liste pour b, donc b vaut [100, 2, 3] et a garde [1, 2, 3].](../../book/images/values-copy.svg)
+
 Une fonction qui reçoit votre liste ne peut donc pas la changer : elle en rend une nouvelle. Le chapitre
 [Listes et arrays](lists.md) y revient.
 

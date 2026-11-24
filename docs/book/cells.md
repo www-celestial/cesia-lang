@@ -24,6 +24,8 @@ io.Print("mean of $n squares")
 mean
 ```
 
+![Cemacs after C-c e a on this file: the cells Data and Mean with their markers, and under the last one its output, Out[3], the line mean of 1000 squares and the value 333833.5.](images/cells-run.png)
+
 For `cesia run`, `cesia check` and `cesia fmt` a marker is a comment like any other: `cesia fmt` leaves it on its line.
 
 [cells.Parse] gives the cells of a source, each with its Title, its first and last lines, From and To, counted from 1,
@@ -270,6 +272,8 @@ filter keeps the position of each row, Positions, so the link holds whatever ord
 table and the graph this way: the row chosen marks its point, and a click on a point chooses its row, as
 [Cemacs](https://www-celestial.github.io/cemacs/cells.html) tells.
 
+![Cemacs on this file: the table of hours sorted by elevation, decreasing, with the row of 11 and 28.02 chosen, and under it the graph of the six points, the point of 11 ringed with its box x = 11, y = 28.02; below, the keys of the table: the arrows, PgUp and PgDn, s to sort, / to filter, M-w to copy, C-c e c to copy as CSV, C-g to leave.](images/cells-table.png)
+
 ## Sliders
 
 A *slider* is a bar with a knob that you drag to change a number. In a cell of its own, each line
@@ -289,6 +293,8 @@ n = cells.Slider(3, 1, 10)
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
 s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
 ```
+
+![Cemacs on this file after four steps to the right on rho: the file now says cells.Slider(30.0, 0.0, 50.0, step = 0.5), the slider of rho shows 30.0 and rerun 10 ms, the one of n shows 3; below, the keys of a slider and the signature of cells.Slider.](images/cells-sliders.png)
 
 The file is the truth: after a move, `cesia run`, the window and the page of [cells.Html] read the same number. A slider is
 a plain function call, and under `cesia run` [cells.Slider] checks its numbers and gives the value:
@@ -414,6 +420,8 @@ high   [ 50                       ]
 rho    ----------o--------  28.0
 [ ] Bold line
 ```
+
+![Cemacs on the same file: under each line its box, the list of year open on 2025, 2026 and 2027 with 2026 chosen, zone on GMT-5, day on 2026-11-23, the fields place and high, the slider of rho at 28.0 and the check box Bold line; below, the keys: Enter to open the list and choose, the arrows for an option, Tab and S-Tab for the next input and the one before, C-g to leave.](images/cells-inputs.png)
 
 | Function | Gives under `cesia run` | In Cemacs |
 |---|---|---|

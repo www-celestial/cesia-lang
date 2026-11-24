@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="414" viewBox="0 0 640 414">
+<title>The three forms of a dictionary: one block up to 32 keys, a hash table past 32 while one name holds it, a trie once shared and written</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.h{font-weight:600;font-size:14px}
+.s{fill:#57606a}
+.cell{fill:#fff;stroke:#1f2328;stroke-width:1.1}
+.g{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.nd{fill:#fff;stroke:#1f2328;stroke-width:1.2}
+.ln{stroke:#1f2328;stroke-width:1.2}
+</style>
+<rect width="640" height="414" fill="#fff"/>
+<text class="s" x="14" y="45">keys</text><text class="s" x="14" y="73">hashes</text><text class="s" x="14" y="109">values</text>
+<rect class="cell" x="70" y="26" width="80" height="28"/><text class="c" x="110" y="45" text-anchor="middle">"Name"</text>
+<rect class="g" x="70" y="54" width="80" height="28"/><text class="s" x="110" y="73" text-anchor="middle">its hash</text>
+<rect class="cell" x="70" y="90" width="80" height="28"/><text class="c" x="110" y="109" text-anchor="middle">"Ana"</text>
+<rect class="cell" x="150" y="26" width="80" height="28"/><text class="c" x="190" y="45" text-anchor="middle">"Age"</text>
+<rect class="g" x="150" y="54" width="80" height="28"/><text class="s" x="190" y="73" text-anchor="middle">its hash</text>
+<rect class="cell" x="150" y="90" width="80" height="28"/><text class="c" x="190" y="109" text-anchor="middle">31</text>
+<text class="h" x="284" y="42">Up to 32 keys: one block</text>
+<text x="284" y="64">its keys in their order, beside their</text>
+<text x="284" y="82">hashes, and its values: here</text>
+<text class="c" x="284" y="100">{Name: "Ana", Age: 31}</text>
+<line x1="150" y1="128" x2="150.0" y2="153.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="150,160 146.0,152.0 154.0,152.0"/>
+<text class="s" x="284" y="149">a 33rd key, while one name alone holds it</text>
+<text class="s" x="14" y="197">slots</text><text class="s" x="14" y="235">entries</text>
+<rect class="g" x="70" y="178" width="24" height="28"/>
+<rect class="cell" x="94" y="178" width="24" height="28"/>
+<text class="c" x="106" y="197" text-anchor="middle">#2</text>
+<rect class="g" x="118" y="178" width="24" height="28"/>
+<rect class="cell" x="142" y="178" width="24" height="28"/>
+<text class="c" x="154" y="197" text-anchor="middle">#0</text>
+<rect class="cell" x="166" y="178" width="24" height="28"/>
+<text class="c" x="178" y="197" text-anchor="middle">#3</text>
+<rect class="g" x="190" y="178" width="24" height="28"/>
+<rect class="cell" x="214" y="178" width="24" height="28"/>
+<text class="c" x="226" y="197" text-anchor="middle">#1</text>
+<rect class="g" x="238" y="178" width="24" height="28"/>
+<text class="c" x="268" y="197">…</text>
+<rect class="cell" x="70" y="216" width="40" height="28"/><text class="c" x="90" y="235" text-anchor="middle">#0</text>
+<rect class="cell" x="110" y="216" width="40" height="28"/><text class="c" x="130" y="235" text-anchor="middle">#1</text>
+<rect class="cell" x="150" y="216" width="40" height="28"/><text class="c" x="170" y="235" text-anchor="middle">#2</text>
+<rect class="cell" x="190" y="216" width="40" height="28"/><text class="c" x="210" y="235" text-anchor="middle">#3</text>
+<text class="c" x="236" y="235">…</text>
+<text class="h" x="284" y="188">Past 32 keys, one name holds it:</text>
+<text class="h" x="284" y="206">a hash table</text>
+<text x="284" y="228">slots that give the number of an entry, and</text>
+<text x="284" y="246">the entries in the order they came; changed</text>
+<text x="284" y="264">in place, in a constant time on average</text>
+<line x1="150" y1="270" x2="150.0" y2="297.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="150,304 146.0,296.0 154.0,296.0"/>
+<text class="s" x="284" y="294"><tspan class="c">dict.Put</tspan>, or a write while another name holds it</text>
+<line class="ln" x1="150" y1="332" x2="98" y2="362"/><line class="ln" x1="150" y1="332" x2="150" y2="362"/><line class="ln" x1="150" y1="332" x2="202" y2="362"/>
+<line class="ln" x1="202" y1="370" x2="180" y2="396"/><line class="ln" x1="202" y1="370" x2="224" y2="396"/>
+<rect class="nd" x="128.0" y="316" width="44" height="16" rx="3"/>
+<rect class="nd" x="83.0" y="358" width="30" height="16" rx="3"/>
+<rect class="nd" x="135.0" y="358" width="30" height="16" rx="3"/>
+<rect class="nd" x="187.0" y="358" width="30" height="16" rx="3"/>
+<rect class="nd" x="165.0" y="392" width="30" height="16" rx="3"/>
+<rect class="nd" x="209.0" y="392" width="30" height="16" rx="3"/>
+<text class="h" x="284" y="328">Shared and written: a CHAMP trie, for good</text>
+<text x="284" y="348">each level takes 5 bits of a hash; a write</text>
+<text x="284" y="366">copies only the nodes on its path, a read follows it:</text>
+<text x="284" y="384">about log<tspan font-size="10" dy="3">32</tspan><tspan dy="-3"> n steps, 3 for 30,000 keys</tspan></text>
+</svg>

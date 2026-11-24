@@ -235,6 +235,12 @@ ligne, éditée sur un terminal, et [debug.IsComplete] dit si du code est comple
 Le debugger tourne à l'intérieur du programme, avant lui, et son propre code ne s'arrête jamais. Un debugger n'est pas une
 bibliothèque : il ne se charge qu'avec `--debugger`, et un programme lancé sans lui ne paie rien pour lui.
 
+[Cemacs](https://www-celestial.github.io/cemacs/running.html) donne un tel debugger aux programmes qu'il lance, un
+fichier écrit avec ces fonctions qui parle avec l'éditeur par l'entrée et la sortie du programme : l'éditeur marque
+les breakpoints dans sa marge, et à un arrêt montre la ligne et les variables de la frame.
+
+![Cemacs sur total.ce arrêté à son breakpoint, ligne 12, i / 2 dans Half : le point rouge dans la marge, la ligne marquée, et dessous le panneau Variables, stopped at total.ce:12, avec i = 1 ; la dernière ligne dit Running et le chemin du fichier.](../../book/images/debug-cemacs.png)
+
 ## Vitesse
 
 Seule une ligne qui a un breakpoint, et chaque ligne pendant que vous avancez pas à pas, passe par le debugger, mais un

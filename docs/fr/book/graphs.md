@@ -877,6 +877,15 @@ Ensuite [plot.Svg] prend, en médiane de 21 lancements sur un ordinateur de bure
 | une heatmap de 100 sur 100 | 17 ms |
 | une heatmap de 1 000 sur 1 000 | 298 ms |
 
+```cesia allow=read,write
+linePoints = [1000, 100000, 1000000, 10000000]
+lineMs = [2.0, 7.4, 37, 324]
+lineTimes = plot.Of([plot.Line(linePoints, lineMs), plot.Points(linePoints, lineMs)],
+  title = "plot.Svg of a line: milliseconds, median of 21 runs", x = "points (log scale)", y = "milliseconds (log scale)",
+  xscale = "log", yscale = "log", size = [640, 340])
+plot.Save(lineTimes, "graphs-lines.svg") -->
+```
+
 Tout est en Cesia, rendu rapide par le JIT (le compilateur qui traduit le code en code machine pendant qu'il tourne) ;
 pour une longue courbe, le passage sur les points qui trouve leur étendue et le passage de M4 prennent l'essentiel du
 temps.
@@ -904,6 +913,15 @@ alternés, et l'intervalle à 95 % de cette médiane :
 | une ligne de 1 000 000 de points, en SVG | **28,2 ms** (28,1 à 28,2) | 113,1 ms (112,8 à 113,4) |
 | une surface de 100 sur 100 quads, une nouvelle vue | **3,17 ms** (3,15 à 3,18), une scène | 75,27 ms (74,98 à 75,46), `view_init` et un dessin |
 | la même surface, en SVG | **33,9 ms** (33,8 à 34,1) | 804,1 ms (801,2 à 809,5) |
+
+```cesia allow=read,write
+drawings = ["a line, 10⁶ points", "a surface, a view", "the surface, SVG"]
+beside = plot.Of([plot.Points([x - 0.1 for x in 1..3], [28.2, 3.17, 33.9], label = "Cesia", color = "#3a5ad9"),
+  plot.Points([x + 0.1 for x in 1..3], [113.1, 75.27, 804.1], label = "matplotlib", shape = "square")],
+  title = "Beside matplotlib: milliseconds, median of 101 runs", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..3, xlabels = drawings, xlim = [0.5, 3.5], size = [640, 340])
+plot.Save(beside, "graphs-matplotlib.svg") -->
+```
 
 matplotlib dessine la ligne avec sa simplification des chemins, active par défaut, et la surface avec chaque point,
 `rstride = cstride = 1`, comme Cesia dessine chaque quad ; avec son réglage par défaut de 50 points par direction, il en

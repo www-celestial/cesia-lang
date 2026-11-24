@@ -29,6 +29,8 @@ The steps run per file, when the program first needs it, and per function, when 
 runs is never compiled. `cesia check` runs the first three steps and its own checks of calls and types (`check.ml`), and
 never runs the program.
 
+![The path of total = price * (1 + tax) through Cesia: per file, when the program first needs it, the lexer makes its tokens, the parser its syntax tree and the resolver ties each name to its place; per function, at its first call, inference gives types and the compiler OCaml closures; when it gets hot, the JIT writes it for MIR, which makes machine code; a failed guard goes back to the interpreter.](images/internals-path.svg)
+
 ## Reading: the lexer and the parser
 
 The *lexer* cuts the text into tokens, the words of the language: `count`, `=`, `42`, `"a text"`. It reads UTF-8 and
@@ -326,6 +328,8 @@ root: 32 places, each a node, by bits 1-5 of the hash
         ├── "apple" -> 3, "pear" -> 9, ...      the keys alone at their place, inline
         └── place 12: a node of the 3 keys that share it
 ```
+
+![A map m of 100,000 keys, then dict.Put of the key City: the new map copies the three nodes on the path of the key, the root, the node at place 17 and the node at place 4, which gets City inline, and shares the rest with m, as the node at place 12; m is unchanged.](images/maps-trie-put.svg)
 
 When nothing else holds a map that became a trie, its owned bit lets a write change its own nodes in place: each node
 carries the mark of the map that made it, and its arrays keep room for a few more keys, doubled when they fill, up to 32.

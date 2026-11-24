@@ -192,6 +192,16 @@ by_city <- data.frame(city = levels(city), units = as.vector(tapply(df$units, ci
 print(by_city[order(-by_city$units), ], row.names = FALSE)
 ```
 
+[plot.Bars] draws the units of each city from two columns of the frame, sorted:
+
+```cesia allow=read,write
+use std/plot
+ranked = frame.SortBy("units", byCity, descending = true)
+cities = plot.Of([plot.Bars(frame.Column("city", ranked), frame.Column("units", ranked))],
+  title = "Units sold by city, from sales.csv", y = "units", size = [640, 300])
+plot.Save(cities, "data-cities.svg") -->
+```
+
 ### Whole columns
 
 A column is a list, and the operators of the language work on a whole list at once, a

@@ -43,6 +43,8 @@ p -->
 q -->
 ```
 
+![Après p = Point(1, 2), q = p et q.X = 10 : p a X à 1 et Y à 2, q ses propres valeurs, X à 10 et Y à 2, et les deux mènent à l'unique shape de Point, les noms de ses champs X et Y, qui n'est jamais copiée.](../../book/images/structs-copy.svg)
+
 ### Un mauvais champ
 
 Un champ que la struct n'a pas est une erreur, comme un appel avec trop de valeurs. Un dictionnaire prendrait n'importe

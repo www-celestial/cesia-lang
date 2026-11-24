@@ -41,6 +41,8 @@ p -->
 q -->
 ```
 
+![After p = Point(1, 2), q = p and q.X = 10: p holds X 1 and Y 2, q its own values, X 10 and Y 2, and both lead to the one shape of Point, the names of its fields X and Y, which is never copied.](images/structs-copy.svg)
+
 ### A wrong field
 
 A field that the struct doesn't have is an error, and so is a call with too many values. A dictionary would take any key

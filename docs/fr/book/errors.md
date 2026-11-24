@@ -104,6 +104,8 @@ ageNextYear("31") -->
 ageNextYear("old") -->
 ```
 
+![ageNextYear pas à pas : pour le texte 31, age(t) donne Ok(31), le ? donne 31 et la fonction continue jusqu'à donner Ok(32) ; pour le texte old, age(t) donne un Err, le ? rend aussitôt cet Err, et result.Ok(n + 1) ne tourne jamais.](../../book/images/errors-question.svg)
+
 ### Ce que ? remplace
 
 `n = age(t)?` est la forme courte de ces lignes, que vous pouvez écrire vous-même :

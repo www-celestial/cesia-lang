@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="392" viewBox="0 0 640 392">
+<title>cesia test finds two examples in tax.ce and two test functions in tax.test.ce, runs the package in a process of its own, and reports 3 passed, 1 failed</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.h{font-weight:600}
+.s{fill:#57606a}
+.pk{fill:#3a5ad9;font-weight:600}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.ok{fill:#1a7f37}
+.er{fill:#cf222e}
+</style>
+<rect width="640" height="392" fill="#fff"/>
+<text class="h" x="14" y="22">what it finds</text>
+<text class="c" x="14" y="52">shop/</text>
+<text class="c" x="32" y="76">src/</text>
+<text class="c" x="50" y="100">main.ce</text>
+<text class="c pk" x="50" y="124">prices/</text>
+<text class="c" x="68" y="148">tax.ce</text>
+<text class="c" x="68" y="172">tax.test.ce</text>
+<text class="c s" x="32" y="196">std/</text>
+<text class="c s" x="32" y="220">deps/</text>
+<text class="s" x="82" y="196">and</text><text class="s" x="82" y="220">left out</text>
+<rect class="box" x="300" y="34" width="326" height="184" rx="6"/>
+<text class="h" x="312" y="56"><tspan class="c">src/prices</tspan>: one package, one process</text>
+<text class="s" x="312" y="80">the examples of the <tspan class="c">(** *)</tspan> of <tspan class="c">tax.ce</tspan></text>
+<text class="ok" x="312" y="102">passed</text><text class="c" x="366" y="102">WithTax(10.0) --&gt; 12.0</text>
+<text class="er" x="312" y="124">failed</text><text class="c" x="366" y="124">WithTax(0.99) --&gt; 1.2</text>
+<text class="er" x="614" y="124" text-anchor="end">got 1.19</text>
+<text class="ok" x="312" y="184">passed</text><text class="c" x="366" y="184">isZeroStaysZero()</text>
+<text class="ok" x="312" y="206">passed</text><text class="c" x="366" y="206">isRoundsToCents()</text>
+<text class="s" x="312" y="162">the test functions of <tspan class="c">tax.test.ce</tspan></text>
+<line x1="122" y1="144" x2="290.2" y2="99.8" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="297,98 290.3,103.9 288.2,96.2"/>
+<line x1="161" y1="168" x2="290.0" y2="179.4" stroke="#3a5ad9" stroke-width="1.3"/><polygon fill="#3a5ad9" points="297,180 288.7,183.3 289.4,175.3"/>
+<text class="h" x="14" y="250">what it reports</text>
+<rect class="term" x="14" y="262" width="612" height="74" rx="6"/>
+<text class="c" x="26" y="284">$ cesia test</text>
+<text class="c" x="26" y="304">src/prices/tax.ce:6: WithTax(0.99) --&gt; 1.2, got 1.19</text>
+<text class="c" x="26" y="324">3 passed, 1 failed</text>
+<text class="s" x="614" y="324" text-anchor="end">exit code 1</text>
+<text class="s" x="14" y="362">The example of line 6 written 1.2 instead of 1.19, as in When an example fails.</text>
+<text class="s" x="14" y="380">Each package runs in a process of its own, beside the others: a crash stops only its own.</text>
+</svg>

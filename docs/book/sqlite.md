@@ -119,6 +119,8 @@ sql.Query("select id, done from notes", [], db) -->
 
 The `delete` was undone: both notes are still there.
 
+![Two transactions: the first begins, sets note 1 done, its function gives an Ok and the change is committed, kept; the second begins, deletes both rows, its function gives an Err and everything is rolled back; the query then gives note 1 done and note 2 not done.](images/sqlite-transaction.svg)
+
 ### Inside a transaction
 
 A [sql.Transaction] inside another, on its `tx`, is a *savepoint*: undone alone when its function gives an `Err`, while

@@ -33,6 +33,8 @@ sys.Now() - start < 0.3 --> true
 
 Les deux attentes se chevauchent : le tout prend le temps de la plus longue, `0.2` seconde, pas leur somme, `0.3`.
 
+![Une ligne de temps : le programme principal lance bread et cake avec Spawn et attend bread ; bread dort 0.2 s et cake 0.1 s, chacune garée sur un timer, un réveil à heure fixe, en même temps ; cake finit à 0.1 s, bread à 0.2 s et réveille le programme principal, qui reçoit les deux résultats d'un coup : 0.2 s en tout.](../../book/images/fibers-timeline.svg)
+
 ## Ce qui attend
 
 Une fiber qui attend laisse tourner les autres : [sys.Sleep], une lecture sur le réseau, un appel à [fiber.Wait],

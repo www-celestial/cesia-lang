@@ -41,6 +41,8 @@ file = "src/main.ce"
 allow = ["read=data", "write=data", "net=:8080"]
 ```
 
+![The project notes: the task serve of cesia.toml runs src/main.ce and allows read=data, write=data and net=:8080; data/ holds the database, the only folder the server may read and write; main.ce uses src/notes and serves notes.App(db) on port 8080; store.ce, routes.ce and routes.test.ce are one package, whose tests cesia test runs.](images/project-notes.svg)
+
 ## The store
 
 `src/notes/store.ce` keeps the notes in a table. A struct says what a note is, and another what a client sends. `?` passes each

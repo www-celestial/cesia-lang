@@ -121,6 +121,8 @@ sql.Query("select id, done from notes", [], db) -->
 
 Le `delete` a été défait : les deux notes sont toujours là.
 
+![Deux transactions : la première commence, marque la note 1 faite, sa fonction donne un Ok et le changement est validé par un commit, gardé ; la seconde commence, efface les deux lignes, sa fonction donne un Err et tout est défait par un rollback ; la requête donne ensuite la note 1 faite et la note 2 pas faite.](../../book/images/sqlite-transaction.svg)
+
 ### Dans une transaction
 
 Une [sql.Transaction] dans une autre, sur son `tx`, est un *savepoint* (un point de retour à l'intérieur d'une

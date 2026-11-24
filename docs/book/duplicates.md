@@ -214,6 +214,17 @@ The same folders, the same method:
 | 200 | 3,204 (3,172 to 3,391) | 54.2 (53.1 to 59.4) | 68 MB |
 | 400 | 16,087 (15,989 to 16,231) | 112.6 (111.0 to 113.8) | 131 MB |
 
+```cesia allow=read,write
+use std/plot
+counts = [100, 200, 400]
+naiveMs = [1107, 3204, 16087]
+onceMs = [32.3, 54.2, 112.6]
+once = plot.Of([plot.Line(counts, naiveMs, label = "naive"), plot.Line(counts, onceMs, label = "read once", dash = "dashed"),
+  plot.Points(counts, naiveMs), plot.Points(counts, onceMs)], title = "Reading each file once: ms, median of 11 runs",
+  x = "files", y = "milliseconds (log scale)", yscale = "log", xticks = counts, size = [640, 360])
+plot.Save(once, "duplicates-once.svg") -->
+```
+
 The prediction held. At 400 files the same comparisons, in the same order, take 113 ms instead of 16.1 s: 99.3% of the
 time of the naive way went into reading the same files again. The hypothesis could have failed, and didn't, so it
 stands. Reading once is no solution, though: it holds the whole folder in memory at once, 131 MB for 81 MB of files,
@@ -476,6 +487,16 @@ Python, where their intervals don't meet and they differ by more than 2%:
 | 200 files | 3,204 (3,172 to 3,391) | **25.6** (25.0 to 26.0) | 32.6 (31.8 to 33.1) |
 | 400 files | 16,087 (15,989 to 16,231) | 40.3 (39.8 to 40.6) | 41.0 (40.7 to 41.5) |
 | 1,000 files, 192 MB | | 94.3 (93.6 to 97.1) | **70.4** (69.8 to 70.9) |
+
+```cesia allow=read,write
+folders = [100, 200, 400, 1000]
+after = plot.Of([plot.Line(counts, naiveMs, label = "naive"),
+  plot.Line(folders, [17.2, 25.6, 40.3, 94.3], label = "Duplicates", color = "#3a5ad9"),
+  plot.Line(folders, [27.4, 32.6, 41.0, 70.4], label = "Python", dash = "dashed")],
+  title = "Finding the copies: ms, median of 11 runs", x = "files (log scale)", y = "milliseconds (log scale)",
+  xscale = "log", yscale = "log", size = [640, 380])
+plot.Save(after, "duplicates-after.svg") -->
+```
 
 From 16.1 s to 40 ms at 400 files: 400 times faster, and the gap grows with the folder, since one cost is $O(n^2)$ and the
 other about $O(n)$. `Duplicates` reads 59 of the 400 files there, 13.2 MB of 80.7: the copies, since no two different

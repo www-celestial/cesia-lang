@@ -27,6 +27,8 @@ io.Print("mean of $n squares")
 mean
 ```
 
+![Cemacs après C-c e a sur ce fichier : les cells Data et Mean avec leurs marqueurs, et sous la dernière sa sortie, Out[3], la ligne mean of 1000 squares et la valeur 333833.5.](../../book/images/cells-run.png)
+
 Pour `cesia run`, `cesia check` et `cesia fmt`, un marqueur est un commentaire comme les autres : `cesia fmt` le laisse
 sur sa ligne.
 
@@ -295,6 +297,8 @@ point sous la souris. Un tri ou un filtre garde la position de chaque ligne, Pos
 que soit l'ordre que la table montre. Cemacs dessine ainsi la table et le graphique : la ligne choisie marque son point,
 et un clic sur un point choisit sa ligne, comme le dit [Cemacs](https://www-celestial.github.io/cemacs/cells.html).
 
+![Cemacs sur ce fichier : la table des heures triée par elevation, décroissante, la ligne de 11 et 28.02 choisie, et dessous le graphique des six points, le point de 11 entouré avec sa boîte x = 11, y = 28.02 ; en bas, les touches de la table : les flèches, PgUp et PgDn, s pour trier, / pour filtrer, M-w pour copier, C-c e c pour copier en CSV, C-g pour sortir.](../../book/images/cells-table.png)
+
 ## Sliders
 
 Un *slider* (un curseur) est une barre avec un bouton que l'on fait glisser pour changer un nombre. Dans une cell à lui,
@@ -315,6 +319,8 @@ n = cells.Slider(3, 1, 10)
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
 s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
 ```
+
+![Cemacs sur ce fichier après quatre pas à droite sur rho : le fichier dit maintenant cells.Slider(30.0, 0.0, 50.0, step = 0.5), le slider de rho montre 30.0 et rerun 10 ms, celui de n montre 3 ; en bas, les touches d'un slider et la signature de cells.Slider.](../../book/images/cells-sliders.png)
 
 Le fichier fait foi : après un mouvement, `cesia run`, la fenêtre et la page de [cells.Html] lisent le même nombre. Un
 slider est un simple appel de fonction, et sous `cesia run`, [cells.Slider] vérifie ses nombres et donne la valeur :
@@ -447,6 +453,8 @@ high   [ 50                       ]
 rho    ----------o--------  28.0
 [ ] Bold line
 ```
+
+![Cemacs sur le même fichier : sous chaque ligne sa boîte, la liste de year ouverte sur 2025, 2026 et 2027 avec 2026 choisi, zone sur GMT-5, day sur 2026-11-23, les champs place et high, le slider de rho à 28.0 et la case à cocher Bold line ; en bas, les touches : Entrée pour ouvrir la liste et choisir, les flèches pour une option, Tab et S-Tab pour l'input suivant et le précédent, C-g pour sortir.](../../book/images/cells-inputs.png)
 
 | Fonction | Donne sous `cesia run` | Dans Cemacs |
 |---|---|---|

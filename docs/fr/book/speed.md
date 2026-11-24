@@ -141,6 +141,15 @@ Un programme qui affiche `1`, 101 runs de chacun, alternés :
 | Java | 23,99 ms | 23,94 à 24,14 |
 | Node | 37,24 ms | 35,93 à 38,29 |
 
+```cesia allow=read,write
+use std/plot
+starters = ["true", "Lua", "LuaJIT", "OCaml", "Go", "Cesia", "Python", "Java", "Node"]
+startMs = [0.53, 0.88, 1.00, 1.08, 1.32, 2.68, 13.88, 23.99, 37.24]
+startup = plot.Of([plot.Bars(starters, startMs)], title = "Start-up: a program that prints 1, median of 101 runs",
+  y = "milliseconds", size = [640, 340])
+plot.Save(startup, "speed-startup.svg") -->
+```
+
 Mesuré de nouveau le 2026-11-09 : 2,84 ms pour le binaire d'avant le changement qui ne fait grandir son young heap (la
 petite partie de la mémoire où naissent les nouvelles valeurs, vidée souvent) que quand un programme en a besoin,
 alterné dans les mêmes runs. Cesia démarre 5 fois plus vite que Python, 9 fois plus vite que Java et 13 fois plus vite
@@ -191,6 +200,28 @@ une fois son ralentissement corrigé, plus bas :
 | `structs` | **38** (38–40) | 614 (611–616) | 1 722 (1 715–1 732) | 168 (167–169) | 110 (109–111) | 9 (9–9) | 30 (30–30) | 1 533 (1 521–1 537) | 397 (396–399) |
 | `dyn` | **58** (58–58) | 685 (683–690) | 1 370 (1 363–1 381) | 165 (164–165) | 96 (96–96) | 28 (28–28) | 68 (67–68) | 716 (715–717) | 57 (57–57) |
 | `maps` | **255** (254–255) | 250 (249–250) | 399 (399–400) | 528 (524–531) | 247 (244–248) | 268 (265–271) | 496 (493–500) | 788 (784–794) | 307 (306–309) |
+
+Les mêmes médianes sur une échelle logarithmique, où chaque puissance de dix prend la même longueur, chaque langage un peu
+à côté des autres pour chaque programme :
+
+```cesia allow=read,write
+programs = ["fib", "mandel", "matmul", "structs", "dyn", "maps"]
+langs = [
+  {Name: "Cesia", Ms: [59, 61, 45, 38, 58, 255], Shape: "circle", Color: "#3a5ad9"},
+  {Name: "Cesia, no JIT", Ms: [454, 471, 980, 614, 685, 250], Shape: "circle", Color: "#9aaae8"},
+  {Name: "Python", Ms: [1439, 2624, 4720, 1722, 1370, 399], Shape: "square", Color: "#000000"},
+  {Name: "Node", Ms: [171, 91, 96, 168, 165, 528], Shape: "triangle", Color: "#000000"},
+  {Name: "Java", Ms: [70, 81, 82, 110, 96, 247], Shape: "diamond", Color: "#000000"},
+  {Name: "Go", Ms: [50, 52, 33, 9, 28, 268], Shape: "cross", Color: "#000000"},
+  {Name: "OCaml", Ms: [52, 57, 60, 30, 68, 496], Shape: "plus", Color: "#000000"},
+  {Name: "Lua", Ms: [694, 434, 832, 1533, 716, 788], Shape: "square", Color: "#999999"},
+  {Name: "LuaJIT", Ms: [95, 55, 87, 397, 57, 307], Shape: "triangle", Color: "#999999"}]
+dots = [plot.Points([p + (k - 5) * 0.07 for p in 1..6], langs[k].Ms, label = langs[k].Name, shape = langs[k].Shape,
+  color = langs[k].Color, size = 7) for k in 1..9]
+computing = plot.Of(dots, title = "Six programs: milliseconds, median of 101 runs", y = "milliseconds (log scale)",
+  yscale = "log", xticks = 1..6, xlabels = programs, size = [640, 400])
+plot.Save(computing, "speed-computing.svg") -->
+```
 
 Mesuré de nouveau le 2026-11-09, après que les feuilles d'une récursion (ses derniers appels, qui ne rappellent plus la
 fonction) ont été testées à leur appel et que le JIT a donné à MIR (le petit compilateur qui produit le code machine de
@@ -291,6 +322,16 @@ moins celui avec une seule, divisé par 100 000 :
 | Python `asyncio` | 1 075 ms | 1 072 à 1 078 | 10,0 µs | 1,4 KB |
 | Virtual threads de Java | 1 725 ms | 1 692 à 1 751 | 16,8 µs | 2,0 KB |
 
+```cesia allow=read,write
+tasks = ["LuaJIT", "Go", "Lua", "Node", "Cesia", "Python", "Java"]
+perTask = [0.6, 1.2, 1.3, 1.3, 3.1, 10.0, 16.8]
+memory = [0.4, 2.6, 1.0, 1.3, 2.2, 1.4, 2.0]
+fibers = plot.Of([plot.Points(perTask, memory), plot.Text(perTask, memory, tasks)],
+  title = "A task that starts, parks and ends: its time and its memory", x = "microseconds per task (log scale)",
+  y = "KB per task", xscale = "log", xlim = [0.4, 30], ylim = [0, 3], size = [640, 360])
+plot.Save(fibers, "speed-fibers.svg") -->
+```
+
 Une fiber de Cesia prend le tiers du temps d'une tâche Python et le cinquième de celui d'un virtual thread de Java pour
 démarrer, se mettre en attente et finir, et 2,6 fois celui d'une goroutine ; avec sa tâche, elle prend 2,2 KB, moins que
 les 2,6 KB d'une goroutine, et plus que les 2,0 KB d'un virtual thread, les 1,4 de Python et les 1,3 de Node. Elle
@@ -327,6 +368,24 @@ et le plus bas et le plus haut des 7, qui encadrent la médiane avec une probabi
 | écrire 16 MB | **3,5** (3,5–4,0) | 6,0 (5,8–7,0) | 7,2 (6,5–8,9) | 2,6 (2,4–3,1) |
 | écrire 16 MB, puis fsync | **44** (43–75) | 60 (47–105) | 50 (45–91) | 44 (41–60) |
 
+Les mêmes médianes sur une échelle logarithmique ; une case laissée vide dans le tableau est un `NaN` (*not a number*,
+une valeur qui n'est pas un nombre), que [plot.Points] laisse de côté :
+
+```cesia allow=read,write
+use std/math
+operations = ["read", "as UTF-8", "search", "no case", "lowercase", "join", "write", "fsync"]
+texts = [
+  {Name: "Cesia", Ms: [22, math.Nan, 39, 41, 317, 218, 3.5, 44], Shape: "circle", Color: "#3a5ad9"},
+  {Name: "Python", Ms: [20, 56, 46, 797, 100, 59, 6.0, 60], Shape: "square", Color: "#000000"},
+  {Name: "Node", Ms: [19, 47, 49, 26, 74, 142, 7.2, 50], Shape: "triangle", Color: "#000000"},
+  {Name: "Go", Ms: [18, math.Nan, 7, 3296, 186, 50, 2.6, 44], Shape: "cross", Color: "#000000"}]
+textDots = [plot.Points([p + (k - 2.5) * 0.12 for p in 1..8], texts[k].Ms, label = texts[k].Name, shape = texts[k].Shape,
+  color = texts[k].Color, size = 7) for k in 1..4]
+textTimes = plot.Of(textDots, title = "A text of 100 MB: milliseconds, median of 7 runs", y = "milliseconds (log scale)",
+  yscale = "log", xticks = 1..8, xlabels = operations, size = [660, 400])
+plot.Save(textTimes, "speed-texts.svg") -->
+```
+
 Dans Cesia, [sys.Read] lit les octets dans un seul texte de la taille du fichier, aussi vite que les autres lisent des octets ; il ne
 vérifie pas l'UTF-8 (un programme le demande avec [text.IsUtf8], 26 ms de plus), là où Python et Node décodent dans
 leurs propres chaînes. [text.ByteFind] avec `fold` ignore la casse aussi vite qu'il cherche en la respectant, 19 fois
@@ -361,6 +420,15 @@ requête n'a échoué, dans aucun run.
 | route JSON, 100 connexions gardées ouvertes | **47 728** (46 565–50 264) | 41 228 (38 300–45 993) | 52 330 (51 391–52 859) |
 | une nouvelle connexion par requête, 10 | **23 024** (22 616–23 298) | 12 066 (11 902–12 184) | 20 578 (19 774–20 728) |
 | une nouvelle connexion par requête, 100 | **22 973** (21 888–23 297) | 13 116 (12 663–13 791) | 20 188 (19 267–20 314) |
+
+```cesia allow=read,write
+loads = ["tiny 10", "tiny 100", "tiny 1,000", "JSON 100", "new 10", "new 100"]
+served = plot.Bars(loads, [[66935, 64070, 36200, 47728, 23024, 22973], [44398, 45619, 42235, 41228, 12066, 13116],
+  [66676, 66140, 54369, 52330, 20578, 20188]], label = ["Cesia", "Node", "Go"], color = ["#3a5ad9", "#999999", "#000000"])
+server = plot.Of([served], title = "A server on one core: requests per second, median of 6 runs", x = "route, connections",
+  y = "requests per second", size = [640, 360])
+plot.Save(server, "speed-server.svg") -->
+```
 
 Des requêtes par seconde, mesurées le 2026-11-09, le binaire d'avant ce changement alternant dans les mêmes runs : il
 répondait à 53 918 et 53 546 requêtes sur la petite route à 10 et 100 connexions, 32 682 à 1 000, et 41 980 sur la

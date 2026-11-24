@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="288" viewBox="0 0 640 288">
+<title>The store of squares as list.Append fills it: one cell, then eight, the last three still free</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.s{fill:#57606a}
+.cell{fill:#fff;stroke:#1f2328;stroke-width:1.2}
+.new{fill:#eef1fc;stroke:#3a5ad9;stroke-width:1.6}
+.free{fill:#f6f8fa;stroke:#8c959f;stroke-width:1;stroke-dasharray:4 3}
+.br{stroke:#57606a;stroke-width:1.2;fill:none}
+</style>
+<rect width="640" height="288" fill="#fff"/>
+<text class="c" x="14" y="22">for n in 1..5</text>
+<text class="c" x="30" y="39">squares = list.Append(n * n, squares)</text>
+<text x="14" y="82">n = 1</text>
+<rect class="new" x="100" y="62" width="40" height="30"/>
+<text class="c" x="120" y="82" text-anchor="middle" fill="#3a5ad9">1</text>
+<text class="s" x="436" y="74"><tspan class="c">[]</tspan> has no cell: a new</text>
+<text class="s" x="436" y="91">list of one cell</text>
+<text x="14" y="142">n = 2</text>
+<rect class="cell" x="100" y="122" width="40" height="30"/><rect class="new" x="140" y="122" width="40" height="30"/>
+<rect class="free" x="180" y="122" width="40" height="30"/><rect class="free" x="220" y="122" width="40" height="30"/><rect class="free" x="260" y="122" width="40" height="30"/><rect class="free" x="300" y="122" width="40" height="30"/><rect class="free" x="340" y="122" width="40" height="30"/><rect class="free" x="380" y="122" width="40" height="30"/>
+<text class="c" x="120" y="142" text-anchor="middle">1</text><text class="c" x="160" y="142" text-anchor="middle" fill="#3a5ad9">4</text>
+<text class="s" x="436" y="134">no free cell: a new store of</text>
+<text class="s" x="436" y="151">8 cells, the 1 copied into it</text>
+<text x="14" y="202">n = 3, 4, 5</text>
+<rect class="cell" x="100" y="182" width="40" height="30"/><rect class="cell" x="140" y="182" width="40" height="30"/>
+<rect class="new" x="180" y="182" width="40" height="30"/><rect class="new" x="220" y="182" width="40" height="30"/><rect class="new" x="260" y="182" width="40" height="30"/>
+<rect class="free" x="300" y="182" width="40" height="30"/><rect class="free" x="340" y="182" width="40" height="30"/><rect class="free" x="380" y="182" width="40" height="30"/>
+<text class="c" x="120" y="202" text-anchor="middle">1</text><text class="c" x="160" y="202" text-anchor="middle">4</text>
+<text class="c" x="200" y="202" text-anchor="middle" fill="#3a5ad9">9</text><text class="c" x="240" y="202" text-anchor="middle" fill="#3a5ad9">16</text><text class="c" x="280" y="202" text-anchor="middle" fill="#3a5ad9">25</text>
+<text class="s" x="436" y="194">9, 16, 25 go into free</text>
+<text class="s" x="436" y="211">cells: nothing is copied</text>
+<path class="br" d="M101 220 L101 226 L299 226 L299 220 M200 226 L200 232"/>
+<path class="br" d="M301 220 L301 226 L419 226 L419 220 M360 226 L360 232"/>
+<text x="200" y="248" text-anchor="middle">squares: 5 elements</text>
+<text x="360" y="248" text-anchor="middle">3 free cells</text>
+<text class="s" x="14" y="276">A 9th element would copy the 8 into a store of 16: twice as many each time.</text>
+</svg>

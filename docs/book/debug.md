@@ -223,6 +223,12 @@ They need the `debug` permission, which `--debugger` and `--repl` give by themse
 The debugger runs inside the program, before it, and its own code never stops. A debugger is no library: it loads only
 with `--debugger`, and a program run without it pays nothing for it.
 
+[Cemacs](https://www-celestial.github.io/cemacs/running.html) gives such a debugger to the programs it runs, a file
+written with these functions that speaks with the editor over the input and output of the program: the editor marks
+the breakpoints in its margin, and at a stop shows the line and the variables of the frame.
+
+![Cemacs on total.ce stopped at its breakpoint, line 12, i / 2 in Half: the red dot in the margin, the line marked, and below, the pane Variables, stopped at total.ce:12, with i = 1; the last line says Running and the path of the file.](images/debug-cemacs.png)
+
 ## Speed
 
 Only a line with a breakpoint, and every line while you step, goes to the debugger, but a program under it runs slower

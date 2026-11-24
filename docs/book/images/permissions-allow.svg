@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+<title>What cesia run --allow read=./data,write=./out opens: reading under ./data and writing under ./out; every other file, the network, programs, variables and libraries stay closed</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.h{font-weight:600}
+.s{fill:#57606a}
+.ok{fill:#1a7f37;font-weight:600}
+.no{fill:#57606a}
+.wall{stroke:#1f2328;stroke-width:1.4;stroke-dasharray:6 4}
+.prog{fill:#f6f8fa;stroke:#1f2328;stroke-width:1.2}
+.stub{stroke:#8c959f;stroke-width:1.2}
+.bar{stroke:#cf222e;stroke-width:2.4}
+.rule{stroke:#eaeef2;stroke-width:1}
+</style>
+<rect width="640" height="420" fill="#fff"/>
+<text class="c" x="14" y="24">cesia run --allow read=./data,write=./out program.ce</text>
+<text class="h" x="226" y="58">outside the program</text><text class="h" x="420" y="58">opened by</text><text class="h" x="626" y="58" text-anchor="end">here</text>
+<line class="wall" x1="196" y1="70" x2="196" y2="354"/>
+<line x1="172" y1="88" x2="172" y2="328" stroke="#8c959f" stroke-width="1.2"/>
+<line x1="164" y1="208" x2="172" y2="208" stroke="#8c959f" stroke-width="1.2"/>
+<rect class="prog" x="14" y="156" width="150" height="112" rx="6"/>
+<text class="c h" x="89" y="184" text-anchor="middle">program.ce</text>
+<text x="89" y="210" text-anchor="middle">computes and</text>
+<text x="89" y="228" text-anchor="middle">prints, always;</text>
+<text x="89" y="246" text-anchor="middle">the rest is asked</text>
+<text class="s" x="188" y="74" text-anchor="end">the sandbox</text>
+<line x1="172" y1="88" x2="213.0" y2="88.0" stroke="#1a7f37" stroke-width="1.6"/><polygon fill="#1a7f37" points="220,88 212.0,92.0 212.0,84.0"/>
+<text x="226" y="92">reading files under ./data</text>
+<text class="c" x="420" y="92">read=./data</text>
+<text class="ok" x="626" y="92" text-anchor="end">open</text>
+<line class="rule" x1="216" y1="103" x2="630" y2="103"/>
+<line x1="172" y1="118" x2="213.0" y2="118.0" stroke="#1a7f37" stroke-width="1.6"/><polygon fill="#1a7f37" points="220,118 212.0,122.0 212.0,114.0"/>
+<text x="226" y="122">writing files under ./out</text>
+<text class="c" x="420" y="122">write=./out</text>
+<text class="ok" x="626" y="122" text-anchor="end">open</text>
+<line class="rule" x1="216" y1="133" x2="630" y2="133"/>
+<line class="stub" x1="172" y1="148" x2="193" y2="148"/><line class="bar" x1="196" y1="141" x2="196" y2="155"/>
+<text x="226" y="152">every other file</text>
+<text class="c" x="420" y="152">read, write</text>
+<text class="no" x="626" y="152" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="163" x2="630" y2="163"/>
+<line class="stub" x1="172" y1="178" x2="193" y2="178"/><line class="bar" x1="196" y1="171" x2="196" y2="185"/>
+<text x="226" y="182">the network</text>
+<text class="c" x="420" y="182">net, net=:8080 …</text>
+<text class="no" x="626" y="182" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="193" x2="630" y2="193"/>
+<line class="stub" x1="172" y1="208" x2="193" y2="208"/><line class="bar" x1="196" y1="201" x2="196" y2="215"/>
+<text x="226" y="212">other programs</text>
+<text class="c" x="420" y="212">exec, exec=git</text>
+<text x="533" y="212" fill="#cf222e">*</text>
+<text class="no" x="626" y="212" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="223" x2="630" y2="223"/>
+<line class="stub" x1="172" y1="238" x2="193" y2="238"/><line class="bar" x1="196" y1="231" x2="196" y2="245"/>
+<text x="226" y="242">environment variables</text>
+<text class="c" x="420" y="242">env, env=HOME</text>
+<text class="no" x="626" y="242" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="253" x2="630" y2="253"/>
+<line class="stub" x1="172" y1="268" x2="193" y2="268"/><line class="bar" x1="196" y1="261" x2="196" y2="275"/>
+<text x="226" y="272">C libraries</text>
+<text class="c" x="420" y="272">ffi=m</text>
+<text x="463" y="272" fill="#cf222e">*</text>
+<text class="no" x="626" y="272" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="283" x2="630" y2="283"/>
+<line class="stub" x1="172" y1="298" x2="193" y2="298"/><line class="bar" x1="196" y1="291" x2="196" y2="305"/>
+<text x="226" y="302">a native package's engine</text>
+<text class="c" x="420" y="302">native=cepheus</text>
+<text x="533" y="302" fill="#cf222e">*</text>
+<text class="no" x="626" y="302" text-anchor="end">closed</text>
+<line class="rule" x1="216" y1="313" x2="630" y2="313"/>
+<line class="stub" x1="172" y1="328" x2="193" y2="328"/><line class="bar" x1="196" y1="321" x2="196" y2="335"/>
+<text x="226" y="332">breakpoints, std/debug</text>
+<text class="c" x="420" y="332">debug</text>
+<text class="no" x="626" y="332" text-anchor="end">closed</text>
+<text class="s" x="14" y="382">A file outside the folder is denied as if nothing had been given, and the message says what to add.</text>
+<text x="14" y="402"><tspan fill="#cf222e">*</tspan><tspan class="s"> total trust: what it runs or loads is outside Cesia's checks, with every power of the person.</tspan></text>
+</svg>

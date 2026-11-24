@@ -69,6 +69,15 @@ definition work.
 `tools/editors/cesia-mode.el` is the mode of Cesia: add `(load "/path/to/cesia/tools/editors/cesia-mode.el")` to `init.el`.
 It tells Eglot, the client that comes with Emacs, how to start the server: `M-x eglot` in a `.ce` file starts it.
 
+## Cemacs
+
+[Cemacs](https://www-celestial.github.io/cemacs/), an editor written in Cesia, starts `cesia lsp` by itself, with no
+configuration, for the definition of a name, `M-.`, and its documentation, `C-c c i`; the errors under the code come
+from [cesia check](commands.md#cesia-check), which it runs itself. [Its book](https://www-celestial.github.io/cemacs/names.html)
+tells the rest.
+
+![Cemacs after C-c c i on list.Map in a file of Cesia: the list Doc of list.Map(f, xs) with its signature, list.Map(f, xs), its text, Applies f to each element, keeping the shape, and its example, list.Map(it * 2, [1, 2]) --> [2, 4], as cesia lsp gives them; a Filter prompt under it.](images/editors-cemacs.png)
+
 ## Zed and VS Code
 
 Both start a language server only through an extension of their own, and Cesia has none yet. Zed's also needs a grammar of

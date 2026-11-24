@@ -197,6 +197,8 @@ forme coûte environ 0,25 s pour un million de clés, une seule fois. Le hash pr
 au hasard à chaque exécution : personne ne peut donc envoyer à un serveur des clés choisies pour entrer en collision.
 [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie) montre les détails.
 
+![Les trois formes d'un dictionnaire : jusqu'à 32 clés, un seul bloc de ses clés, de leurs hashes et de ses valeurs ; au-delà de 32 clés, tant qu'un seul nom le tient, une hash table de slots et d'entrées dans l'ordre de leur arrivée, changée sur place ; une fois partagé puis écrit, comme par dict.Put, un trie CHAMP pour de bon, chaque niveau choisi par 5 bits d'un hash, environ log32 n étapes, 3 pour 30 000 clés.](../../book/images/maps-forms.svg)
+
 Un dictionnaire que rien d'autre ne garde est changé sur place : la boucle de [Compter](#compter) ne copie donc rien.
 500 000 clés de texte écrites puis lues prennent 0,28 s, contre 0,41 s pour le `dict` de Python, 0,27 s pour la map de
 Go et 0,22 s pour le `HashMap` de Java, comme le mesure [Vitesse](speed.md#le-calcul).

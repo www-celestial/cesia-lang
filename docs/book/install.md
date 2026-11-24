@@ -52,6 +52,8 @@ Run it:
 cesia run hello.ce
 ```
 
+![A terminal: cesia version prints cesia 1.3.0+dev, the version of this build, and cesia run hello.ce prints Hello, world!](images/install-terminal.svg)
+
 [io.Print] writes its arguments on one line, with a space between them, and a line end after the last one. It takes any value,
 not only texts:
 

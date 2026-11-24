@@ -153,6 +153,8 @@ count = 2
 show() --> 1
 ```
 
+![À gauche : addTen et adder(100) partagent un seul code, x -> x + n, chacune avec son propre n, 10 et 100, donc addTen(5) donne 15 et adder(100)(1) donne 101. À droite : show garde la valeur que count avait quand elle a été faite, 1, donc show() donne 1 après count = 2.](../../book/images/functions-closures.svg)
+
 ## Map, Filter et Reduce
 
 Ces trois fonctions prennent une fonction en premier, et la liste en dernier. [list.Map] applique la fonction à chaque

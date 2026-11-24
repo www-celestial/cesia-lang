@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="262" viewBox="0 0 640 262">
+<title>ageNextYear with ? : for "31" the function goes on and gives Ok(32); for "old" the ? returns the Err at once</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.s{fill:#57606a}
+.code{fill:#f6f8fa;stroke:#1f2328;stroke-width:1.1}
+.st{fill:#fff;stroke:#1f2328;stroke-width:1.1}
+.skip{fill:#fff;stroke:#8c959f;stroke-width:1;stroke-dasharray:4 3}
+.ok{fill:#1a7f37}
+.err{fill:#cf222e}
+</style>
+<rect width="640" height="262" fill="#fff"/>
+<text class="c s" x="14" y="24">defn ageNextYear(t)</text>
+<text class="c" x="296" y="24" text-anchor="middle">ageNextYear("31")</text>
+<text class="c" x="518" y="24" text-anchor="middle">ageNextYear("old")</text>
+<rect class="code" x="14" y="44" width="170" height="64" rx="4"/><text class="c" x="26" y="81">n = age(t)?</text>
+<rect class="code" x="14" y="130" width="170" height="40" rx="4"/><text class="c" x="26" y="155">result.Ok(n + 1)</text>
+<text class="s" x="26" y="221">what it gives</text>
+<rect class="st" x="196" y="44" width="200" height="64" rx="4"/>
+<text x="208" y="68"><tspan class="c">age(t)</tspan> gives <tspan class="c ok">Ok(31)</tspan></text>
+<text x="208" y="90"><tspan class="c">?</tspan> gives 31: <tspan class="c">n</tspan> is 31</text>
+<line x1="296" y1="108" x2="296.0" y2="123.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="296,130 292.0,122.0 300.0,122.0"/>
+<rect class="st" x="196" y="130" width="200" height="40" rx="4"/><text x="208" y="155">gives <tspan class="c ok">Ok(32)</tspan></text>
+<line x1="296" y1="170" x2="296.0" y2="193.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="296,200 292.0,192.0 300.0,192.0"/>
+<text class="c ok" x="296" y="221" text-anchor="middle">Ok(32)</text>
+<rect class="st" x="408" y="44" width="212" height="64" rx="4"/>
+<text x="420" y="68"><tspan class="c">age(t)</tspan> gives</text>
+<text class="c err" x="420" y="86">Err("not a number: old")</text>
+<text x="420" y="102"><tspan class="c">?</tspan> returns it at once</text>
+<rect class="skip" x="408" y="130" width="212" height="40" rx="4"/><text class="s" x="514" y="155" text-anchor="middle">never runs</text>
+<path d="M620 76 C640 76 634 120 634 150 C634 186 630 214 616 214" fill="none" stroke="#cf222e" stroke-width="1.3"/>
+<polygon fill="#cf222e" points="609,215 617,210.5 617,218.5"/>
+<text class="c err" x="510" y="221" text-anchor="middle">Err("not a number: old")</text>
+<text class="s" x="14" y="252">For an <tspan class="c">Ok</tspan>, <tspan class="c">?</tspan> gives its value and the function goes on; for an <tspan class="c">Err</tspan>, the function stops and gives it.</text>
+</svg>

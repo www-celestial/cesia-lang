@@ -229,6 +229,8 @@ tests continue : un test dit son verdict par sa valeur, et seule l'exécution en
 est un package : ses exemples et ses tests tournent donc ensemble. Les fichiers et les packages tournent côte à côte,
 chacun dans un processus à lui : un crash ou un test qui ne finit pas n'arrête que le sien, et il est nommé.
 
+![cesia test dans le projet shop : il trouve les deux exemples de tax.ce et les deux fonctions de test de tax.test.ce dans src/prices, laisse std/ et deps/ de côté, lance le package dans un processus à lui, et rapporte l'exemple de la ligne 6 qui a échoué, puis 3 passed, 1 failed, avec le code de sortie 1.](../../book/images/tests-run.svg)
+
 | Option | Ce qu'elle fait |
 |---|---|
 | `--seed N` | redonne les cas et les nombres au hasard d'une exécution précédente |

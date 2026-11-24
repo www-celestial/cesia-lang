@@ -136,6 +136,15 @@ and the range:
 | Python, `ctypes`, `bench/ccall.py` | 2.0 million (1.97 to 2.06) |
 | LuaJIT, its FFI, `bench/ccall.lua` | 818 million (509 to 868) |
 
+```cesia allow=read,write
+use std/plot
+perSecond = [11.8e6, 2.0e6, 818e6]
+calls = plot.Of([plot.Points(1..3, perSecond, size = 8), plot.Text(1..3, perSecond, ["11.8 million", "2.0 million", "818 million"])],
+  title = "Calls of C's abs a second, median of 5 runs", y = "calls a second (log scale)", yscale = "log", ylim = [1e6, 2e9],
+  xticks = 1..3, xlabels = ["Cesia, std/c", "Python, ctypes", "LuaJIT, its FFI"], xlim = [0.5, 3.5], size = [640, 320])
+plot.Save(calls, "c-calls.svg") -->
+```
+
 A call costs Cesia about 85 nanoseconds, 6 times less than Python's `ctypes`, and 70 times more than LuaJIT, whose JIT
 compiles the call into the machine code of the loop. A call to C is worth it for work that takes more than that, as a
 whole computation of a library, not for one small step in a loop.
@@ -168,6 +177,13 @@ nothing else ran; with `slow`, four at once on this machine of 8 cores.
 |---|---:|---:|---:|
 | without `slow` | 3,645 ms | 3,641 ms | 3,646 ms |
 | with `slow` | 1,518 ms | 800 ms | 66 ms |
+
+```cesia allow=read,write
+waits = plot.Bars(["all 50", "a sign-in", "wait of /ping"], [[3645, 3641, 3646], [1518, 800, 66]],
+  label = ["without slow", "with slow"])
+signins = plot.Of([waits], title = "50 sign-ins at once: milliseconds", y = "milliseconds", size = [640, 320])
+plot.Save(signins, "c-slow.svg") -->
+```
 
 The 66 ms that remain come with the hashes that run at once, each taking and giving back 64 MiB: four checks at once
 leave a fiber that sleeps 1 ms without a turn for up to 48 ms, two for 13 ms, one for 2 ms (`CESIA_CORES=1`, `bench/signin-gap.ce`); a

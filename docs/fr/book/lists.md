@@ -79,6 +79,8 @@ end
 squares -->
 ```
 
+![Le stockage de squares pendant que la boucle ajoute 1, 4, 9, 16 et 25 : le premier Append fait une liste d'une case ; le deuxième ne trouve aucune case libre et fait un stockage de 8 cases, où le 1 est copié ; 9, 16 et 25 vont dans des cases libres sans rien copier ; 3 cases restent libres.](../../book/images/lists-append.svg)
+
 ### Changer un élément
 
 Pour changer un élément, donnez sa position. Seul ce nom voit le changement :
@@ -110,6 +112,8 @@ courtes de [list.Take] et [list.Skip] :
 names[1..2] --> list.Take(2, names)
 names[2..end] --> list.Skip(1, names)
 ```
+
+![names contient Ana, Bo et Cyril ; sa partie 1..2, c'est-à-dire list.Take(2, names), est une nouvelle liste de Ana et Bo, et sa partie 2..end, c'est-à-dire list.Skip(1, names), une nouvelle liste de Bo et Cyril : leurs cases sont copiées, et names garde les trois.](../../book/images/lists-slice.svg)
 
 ## Trier
 
@@ -365,6 +369,8 @@ a = zeros(2, 3, 4);
 a(1, 2, 3) = 5;
 disp(a(15))
 ```
+
+![Les 24 cases de a = matrix.Zeros(2, 3, 4), dessinées en quatre matrices de 2 sur 3, une pour chaque k, puis telles qu'elles sont en mémoire, colonne par colonne : a[1, 2, 3], où 5.0 a été écrit, est la 15e case, a[15].](../../book/images/lists-column-major.svg)
 
 Un tel array ne s'écrit pas dans le code : [matrix.Reshape] donne aux éléments d'une liste la forme d'une liste de
 tailles. L'array s'affiche matrice par matrice sur ses deux premières dimensions, avec `;;;` avant la suivante le long

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="346" viewBox="0 0 640 346">
+<title>Two transactions: the update gives an Ok and is committed; clearAll deletes the notes, gives an Err, and is rolled back</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:13px}
+.s{fill:#57606a}
+.bx{fill:#fff;stroke:#1f2328;stroke-width:1.2}
+.okb{fill:#fff;stroke:#1a7f37;stroke-width:1.6}
+.erb{fill:#fff;stroke:#cf222e;stroke-width:1.6}
+.ok{fill:#1a7f37}
+.er{fill:#cf222e}
+</style>
+<rect width="640" height="346" fill="#fff"/>
+<text class="c" x="14" y="22">sql.Transaction(tx -&gt; sql.Exec(</text>
+<text class="c" x="46" y="39">"update notes set done = true where id = ?", [1], tx), db)</text>
+<rect class="bx" x="14" y="52" width="90" height="50" rx="5"/><text class="c" x="59.0" y="74" text-anchor="middle">begin</text><text class="c" x="59.0" y="90" text-anchor="middle">immediate</text><line x1="104" y1="77" x2="108.0" y2="77.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="115,77 107.0,81.0 107.0,73.0"/><rect class="bx" x="116" y="52" width="150" height="50" rx="5"/><text class="" x="191.0" y="74" text-anchor="middle">sets note 1</text><text class="" x="191.0" y="90" text-anchor="middle">done</text><line x1="266" y1="77" x2="270.0" y2="77.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="277,77 269.0,81.0 269.0,73.0"/><rect class="okb" x="278" y="52" width="220" height="50" rx="5"/><text class="" x="388.0" y="74" text-anchor="middle">the function gives</text><text class="c ok" x="388.0" y="90" text-anchor="middle">Ok({Changed: 1, LastId: 2})</text><line x1="498" y1="77" x2="502.0" y2="77.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="509,77 501.0,81.0 501.0,73.0"/><rect class="okb" x="510" y="52" width="116" height="50" rx="5"/><text class="c ok" x="568.0" y="74" text-anchor="middle">commit</text><text class="" x="568.0" y="90" text-anchor="middle">kept</text>
+<text class="s" x="14" y="124"><tspan class="c">sql.Transaction</tspan> gives that <tspan class="c">Ok</tspan>: note 1 is done for good.</text>
+<text class="c" x="14" y="162">sql.Transaction(clearAll, db)</text>
+<rect class="bx" x="14" y="174" width="90" height="50" rx="5"/><text class="c" x="59.0" y="196" text-anchor="middle">begin</text><text class="c" x="59.0" y="212" text-anchor="middle">immediate</text><line x1="104" y1="199" x2="108.0" y2="199.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="115,199 107.0,203.0 107.0,195.0"/><rect class="bx" x="116" y="174" width="150" height="50" rx="5"/><text class="c" x="191.0" y="196" text-anchor="middle">delete from notes</text><text class="" x="191.0" y="212" text-anchor="middle">both rows go</text><line x1="266" y1="199" x2="270.0" y2="199.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="277,199 269.0,203.0 269.0,195.0"/><rect class="erb" x="278" y="174" width="220" height="50" rx="5"/><text class="" x="388.0" y="196" text-anchor="middle">the function gives</text><text class="c er" x="388.0" y="212" text-anchor="middle">Err("changed my mind")</text><line x1="498" y1="199" x2="502.0" y2="199.0" stroke="#1f2328" stroke-width="1.3"/><polygon fill="#1f2328" points="509,199 501.0,203.0 501.0,195.0"/><rect class="erb" x="510" y="174" width="116" height="50" rx="5"/><text class="c er" x="568.0" y="196" text-anchor="middle">rollback</text><text class="" x="568.0" y="212" text-anchor="middle">all undone</text>
+<text class="s" x="14" y="246"><tspan class="c">sql.Transaction</tspan> gives that <tspan class="c">Err</tspan>: the delete is undone, both notes are there.</text>
+<text class="c" x="14" y="284">sql.Query("select id, done from notes", [], db)</text>
+<text class="c" x="30" y="302">--&gt; Ok([{Id: 1, Done: true}, {Id: 2, Done: false}])</text>
+<text class="s" x="14" y="334">A panic of the function rolls back too, and panics again.</text>
+</svg>

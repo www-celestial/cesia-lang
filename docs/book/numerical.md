@@ -301,6 +301,17 @@ Extended Rosenbrock with 1,000 numbers, given the gradient, from `(-1.2, 1, -1.2
 | scipy 1.18.1, at its defaults | 6.08 ms (6.06 to 6.09) | 2.86 ms (2.84 to 2.88), 159 calls, `X` to $4 \cdot 10^{-5}$ |
 | GNU Octave 11.3, `fminunc` and `fminsearch` | 32 s, 1,416 steps | 11.9 ms, 200 calls |
 
+The table on a log scale, Octave's 32 s written as 32,000 ms:
+
+```cesia allow=read,write
+use std/plot
+minimizeTimes = plot.Of([plot.Points([x - 0.1 for x in 1..4], [7.19, 6.42, 6.08, 32000], label = "Minimize"),
+  plot.Points([x + 0.1 for x in 1..4], [0.309, 3.91, 2.86, 11.9], label = "Simplex", shape = "square")],
+  title = "Minimize, n = 1,000, and Simplex, n = 2: ms a call", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..4, xlabels = ["Cesia", "scipy, same tol", "scipy, defaults", "Octave"], size = [640, 360])
+plot.Save(minimizeTimes, "numerical-minimize.svg") -->
+```
+
 scipy wins Minimize, 11 % less time at Cesia's tolerance and 16 % at its defaults: its loop is Fortran and its `f`
 numpy, while each step of Cesia's line search makes a dozen arrays of 1,000 floats; the two loops of the direction,
 which cost most, run as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$
@@ -648,6 +659,15 @@ alone, inside each program, the solve on `[0, 50]` after the other: the median o
 | scipy 1.18.1, `solve_ivp`, RK45 | 605 ms (600 to 614) | 128 ms (127 to 129) |
 | GNU Octave 11.3, `ode45` | 7,549 ms (7,536 to 7,571) | 1,104 ms (1,102 to 1,107) |
 
+```cesia allow=read,write
+use std/math
+lorenzTimes = plot.Of([plot.Points([x - 0.1 for x in 1..4], [56.6, 57.8, 605, 7549], label = "[0, 100], 1e-8"),
+  plot.Points([x + 0.1 for x in 1..4], [1.84, math.Nan, 128, 1104], label = "[0, 50], defaults", shape = "square")],
+  title = "The Lorenz system: milliseconds, median of 101 runs", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..4, xlabels = ["Cesia", "Cesia, cell", "scipy RK45", "Octave ode45"], size = [640, 360])
+plot.Save(lorenzTimes, "numerical-solve.svg") -->
+```
+
 The three use the same method, at the same tolerances, and do about the same work: on `[0, 100]`, Cesia takes 11,412
 steps and calls `f` 69,002 times, scipy 10,859 steps and 67,214 calls, Octave 12,855 steps and 77,593 calls. Cesia is 11
 times faster than scipy and 133 times faster than Octave on the first solve, and 70 and 600 times on the second. On five
@@ -689,6 +709,16 @@ Van der Pol's, after Robertson's in the same program:
 | scipy, `Radau` | 360 ms (358 to 362) | 360 ms (358 to 363) | 919 | 7,702 | 636 | 7.2e-7 |
 | Octave, `ode15s` | 116 ms (115 to 117) | 116 ms (116 to 117) | 1,393 | 2,651 | | 2.3e-4 |
 | Octave, `ode23s` | 2,401 ms (2,367 to 2,420) | 2,405 ms (2,394 to 2,430) | 3,892 | 38,950 | | 1.4e-4 |
+
+The first solves of the two tables, on a log scale:
+
+```cesia allow=read,write
+stiffTimes = plot.Of([plot.Points([x - 0.1 for x in 1..6], [12.2, 9.11, 133, 147, 929, 1240], label = "Robertson"),
+  plot.Points([x + 0.1 for x in 1..6], [15.2, 11.3, 279, 360, 116, 2401], label = "Van der Pol", shape = "square")],
+  title = "Two stiff problems, first solve: milliseconds", y = "milliseconds (log scale)", yscale = "log",
+  xticks = 1..6, xlabels = ["Rodas5P", "LSODA", "BDF", "Radau", "ode15s", "ode23s"], size = [640, 360])
+plot.Save(stiffTimes, "numerical-stiff.svg") -->
+```
 
 Octave's two stop at `t = 0` with the first step they choose: under `ode15s`, SUNDIALS's IDA (Hindmarsh et al. 2005)
 says that its corrector failed to converge on Robertson's and its error test on Van der Pol's; so both are given
@@ -973,6 +1003,14 @@ in a fresh program; then the mean of 1,000 calls in the same program.
 | **Cesia** | 152 µs (144 to 158) | **44.6 µs** (44.3 to 45.0) |
 | scipy 1.18.1, `quad` | **109 µs** (108 to 109) | 79.8 µs (79.6 to 80.2) |
 | GNU Octave 11.3, `integral` | | 2,286 µs (2,280 to 2,293) |
+
+```cesia allow=read,write
+integralTimes = plot.Of([plot.Points([x - 0.1 for x in 1..3], [152, 109, math.Nan], label = "first call"),
+  plot.Points([x + 0.1 for x in 1..3], [44.6, 79.8, 2286], label = "then, each call", shape = "square")],
+  title = "One integral, 315 calls of f: microseconds", y = "microseconds (log scale)", yscale = "log",
+  xticks = 1..3, xlabels = ["Cesia", "scipy, quad", "Octave, integral"], xlim = [0.5, 3.5], size = [640, 340])
+plot.Save(integralTimes, "numerical-integral.svg") -->
+```
 
 Cesia is 1.8 times as fast as scipy once its code is read, and 51 times as fast as Octave, whose `integral` also stops
 further from 4, 2.3e-11 away. scipy wins the first call: Cesia reads and prepares the code of std/quad then. The time
