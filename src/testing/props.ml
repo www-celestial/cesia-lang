@@ -228,7 +228,11 @@ let start ctx _ =
   | Some (size, draws) -> Trie.record (Trie.names [| "Size"; "Tape" |]) [| Int size; int_array draws |]
   | None -> Missing
 
-let mkdir d = if not (Sys.file_exists d) then Sys.mkdir d 0o755
+(* Made if it isn't there: a run that saves at the same time, as the golden tests of a fresh clone do, may make it
+   between the look and the mkdir, which is fine; where that was a Sys_error, the save went silently. *)
+let mkdir d =
+  if not (Sys.file_exists d) then
+    try Sys.mkdir d 0o755 with Sys_error _ when Sys.file_exists d && Sys.is_directory d -> ()
 
 let save ctx (a : t array) =
   only_in_tests ctx;

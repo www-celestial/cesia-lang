@@ -167,6 +167,9 @@
   into an Err. The same on Windows for `sys.RemoveTree` and `sys.CopyTree` of a folder that goes away while they list
   it. `tests/sys/remove-race`, which makes and removes folders while another process swaps them, ended so once in 24
   runs under load, never in 120 now.
+- `cesia test` saves the failing case of a `ForAll` when another run makes `.cesia/failures` at the same time, as the
+  golden tests of a fresh clone do, where the save went silently and the next run drew its cases again: 8 runs at
+  once lost one in 25 tries, none in 60 now. The CI on macOS failed so on `tests/testing/forall`.
 - `cells.Analyse` gives the error of rule 5 for a slider written with no argument, `x = cells.Slider()`, where it
   panicked, so an editor that analysed such a file stopped.
 - `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
