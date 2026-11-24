@@ -39,14 +39,15 @@ if hits=$(find . \( -name '*.c' -o -name '*.h' \) -not -path './src/sys/*' -not 
   fail "C file outside src/sys/:
 $hits"
 fi
-# src/sys/mir/ is MIR, third-party: outside the budget, as generated files are. 638 lines (raised from 500 on 2026-11-13,
+# src/sys/mir/ is MIR, third-party: outside the budget, as generated files are. 650 lines (raised from 500 on 2026-11-13,
 # for the JIT's context of MIR per unit and its level 2 made in another domain, then from 520 on 2026-11-21, for the
 # openat, unlinkat and readdir of a descriptor that sys.RemoveTree walks with, which OCaml's Unix lacks, then from 560
 # on 2026-11-22, for openat2, mkdirat, symlinkat, renameat, readlinkat and futimens, which the checks of read= and
 # write= and sys.CopyTree work with, then from 623 on 2026-11-23, for copy_file_range, with which sys.Copy and
-# sys.CopyTree copy the bytes of a file in the kernel).
+# sys.CopyTree copy the bytes of a file in the kernel, then from 638 on 2026-11-24, for LoadLibraryExA, with which a DLL of
+# a release's lib/ finds those it needs beside it on Windows, as $ORIGIN does on Linux).
 c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c src/sys/jit.c | wc -l)
-[ "$c_lines" -le 638 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 638"
+[ "$c_lines" -le 650 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 650"
 
 # Change loop: a touched .ml, rebuilt and tested on the typed path in under 5 s, in the dev profile.
 budget_ms=5000
