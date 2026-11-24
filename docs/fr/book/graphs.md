@@ -532,7 +532,9 @@ plot.Save(ripple, "ripple.svg") -->
 `across` contient `x[j]` dans chaque colonne $j$, et sa transposée `y[i]` dans chaque ligne $i$ : la grille des deux,
 comme la donne `meshgrid` dans MATLAB et numpy. [plot.Of] donne trois options de plus à un graphique 3D : `z`, le nom de
 son troisième axe, `zlim`, son étendue, et `view`, l'endroit d'où on le regarde. Un graphique 3D contient une seule
-[plot.Surface], ou des couches [plot.Line3], jamais les deux et jamais une couche 2D ; ses axes sont linéaires.
+[plot.Surface], ou des couches [plot.Line3] et [plot.Mesh], jamais une surface avec elles et jamais une couche 2D ; ses
+axes sont linéaires. Les pièces solides faites de triangles, éclairées et ombrées, avec leurs arêtes et une caméra, sont
+le chapitre [Objets 3D](3d.md).
 
 ### La vue
 
@@ -598,8 +600,9 @@ couvrent deux quads ou plus, que le quad peint en dernier est le plus proche : 1
 
 Un quad prend la couleur de la moyenne de ses quatre hauteurs, comme le `plot_surface` de matplotlib les colore, parmi
 les 256 de viridis, ou de `colors = "diverging"` comme pour [plot.Heatmap], et une barre de couleurs à côté dit quelle
-hauteur est chaque couleur. Il n'y a ni lumière ni arêtes : la couleur seule dit la hauteur, comme dans le `surf` de
-MATLAB, dont les couleurs « vary according to the heights ». Un NaN retire les quatre quads qui l'entourent, un *trou*, et
+hauteur est chaque couleur. Il n'y a par défaut ni lumière ni arêtes : la couleur seule dit la hauteur, comme dans le
+`surf` de MATLAB, dont les couleurs « vary according to the heights » ; `light` et `perspective` l'ombrent et la montrent
+par une caméra, comme le montre [Objets 3D](3d.md#une-surface-éclairée). Un NaN retire les quatre quads qui l'entourent, un *trou*, et
 [plot.Scene] le compte dans `Dropped` ; un infini est une erreur qui nomme sa place :
 
 ```cesia
@@ -650,13 +653,13 @@ a un `<title>` qu'un lecteur d'écran prononce, comme `Surface, 61 × 61 points,
 |---|---|---|---|---|
 | dessin | des quads du fond vers l'avant, un ordre exact pour une surface, sans tri | des polygones triés par une profondeur chacun, faux à certaines vues selon sa propre FAQ | WebGL (le dessin 3D des navigateurs), un *depth buffer* (la profondeur de chaque pixel, gardée pour ne peindre que le plus proche) | le *depth buffer* de la carte graphique |
 | plusieurs surfaces, une courbe sur une surface | non : une surface, ou des courbes 3D | oui, avec les défauts de son tri | oui | oui |
-| couleurs | la hauteur moyenne d'un quad, viridis ; ni lumière ni arêtes | une seule couleur ombrée par une lumière par défaut, ou une palette | une échelle de couleurs, et une lumière : ambient 0,8, diffuse 0,8 | la hauteur, `FaceColor` flat, des arêtes sombres par défaut |
+| couleurs | la hauteur moyenne d'un quad, viridis ; une lumière sur demande, pas d'arêtes | une seule couleur ombrée par une lumière par défaut, ou une palette | une échelle de couleurs, et une lumière : ambient 0,8, diffuse 0,8 | la hauteur, `FaceColor` flat, des arêtes sombres par défaut |
 | grandes surfaces | des moyennes de blocs au-delà de 200 par 200 quads, dites sous le graphique | 50 points par direction par défaut, en tranches | tous les points | tous les points |
 | tourner | Cemacs, par la session ; la page montre la vue du code | une fenêtre | la page, avec plotly.js | une fenêtre, `rotate3d` |
 
 Là où ils gagnent : plotly tourne son graphique dans la page elle-même, avec un script, montre la valeur sous la souris et
 dessine des contours sur la surface ; MATLAB, Octave et plotly dessinent plusieurs surfaces qui se croisent, avec lumière
-et transparence, comme le fait un *depth buffer* ; tous trois offrent la perspective. Là où Cesia gagne : son image est exacte à chaque vue sans
+et transparence, comme le fait un *depth buffer*. Là où Cesia gagne : son image est exacte à chaque vue sans
 carte graphique, la même dans Cemacs et dans le SVG, et une grande surface est lissée par des moyennes, dites sous le
 graphique, pas coupée en tranches.
 
@@ -948,8 +951,8 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 - Une courbe dont le x va et vient garde tous ses points ; au-delà de 200 000 marqueurs, prenez [plot.Density].
 - Pas de zoom dans cette version. Une animation contient au plus 300 images, toutes en mémoire, et s'écrit en SVG, pas
   en vidéo ni en GIF.
-- En 3D : une surface par graphique, ou des courbes, jamais les deux ; ni perspective, ni lumière, ni arêtes, ni
-  transparence, ni contours sur la surface, ni points ni échelles logarithmiques en 3D ; les courbes 3D sont dessinées
+- En 3D : une surface par graphique, ou des courbes et des meshes, jamais une surface avec eux ; ni arêtes sur une
+  surface, ni transparence, ni contours sur la surface, ni points ni échelles logarithmiques en 3D ; les courbes 3D sont dessinées
   dans l'ordre de leurs layers ; une grille ou une animation de graphiques 3D les montre à la vue de leur code, et Cemacs
   ne les tourne pas ; une page montre la vue du code.
 
@@ -999,6 +1002,5 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 
 ## La suite
 
-Vous savez dessiner ce que vous calculez. Le chapitre suivant, [Méthodes numériques](numerical.md), trouve les zéros et
-les minima des fonctions, résout les équations différentielles et les systèmes sparse (dont la matrice est presque toute
-faite de zéros), et calcule des intégrales.
+Vous savez dessiner ce que vous calculez. Le chapitre suivant, [Objets 3D](3d.md), dessine des pièces solides faites de
+triangles, éclairées et ombrées, comme les montre un logiciel de CAO.

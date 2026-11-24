@@ -44,30 +44,32 @@ language.
     and what each costs.
 16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, and animations of them,
     drawn to SVG, and the methods each step follows.
-17. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations, integrals and
+17. [3D objects](3d.md): parts made of triangles, boxes, cylinders, cones, spheres and STL files, moved and turned,
+    lit and shaded, with their edges and a camera, as a CAD program shows them, and how each step works.
+18. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations, integrals and
     sparse systems, as `fzero`, `fminsearch`, `ode45`, `integral` and `A \ b`, with what each method promises, beside
     scipy and Octave.
-18. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, Monte
+19. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, Monte
     Carlo means with their intervals, the special functions under them, with what each method promises, beside R and
     scipy.
-19. [JSON and CSV](json.md): reading, writing, and checking what comes in.
-20. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
-21. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
-22. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
-23. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
-24. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site
+20. [JSON and CSV](json.md): reading, writing, and checking what comes in.
+21. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
+22. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
+23. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
+24. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
+25. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site
     for your project.
-25. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
-26. [Cells](cells.md): a notebook in a `.ce` file, cells that run again when what they read changes, a session,
+26. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
+27. [Cells](cells.md): a notebook in a `.ce` file, cells that run again when what they read changes, a session,
     sliders, and a page to share.
-27. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
+28. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
     and LuaJIT, measured: start-up, loops, maps, fibers and a server.
-28. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-29. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
-30. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
-31. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
+29. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+30. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
+31. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+32. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
     measure to the proof that it is solved: properties, the birthday bound, and the times beside Python.
-32. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+33. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
     fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:

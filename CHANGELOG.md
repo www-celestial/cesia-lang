@@ -117,6 +117,32 @@
 - The page of `cells.Html` draws a table as Cemacs does: a thin frame and the rule under its header in ink, lighter
   lines between its rows and columns, its header bold, a number on the right with its decimal point under those of its
   column, a text on the left, every text escaped.
+- `std/mesh` makes solid parts of triangles: `mesh.Box`, `mesh.Cylinder`, `mesh.Cone` and `mesh.Sphere`, closed, their
+  corners counterclockwise from outside, 48 segments around by default; `mesh.Move`, `mesh.Turn` (degrees around an axis,
+  the right hand's rule, Rodrigues' formula), `mesh.Scale` (a mirror turns the corners back) and `mesh.Merge`;
+  `mesh.Normals` and `mesh.Bounds`; `mesh.Of` for your own matrices of points and triangles, checked. `mesh.ReadStl`
+  reads binary and text STL, each corner at one place made one point; a file from anyone is checked before any memory is
+  taken: a binary file must be 84 + 50 n bytes for the n its header counts, a text must follow the grammar of facets, a
+  NaN, an infinity or more than 2,000,000 triangles is an Err, and under `--limit memory=` the reading stops in its
+  fiber. `mesh.WriteStl` writes binary, or text with `ascii = true`; read back, a mesh of floats of 32 bits is the same.
+  `text.Numbers(kind, bytes)` and `text.FromNumbers(kind, numbers)` read and write the numbers that the bytes of a binary
+  file hold, little-endian, `u8` to `f64`. 99,224 triangles read in 186 ms from binary, 1.55 s from text.
+- `plot.Mesh(m, color, edges, label)` draws a mesh in a 3D graph, lit and shaded flat: ambient 0.3, Lambert's diffuse
+  0.7 and Blinn's highlight 0.2, from `light`, or from the eye turned 30 degrees up when the graph gives none; the faces
+  turned away from the eye left out, the parts ordered whole by planes between them, and of two convex parts that cross,
+  as a shaft through a wheel, one cut by the planes of the other, once, when `plot.Of` makes the graph. `edges = true`
+  draws the edges of a drawing: those where faces meet at more than 30 degrees, the outline and the border, each hidden
+  where a nearer face covers it. A test checks against a ray cast from the eye that the part seen at points of the
+  screen is the nearest, at random views of random parts that cross. At most 200,000 triangles a graph, about 70 bytes
+  of SVG each triangle drawn.
+- `plot.Of(..., light = [x, y, z], perspective = true, aspect = "equal", axes = false)`: a light fixed along the axes;
+  a pinhole camera, the eye 4 radii of the box away; a unit as long on each axis, the default with a mesh, or the box of
+  1 by 1 by 0.75; no box, grid or ticks. A surface given `light` or `perspective` is shaded and seen through the camera,
+  its quads in the order of McMillan for a projection from a point; without them it is the same bytes as before.
+- The book has a chapter, 3D objects, in English and in French: a box lit, the light, edges, perspective, moving and
+  turning, a small machine, an STL part, a lit surface, how each step works with its papers, its limits, its speed, and
+  matplotlib, MATLAB, plotly and PyVista beside it. `std/plot` loads in 4.89 ms where it took 4.36 ms, and a first graph
+  takes 8.1 ms, against 7.7 (medians of 21 runs, alternated): the code of meshes is in the package.
 
 ### Tools
 

@@ -48,38 +48,41 @@ construction : le livre ne peut donc pas s'écarter du langage.
     et les heaps, et ce que chacun coûte.
 16. [Graphiques](graphs.md) : courbes, points, barres, histogrammes, cartes de chaleur et densités comme
     valeurs, et leurs animations, dessinés en SVG, et la méthode que suit chaque étape.
-17. [Méthodes numériques](numerical.md) : le zéro d'une fonction, son minimum, les équations différentielles, les
+17. [Objets 3D](3d.md) : des pièces faites de triangles, boîtes, cylindres, cônes, sphères et fichiers STL, déplacées
+    et tournées, éclairées et ombrées, avec leurs arêtes et une caméra, comme les montre un logiciel de CAO, et comment
+    marche chaque étape.
+18. [Méthodes numériques](numerical.md) : le zéro d'une fonction, son minimum, les équations différentielles, les
     intégrales et les systèmes sparse (dont la matrice est presque toute faite de zéros), comme `fzero`, `fminsearch`,
     `ode45`, `integral` et `A \ b`, avec ce que promet chaque méthode, à côté de scipy et d'Octave.
-18. [Statistiques](statistics.md) : les lois de probabilité comme valeurs, leurs densités, leurs queues,
+19. [Statistiques](statistics.md) : les lois de probabilité comme valeurs, leurs densités, leurs queues,
     leurs quantiles et leurs tirages, les moyennes de Monte-Carlo avec leur intervalle, les fonctions spéciales en
     dessous, avec ce que promet chaque méthode, à côté de R et de scipy.
-19. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
-20. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
+20. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
+21. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
     qui changent d'elles-mêmes), et le client.
-21. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
+22. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
     signatures, grâce à libsodium.
-22. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.
-23. [SQLite](sqlite.md) : les tables, les lignes, les queries avec `?`, les transactions et les lignes comme structs.
-24. [Tests](tests.md) : les exemples dans la documentation, les fonctions de test, les propriétés, les snapshots,
+23. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.
+24. [SQLite](sqlite.md) : les tables, les lignes, les queries avec `?`, les transactions et les lignes comme structs.
+25. [Tests](tests.md) : les exemples dans la documentation, les fonctions de test, les propriétés, les snapshots,
     `cesia test`, et un site pour votre projet.
-25. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
+26. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
     erreur, corriger et continuer.
-26. [Cells](cells.md) : un notebook (du code coupé en cells, des morceaux qui ont chacun leur résultat) dans un fichier
+27. [Cells](cells.md) : un notebook (du code coupé en cells, des morceaux qui ont chacun leur résultat) dans un fichier
     `.ce`, des cells qui tournent de nouveau quand ce qu'elles lisent change, une session, des sliders (des curseurs), et
     une page à partager.
-27. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
+28. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
     Java, Go, OCaml, Lua et LuaJIT, mesuré : le démarrage, les boucles, les maps, les fibers et un serveur.
-28. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
+29. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
     C.
-29. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
+30. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
     un.
-30. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
+31. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
     serveur.
-31. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
+32. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
     première mesure à la preuve que c'est résolu : les propriétés, la borne des anniversaires, et les temps à côté de
     Python.
-32. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
+33. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
     maps, le JIT, les fibers et leur scheduler, les channels, le serveur sur tous les cœurs, le garbage collector et le
     démarrage, avec leurs chiffres.
 

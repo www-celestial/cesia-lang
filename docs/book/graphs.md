@@ -508,8 +508,9 @@ plot.Save(ripple, "ripple.svg") -->
 
 `across` holds `x[j]` in each column $j$, and its transpose `y[i]` in each row $i$: the grid of both, as `meshgrid` gives
 it in MATLAB and numpy. [plot.Of] gives a 3D graph three options more: `z`, the name of its third axis, `zlim`, its range,
-and `view`, where it is seen from. A 3D graph holds one [plot.Surface], or [plot.Line3] layers, never both and never a
-layer of 2D; its axes are linear.
+and `view`, where it is seen from. A 3D graph holds one [plot.Surface], or [plot.Line3] and [plot.Mesh] layers, never a
+surface with them and never a layer of 2D; its axes are linear. Solid parts made of triangles, lit and shaded, with
+their edges and a camera, are the chapter [3D objects](3d.md).
 
 ### The view
 
@@ -572,8 +573,9 @@ matplotlib's sort found 0.6 % to 29 % of such points wrong, from a flat surface 
 
 A quad takes the color of the mean of its four heights, as matplotlib's `plot_surface` colors them, among the 256 of
 viridis, or of `colors = "diverging"` as for [plot.Heatmap], and a color bar beside says which height each color is.
-There is no light and no edge: the color alone says the height, as in MATLAB's `surf`, whose colors "vary according to
-the heights". A NaN leaves out the four quads around it, a *hole*, and [plot.Scene] counts it in `Dropped`; an infinity is
+There is no light and no edge by default: the color alone says the height, as in MATLAB's `surf`, whose colors "vary
+according to the heights"; `light` and `perspective` shade it and show it through a camera, as
+[3D objects](3d.md#a-lit-surface) shows. A NaN leaves out the four quads around it, a *hole*, and [plot.Scene] counts it in `Dropped`; an infinity is
 an error that names its place:
 
 ```cesia
@@ -621,13 +623,13 @@ screen reader says, as `Surface, 61 × 61 points, z from −0.301 to 0.584`.
 |---|---|---|---|---|
 | drawing | quads from far to near, an order exact for one surface, no sort | polygons sorted by one depth each, wrong at some views by its own FAQ | WebGL in the browser, a depth buffer | the graphics card's depth buffer |
 | several surfaces, a line on a surface | no: one surface, or 3D lines | yes, with the faults of its sort | yes | yes |
-| colors | the mean height of a quad, viridis; no light, no edge | a single color shaded by a light by default, or a colormap | a colorscale, and a light: ambient 0.8, diffuse 0.8 | the height, `FaceColor` flat, dark edges by default |
+| colors | the mean height of a quad, viridis; a light on request, no edge | a single color shaded by a light by default, or a colormap | a colorscale, and a light: ambient 0.8, diffuse 0.8 | the height, `FaceColor` flat, dark edges by default |
 | large surfaces | means of blocks past 200 by 200 quads, said under the graph | 50 points a direction by default, by slicing | all the points | all the points |
 | turning | Cemacs, by the session; the page shows the view of the code | a window | the page, with plotly.js | a window, `rotate3d` |
 
 Where they win: plotly turns its graph in the page itself, with a script, shows the value under the mouse and draws
 contours on the surface; MATLAB, Octave and plotly draw several surfaces that cross, with light and transparency, as a
-depth buffer does; all three offer perspective. Where Cesia wins: its picture is exact at every view without a graphics
+depth buffer does. Where Cesia wins: its picture is exact at every view without a graphics
 card, the same in Cemacs and in the SVG, and a large surface is smoothed by means, said under the graph, not sliced.
 
 ## From data to pixels
@@ -900,8 +902,8 @@ leaves the painting to Cemacs.
 - A line whose x goes back and forth keeps all its points; past 200,000 markers, use [plot.Density].
 - No zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as a video
   or a GIF.
-- In 3D: one surface a graph, or lines, never both; no perspective, no light, no edges, no transparency, no contours on
-  the surface, no points or log scales in 3D; 3D lines are drawn in the order of their layers; a grid or an animation
+- In 3D: one surface a graph, or lines and meshes, never a surface with them; no edges on a surface, no transparency,
+  no contours on the surface, no points or log scales in 3D; 3D lines are drawn in the order of their layers; a grid or an animation
   of 3D graphs shows them at the view of their code, and Cemacs doesn't turn them; a page shows the view of the code.
 
 ## Further reading
@@ -949,5 +951,5 @@ leaves the painting to Cemacs.
 
 ## Next
 
-You can draw what you compute. The next chapter, [Numerical methods](numerical.md), finds the zeros and minima of
-functions, solves differential equations and sparse systems, and computes integrals.
+You can draw what you compute. The next chapter, [3D objects](3d.md), draws solid parts made of triangles, lit and
+shaded, as a CAD program shows them.
