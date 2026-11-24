@@ -299,7 +299,115 @@ point sous la souris. Un tri ou un filtre garde la position de chaque ligne, Pos
 que soit l'ordre que la table montre. Cemacs dessine ainsi la table et le graphique : la ligne choisie marque son point,
 et un clic sur un point choisit sa ligne, comme le dit [Cemacs](https://www-celestial.github.io/cemacs/cells.html).
 
-![Cemacs sur ce fichier : la table des heures triée par elevation, décroissante, la ligne de 11 et 28.02 choisie, et dessous le graphique des six points, le point de 11 entouré avec sa boîte x = 11, y = 28.02 ; en bas, les touches de la table : les flèches, PgUp et PgDn, s pour trier, / pour filtrer, M-w pour copier, C-c e c pour copier en CSV, C-g pour sortir.](../../book/images/cells-table.png)
+![Cemacs sur ce fichier : la table des heures triée par elevation, décroissante, la ligne de 11 et 28.02 choisie, et dessous le graphique des six points, le point de 11 entouré avec sa boîte x = 11, y = 28.02 ; en bas, les touches de la table : les flèches, PgUp et PgDn, s pour trier, / pour filtrer, Enter et e pour modifier une valeur, < > et = pour la largeur d'une colonne, t pour les totaux, M-w pour copier, C-c e c pour copier en CSV, C-g pour sortir.](../../book/images/cells-table.png)
+
+### Totaux
+
+[cells.Totals] donne, pour chaque colonne d'une table que la session garde, par sa Key ou par le nom qui la tient,
+combien de valeurs elle a, et pour une colonne de nombres leur somme, leur moyenne, la plus petite et la plus grande : sur
+toutes les lignes que son filtre garde, comme [cells.Rows] les filtre, pas seulement sur celles qu'un écran montre. Le
+calcul se fait dans la session, sur des colonnes entières, si bien qu'un frame (une table de colonnes nommées) de $10^6$
+lignes ne traverse jamais. `cells.Totals(session, name, filter = missing)` donne un Ok d'un struct :
+
+| Champ | Contient |
+|---|---|
+| Count | les lignes comptées : celles qui ont les mots du filtre, ou toutes |
+| Total | les lignes de la valeur |
+| Columns | pour chaque colonne, comme [cells.Rows] les donne, `{Name, Count, Missing, Sum, Mean, Min, Max}` |
+
+Le Count d'une colonne est le nombre de ses valeurs qui ne manquent pas, et Missing le nombre de celles qui manquent :
+`missing`, et NaN, un Float qui n'est *pas un nombre* (*not a number*), comme le donne `0.0 / 0.0`, qu'aucun total ne
+saurait lire. Sum, Mean, Min et Max sont la somme, la moyenne, le minimum et le maximum des autres valeurs, pour une
+colonne dont les autres valeurs sont toutes des nombres ; Mean est un Float. Pour une colonne de textes, de `true` et
+`false`, ou d'autres valeurs, les quatre manquent, et Count dit combien de valeurs elle a. Une colonne de nombres dont le
+filtre ne garde aucune ligne a une Sum de 0, et Mean, Min et Max manquent.
+
+Pour une colonne d'un frame de la session, le total est ce que [list.Sum] et [list.Mean] donnent sur ses valeurs qui ne
+manquent pas : `cells.Totals(s, "hours")?.Columns[2].Sum` est `list.Sum(frame.Present(frame.Column("elevation", hours)))`,
+calculé là où est `hours`.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("day.ce")?)
+  s = cells.Session("day.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  t = cells.Totals(s, "hours", filter = "12:")?
+  io.Print(t.Count, " of ", t.Total, " rows, elevation: ", t.Columns[2].Sum, ", mean ", t.Columns[2].Mean)
+  result.Ok(missing)
+end
+```
+
+Un nom qui ne tient pas de table et un filtre qui n'est pas un texte sont chacun un Err, comme pour [cells.Rows]. Un
+filtre que la dernière demande de lignes de la table a déjà cherché n'est pas relu. Les totaux d'un frame de $10^6$
+lignes et 3 colonnes, une colonne d'entiers, une de floats et une de textes, prennent 65 ms dans la session ; filtrés par
+les deux mots `row 12`, que la dernière demande de lignes a cherchés et qui gardent 180 090 lignes, 32 ms (la médiane de
+trois lancements de 21, sur la machine de [Vitesse](speed.md#à-côté-des-géants)). Le travail est natif et sur des
+colonnes entières : les valeurs manquantes d'une colonne d'autres valeurs que des nombres sont cherchées une fois qu'une
+recherche en trouve une, les NaN d'une colonne de floats une fois que sa somme est NaN.
+
+### Tables écrites dans le fichier
+
+Une table est *écrite dans le fichier* quand une cell l'écrit en valeurs : une liste de maps (de dictionnaires), `[{name:
+"Ana", age: 31}, {name: "Bo", age: 20}]`, ou [frame.Of] de listes, `frame.Of({hour: [7, 8, 9], elevation: [0.48, 9.99,
+18.14]})`, par le nom que donne le use de [std/frame] dans la première cell, chaque valeur un nombre, un texte, `true`,
+`false` ou `missing` écrit là, sur une ligne ou sur plusieurs. [cells.Tables] les lit dans le texte d'une cell, comme
+Analyse lit les inputs (les champs du formulaire), sans rien en exécuter : `cells.Tables(cells, i)` donne les tables
+qu'écrit la cell i de [cells.Parse], dans l'ordre où elles commencent, chacune un struct :
+
+| Champ | Contient |
+|---|---|
+| Name | le nom d'une ligne `name = ...` qui donne la table, ou missing pour une table écrite ailleurs, comme dans `cells.Show(...)` |
+| Kind | `"records"` pour une liste de maps, `"frame"` pour frame.Of |
+| Line, Column | où elle commence dans le fichier |
+| Columns | les clés de sa première map, ou les noms de ses colonnes, comme [cells.Rows] les donne |
+| Count | ses lignes |
+| Cells | pour chaque ligne et chaque colonne, `{Value, Line, Column, End}` : la valeur, et où le fichier l'écrit, de sa première colonne à sa dernière, un texte avec ses guillemets ; missing pour une map qui n'écrit pas cette clé |
+| Kinds | pour chaque colonne, ce que tiennent ses valeurs : `"whole"`, des nombres entiers ; `"number"`, des nombres dont l'un au moins est écrit avec un point ; `"text"` ; `"bool"`, `true` et `false` ; ou `"mixed"`, un mélange |
+
+Une plage comme `7..16`, une expression, un texte avec `$name` ou `$(...)` dedans, une map qui écrit deux fois une clé,
+des colonnes de longueurs différentes, une table dans un commentaire ou dans un texte : rien de cela n'est une table écrite
+dans le fichier. Une table de plus de 100 000 valeurs non plus. Le texte est lu par octets, avec les recherches natives de
+[std/text] : une table de 12 lignes et 3 colonnes se lit en 0,15 ms, une de 1 000 lignes en 12 ms (médianes de 21).
+
+[cells.Edit] fait une valeur d'une telle table avec les mots qu'une personne tape : `cells.Edit(table, row, column,
+words)`, la ligne et la colonne à partir de 1, donne un Ok de `{Value, Text, Line, Column, End}`, la valeur, son texte tel
+que le fichier l'écrit, et où l'ancienne est écrite, dont Text prend la place. Le genre de la colonne dit ce qu'elle
+prend :
+
+| Colonne | Prend | Écrit |
+|---|---|---|
+| `"whole"` | un nombre entier, `12`, `-3`, `8.0` | en Int : `12`, `-3`, `8` |
+| `"number"` | un nombre fini | en Float, pour que la colonne reste une colonne de Floats : `12` s'écrit `12.0` |
+| `"text"` | n'importe quel texte | entre guillemets, ses `"`, `\`, `$` et fins de ligne échappés comme les inputs les écrivent |
+| `"bool"` | `true` ou `false` | tel quel |
+| `"mixed"` | une valeur du genre de celle qu'elle remplace ; à la place de `missing`, un nombre, `true` ou `false`, sinon un texte | comme plus haut |
+
+Des mots d'un autre genre sont un Err qui dit ce que la colonne prend, comme `elevation takes a number: ten is none.` ;
+une ligne qui n'écrit aucune valeur dans cette colonne aussi.
+
+```cesia
+use std/cells
+use std/io
+c = cells.Parse("use std/frame\n(* %% Day *)\nhours = frame.Of({hour: [7, 8], elevation: [0.48, 9.99]})")
+t = cells.Tables(c, 2)[1]
+io.Print(cells.Edit(t, 2, 2, "10.5"))
+io.Print(cells.Edit(t, 2, 1, "8.5"))
+```
+
+La première modification donne `Ok({Value: 10.5, Text: "10.5", Line: 3, Column: 51, End: 54})` : le texte `10.5` prend la
+place des colonnes 51 à 54 de la ligne 3, `9.99`. Un éditeur qui l'écrit là, puis relance la cell, garde la règle des
+inputs : le fichier dit la vérité, et `cesia run` calcule ce que l'éditeur montre. Rien d'autre ne bouge dans le
+fichier : un test de propriété (un test qui tire des cas au hasard) écrit des tables au hasard, des frames et des listes
+de maps sur une ligne ou plusieurs, avec des textes de guillemets, de `\`, de `$(...)` et de `<script>`, modifie une
+valeur de chacune, et relit la nouvelle valeur à sa place et toutes les autres comme elles étaient.
+[Cemacs](https://www-celestial.github.io/cemacs/cells.html) modifie ainsi les tables de ses cells.
 
 ## Sliders
 

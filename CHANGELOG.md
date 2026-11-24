@@ -111,6 +111,15 @@
 - A table that a run shows, a frame, a struct or a matrix, has a Key, as a graph has, and the session keeps it with the
   last 64 graphs: `cells.Rows` reads it again by that key, so a value that only a cell's last expression holds scrolls
   too. A list of maps or structs shows as a table, its columns the keys of the first, where it showed as a row of texts.
+- `cells.Totals(session, name, filter = missing)` totals each column of a table of the session over every row its filter
+  keeps, not only those a screen shows: the values that aren't missing, the missing ones, NaN among them, and for a
+  column of numbers their sum, mean, least and greatest, computed in the session on whole columns. The totals of a
+  million rows of 3 columns take 65 ms there.
+- `cells.Tables(cells, i)` reads the tables that a cell writes as values, a list of maps or `frame.Of` of lists, each
+  value a number, a text, true, false or missing written there, with where the file writes each, and runs none of it;
+  `cells.Edit(table, row, column, words)` makes words typed the new value of one, checked for the kind of its column, a
+  number written as a Float in a column of Floats, a text in quotes, with the place its text takes in the file: an
+  editor edits a table as it edits an input, and the file stays the truth.
 - `plot.Scene(..., mark = [i, n])` and `cells.Scene(..., mark = [i, n])` ring point i of each line, points or texts of n
   points at its exact place, even one that M4 left out, write its values in a box beside it, and give Points, the places
   on the screen of those layers' points with their positions: the row of a table of n rows and its point on the graph of

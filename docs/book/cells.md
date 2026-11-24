@@ -273,7 +273,111 @@ filter keeps the position of each row, Positions, so the link holds whatever ord
 table and the graph this way: the row chosen marks its point, and a click on a point chooses its row, as
 [Cemacs](https://www-celestial.github.io/cemacs/cells.html) tells.
 
-![Cemacs on this file: the table of hours sorted by elevation, decreasing, with the row of 11 and 28.02 chosen, and under it the graph of the six points, the point of 11 ringed with its box x = 11, y = 28.02; below, the keys of the table: the arrows, PgUp and PgDn, s to sort, / to filter, M-w to copy, C-c e c to copy as CSV, C-g to leave.](images/cells-table.png)
+![Cemacs on this file: the table of hours sorted by elevation, decreasing, with the row of 11 and 28.02 chosen, and under it the graph of the six points, the point of 11 ringed with its box x = 11, y = 28.02; below, the keys of the table: the arrows, PgUp and PgDn, s to sort, / to filter, Enter and e to edit a value, < > and = for the width of a column, t for the totals, M-w to copy, C-c e c to copy as CSV, C-g to leave.](images/cells-table.png)
+
+### Totals
+
+[cells.Totals] gives, for each column of a table that the session keeps, by its Key or by the name that holds it, how
+many values it holds, and for a column of numbers their sum, their mean, their least and their greatest: over every row
+that its filter keeps, as [cells.Rows] filters them, not only over the rows that a screen shows. It is computed in the
+session, on whole columns, so a frame of $10^6$ rows never crosses. `cells.Totals(session, name, filter = missing)` gives
+an Ok of a struct:
+
+| Field | Holds |
+|---|---|
+| Count | the rows counted: those that hold the words of the filter, or all of them |
+| Total | the rows of the value |
+| Columns | for each column, as [cells.Rows] gives them, `{Name, Count, Missing, Sum, Mean, Min, Max}` |
+
+A column's Count is the number of its values that aren't missing, and Missing the number of those that are: `missing`, and
+NaN, a Float that is *not a number*, as `0.0 / 0.0` gives, which no total could read. Sum, Mean, Min and Max are those of
+the other values, for a column whose other values are all numbers; Mean is a Float. For a column of texts, of `true` and
+`false`, or of other values, the four are missing, and Count says how many values it holds. A column of numbers of which
+the filter keeps none has a Sum of 0, and Mean, Min and Max missing.
+
+For a column of a frame of the session, the total is what [list.Sum] and [list.Mean] give on its values that aren't
+missing: `cells.Totals(s, "hours")?.Columns[2].Sum` is `list.Sum(frame.Present(frame.Column("elevation", hours)))`,
+computed where `hours` is.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("day.ce")?)
+  s = cells.Session("day.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  t = cells.Totals(s, "hours", filter = "12:")?
+  io.Print(t.Count, " of ", t.Total, " rows, elevation: ", t.Columns[2].Sum, ", mean ", t.Columns[2].Mean)
+  result.Ok(missing)
+end
+```
+
+A name that holds no table and a filter that isn't a text are each an Err, as for [cells.Rows]. A filter that the last
+ask of rows of the table matched is not read again. The totals of a frame of $10^6$ rows and 3 columns, a column of
+integers, one of floats and one of texts, take 65 ms in the session; filtered by the two words `row 12`, which the last
+ask of rows matched and which keep 180,090 rows, 32 ms (the median of three runs of 21, on the machine of
+[Speed](speed.md#beside-the-giants)). The work is native and on whole columns: the missing values of a column of other
+values than numbers are looked for once a search finds one, the NaNs of a column of floats once its sum is NaN.
+
+### Tables written in the file
+
+A table is *written in the file* when a cell writes it as values: a list of maps, `[{name: "Ana", age: 31}, {name: "Bo",
+age: 20}]`, or [frame.Of] of lists, `frame.Of({hour: [7, 8, 9], elevation: [0.48, 9.99, 18.14]})`, through the name that
+the use of [std/frame] in the first cell gives, each value a number, a text, `true`, `false` or `missing` written there,
+on one line or spread over many. [cells.Tables] reads them from the text of a cell, as Analyse reads the inputs, and runs
+none of it: `cells.Tables(cells, i)` gives the tables that cell i of [cells.Parse] writes, in the order they start, each a
+struct:
+
+| Field | Holds |
+|---|---|
+| Name | the name of a line `name = ...` that gives the table, or missing for one written elsewhere, as in `cells.Show(...)` |
+| Kind | `"records"` for a list of maps, `"frame"` for frame.Of |
+| Line, Column | where it starts in the file |
+| Columns | the keys of its first map, or the names of its columns, as [cells.Rows] gives them |
+| Count | its rows |
+| Cells | for each row and each column, `{Value, Line, Column, End}`: the value, and where the file writes it, from its first column to its last, a text with its quotes; missing for a map that doesn't write that key |
+| Kinds | for each column, what its values hold: `"whole"`, whole numbers; `"number"`, numbers, one at least written with a point; `"text"`; `"bool"`, `true` and `false`; or `"mixed"` |
+
+A range as `7..16`, an expression, a text with `$name` or `$(...)` in it, a map that writes a key twice, columns of
+different lengths, a table in a comment or in a text: none of these is a table written in the file. A table of more than
+100,000 values is none either. The text is read by bytes, with the native searches of [std/text]: a table of 12 rows and
+3 columns is read in 0.15 ms, one of 1,000 rows in 12 ms (medians of 21).
+
+[cells.Edit] makes a value of such a table out of the words a person types: `cells.Edit(table, row, column, words)`, the
+row and the column from 1, gives an Ok of `{Value, Text, Line, Column, End}`, the value, its text as the file writes it,
+and where the old one is written, which Text takes the place of. The kind of the column says what it takes:
+
+| Column | Takes | Written |
+|---|---|---|
+| `"whole"` | a whole number, `12`, `-3`, `8.0` | as an Int: `12`, `-3`, `8` |
+| `"number"` | a finite number | as a Float, so that the column stays one of Floats: `12` is written `12.0` |
+| `"text"` | any text | in quotes, its `"`, `\`, `$` and ends of line escaped as the inputs write them |
+| `"bool"` | `true` or `false` | as it is |
+| `"mixed"` | a value of the kind of the one it replaces; in place of `missing`, a number, `true` or `false`, or else a text | as above |
+
+Words of another kind are an Err that says what the column takes, as `elevation takes a number: ten is none.`; so is a
+row that writes no value in that column.
+
+```cesia
+use std/cells
+use std/io
+c = cells.Parse("use std/frame\n(* %% Day *)\nhours = frame.Of({hour: [7, 8], elevation: [0.48, 9.99]})")
+t = cells.Tables(c, 2)[1]
+io.Print(cells.Edit(t, 2, 2, "10.5"))
+io.Print(cells.Edit(t, 2, 1, "8.5"))
+```
+
+The first edit gives `Ok({Value: 10.5, Text: "10.5", Line: 3, Column: 51, End: 54})`: the text `10.5` takes the place of columns 51 to
+54 of line 3, `9.99`. An editor that writes it there, then runs the cell again, keeps the rule of the inputs: the file is
+the truth, and `cesia run` computes what the editor shows. Nothing else in the file moves: a property test writes random
+tables, frames and lists of maps on one line or many, with texts of quotes, `\`, `$(...)` and `<script>`, edits a value
+of each, and reads back the new value at its place and every other value as it was.
+[Cemacs](https://www-celestial.github.io/cemacs/cells.html) edits the tables of its cells this way.
 
 ## Sliders
 
