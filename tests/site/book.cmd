@@ -17,6 +17,17 @@ grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html
 rm -r .cesia/site
 cesia doc --site > /dev/null
 if [ -e .cesia/site ]; then echo "a page ran again"; else echo "nothing ran again"; fi
+echo "== with CESIA_STD, the sources of std/ it names are what the pages depend on, not those the binary holds"
+cp -r "$root/src/std" "$t/std"
+CESIA_STD="$t/std" cesia doc --site > /dev/null
+if [ -e .cesia/site ]; then echo "the pages ran again"; else echo "nothing ran again"; fi
+rm -r .cesia/site
+CESIA_STD="$t/std" cesia doc --site > /dev/null
+if [ -e .cesia/site ]; then echo "a page ran again"; else echo "nothing ran again"; fi
+printf '\n' >> "$t/std/io.ce"
+CESIA_STD="$t/std" cesia doc --site > /dev/null
+if [ -e .cesia/site ]; then echo "the pages ran again"; else echo "nothing ran again"; fi
+rm -r .cesia/site
 echo "== a second book, under its own name, and a folder of docs/ without pages, which is none"
 grep -o '<a href="guides/index.html"[^>]*>Guides</a>' site/index.html
 grep -o 'href="deploy.html">deploying</a>\|href="../first.html">the first steps</a>' site/guides/index.html

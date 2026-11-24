@@ -152,6 +152,9 @@
   upgrade`, the tight stiff problems of `ode.Solve`, math on an array past its split among the cores and the random
   lines of sliders. Tests slow by accident start fewer processes, stop a cell 50 ms after it starts instead of 200, or
   run under a limit of 4 MB instead of 16.
+- For those who work on Cesia: `cesia doc --site` runs the blocks of a page again when `CESIA_STD` names other sources
+  of `std/`, or when one of them changes, where it showed what the blocks printed with the std/ of the binary, its
+  images too.
 - For those who work on Cesia: the CI runs the slow tests too, on Linux, as `tools/check.sh` does before each commit,
   where no CI ran them; and a branch `try/NAME` is built and tested as main is, on the three systems, publishing nothing,
   so that a change of the release itself is seen working before it reaches main.

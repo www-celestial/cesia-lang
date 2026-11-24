@@ -386,7 +386,7 @@ let site args =
   let grants =
     String.concat ","
       [ "read"; "write=" ^ folder; "write=" ^ cache; "write=" ^ runs; "exec=" ^ Sys.executable_name; "exec=" ^ opener;
-        "env=CESIA_CORES" ]
+        "env=CESIA_CORES"; "env=CESIA_STD" ]
   in
   exit (tool ~grants "site" (root :: folder :: cache :: runs :: List.filter (( = ) "--open") args))
 

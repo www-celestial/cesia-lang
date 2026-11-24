@@ -125,6 +125,10 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&
 <a href="Greeter.Say.html" aria-current="page">Say</a>
 <nav class="trail" aria-label="Where"><a href="../../index.html">Reference</a> <span aria-hidden="true">›</span> <a href="../../src.html">src</a> <span aria-hidden="true">›</span> <a href="../greet.html">greet</a> <span aria-hidden="true">›</span> <a href="Greeter.html">Greeter</a> <span aria-hidden="true">›</span> <span>Say</span></nav>
 nothing ran again
+== with CESIA_STD, the sources of std/ it names are what the pages depend on, not those the binary holds
+the pages ran again
+nothing ran again
+the pages ran again
 == a second book, under its own name, and a folder of docs/ without pages, which is none
 <a href="guides/index.html" class="more">Guides</a>
 href="deploy.html">deploying</a>

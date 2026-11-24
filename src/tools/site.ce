@@ -1973,9 +1973,16 @@ defn filesUnder(dir)
 end
 
 defn stamp(root, config)
-  (** What the runs of a page depend on beside its blocks: this Cesia, the sources of the project, and the files/ of the books. *)
+  (** What the runs of a page depend on beside its blocks: this Cesia, the sources of its std/ when CESIA_STD names them in
+      place of those the binary holds, the sources of the project, and the files/ of the books. *)
   binary = sys.Stat(cesia.Binary()).Value
   parts = [cesia.Version(), text.Str(binary.Size, " ", binary.Modified)]
+  std = sys.Env("CESIA_STD")
+  if value.IsText(std) and std != ""
+    for p in filesUnder(std)
+      parts = list.Append(text.Str("CESIA_STD/", p, " ", cesia.Fingerprint(sys.Read("$std/$p").Value)), parts)
+    end
+  end
   books = if sys.Exists("$root/docs") [text.Str("docs/", n, "/files") for n in result.UnwrapOr([], sys.List("$root/docs"))] else [] end
   for dir in list.Concat(list.Concat(config.Src, ["std"]), books)
     for p in filesUnder("$root/$dir")
