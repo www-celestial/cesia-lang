@@ -1278,18 +1278,18 @@ qu'un autre processus écrive dans le fichier entre-temps. Lire sur place, dans 
 fois moins vite, puisque le cœur de Cesia n'a pas le droit à ces chargements, et aurait laissé un moment entre la
 vérification et la lecture.
 
-Sous POSIX (la norme des systèmes de type Unix), un fichier mappé reste tel qu'il était pour le run qui le mappe quand un
-autre run le supprime ou renomme une nouvelle entrée par-dessus : « The mmap() function shall add an extra reference to
-the file associated with the file descriptor fildes which is not removed by a subsequent close() on that file
+Sous POSIX (la norme des systèmes de type Unix), un fichier mappé reste tel qu'il était pour le run qui le mappe quand
+un autre run le supprime ou renomme une nouvelle entrée par-dessus : « The mmap() function shall add an extra reference
+to the file associated with the file descriptor fildes which is not removed by a subsequent close() on that file
 descriptor » (POSIX.1-2024, `mmap` : le mapping garde le fichier même une fois son descripteur fermé), et Cesia n'écrit
 jamais une entrée sur place. Un processus qui change une entrée sur place la change aussi sous le mapping, ce que POSIX
 laisse ouvert pour un mapping privé et que Linux montre : le record changé échoue à son checksum quand il est lu. Un
 processus qui coupe une entrée sur place pendant qu'un run la mappe termine ce run par le signal SIGBUS si le run lit
-ensuite un record au-delà de la nouvelle fin, comme le dit POSIX : « References within the address range [...] to whole
-pages following the end of an object shall result in delivery of a SIGBUS signal ». Seul un processus de la personne, qui
-peut déjà écrire une entrée valide dans le dossier, peut faire l'un ou l'autre. Sous Windows, un fichier mappé ne peut
-être ni supprimé ni remplacé avant la fin du run ; aucune entrée n'y est écrite aujourd'hui (plus bas), donc aucune n'y
-est mappée.
+ensuite un record au-delà de la nouvelle fin, comme le dit POSIX : « References within the address range starting at pa
+and continuing for len bytes to whole pages following the end of an object shall result in delivery of a SIGBUS signal
+». Seul un processus de la personne, qui peut déjà écrire une entrée valide dans le dossier, peut faire l'un ou l'autre.
+Sous Windows, un fichier mappé ne peut être ni supprimé ni remplacé avant la fin du run ; aucune entrée n'y est écrite
+aujourd'hui (plus bas), donc aucune n'y est mappée.
 
 **Un record qui ne se lit pas**, son checksum faux, son étendue au-delà du fichier, ou sa lecture qui ne finit pas là où le
 dit sa longueur, n'arrête plus le programme, comme il le faisait jusqu'au 2026-11-24 avec « The cache of loaded packages

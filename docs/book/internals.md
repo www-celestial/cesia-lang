@@ -1133,14 +1133,15 @@ Reading in place, from the mapping, would have checked the bytes 4 times slower,
 loads, and would have left a moment between the check and the read.
 
 On POSIX, a file mapped stays as it was for the run that maps it when another run removes it or renames a new entry over
-it: "The mmap() function shall add an extra reference to the file associated with the file descriptor fildes which is not
-removed by a subsequent close() on that file descriptor" (POSIX.1-2024, `mmap`), and Cesia never writes an entry in place.
-A process that changes an entry in place changes it under the mapping too, which POSIX leaves open for a private mapping
-and Linux shows: the record changed fails its checksum when it is read. One that cuts an entry in place while a run maps
-it ends that run with the signal SIGBUS if the run then reads a record past the new end, as POSIX says: "References within
-the address range [...] to whole pages following the end of an object shall result in delivery of a SIGBUS signal". Only
-a process of the person, who can already write a valid entry in the folder, can do either. On Windows, a file mapped can't
-be removed or replaced until the run ends; no entry is written there today (below), so none is mapped.
+it: "The mmap() function shall add an extra reference to the file associated with the file descriptor fildes which is
+not removed by a subsequent close() on that file descriptor" (POSIX.1-2024, `mmap`), and Cesia never writes an entry in
+place. A process that changes an entry in place changes it under the mapping too, which POSIX leaves open for a private
+mapping and Linux shows: the record changed fails its checksum when it is read. One that cuts an entry in place while a
+run maps it ends that run with the signal SIGBUS if the run then reads a record past the new end, as POSIX says:
+"References within the address range starting at pa and continuing for len bytes to whole pages following the end of an
+object shall result in delivery of a SIGBUS signal". Only a process of the person, who can already write a valid entry
+in the folder, can do either. On Windows, a file mapped can't be removed or replaced until the run ends; no entry is
+written there today (below), so none is mapped.
 
 **A record that doesn't read**, its checksum wrong, its range past the file, or its reading not ending where its length
 says, no longer stops the program, as it did until 2026-11-24 with "The cache of loaded packages kept this function
