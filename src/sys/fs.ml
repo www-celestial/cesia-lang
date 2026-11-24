@@ -406,19 +406,28 @@ let list_dir ctx path =
       let names = Array.of_list (List.sort compare (go [])) in
       Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true; dims = [||] })
 
+(* The names a folder holds, sorted, without . and ..: by Unix, whose failures are the Unix_error the natives turn into an
+   Err, where the Sys_error of Sys.readdir would escape them and end the program. A failed close says nothing more: an
+   exception of Fun.protect would escape as no Cesia error. *)
+let names_in dir =
+  let d = Unix.opendir dir in
+  Fun.protect ~finally:(fun () -> try Unix.closedir d with Unix.Unix_error _ -> ()) (fun () ->
+      let rec read acc = match Unix.readdir d with "." | ".." -> read acc | n -> read (n :: acc) | exception End_of_file -> acc in
+      List.sort compare (read []))
+
+(* After an EEXIST of mkdir: a folder there is fine; anything else, a link that leads nowhere or a folder taken away since
+   by another process, is the EEXIST itself, as mkdir -p says. Unix.stat, not Sys.is_directory, for the same reason. *)
+let exists_as_dir e path =
+  match Unix.stat path with
+  | st when st.st_kind = Unix.S_DIR -> ()
+  | _ -> raise e
+  | exception Unix.Unix_error _ -> raise e
+
 (* Depth first, the names of each folder sorted: what isn't a folder is listed, a link too, never followed, so that no walk
    loops. The paths start with the folder, but for ".": a.txt, not ./a.txt. *)
 let paths ?(skip = fun _ _ -> false) path =
   let rec go dir acc =
-    let d = Unix.opendir dir in
-    (* A failed close says nothing more: an exception of Fun.protect would escape as no Cesia error. *)
-    let names =
-      Fun.protect ~finally:(fun () -> try Unix.closedir d with Unix.Unix_error _ -> ()) (fun () ->
-          let rec read acc =
-            match Unix.readdir d with "." | ".." -> read acc | n -> read (n :: acc) | exception End_of_file -> acc
-          in
-          List.sort compare (read []))
-    in
+    let names = names_in dir in
     List.fold_left
       (fun acc name ->
          let p = if dir = "." then name else if String.ends_with ~suffix:"/" dir then dir ^ name else dir ^ "/" ^ name in
@@ -501,7 +510,7 @@ let plain_dir path =
 let rec remove_paths path =
   match (Unix.lstat path).st_kind with
   | Unix.S_DIR when plain_dir path ->
-    Array.iter (fun n -> remove_paths (Filename.concat path n)) (Sys.readdir path);
+    List.iter (fun n -> remove_paths (Filename.concat path n)) (names_in path);
     Unix.rmdir path
   | Unix.S_DIR -> Unix.rmdir path
   | _ -> Unix.unlink path
@@ -699,8 +708,8 @@ let rec copy_paths from dest =
   in
   match st.st_kind with
   | Unix.S_DIR when plain_dir from ->
-    (try Unix.mkdir dest 0o700 with Unix.Unix_error (Unix.EEXIST, _, _) when Sys.is_directory dest -> ());
-    Array.iter (fun n -> copy_paths (Filename.concat from n) (Filename.concat dest n)) (Sys.readdir from);
+    (try Unix.mkdir dest 0o700 with Unix.Unix_error (Unix.EEXIST, _, _) as e -> exists_as_dir e dest);
+    List.iter (fun n -> copy_paths (Filename.concat from n) (Filename.concat dest n)) (names_in from);
     Unix.utimes dest st.st_atime st.st_mtime;
     Unix.chmod dest st.st_perm
   | Unix.S_REG ->
@@ -746,8 +755,7 @@ let mode_arg ctx name v =
 let rec make_dir ?(perm = 0o755) path =
   let parent = Filename.dirname path in
   if parent <> path && not (Sys.file_exists parent) then make_dir ~perm parent;
-  try Unix.mkdir path perm
-  with Unix.Unix_error (Unix.EEXIST, _, _) when Sys.is_directory path -> ()
+  try Unix.mkdir path perm with Unix.Unix_error (Unix.EEXIST, _, _) as e -> exists_as_dir e path
 
 (* Is the optional argument [k] given, neither absent nor missing? *)
 let given (a : t array) k = k < Array.length a && match a.(k) with Undef | Missing -> false | _ -> true

@@ -1,0 +1,12 @@
+(* sys.Mkdir where a link that leads nowhere stands: the system says the name is there, and what it leads to is not, as
+   when another process takes the folder away between the two. An Err, as mkdir -p says, and the program goes on. *)
+use std/io
+use std/sys
+
+dir = "./tmp_mkdir_link"
+sys.RemoveTree(dir)
+sys.Mkdir(dir)
+sys.Symlink("nowhere", "$dir/d")
+io.Print(sys.Mkdir("$dir/d"))
+io.Print(sys.Mkdir("$dir/d/x"))
+io.Print(sys.RemoveTree(dir))

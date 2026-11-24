@@ -1,0 +1,4 @@
+Err({Kind: "io", Message: "Can't create ./tmp_mkdir_link/d: file exists."})
+Err({Kind: "io", Message: "Can't create ./tmp_mkdir_link/d/x: file exists."})
+Ok(missing)
+exit 0

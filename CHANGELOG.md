@@ -161,6 +161,12 @@
   their entries all end within 0.16 to 0.27 s, where they took 2.1 to 2.5 s (3 turns each, alternated), the same entries
   saved. A folder just under the limit whose entries are written again at the same size goes down to half once, where
   it would be looked over at each write.
+- `sys.Mkdir` gives an Err where a name is there that is no folder it can reach, a link that leads nowhere or a folder
+  another process took away between its two steps, as `mkdir -p` says, where the program ended at once with exit 1,
+  whatever handled its errors: the check after the system's "file exists" raised an error of OCaml that no native turned
+  into an Err. The same on Windows for `sys.RemoveTree` and `sys.CopyTree` of a folder that goes away while they list
+  it. `tests/sys/remove-race`, which makes and removes folders while another process swaps them, ended so once in 24
+  runs under load, never in 120 now.
 - `cells.Analyse` gives the error of rule 5 for a slider written with no argument, `x = cells.Slider()`, where it
   panicked, so an editor that analysed such a file stopped.
 - `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
