@@ -124,6 +124,12 @@
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
   as it builds, with no script, in the time the site took before.
+- For those who work on Cesia: the tests added since 1.2.0 had made the change loop 4.8 s again; it takes 4.0 s, 4.4 s
+  with two cores busy. Tests slow by nature run with `tools/test.sh --slow`, which `tools/check.sh` runs after the loop:
+  nine of the JIT, whose loops are as long as the units and level 2 they check need, those of `install.sh` and `cesia
+  upgrade`, the tight stiff problems of `ode.Solve`, math on an array past its split among the cores and the random
+  lines of sliders. Tests slow by accident start fewer processes, stop a cell 50 ms after it starts instead of 200, or
+  run under a limit of 4 MB instead of 16.
 
 ### Speed
 

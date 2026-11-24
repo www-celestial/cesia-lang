@@ -4,7 +4,7 @@
 #   tools/test.sh --no-spec   the same tests on the other path, without the versions by type; a test that runs the same on
 #                             both paths runs only in the first
 #   tools/test.sh --slow      the tests slow by nature, name.slow and the files of tests/slow, on both paths
-# tools/check.sh runs the last two past the change loop, as it builds Cesia's own site; the CI runs all three.
+# tools/check.sh runs the last two past the change loop, as it builds Cesia's own site; the CI runs the first two.
 set -eu
 cd "$(dirname "$0")/.."
 mode="$*"
