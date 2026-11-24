@@ -1,0 +1,15 @@
+(* The file of the session of cells-top.cmd, which runs its cells one by one: cesia run --cells runs none of it. *)
+use std/io
+
+(* %% Count *)
+c = 0
+for i in 1..300000
+  c = c + 1
+end
+c
+
+(* %% Read *)
+defn readC()
+  c
+end
+readC()

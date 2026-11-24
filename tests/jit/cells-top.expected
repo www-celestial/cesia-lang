@@ -1,0 +1,12 @@
+@token TOKEN
+@{"Kind":"answer","Value":{"Kind":"text","Text":"300000"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"300000"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"100000"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"50000.0"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"300000"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"300000"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"variables","Rows":[{"Name":"n","Type":"Int","Size":"","Preview":"300000"},{"Name":"readN","Type":"Function","Size":"","Preview":"function readN"},{"Name":"x","Type":"Float","Size":"","Preview":"50000.0"},{"Name":"j","Type":"Int","Size":"","Preview":"100000"},{"Name":"readX","Type":"Function","Size":"","Preview":"function readX"},{"Name":"c","Type":"Int","Size":"","Preview":"300000"},{"Name":"readC","Type":"Function","Size":"","Preview":"function readC"}],"Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+the same with the JIT off
+the same with machine code from the first run
+exit 0
