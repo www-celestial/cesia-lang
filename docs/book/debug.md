@@ -45,6 +45,26 @@ packages it uses, here `io`. What you define at the prompt stays for the next li
 3.0
 ```
 
+A name that you gave a value at the prompt takes its next one in place, as in a terminal of Python, R or Julia: `rate =
+rate * 2` reads the rate before, a function you defined at the prompt reads the new one, and a line that fails leaves
+the name with the value it had when the error came:
+
+```text
+> defn Cost(n)
+.   n * rate
+. end
+> rate = rate * 2
+> Cost(10)
+30.0
+> rate = rate + "x"
+<prompt>:1:13: Can't add the number 3.0 and the text "x".
+  1 | rate = rate + "x"
+    |             ^
+  To put a value in a text, write "...$x" or value.Text(x).
+> rate
+3.0
+```
+
 A definition of a function of the program replaces it in the running program, which goes on with the new one, as a
 [reload](commands.md#cesia-run) does:
 

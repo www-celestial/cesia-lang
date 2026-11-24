@@ -33,9 +33,11 @@ val std_natives : world -> string -> int option
 
 (** Loads a source as a new module, without running it. With [host], the source sees the private fields and methods of
     that module; with [natives], the natives of its package of std/, as [std_natives] gives them; [rewrite] changes its tree
-    before its names are resolved, as for the verdicts of a test; [key] names it in the cache of loaded packages. *)
+    before its names are resolved, as for the verdicts of a test; [key] names it in the cache of loaded packages; [outer], for
+    code run at a prompt, the variables that code run there before holds, which it assigns in place ({!Resolve.file}). *)
 val prepare :
-  ?hooks:bool -> ?host:int -> ?natives:int -> ?rewrite:(Ast.func -> unit) -> ?key:string -> ctx -> path:string -> src:string ->
+  ?hooks:bool -> ?host:int -> ?natives:int -> ?rewrite:(Ast.func -> unit) -> ?key:string ->
+  ?outer:(string -> Ast.binding option) -> ctx -> path:string -> src:string ->
   lookup:(string -> Ast.binding option) ->
   int * int * Ast.func * Ast.layout
 

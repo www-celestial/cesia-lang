@@ -112,7 +112,9 @@ affichées, Value, ce que montre sa dernière expression, Shown, ce que [cells.S
 Line du fichier et le Text de l'erreur tel que `cesia run` le montre, et Seconds, le temps qu'elle a tourné. Avant qu'une
 cell tourne, les noms qu'elle définit sont oubliés, pour qu'une cell qui échoue ne laisse aucune ancienne valeur derrière
 elle. Une cell dont le From vaut 0 est du code tapé à un prompt (une ligne où l'on tape du code à côté du programme) à côté
-des cells, qu'aucune ligne du fichier ne contient : ses erreurs nomment `<prompt>`.
+des cells, qu'aucune ligne du fichier ne contient : ses erreurs nomment `<prompt>`, et elle suit la règle du
+[prompt](debug.md#le-prompt), pas celle d'une cell : un nom qui a une valeur prend la nouvelle à sa place, pour que
+`x = x + 1` lise le x d'avant.
 
 ```cesia norun
 use std/cells

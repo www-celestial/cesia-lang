@@ -50,6 +50,26 @@ prompt reste pour les lignes suivantes :
 3.0
 ```
 
+Un nom auquel vous avez donné une valeur au prompt prend la suivante à sa place, comme dans un terminal de Python, de R
+ou de Julia : `rate = rate * 2` lit le rate d'avant, une fonction que vous avez définie au prompt lit le nouveau, et une
+ligne qui échoue laisse au nom la valeur qu'il avait quand l'erreur est venue :
+
+```text
+> defn Cost(n)
+.   n * rate
+. end
+> rate = rate * 2
+> Cost(10)
+30.0
+> rate = rate + "x"
+<prompt>:1:13: Can't add the number 3.0 and the text "x".
+  1 | rate = rate + "x"
+    |             ^
+  To put a value in a text, write "...$x" or value.Text(x).
+> rate
+3.0
+```
+
 Une définition d'une fonction du programme la remplace dans le programme qui tourne, qui continue avec la nouvelle, comme
 le fait un [reload](commands.md#cesia-run) (un rechargement du code) :
 

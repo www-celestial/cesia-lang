@@ -1,0 +1,12 @@
+ready
+2
+4
+40
+<prompt>:1:7: Can't add the number 20 and the text "a".
+  1 | x = x + "a"
+    |       ^
+  To put a value in a text, write "...$x" or value.Text(x).
+20
+[1, 7]
+[26, 3, 52]
+exit 0

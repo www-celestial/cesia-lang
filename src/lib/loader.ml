@@ -356,8 +356,9 @@ let set_checks w (prepared : (int * Ast.layout) list) =
   List.iter (fun (m, (layout : Ast.layout)) -> Array.iter (fun (_, f) -> Compile.set_checks w m f) layout.hoisted) prepared
 
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
-   before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files ?report ?log w ~lookup ~first ~old parsed =
+   before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload;
+   [outer], the variables that code run at a prompt before holds, for code run there. *)
+let resolve_files ?report ?log ?outer w ~lookup ~first ~old parsed =
   let home = home w in
   (* With a [log], what it asks about other modules is noted, for the cache. *)
   let is_type, lookup = match log with Some l -> Cache.is_type l (is_type w), Cache.lookup l lookup | None -> is_type w, lookup in
@@ -366,7 +367,7 @@ let resolve_files ?report ?log w ~lookup ~first ~old parsed =
   in
   match parsed with
   | [ (path, _, fn, (named, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~is_type ~home ?report ~file:path ~m:first ~lookup ~spaces:(spaces 0 named) fn ]
+    [ Resolve.file ~keep:(old 0) ~is_type ~home ?report ?outer ~file:path ~m:first ~lookup ~spaces:(spaces 0 named) fn ]
   | _ ->
     Resolve.check_package ?report (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -406,7 +407,7 @@ let checking = ref false
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
    [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. With [report],
    a check: each error goes there and the loading goes on, but a file that doesn't parse leaves the package unread. *)
-let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx ~sources ~lookup =
+let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ?outer ctx ~sources ~lookup =
   let w = ctx.w in
   let use_of path = match report with Some r -> checked_use ctx r ~from:path | None -> use_module ctx ~hooks ~from:path in
   let one ?file (path, src) =
@@ -451,7 +452,7 @@ let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx 
   let resolved parsed =
     let parsed, uses = List.split parsed in
     let log = Option.map (fun _ -> Cache.log ()) slot in
-    let layouts = if parsed = [] then [] else resolve_files ?report ?log w ~lookup ~first ~old:(fun _ -> [||]) parsed in
+    let layouts = if parsed = [] then [] else resolve_files ?report ?log ?outer w ~lookup ~first ~old:(fun _ -> [||]) parsed in
     (match slot, log with
      | Some slot, Some log ->
        Cache.write slot (place (List.map snd uses)) log (Array.of_list (List.map fst uses))
@@ -557,8 +558,8 @@ let folder ctx dir =
     in
     run_package ctx ~hooks:ctx.w.hooks ?natives:(engine_natives ctx.w key) ~key (fun () -> List.map read (Package.files key))
 
-let prepare ?hooks ?host ?natives ?rewrite ?key ctx ~path ~src ~lookup =
-  List.hd (prepare_files ?hooks ?host ?natives ?rewrite ?key ctx ~sources:[ path, src ] ~lookup)
+let prepare ?hooks ?host ?natives ?rewrite ?key ?outer ctx ~path ~src ~lookup =
+  List.hd (prepare_files ?hooks ?host ?natives ?rewrite ?key ?outer ctx ~sources:[ path, src ] ~lookup)
 
 (* The natives of the package of std/ that a file of std/ belongs to, std/list.ce or src/std/list.ce, as a module. *)
 let std_natives w path =

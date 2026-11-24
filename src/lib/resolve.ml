@@ -27,6 +27,7 @@ type env = {
   cells : (string, int) Hashtbl.t;
   mutable cell_list : string list;
   report : exn -> unit;  (* raises when a program loads; a check records the error and goes on *)
+  outer : string -> binding option;  (* the variables of code run before at a prompt, which the file's top writes in place *)
 }
 
 let fail env pos m = env.report (load_error env.path pos m)
@@ -97,21 +98,33 @@ let children (f : expr -> unit) (e : expr) =
   | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _
   | Interface _ | Hook _ -> ()
 
-(* The assigned names, without entering nested functions: one closure for a statement, not one for each node. *)
-let assigned sc (e : expr) =
+(* The assigned names, without entering nested functions: one closure for a statement, not one for each node. A name
+   held [elsewhere] is no variable of the scope, unless a function takes it. *)
+let assigned ?(elsewhere = fun _ -> false) sc (e : expr) =
+  let own text = if not (elsewhere text) then ignore (var sc text) in
   let rec go (e : expr) =
     match e.e with
-    | Assign (n, _) -> ignore (var sc n.text); children go e
-    | Set { root; _ } -> ignore (var sc root.text); children go e
-    | Destructure (pt, _) -> pat_names (fun n -> ignore (var sc n.text)) pt; children go e
+    | Assign (n, _) -> own n.text; children go e
+    | Set { root; _ } -> own root.text; children go e
+    | Destructure (pt, _) -> pat_names (fun n -> own n.text) pt; children go e
     | Match { arms; _ } ->
-      Array.iter (fun a -> pat_names (fun n -> ignore (var sc n.text)) a.pt) arms;
+      Array.iter (fun a -> pat_names (fun n -> own n.text) a.pt) arms;
       children go e
-    | For { var = v; _ } -> ignore (var sc v.text); children go e
+    | For { var = v; _ } -> own v.text; children go e
     | Fn_def (n, _) -> ignore (var sc n.text)
     | _ -> children go e
   in
   go e
+
+(* The variable of code run before at a prompt that holds a name; a function or an interface of the file is its own. *)
+let outside env text = if Hashtbl.mem env.hoisted text then None else env.outer text
+
+(* A name assigned: its variable, or at the top of code run at a prompt, the variable of the code run before that holds it,
+   which the code writes in place, as a function reads it. *)
+let bound env sc text =
+  match Hashtbl.find_opt sc.vars text with
+  | Some i -> Local i
+  | None -> (match if sc.kind = File then outside env text else None with Some b -> b | None -> Local (var sc text))
 
 (* A variable of an enclosing scope. *)
 let rec find env sc celled text : binding option =
@@ -290,18 +303,18 @@ let rec reads env sc celled (e : expr) =
          match env.lookup n.text with
          | Some b -> n.b <- b
          | None -> fail env e.pos (undefined env n.text))
-    | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
+    | Assign (n, _) -> n.b <- bound env sc n.text; children go e
     | Set { root; path; _ } ->
-      root.b <- Local (var sc root.text);
+      root.b <- bound env sc root.text;
       children go e
     | Destructure (pt, _) ->
       constructors env sc celled pt;
-      pat_names (fun n -> n.b <- Local (var sc n.text)) pt;
+      pat_names (fun n -> n.b <- bound env sc n.text) pt;
       children go e
     | Match { arms; _ } ->
-      Array.iter (fun a -> constructors env sc celled a.pt; pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
+      Array.iter (fun a -> constructors env sc celled a.pt; pat_names (fun n -> n.b <- bound env sc n.text) a.pt) arms;
       children go e
-    | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
+    | For { var = v; _ } -> v.b <- bound env sc v.text; children go e
     | Comp { cbody; cvar; csrc; cguard } ->
       go csrc;
       let i = fresh sc cvar.text in
@@ -366,9 +379,9 @@ and flow (f : func) =
     | While { cond; body; _ } ->
       go cond;
       ignore (branch st false (fun () -> Array.iter go body))
-    | For { var = { b = Local i; _ }; iter; fbody; _ } ->
+    | For { var; iter; fbody; _ } ->
       go iter;
-      ignore (branch st false (fun () -> assign st i; Array.iter go fbody))
+      ignore (branch st false (fun () -> (match var.b with Local i -> assign st i | _ -> ()); Array.iter go fbody))
     | Comp { cbody; cvar = { b = Local i; _ }; csrc; cguard } ->
       go csrc;
       ignore (branch st false (fun () -> assign st i; Option.iter go cguard; go cbody))
@@ -525,12 +538,12 @@ let check_package ?(report = raise) files =
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _ -> None) ?(report = raise) ~file:path ~m
-    ~lookup ~spaces (fn : func) =
+let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _ -> None) ?(report = raise)
+    ?(outer = fun _ -> None) ~file:path ~m ~lookup ~spaces (fn : func) =
   let env =
     { path; m; lookup; spaces; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
       interfaces = Hashtbl.create 4; is_type; home; cells = Hashtbl.create 16;
-      cell_list = []; report }
+      cell_list = []; report; outer }
   in
   Array.iter (fun text -> ignore (cell env text)) keep;
   let sc = { fn; kind = File; parent = None; vars = Hashtbl.create 16; names = []; caps = []; overlay = [] } in
@@ -577,7 +590,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
       !defined
   in
   let top_hoisted (e : expr) = match e.e with Fn_def _ | Interface _ -> true | _ -> false in
-  Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) (Lazy.force fn.body);
+  Array.iter (fun e -> if not (top_hoisted e) then assigned ~elsewhere:(fun text -> outside env text <> None) sc e) (Lazy.force fn.body);
   Hashtbl.iter
     (fun text _ ->
        if Hashtbl.mem env.hoisted text then fail env fn.fpos (Messages.assign_function text))

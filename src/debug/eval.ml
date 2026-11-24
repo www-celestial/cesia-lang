@@ -320,8 +320,17 @@ let at_prompt ?cell ctx code =
     | Some b -> Some b
     | None -> if target >= 0 then (match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name) else Loader.lookup w name
   in
+  (* Code typed at a prompt assigns in place a variable that code typed before holds: x = x + 1 reads the x before, an
+     error leaves it as it was then, the functions defined before read its new value, and no other stays behind it. A
+     cell makes its own, as a run of it again must never read what it left. *)
+  let outer name =
+    match List.find_map (fun m -> Loader.in_module w m name) d.scope with
+    | Some (Ast.Cell { stable = false; _ } as b) -> Some b
+    | _ -> None
+  in
+  let outer = match cell with Some (p, _) when not (String.equal p prompt_path) -> None | _ -> Some outer in
   let typed = Lazy.from_val { code; shift; indent = 0 } in
-  match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path ~src ~lookup with
+  match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ?outer ~path ~src ~lookup with
   | exception e -> Value.err w (Text (error_text ctx ~typed e))
   | (file, m, _, layout) as prepared ->
     d.scope <- m :: d.scope;

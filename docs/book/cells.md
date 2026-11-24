@@ -100,7 +100,8 @@ waits for cells. [cells.Run] gives it one cell and waits for it: an Ok with Outp
 last expression shows, Shown, what [cells.Show] showed, Error, or missing, with the Line of the file and the Text of the
 error as `cesia run` shows it, and Seconds, the time it ran. Before a cell runs, the names it defines are forgotten, so
 that a cell that fails leaves no old value behind. A cell whose From is 0 is code typed at a prompt beside the cells, which
-no line of the file holds: its errors name `<prompt>`.
+no line of the file holds: its errors name `<prompt>`, and it follows the rule of [the prompt](debug.md#the-prompt), not
+that of a cell: a name that holds a value takes its new one in place, so that `x = x + 1` reads the x before.
 
 ```cesia norun
 use std/cells

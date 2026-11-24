@@ -1081,7 +1081,9 @@ defn Run(session, cell, width = 640)
       for each, its columns the keys of the first, or a struct of at most 20 fields as a row of field and value for each, an Ok
       of a struct as that struct, with Columns, Rows (the first 20, as texts), Count and Key, which Rows reads again a
       screen at a time; or "array", with Shape and Rows (the first 10 by 10, as texts), and for a matrix Key too. Before it runs, the names it defines are forgotten. A
-      cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
+      cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>, and a
+      name it gives a value that holds one already keeps it until the code gives it another, in its place: x = x + 1 reads
+      the x before, an error leaves it as it was then, and the functions defined before read the new value. An Err when
       the session has ended. *)
   runWith(session, cell, width, false)
 end
@@ -2028,8 +2030,12 @@ defn serve()
     views = dict.Dict([{Key: k, Value: views[k]} for k in dict.Keys(views) if dict.Has(k, graphs) or not (changes or isKey(k))])
     if c.Do == "run"
       defs = cesia.Definitions(c.Code)
-      names = if result.IsOk(defs) [d.Name for d in defs.Value if d.Kind in shared and d.Kind != "use"] else [] end
-      forgetNames(names)
+      found = if result.IsOk(defs) [d for d in defs.Value if d.Kind in shared and d.Kind != "use"] else [] end
+      names = list.Unique([d.Name for d in found])
+      (* A cell forgets the names it defines, so that run again it never reads what it left. Code typed at a prompt, line 0,
+         forgets its functions, structs and interfaces only: a value it gives a name that holds one goes in its place, so
+         that x = x + 1 reads the x before. *)
+      forgetNames([d.Name for d in found if c.Line != 0 or d.Kind != "value"])
       known = list.Concat([k for k in known if not (k in names)], names)
       key += 1
       now = key

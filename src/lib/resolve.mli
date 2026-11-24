@@ -12,10 +12,11 @@ val check_package : ?report:(exn -> unit) -> (string * Ast.func) list -> unit
     fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package is a
     struct or an interface, which a type or a pattern can name. [home] gives the package of std/ of a name that no file
     defines, which its message names. [report] gets each error as a {!Pos.Load_error}: it raises by default, and a check
-    records it and goes on, a wrong name left unresolved. *)
+    records it and goes on, a wrong name left unresolved. [outer] gives, for code run at a prompt, the variable of a name
+    that code run there before holds: the top of the file assigns it in place, and makes no variable of its own. *)
 val file :
   ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> ?home:(string -> string option) ->
-  ?report:(exn -> unit) -> file:string -> m:int ->
+  ?report:(exn -> unit) -> ?outer:(string -> Ast.binding option) -> file:string -> m:int ->
   lookup:(string -> Ast.binding option) ->
   spaces:(string * (string -> Ast.binding option)) list -> Ast.func -> Ast.layout
 

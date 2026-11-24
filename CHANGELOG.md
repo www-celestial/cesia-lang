@@ -219,6 +219,14 @@
 
 ### Fixes
 
+- Code typed at a prompt, that of `cesia run --repl`, `debug.Eval` at the file level, as a debugger runs it while the
+  program runs, and a session of std/cells at line 0, as Cemacs's `C-c e r` and `*repl*` send it, gives a name that code
+  typed there before gave a value its new one in place: `x = x + 1` reads the x before, and so do `xs[2] = 7` and `p.X =
+  3`, where each stopped with `"x" has no value yet.` and left the name with no value; a line that fails leaves the name
+  with the value it had when the error came; the functions defined at the prompt before read the new value, where those
+  of `cesia run --repl` read the old one; and the value before goes, where it stayed in memory behind the new one. A cell
+  keeps its rule: it forgets the names it defines before it runs. A name given a value twice in one cell or one line
+  shows once among the variables of the session, where it showed twice.
 - A function whose record in the cache of loaded packages doesn't read when it first runs, as when another process
   changed the file in place, is taken from its file parsed and resolved again from the source the load read, and the
   run goes on with the same output, where it stopped with "The cache of loaded packages kept this function damaged".

@@ -1,0 +1,5 @@
+(* Code typed at the prompt gives a name that holds a value its new one in place, as at the prompt of a session of
+   std/cells (tests/cells/prompt.cmd): x = x + 1 reads the x before, an error leaves the name as it was, and a function
+   defined before reads the new value. *)
+use std/io
+io.Print("ready")

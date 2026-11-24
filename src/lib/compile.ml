@@ -2446,6 +2446,8 @@ and setter c (n : name) : ctx -> t -> unit =
     else if c.tv.(i) == TI then fun ctx x -> ctx.i.(ctx.b + k) <- to_i ctx x
     else if c.tv.(i) == TF then fun ctx x -> Float.Array.set ctx.f (ctx.b + k) (to_f ctx x)
     else fun ctx x -> ctx.v.(ctx.b + k) <- x
+  (* A variable of code run before at a prompt, which code run there now assigns in place ([Resolve.file]). *)
+  | Cell { m; k; stable = false } -> let md = c.w.modules.(m) in fun _ x -> md.cells.(k) <- x
   | Cell _ | Unresolved -> assert false
 
 and write_var c (n : name) (v : ctx -> t) : ctx -> unit =
@@ -2494,6 +2496,7 @@ and cu c (e : expr) : ctx -> unit =
       end;
       if !here || not (d.mode == Running) then w.on_hook ctx s first
   | Assign ({ b = Local i; _ }, v) -> store_var c i v
+  | Assign (n, v) -> write_var c n (ce c v)
   | If ({ e = Bin (Gt, ({ e = Var { b = Local i; _ }; _ } as a), { e = Lfloat k; _ }); pos; _ }, yes, [||])
     when plain_local c i && ty c a != TFA ->
     (* The test and the branch in the same closure. *)

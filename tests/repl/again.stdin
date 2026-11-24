@@ -1,0 +1,18 @@
+x = 1
+x = x + 1
+x
+defn twice()
+  x * 2
+end
+twice()
+x = x * 10
+twice()
+x = x + "a"
+x
+xs = [1, 2]
+xs[2] = 7
+xs
+for i in 1..3
+  x = x + i
+end
+[x, i, twice()]
