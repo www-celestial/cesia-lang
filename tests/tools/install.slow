@@ -1,0 +1,2 @@
+Slow by nature: the binary, 7 MB, packed and fingerprinted, then read twice by install.sh, which unpacks it once.
+tools/check.sh runs it, past the change loop.
