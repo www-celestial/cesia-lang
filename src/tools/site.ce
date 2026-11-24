@@ -489,11 +489,13 @@ defn readmeTarget(site, f)
   if value.IsMissing(target) or (french and not site.HasFr) missing else if french "fr/$target" else target end
 end
 
-defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", ids = {})
+defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", ids = {}, source = missing)
   (** The hooks of std/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading (from ids, by its
       line, else from its title), and with formulas the formulas in MathML. A page of the French site links to the French
-      pages. book is "" for a README, whose links lead from the root of the project. A [Name] or a link that leads
-      nowhere, or a formula that can't be written, is sent to the mistakes, with the place where it is written. *)
+      pages. book is "" for a README, whose links lead from the root of the project. With the file of the page, source,
+      an image leads to its file in the images/ of a book, from the page's own folder as on GitHub. A [Name], a link or an
+      image that leads nowhere, an image with no text, or a formula that can't be written, is sent to the mistakes, with
+      the place where it is written. *)
   defn link(target, line)
     found = dict.Get(target, site.Targets)
     if value.IsSome(found)
@@ -532,6 +534,19 @@ defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", 
     text.Str(rel(path, if lang == "fr" "fr/$target" else target end), anchorOf(u))
   end
   code(info, s, line) = if text.Split(" ", info)[1] == "cesia" codeBlock(s) else langBlock(text.Split(" ", info)[1], s) end
+  defn image(u, alt, line)
+    f = local(u)
+    file = if value.IsMissing(f) or value.IsMissing(source) missing else joined(parent(source), f) end
+    target = if value.IsMissing(file) missing else dict.Get(file, site.Images) end
+    if value.IsMissing(target)
+      fiber.Send("$(where(line)): the image $u is no file of the images/ of a book: an image of a page is a PNG, JPEG, GIF, WebP or SVG file of docs/BOOK/images/, written from the page's own folder, as ![what it shows](images/name.png).", site.Mistakes)
+      return missing
+    end
+    if text.Trim(alt) == ""
+      fiber.Send("$(where(line)): the image $u says nothing for those who can't see it: write what it shows between its brackets, ![what it shows]($u).", site.Mistakes)
+    end
+    rel(path, target)
+  end
   defn formula(tex, display, line)
     made = TexMath(tex, display)
     if result.IsErr(made)
@@ -540,7 +555,7 @@ defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", 
     end
     made.Value
   end
-  hooks = {Code: code, Link: link, Url: url, Anchor: (level, title, line) -> dict.GetOr(line, slug(title), ids)}
+  hooks = {Code: code, Link: link, Url: url, Anchor: (level, title, line) -> dict.GetOr(line, slug(title), ids), Image: image}
   if formulas dict.Put("Math", formula, hooks) else hooks end
 end
 
@@ -1755,15 +1770,15 @@ defn checked(job, chosen)
   result.Ok(out)
 end
 
-(* The elements of the images the site shows: those plot.Svg writes. *)
-drawnElements = ["svg", "title", "style", "defs", "clipPath", "g", "rect", "path", "circle", "text"]
+(* The elements of the SVG images the site shows: those plot.Svg writes, and the other shapes of a drawing made by hand. *)
+drawnElements = ["svg", "title", "style", "defs", "clipPath", "g", "rect", "path", "circle", "text", "tspan", "line", "polyline", "polygon", "ellipse"]
 nameBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 spaceBytes = " \t\r\n/>"
 
 defn unsafeDrawing(svg)
-  (** What in an image a block drew keeps the site from showing it, or missing. The site shows only the elements of a
-      drawing, as plot.Svg writes them, with no script, no link and no file it would load, so that nothing in it runs, even
-      when the image is opened alone. *)
+  (** What in an SVG image keeps the site from showing it, or missing. The site shows only the elements of a drawing, those
+      plot.Svg writes and the other shapes, with no script, no link and no file it would load, so that nothing in it runs,
+      even when the image is opened alone. *)
   low = text.Lower(svg)
   if text.Contains("<!", svg) or text.Contains("<?", svg) or text.Contains("@import", low)
     return "a declaration, an instruction or an @import"
@@ -2077,6 +2092,43 @@ defn pagesOf(root, name, prefix, site)
   pages
 end
 
+imageKinds = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]   (** The files an images/ folder of a book may hold. *)
+
+defn bookImages(root, site, names)
+  (** The images of the books, each a file of docs/BOOK/images/ or docs/fr/BOOK/images/: {Images: the path of each in the
+      site by its path in the project, Files: [{Path, From}], Mistakes}. The images of the home book are at the root of the
+      site, as its pages are, those of another book in its folder, the French ones under fr/. Only a plain file of a kind
+      a browser shows, and an SVG only if it is a drawing, as the site shows those the blocks draw. *)
+  images = {}
+  files = []
+  mistakes = []
+  for b in names
+    for lang in ["", "fr/"]
+      dir = "docs/$lang$b/images"
+      for f in filesUnder("$root/$dir")
+        origin = "$dir/$f"
+        place = text.Str(lang, if b == site.Home "" else "$b/" end, "images/", f)
+        low = text.Lower(f)
+        info = sys.Stat("$root/$origin")
+        if result.IsErr(info) or info.Value.IsLink or not info.Value.IsFile
+          mistakes = list.Append("$origin is a link, or no plain file: the images/ of a book hold plain files only.", mistakes)
+        else if not list.Any([text.EndsWith(k, low) for k in imageKinds])
+          mistakes = list.Append("$origin is no image a browser shows: the images/ of a book hold PNG, JPEG, GIF, WebP and SVG files.", mistakes)
+        else
+          why = if text.EndsWith(".svg", low) unsafeDrawing(sys.Read("$root/$origin")?) else missing end
+          if value.IsSome(why)
+            mistakes = list.Append("$origin holds $why, which the site doesn't show: an SVG image of the site holds only the shapes of a drawing.", mistakes)
+          else
+            images[origin] = place
+            files = list.Append({Path: place, From: origin}, files)
+          end
+        end
+      end
+    end
+  end
+  result.Ok({Images: images, Files: files, Mistakes: mistakes})
+end
+
 defn booksOf(root, site)
   (** The books of the project, {Home, Pages}, the pages of the home first: each folder of docs/ with pages is a book,
       docs/book/ the home at the root of the site, and any other under its own name. A folder of docs/ with no page, as one
@@ -2159,7 +2211,7 @@ end
 
 defn linksOf(site, page)
   (** Where the links of a page lead, each {To, Line}: a page and the place of the heading on it (its count from the top),
-      a name of the reference, or a URL elsewhere. *)
+      a name of the reference, or a URL elsewhere. Its images are not among them. *)
   seen = fiber.Channel()
   defn url(u, line)
     fiber.Send({U: u, Line: line}, seen)
@@ -2171,7 +2223,8 @@ defn linksOf(site, page)
     end
     missing
   end
-  markdown.Html(page.Blocks, {Code: markdown.Plain.Code, Link: link, Url: url, Anchor: markdown.Plain.Anchor})
+  (* An image is no link: a French page may show its own, or the English one from its own folder. *)
+  markdown.Html(page.Blocks, {Code: markdown.Plain.Code, Link: link, Url: url, Anchor: markdown.Plain.Anchor, Image: (u, alt, line) -> u})
   out = []
   for l in drained(seen)
     if dict.Has("Name", l)
@@ -2339,7 +2392,7 @@ defn figures(images, base, said)
   text.Join("", ["<figure class=\"drawn\"><img src=\"$(escape(base))$(escape(i.Name))\"$(sized(i)) alt=\"$(alt(i))\" loading=\"lazy\"></figure>\n" for i in images])
 end
 
-imagesPath(page) = text.Str("images/", text.ByteSlice(1, text.ByteLength(page) - 5, page), "/")   (** The folder of the site that holds the images of a page: images/graphs/ for graphs.html. *)
+drawnPath(page) = text.Str("drawn/", text.ByteSlice(1, text.ByteLength(page) - 5, page), "/")   (** The folder of the site that holds the images the blocks of a page drew: drawn/graphs/ for graphs.html. *)
 
 defn bookBlock(run, output, values, hooks, said = enWords, drawings = "")
   (** The HTML of a cesia block of the book: its code, under it what it printed, then the HTML of the images it drew. *)
@@ -2360,12 +2413,12 @@ defn bookBody(site, page, results)
       English site, a heading whose id changed when the ids became GitHub's keeps the old one too. *)
   lang = page.Lang
   ids = page.Ids
-  hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids)
+  hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids, source = page.Source)
   r = dict.GetOr(page.Path, {Output: [], Values: []}, results)
   values = dict.Dict([{Key: v[1], Value: v[2]} for v in r.Values])
   images = dict.GetOr("Images", [], r)
   (* The images of a French page are those of its English page, from the folder of the French one. *)
-  base = text.Str(text.Repeat(text.Count("/", page.Path), "../"), imagesPath(if page.Lang == "fr" and value.IsSome(dict.GetOr("En", missing, page)) page.En.Path else page.Path end))
+  base = text.Str(text.Repeat(text.Count("/", page.Path), "../"), drawnPath(if page.Lang == "fr" and value.IsSome(dict.GetOr("En", missing, page)) page.En.Path else page.Path end))
   groups = tabGroups(page.Blocks)
   withTabs = dict.Dict([{Key: g.Line, Value: g} for g in groups])
   tabLines = dict.Dict([{Key: t.Line, Value: true} for t in list.FlatMap(g -> g.Tabs, groups)])
@@ -2515,12 +2568,17 @@ defn build(root, folder, cache, runs)
   end
   hasFr = sys.Exists("$root/docs/fr") or sys.Exists("$root/README.fr.md")
   site = {Title: config.Title, Source: config.Source, Self: selfOf(config.Source), Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
-    Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, Places: {}, FrPlaces: {}}
+    Run: runs, Tree: {}, Columns: {}, Images: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, Places: {}, FrPlaces: {}}
   books = booksOf(root, site)
   book = books.Pages
   site.Home = books.Home
   site.Book = book
   site.BookPaths = dict.Dict([{Key: p.Path, Value: true} for p in book])
+  pictures = bookImages(root, site, list.Unique(list.Concat([site.Home], [p.Book for p in book])))?
+  site.Images = pictures.Images
+  for m in pictures.Mistakes
+    fiber.Send(m, site.Mistakes)
+  end
   readme = readmeOf(root, "README.md", "readme.html", "en")
   english = list.Concat(book, if value.IsSome(readme) [readme] else [] end)
   site.Tree = treeOf(english, modules, lists)
@@ -2602,10 +2660,14 @@ defn build(root, folder, cache, runs)
     return result.Err(text.Join("\n", list.Unique(mistakes)))
   end
   pages = list.Append({Path: "search.js", Html: "window.cesiaSearch = $(json.Text(search));\n"}, pages)
-  (* The images the blocks drew, once for a page and its French one, at each build: a page kept as it was shows them too. *)
+  (* The images of the books, and those the blocks drew, once for a page and its French one, at each build: a page kept
+     as it was shows them too. *)
+  for f in pictures.Files
+    pages = list.Append({Path: f.Path, Html: sys.Read("$root/$(f.From)")?}, pages)
+  end
   for p in book
     for i in dict.GetOr("Images", [], dict.GetOr(p.Path, {}, results))
-      pages = list.Append({Path: text.Str(imagesPath(p.Path), i.Name), Html: i.Svg}, pages)
+      pages = list.Append({Path: text.Str(drawnPath(p.Path), i.Name), Html: i.Svg}, pages)
     end
   end
   (* What tools/tabs.ce checks: the tabs of the English pages, those of the French ones being the same blocks. *)

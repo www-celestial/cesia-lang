@@ -294,8 +294,15 @@ Words after `cesia` on the first line of a block change what is done with it:
 
 A `toml` block must be a valid `cesia.toml`, unless it is marked `norun` too: the file of another program, as a server's.
 
+A page shows the images of its book, written `![what it shows](images/name.png)` from the page's own folder, as GitHub
+shows them: the files of `docs/BOOK/images/`, PNG, JPEG, GIF, WebP or SVG, are copied into the site, and each page leads
+to them from its place, a French page to the English ones with `../../book/images/name.png`. The text between the
+brackets says what the image shows, for those who can't see it: an image without it stops the build, as one that isn't
+there, one from elsewhere or one outside `images/`. An SVG must be a drawing, made of the shapes of SVG and texts, with no
+script, no link and no file it would load.
+
 A block that draws shows its image under it, as the graphs of [Graphs](graphs.md) do: each plain name of a `.svg` file
-written between quotes in its code, as in `plot.Save(g, "waves.svg")`, whose file its run wrote, is copied into `images/`
+written between quotes in its code, as in `plot.Save(g, "waves.svg")`, whose file its run wrote, is copied into `drawn/`
 of the site and shown under the block at its size, with the title of the graph, or its name, for those who can't see it.
 The French page shows the same image. A file that `files/` already held, or a path such as `sub/a.svg`, is no image of
 the block. The site shows only a drawing, the elements that [plot.Svg] writes: an image that holds a script, a link, a

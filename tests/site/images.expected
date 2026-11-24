@@ -1,0 +1,47 @@
+built: 0
+== each page leads to the image from its own place
+site/first.html: <img src="images/dot.png" alt="A dot" />
+site/first.html: <img src="images/parts/box.svg" alt="A box, drawn by hand" title="The box" />
+site/fr/first.html: <img src="../images/dot.png" alt="Un point" />
+site/fr/first.html: <img src="../images/parts/box.svg" alt="Une boîte" title="La boîte" />
+site/guides/index.html: <img src="images/g.png" alt="A guide" />
+site/readme.html: <img src="images/dot.png" alt="The dot" />
+== the files, as they were, byte for byte
+site/guides/images:
+g.png
+
+site/images:
+dot.png
+parts
+
+site/images/parts:
+box.svg
+same
+== a build that keeps the pages still writes them
+dot.png
+parts
+== an image that isn't there
+docs/book/first.md:75: the image images/gone.png is no file of the images/ of a book: an image of a page is a PNG, JPEG, GIF, WebP or SVG file of docs/BOOK/images/, written from the page's own folder, as ![what it shows](images/name.png).
+exit 1
+== an image with no text
+docs/book/first.md:75: the image images/dot.png says nothing for those who can't see it: write what it shows between its brackets, ![what it shows](images/dot.png).
+exit 1
+== an image from elsewhere
+docs/book/first.md:75: the image https://example.com/a.png is no file of the images/ of a book: an image of a page is a PNG, JPEG, GIF, WebP or SVG file of docs/BOOK/images/, written from the page's own folder, as ![what it shows](images/name.png).
+exit 1
+== an image outside images/
+docs/book/first.md:75: the image files/notes.txt is no file of the images/ of a book: an image of a page is a PNG, JPEG, GIF, WebP or SVG file of docs/BOOK/images/, written from the page's own folder, as ![what it shows](images/name.png).
+exit 1
+== a French image that leads nowhere from its folder
+docs/fr/book/first.md:77: the image images/dot.png is no file of the images/ of a book: an image of a page is a PNG, JPEG, GIF, WebP or SVG file of docs/BOOK/images/, written from the page's own folder, as ![what it shows](images/name.png).
+exit 1
+== a file of images/ that is no image a browser shows
+docs/book/images/old.bmp is no image a browser shows: the images/ of a book hold PNG, JPEG, GIF, WebP and SVG files.
+exit 1
+== an SVG of images/ with a script
+docs/book/images/bad.svg holds the element <script>, which the site doesn't show: an SVG image of the site holds only the shapes of a drawing.
+exit 1
+== a link in images/
+docs/book/images/leak.png is a link, or no plain file: the images/ of a book hold plain files only.
+exit 1
+exit 0

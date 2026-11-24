@@ -308,9 +308,16 @@ Les mots qui suivent `cesia` sur la première ligne d'un bloc changent ce qu'on 
 Un bloc `toml` doit être un `cesia.toml` valide, sauf s'il porte lui aussi `norun` : c'est alors le fichier d'un autre
 programme, comme celui d'un serveur.
 
+Une page montre les images de son livre, écrites `![ce qu'elle montre](images/nom.png)` depuis le dossier de la page,
+comme GitHub les montre : les fichiers de `docs/LIVRE/images/`, PNG, JPEG, GIF, WebP ou SVG, sont copiés dans le site,
+et chaque page y mène depuis sa place, une page française vers les images anglaises avec `../../book/images/nom.png`. Le
+texte entre les crochets dit ce que montre l'image, pour qui ne peut pas la voir : une image sans lui arrête la
+construction, comme une image absente, venue d'ailleurs ou hors de `images/`. Un SVG doit être un dessin, fait des
+formes de SVG et de textes, sans script, sans lien et sans fichier qu'il chargerait.
+
 Un bloc qui dessine montre son image sous lui, comme les graphiques de [Graphiques](graphs.md) : chaque simple nom de fichier
 `.svg` écrit entre guillemets dans son code, comme dans `plot.Save(g, "waves.svg")`, dont son exécution a écrit le
-fichier, est copié dans `images/` du site et montré sous le bloc à sa taille, avec le titre du graphe, ou son nom, pour
+fichier, est copié dans `drawn/` du site et montré sous le bloc à sa taille, avec le titre du graphe, ou son nom, pour
 qui ne peut pas le voir. La page française montre la même image. Un fichier que `files/` contenait déjà, ou un chemin
 comme `sub/a.svg`, n'est pas une image du bloc. Le site ne montre qu'un dessin, les éléments qu'écrit [plot.Svg] : une
 image qui contient un script, un lien, un fichier qu'elle chargerait ou tout autre élément arrête la construction, pour

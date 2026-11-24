@@ -1,5 +1,5 @@
 # The images that the blocks of a book draw show under them: each .svg file that a block names between quotes and that its
-# run wrote, copied into images/ of the site; the French page shows the English one's. A path, or a file that files/ held,
+# run wrote, copied into drawn/ of the site; the French page shows the English one's. A path, or a file that files/ held,
 # is no image of the block. Only a drawing is shown: an image with a script, a link, a file it would load or an element a
 # drawing has no use for stops the build, so that nothing in the site runs, even an image opened alone.
 t=$(mktemp -d)
@@ -14,9 +14,11 @@ draw() {
   done
 }
 fresh() {
-  rm -rf "$t/proj" "$t/cache"
+  rm -rf "$t/proj"
   cp -r "$here/proj" "$t/"
   cd "$t/proj" || exit 99
+  # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
+  sed 's/18751/18753/g' docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
 }
 fresh
 printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"><rect width="4" height="2"/></svg>' > docs/book/files/kept.svg
@@ -33,17 +35,17 @@ grep -o '<figure class="drawn">.*</figure>' site/first.html
 echo "== the French page, from its own folder"
 grep -o '<figure class="drawn">.*</figure>' site/fr/first.html
 echo "== the files: those plot.Save wrote"
-ls site/images/first
-head -c 52 site/images/first/up.svg; echo
+ls site/drawn/first
+head -c 52 site/drawn/first/up.svg; echo
 echo "== a build from the cache, which runs nothing again, still writes them"
 rm -r .cesia/site
 cesia doc --site > /dev/null
 if [ -e .cesia/site ]; then echo "a page ran again"; else echo "nothing ran again"; fi
-ls site/images/first
+ls site/drawn/first
 echo "== a page with no drawing any more: its images go"
 fresh
 cesia doc --site > /dev/null
-ls site | grep -c images
+ls site | grep -c drawn
 # Each one alone, in a fresh copy of the project, written from a file of files/ so that no quote of the shell is in the way.
 bad() {  # what is wrong, then the text of the image
   echo "== $1"

@@ -124,6 +124,13 @@
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
   as it builds, with no script, in the time the site took before.
+- `std/markdown` writes images, `![what it shows](url "title")`, as CommonMark and GitHub do, the text between the
+  brackets as the image's `alt`; an image leads only to http, https or a file of the site, never `javascript:` or
+  `data:`. A hook `Image(url, alt, line)` gives its address; without it, an image takes the one `Url` gives.
+- `cesia doc --site` shows the images of a book: the files of `docs/BOOK/images/`, PNG, JPEG, GIF, WebP or SVG, written
+  from the page's own folder as GitHub shows them, a French page leading to the English ones. An image that isn't there,
+  from elsewhere, outside `images/` or with no text for those who can't see it stops the build, as an SVG that holds
+  more than a drawing or a link among the files. The images the blocks draw go to `drawn/` of the site.
 - `cesia doc --site` shows under a block the image it draws: each `.svg` file that the block names between quotes, as
   `plot.Save(g, "waves.svg")`, and that its run wrote, at its size and with the title of the graph for those who can't
   see it. Only a drawing is shown, the elements of `plot.Svg`: an image with a script, a link or a file it would load
