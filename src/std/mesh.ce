@@ -574,14 +574,9 @@ defn WriteStl(m, path, ascii = false)
     k = 0..t - 1
     corner = (c, j) -> col.Pick(3 * k + j, s[c])
     rows = [n[1], n[2], n[3], corner(1, 1), corner(2, 1), corner(3, 1), corner(1, 2), corner(2, 2), corner(3, 2), corner(1, 3), corner(2, 3), corner(3, 3)]
-    out = ["solid cesia"]
-    for i in 1..t
-      v = [r[i] for r in rows]
-      out = list.Concat(out, ["facet normal $(value.Text(v[1])) $(value.Text(v[2])) $(value.Text(v[3]))", "outer loop",
-        "vertex $(value.Text(v[4])) $(value.Text(v[5])) $(value.Text(v[6]))", "vertex $(value.Text(v[7])) $(value.Text(v[8])) $(value.Text(v[9]))",
-        "vertex $(value.Text(v[10])) $(value.Text(v[11])) $(value.Text(v[12]))", "endloop", "endfacet"])
-    end
-    return sys.Write(path, text.Join("\n", list.Append("endsolid cesia\n", out)))
+    w = [[value.Text(x) for x in r] for r in rows]
+    facets = ["facet normal $(w[1][i]) $(w[2][i]) $(w[3][i])\nouter loop\nvertex $(w[4][i]) $(w[5][i]) $(w[6][i])\nvertex $(w[7][i]) $(w[8][i]) $(w[9][i])\nvertex $(w[10][i]) $(w[11][i]) $(w[12][i])\nendloop\nendfacet" for i in 1..t]
+    return sys.Write(path, text.Str("solid cesia\n", text.Join("\n", facets), "\nendsolid cesia\n"))
   end
   (* The 12 floats of each triangle in a column: the normal, then the three corners, x, y and z, as the points of
      its corners read from the matrix of points across. Placed by products with columns of the identity, and read as
