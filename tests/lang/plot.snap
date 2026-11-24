@@ -246,8 +246,9 @@
 <path d="M598 10.5L603 10.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
 <text x="606" y="14.88" font-size="12" fill="#000000">2</text>
 </svg>
-== isEndsSvg 1 (61 lines)
+== isEndsSvg 1 (62 lines)
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<title>Ends</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="35" width="581" height="330"/></clipPath></defs>
 <path d="M52.5 35L52.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1312,8 +1313,9 @@
 <path d="M20.5 26.5L25.5 26.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">7</text>
 </svg>
-== isLookSvg 1 (79 lines)
+== isLookSvg 1 (80 lines)
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<title>The look</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="54" y="35" width="492" height="309"/></clipPath></defs>
 <path d="M76.5 35L76.5 344" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1492,8 +1494,9 @@
 <text x="497.6" y="337.56" font-size="12" fill="#000000">  lon: -73.984</text>
 <text x="497.6" y="353.4" font-size="12" fill="#000000"> date: 23/11/2026</text>
 </svg>
-== isOfOptions 1 (39 lines)
+== isOfOptions 1 (40 lines)
 <svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" viewBox="0 0 500 300" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<title>A title</title>
 <rect width="500" height="300" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="47" y="35" width="435" height="209"/></clipPath></defs>
 <path d="M47.5 35L47.5 244" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1674,8 +1677,9 @@
 <path d="M600.5 19.92h10" stroke="#aa0000" stroke-width="10"/>
 <text x="622.5" y="24.3" font-size="12" fill="#000000">p</text>
 </svg>
-== isPolarSvg 1 (56 lines)
+== isPolarSvg 1 (57 lines)
 <svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<title>Sun path</title>
 <rect width="500" height="500" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="47.5" y="59.5" width="406" height="406"/></clipPath></defs>
 <path d="M250.5 262.5L250.5 59.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
