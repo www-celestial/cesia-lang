@@ -409,10 +409,10 @@ let rec mark_tail self (f : func) (e : expr) =
     mark_block self f b
   | Match { arms; _ } -> Array.iter (fun a -> mark_tail self f a.abody) arms
   | Call c ->
+    (* Named arguments, and defaults left out, too: the jump binds them as a call does ([Compile.prepare_call]), and
+       the frame makes the defaults again at each turn. *)
     (match c.callee.e, self with
-     | Var { b = Cell { k; stable = true; _ }; _ }, Some me
-       when k = me && Array.length c.args = Array.length f.params
-            && Array.for_all (fun a -> a.aname = None) c.args ->
+     | Var { b = Cell { k; stable = true; _ }; _ }, Some me when k = me ->
        c.self_tail <- true;
        f.has_self_tail <- true
      | _ -> ())

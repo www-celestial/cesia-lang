@@ -3108,13 +3108,19 @@ and tail_jump c ver slots : ctx -> unit =
   let modes = passes c (Resolve.keeps ver.owner.func) (fun k i -> i = k || i >= np) slots in
   let write = arg_writers c off ver modes slots in
   c.off <- off;
+  (* A parameter left out that the version takes by default has nothing to move: the frame makes its default again. *)
   let moves =
-    List.init np (fun k ->
-        let p = ver.map.(k) in
-        match ver.tv.(k) with
-        | TI -> fun (ctx : ctx) -> ctx.i.(ctx.b + p) <- ctx.i.(ctx.b + off + p)
-        | TF -> fun ctx -> Float.Array.set ctx.f (ctx.b + p) (Float.Array.get ctx.f (ctx.b + off + p))
-        | _ -> fun ctx -> ctx.v.(ctx.b + p) <- ctx.v.(ctx.b + off + p))
+    List.filter_map
+      (fun k ->
+         let p = ver.map.(k) in
+         if Option.is_none slots.(k) && ver.sg.(k) == TBot then None
+         else
+           Some
+             (match ver.tv.(k) with
+              | TI -> fun (ctx : ctx) -> ctx.i.(ctx.b + p) <- ctx.i.(ctx.b + off + p)
+              | TF -> fun ctx -> Float.Array.set ctx.f (ctx.b + p) (Float.Array.get ctx.f (ctx.b + off + p))
+              | _ -> fun ctx -> ctx.v.(ctx.b + p) <- ctx.v.(ctx.b + off + p)))
+      (List.init np Fun.id)
   in
   let move = seq_u moves in
   fun ctx ->

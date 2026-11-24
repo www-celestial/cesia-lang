@@ -96,7 +96,10 @@ countdown(100000) --> "done"
 ```
 
 L'appel à `countdown` est en tail position, donc 100 000 appels tournent dans une seule frame, sous la limite de
-profondeur de 10 000.
+profondeur de 10 000. Les arguments nommés et les valeurs par défaut laissées de côté tournent aussi en boucle : la frame
+refait les valeurs par défaut à chaque tour. La boucle reste dans la version de la fonction où son premier appel est
+entré : un appel qui laisse de côté un paramètre que cet appel donnait, ou qui en donne un qu'il laissait, peut entrer
+dans une frame de plus, la version pour ces arguments, et tourne en boucle là.
 
 ### Closures
 

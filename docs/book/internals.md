@@ -89,6 +89,9 @@ countdown(100000) --> "done"
 ```
 
 The call to `countdown` is in tail position, so 100,000 calls run in one frame, under the depth limit of 10,000.
+Named arguments and defaults left out loop too: the frame makes the defaults again at each turn. The loop is in the
+version of the function its first call entered: a call that leaves out a parameter that call gave, or gives one it left
+out, can enter one frame more, the version for those arguments, and loops there.
 
 ### Closures
 

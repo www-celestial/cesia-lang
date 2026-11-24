@@ -167,6 +167,11 @@
   into an Err. The same on Windows for `sys.RemoveTree` and `sys.CopyTree` of a folder that goes away while they list
   it. `tests/sys/remove-race`, which makes and removes folders while another process swaps them, ended so once in 24
   runs under load, never in 120 now.
+- A function that calls itself in tail position runs as a loop when the call names its arguments or leaves a default
+  out, as the book says, where only a call that gave every argument in order did: `byStep(n, step = 1) = if n <= 0
+  "done" else byStep(n - step) end` stopped at the depth limit from 10,000 on, on both paths, and now runs 100,000 turns
+  in one frame, its defaults made again at each turn. 2,000 runs of 5,000 turns take 277 ms where 2,000 runs of 5,000
+  calls took 311 (medians of 7, release builds); calls that gave every argument run as before.
 - `cesia test` saves the failing case of a `ForAll` when another run makes `.cesia/failures` at the same time, as the
   golden tests of a fresh clone do, where the save went silently and the next run drew its cases again: 8 runs at
   once lost one in 25 tries, none in 60 now. The CI on macOS failed so on `tests/testing/forall`.

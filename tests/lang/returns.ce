@@ -130,6 +130,12 @@ wrongDown(n) Int = if n == 0 "done" else wrongDown(n - 1) end
 
 isSelfTailResult() = countdown(100000) == "done" and down(100000) == 0 and stop(() -> wrongDown(3)) == "type: wrongDown: the result must be an Int, found a Text."
 
+byStep(n, step = 1) = if n <= 0 "done" else byStep(n - step) end   (** A self tail call that leaves a default out. *)
+seen(n, at = n) = if n == 0 at else seen(n - 1) end   (** A default that reads a parameter, made again at each turn. *)
+named(n, step = 1) = if n <= 0 "done" else named(step = step, n = n - step) end   (** Named arguments, in another order. *)
+
+isSelfTailDefault() = byStep(100000) == "done" and seen(100000) == 0 and named(100000) == "done" and byStep(100000, 2) == "done"
+
 outside() shapes.Rect = shapes.MakeRect(2)   (** A type of another package, and a struct with its package. *)
 mixedUp() Rect = shapes.MakeRect(2)
 
