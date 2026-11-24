@@ -835,7 +835,7 @@ let tail_check c =
 let rec compile_version (ctx : ctx) (ver : version) =
   let w = ctx.w in
   Infer.run w ver;
-  let f = ver.owner.func in
+  let f = Cache.ready ver.owner.func in
   let c =
     { w; file = ver.owner.file; fn = ver.owner.pname; func = f; ver; tv = ver.tv; tn = ver.tn; map = ver.map;
       off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; hook_line = 0; loops = []; blocks = [] }

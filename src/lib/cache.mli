@@ -1,13 +1,15 @@
 (** The loaded form of a package, kept between runs, so that a package unchanged since the last run is not lexed, parsed
-    or resolved again. An entry is untrusted bytes: it is decoded only once its checksum and what it was made from are
-    checked, by a decoder that raises on anything wrong, and any failure only means that the package loads as without it. *)
+    or resolved again. An entry is untrusted bytes: its head is decoded only once its checksum and what it was made from
+    are checked, the record of a body only once its own checksum is, at the first need of that body, by a decoder that
+    raises on anything wrong, and any failure only means that the package, or that body, loads as without it. *)
 
 (** The checksum of an entry, XXH64 with seed 0, of [len] bytes of a text from [off]. *)
 val checksum : string -> int -> int -> int64
 
-(** Where entries are kept, which the binary gives: its build, which an entry must name, and how an entry is read and
-    replaced by its name, each failing in silence. Without it, nothing is cached. *)
-type store = { build : string; read : string -> string option; write : string -> string -> unit }
+(** Where entries are kept, which the binary gives: its build, which an entry must name, and how an entry is replaced by
+    its name and found by it, as its size and a function that copies [len] of its bytes from [off], raising
+    [Invalid_argument] past its end; each fails in silence. Without it, nothing is cached. *)
+type store = { build : string; map : string -> (int * (int -> int -> string)) option; write : string -> string -> unit }
 
 val store : store option ref
 
@@ -43,10 +45,14 @@ val space : log -> int -> string -> (string -> Ast.binding option) -> string -> 
 val is_type : log -> (Ast.binding -> bool) -> Ast.binding -> bool
 
 (** Asks the questions of the entry again: the trees of each file and their layouts, when every answer is the same, else
-    [None]. *)
+    [None]. [again] gives the tree of each file resolved again from its source, for a body whose record doesn't read. *)
 val trees :
   saved -> place -> lookup:(string -> Ast.binding option) -> spaces:(string * (string -> Ast.binding option)) list array ->
-  is_type:(Ast.binding -> bool) -> (Ast.func * Ast.layout) list option
+  is_type:(Ast.binding -> bool) -> again:(unit -> Ast.func list) -> (Ast.func * Ast.layout) list option
+
+(** [f], its body read: a function read from an entry gets the names of its variables and those that can be read unset
+    with its body, at its first need, and has none before. *)
+val ready : Ast.func -> Ast.func
 
 (** Keeps a package just resolved, to save when the run ends: its uses, the questions asked and its trees. *)
 val write : slot -> place -> log -> use list array -> (Ast.func * Ast.layout) list -> unit

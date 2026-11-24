@@ -463,7 +463,13 @@ let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx 
     match saved, warm with
     | Some saved, Some files ->
       let spaces = Array.of_list (List.map (fun (_, _, ((named, _), _)) -> named) files) in
-      (match Cache.trees saved (place (List.map (fun (_, _, (_, used)) -> used) files)) ~lookup ~spaces ~is_type:(is_type w) with
+      (* A body whose record doesn't read takes the files parsed and resolved again from the sources this load read,
+         with the same lookups: their entry is written again when the run ends. *)
+      let again () =
+        List.map (fun (_, _, fn, _) -> fn) (fst (resolved (List.map2 (fun s (file, _, _) -> one ~file s) sources files)))
+      in
+      let place = place (List.map (fun (_, _, (_, used)) -> used) files) in
+      (match Cache.trees saved place ~lookup ~spaces ~is_type:(is_type w) ~again with
        | Some trees ->
          ( List.map2 (fun ((path, _), (file, _, (named, _))) (fn, _) -> path, file, fn, named) (List.combine sources files) trees,
            List.map snd trees )

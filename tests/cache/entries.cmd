@@ -2,7 +2,8 @@
 # the same error; an entry damaged, cut, swapped with another, made a link or opened to others is not used, and is
 # written again as it was; one changed while a run that read it runs changes nothing for that run; a changed file is
 # read again; a folder that isn't the person's alone is neither read nor written; one that can't be written changes
-# nothing; four runs at once agree; the count of the folder is the bytes of its entries.
+# nothing; four runs at once agree; the count of the folder is the bytes of its entries. An entry is damaged in its
+# head, which each run checks, and in its tail, whose records a run checks only when it reads them.
 top=$(mktemp -d)
 trap 'chmod -R u+rwx "$top"; rm -rf "$top"' EXIT
 export XDG_CACHE_HOME="$top/cache"
@@ -38,7 +39,15 @@ cp $(entries "$load") "$top/good"
 same "warm"
 kept "warm"
 size() { wc -c < "$1" | tr -d ' '; }
-for f in $(entries "$load"); do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
+# Four bytes changed in place in the middle of the head of an entry, whose length its bytes 16 to 24 hold, and four in
+# the middle of its tail.
+damage() {
+  local head=$((24 + $(od -An -td8 -j16 -N8 "$1" | tr -d ' ')))
+  for at in $((head / 2)) $(((head + $(size "$1")) / 2)); do
+    printf '\377\001\377\001' | dd of="$1" bs=1 seek="$at" conv=notrunc 2> /dev/null
+  done
+}
+for f in $(entries "$load"); do damage "$f"; done
 same "damaged"
 kept "damaged"
 for f in $(entries "$load"); do head -c $(($(size "$f") / 2)) "$f" > "$top/cut"; cat "$top/cut" > "$f"; done
@@ -84,7 +93,7 @@ mkfifo "$top/fifo"
 later < "$top/fifo" > "$top/later-out" &
 exec 9> "$top/fifo"
 for i in $(seq 1 500); do [ -s "$top/later-out" ] && break; sleep 0.01; done
-for f in $(entries "$top/later/cesia/load"); do printf '\377\001\377\001' | dd of="$f" bs=1 seek=$(($(size "$f") / 2)) conv=notrunc 2> /dev/null; done
+for f in $(entries "$top/later/cesia/load"); do damage "$f"; done
 echo x >&9
 exec 9>&-
 wait

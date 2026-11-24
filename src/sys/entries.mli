@@ -1,6 +1,6 @@
 (** The files of the cache of loaded packages, in [$XDG_CACHE_HOME/cesia/load], else [~/.cache/cesia/load]. The folder is
     made for the person alone, 0700, and used only if it is theirs alone; an entry is a file of theirs that no one else can
-    read or write, 0600, read only if it is no link and still the file looked at, written beside under a new name, then
+    read or write, 0600, mapped only if it is no link and still the file looked at, written beside under a new name, then
     renamed over the old one. Every failure is silent: the package then loads without the cache. *)
 
 (** The store of this build, for {!Cesia.Cache.store}. Nothing is looked at before the first entry is read or written. *)

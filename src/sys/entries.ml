@@ -27,31 +27,54 @@ let folder =
          | st when st.st_kind = Unix.S_DIR && mine st -> Some dir
          | _ | (exception Unix.Unix_error _) -> None))
 
-let read name =
+type mapped = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+
+(* The compiler's own loads and stores of 8 bytes, which no C backs. *)
+external get64 : mapped -> int -> int64 = "%caml_bigstring_get64u"
+external set64 : Bytes.t -> int -> int64 -> unit = "%caml_bytes_set64u"
+
+(* [len] bytes of a mapped entry from [off], copied out of it: what is checked is then what is read, whatever another
+   process writes into the file meanwhile. The range is checked once; the copy goes 32 bytes at a time. *)
+let part (a : mapped) off len =
+  if off < 0 || len < 0 || off > Bigarray.Array1.dim a - len then invalid_arg "Entries.part";
+  let b = Bytes.create len in
+  let i = ref 0 in
+  while !i + 32 <= len do
+    let j = !i in
+    set64 b j (get64 a (off + j));
+    set64 b (j + 8) (get64 a (off + j + 8));
+    set64 b (j + 16) (get64 a (off + j + 16));
+    set64 b (j + 24) (get64 a (off + j + 24));
+    i := j + 32
+  done;
+  for j = !i to len - 1 do Bytes.set b j (Bigarray.Array1.get a (off + j)) done;
+  Bytes.unsafe_to_string b
+
+(* An entry mapped, its descriptor closed at once: only the pages read are, and no call of the system reads a body.
+   The mapping lasts as long as a body not yet read needs it. Another run unlinks or replaces an entry, never writes it
+   in place: on POSIX, the file mapped stays as it was. On Windows, a file mapped can't be deleted or replaced until
+   the run ends; no entry is written there today, as [after] can't fork, so none is mapped. *)
+let map name =
   match Lazy.force folder with
   | None -> None
   | Some dir ->
     let path = Filename.concat dir name in
     try
       let seen = Unix.lstat path in
-      if seen.st_kind <> Unix.S_REG || (not (mine seen)) || seen.st_size > largest then None
+      if seen.st_kind <> Unix.S_REG || (not (mine seen)) || seen.st_size > largest || seen.st_size = 0 then None
       else
         let fd = Unix.openfile path [ O_RDONLY; O_CLOEXEC ] 0 in
         Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
         let st = Unix.fstat fd in
         (* The file opened is the one looked at, not a link put in its place since. *)
-        if st.st_dev <> seen.st_dev || st.st_ino <> seen.st_ino then None
+        if st.st_dev <> seen.st_dev || st.st_ino <> seen.st_ino || st.st_size = 0 then None
         else begin
-          let b = Bytes.create st.st_size in
-          let rec fill i =
-            if i < st.st_size then match Unix.read fd b i (st.st_size - i) with 0 -> raise End_of_file | n -> fill (i + n)
-          in
-          fill 0;
+          let a = Bigarray.array1_of_genarray (Unix.map_file fd Bigarray.char Bigarray.c_layout false [| st.st_size |]) in
           (* An entry in use stays among the newest, for the limit. *)
           if st.st_mtime < Unix.time () -. day then (try Unix.utimes path 0. 0. with Unix.Unix_error _ -> ());
-          Some (Bytes.unsafe_to_string b)
+          Some (st.st_size, part a)
         end
-    with Unix.Unix_error _ | End_of_file -> None
+    with Unix.Unix_error _ | Sys_error _ | Failure _ | Invalid_argument _ -> None
 
 let prune ?(adding = 0) ~limit dir =
   match Sys.readdir dir with
@@ -118,7 +141,7 @@ let write name data =
      with Unix.Unix_error _ -> (try Unix.unlink tmp with Unix.Unix_error _ -> ()))
   | _ -> ()
 
-let store build = { Cesia.Cache.build; read; write }
+let store build = { Cesia.Cache.build; map; write }
 
 external close_from : int -> unit = "cesia_close_from"
 

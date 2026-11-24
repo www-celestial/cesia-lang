@@ -1,8 +1,9 @@
-(* OCaml tests of the cache of loaded packages, whose entries are untrusted bytes. An entry changed anywhere, cut, grown, of
-   another build or of other sources is not used, never raises, and the package loads as without it, its entry written
-   again as it was; a changed file or dependency is read again. A body is read at the first call of its function only, and
-   one damaged in memory after the entry was checked is refused at that call. The files of the store: a link or an entry
-   open to others is not read, and past the limit the entries used least lately go. *)
+(* OCaml tests of the cache of loaded packages, whose entries are untrusted bytes. An entry whose head is changed, cut,
+   grown, of another build or of other sources is not used, never raises, and the package loads as without it, its entry
+   written again as it was; a changed file or dependency is read again. A body is read at the first call of its function
+   only, from its record, checked then: one damaged, cut or read on another domain is taken from the file resolved again
+   from its source, the run goes on with the same output, and the entry is written again. The files of the store: a link
+   or an entry open to others is not mapped, and past the limit the entries used least lately go. *)
 open Cesia
 
 let failures = ref 0
@@ -20,10 +21,16 @@ let write path text =
   make (Filename.dirname path);
   Out_channel.with_open_bin path (fun oc -> output_string oc text)
 
-(* Entries in memory, and the number of writes. *)
+(* Entries in memory, and the number of writes. A record is copied from the entry as it is at that time, as from a file
+   that another process changed in place under its mapping. *)
 let mem : (string, string) Hashtbl.t = Hashtbl.create 16
 let writes = ref 0
-let kept build = Some { Cache.build; read = Hashtbl.find_opt mem; write = (fun k v -> incr writes; Hashtbl.replace mem k v) }
+let part k off len = String.sub (Option.value (Hashtbl.find_opt mem k) ~default:"") off len
+let map k = Option.map (fun s -> String.length s, part k) (Hashtbl.find_opt mem k)
+let kept build = Some { Cache.build; map; write = (fun k v -> incr writes; Hashtbl.replace mem k v) }
+
+(* Where the tail of an entry starts. *)
+let tail s = if String.length s < 24 then String.length s else 24 + Int64.to_int (String.get_int64_le s 16)
 
 let app = Filename.concat top "app"
 let shapes = Filename.concat app "src/shapes"
@@ -121,24 +128,39 @@ let () =
     | None -> []
   in
   check "warm: the number a function gives back through a call keeps its type" (ret "Wrap" = [ Types.TI ]);
-  (* An entry damaged in memory once it was read and checked, which no digest can see: the body read later doesn't read
-     as it was written, so the first call of its function stops the program with an error there, the entry goes, and the
-     next run reads the package from its sources. *)
-  Hashtbl.filter_map_inplace (fun _ s -> Some (Bytes.to_string (Bytes.of_string s))) mem;
-  let damage () = Hashtbl.iter (fun _ s -> let b = Bytes.unsafe_of_string s in Bytes.fill b 16 (Bytes.length b - 16) '\255') mem in
-  let _, damaged = world_run ~then_run:damage "loads.ce" in
-  check "damaged after the load: refused at the first call, with an error at the function"
-    (String.starts_with ~prefix:"loaded\n" damaged && String.ends_with ~suffix:"exit 1" damaged
-     && List.exists (fun l -> String.ends_with ~suffix:(Messages.cache_damaged.text) l) (String.split_on_char '\n' damaged));
-  check "damaged after the load: the entry goes" (Hashtbl.fold (fun _ s n -> if s = "" then n + 1 else n) mem 0 >= 1);
-  check "damaged after the load: the next run as without a cache" (run () = plain);
-  check "damaged after the load: written again as it was" (List.for_all (fun (k, good) -> Hashtbl.find_opt mem k = Some good) entries);
-  (* Each entry damaged, cut and grown: not used, written again as it was. *)
+  (* The entry of shapes, whose functions main.ce calls. *)
+  let holds s t = let n = String.length t in Seq.exists (fun i -> String.sub s i n = t) (Seq.init (String.length s - n + 1) Fun.id) in
+  let shapes, good = List.find (fun (_, s) -> holds s "Scaled") entries in
+  (* Entries damaged once they were read and checked, every byte of their tails, or cut there: a body read later doesn't
+     read as it was written, so it is taken from its file resolved again, the run goes on with the same output, the
+     entry goes and is written again when the run ends, from the sources the load read. *)
+  let after ?(all = true) name change =
+    writes := 0;
+    let _, out = world_run ~then_run:(fun () -> Hashtbl.filter_map_inplace (fun _ s -> Some (change s)) mem) "loads.ce" in
+    check (name ^ " after the load: the same output") (out = "loaded\n" ^ plain);
+    check (name ^ " after the load: the entry goes, then is written again as it was")
+      (!writes >= 2 && Hashtbl.find_opt mem shapes = Some good);
+    check (name ^ " after the load: the next run the same") (run () = plain);
+    if all then
+      check (name ^ " after the load: every entry written again as it was")
+        (List.for_all (fun (k, good) -> Hashtbl.find_opt mem k = Some good) entries);
+    List.iter (fun (k, good) -> Hashtbl.replace mem k good) entries
+  in
+  (* Damaged in its records alone, an entry whose functions no run calls stays as it is. *)
+  after ~all:false "damaged" (fun s -> String.mapi (fun i c -> if i < tail s then c else Char.chr (Char.code c lxor 1)) s);
+  after "cut" (fun s -> String.sub s 0 (tail s));
+  after "gone" (fun _ -> "");
+
+  (* Each entry damaged, cut and grown: not used, written again as it was; damaged in a record that no run reads, it
+     changes nothing and stays until one does. *)
   let again name (k, good) bad =
     Hashtbl.replace mem k bad;
     let out = run () in
     check (name ^ ": the same output") (out = plain);
-    check (name ^ ": written again as it was") (Hashtbl.find_opt mem k = Some good)
+    let now = Hashtbl.find_opt mem k in
+    check (name ^ ": written again as it was")
+      (now = Some good || (now = Some bad && String.length bad = String.length good && String.sub bad 0 (tail good) = String.sub good 0 (tail good)));
+    Hashtbl.replace mem k good
   in
   List.iter
     (fun (k, good) ->
@@ -153,13 +175,16 @@ let () =
        again "a byte added" (k, good) (good ^ "\000");
        again "another entry" (k, good) (snd (List.find (fun (k', _) -> k' <> k) entries)))
     entries;
-  (* Another build: none of its entries is read. *)
+  (* Another build: none of its entries is read, and it writes its own beside, under other names: two versions used in
+     turn don't write over each other's. *)
   writes := 0;
   with_store "other" (fun () -> check "another build: the same output" (run () = plain));
-  check "another build: every entry written again" (!writes = List.length entries);
+  check "another build: its own entries written" (!writes = List.length entries && Hashtbl.length mem = 2 * List.length entries);
   writes := 0;
   check "back to this build: the same output" (run () = plain);
-  check "back to this build: written again" (!writes = List.length entries);
+  check "back to this build: its entries still there, nothing written" (!writes = 0);
+  writes := 0;
+  with_store "other" (fun () -> check "the other build again: its entries still there" (run () = plain && !writes = 0));
   (* A changed file, then a dependency whose cells move: read again, as without a cache. *)
   let without () = with_store "" (fun () -> Cache.store := None; run ()) in
   write (Filename.concat app "src/units/units.ce") (units "Unit = \" square meters\"");
@@ -229,19 +254,42 @@ let () =
   let s = Cesia_sys.Entries.store "b" in
   let load = Filename.concat cache "cesia/load" in
   let entry = Filename.concat load "aa" in
+  let read k = Option.map (fun (n, part) -> part 0 n) (s.map k) in
   s.write "aa" "first";
-  check "an entry is read" (s.read "aa" = Some "first");
+  check "an entry is mapped" (read "aa" = Some "first");
+  check "a part of an entry" (Option.map (fun (_, part) -> part 1 3) (s.map "aa") = Some "irs");
+  check "no part past its end"
+    (match s.map "aa" with
+     | Some (n, part) -> List.for_all (fun (off, len) -> match part off len with _ -> false | exception Invalid_argument _ -> true) [ n, 1; -1, 2; 0, n + 1; 2, -1; max_int, 1 ]
+     | None -> false);
+  let long = String.init 1000 (fun i -> Char.chr (i land 255)) in
+  s.write "long" long;
+  check "parts of a longer entry, each way through the copy"
+    (match s.map "long" with
+     | Some (n, part) -> n = 1000 && List.for_all (fun (off, len) -> part off len = String.sub long off len) [ 0, 1000; 1, 999; 3, 31; 5, 32; 7, 65; 999, 1; 1000, 0 ]
+     | None -> false);
+  s.write "empty" "";
+  check "an empty entry is none" (s.map "empty" = None);
   check "the folder is the person's alone" ((Unix.stat load).st_perm = 0o700);
   check "an entry is the person's alone" ((Unix.stat entry).st_perm = 0o600);
   Unix.chmod entry 0o644;
-  check "an entry others can read is not used" (s.read "aa" = None);
+  check "an entry others can read is not used" (read "aa" = None);
   Unix.chmod entry 0o600;
   Unix.rename entry (Filename.concat load "bb");
   Unix.symlink "bb" entry;
-  check "a link is not followed" (s.read "aa" = None);
+  check "a link is not followed" (read "aa" = None);
   s.write "aa" "second";
   check "a write replaces the link, not what it points to"
-    ((Unix.lstat entry).st_kind = Unix.S_REG && s.read "aa" = Some "second" && s.read "bb" = Some "first");
+    ((Unix.lstat entry).st_kind = Unix.S_REG && read "aa" = Some "second" && read "bb" = Some "first");
+  (* An entry mapped stays as it was when another run unlinks it or replaces it. *)
+  s.write "kept" long;
+  (match s.map "kept" with
+   | Some (_, part) ->
+     s.write "kept" "other";
+     let replaced = part 0 1000 in
+     Unix.unlink (Filename.concat load "kept");
+     check "an entry mapped, then replaced and unlinked, reads as it was" (replaced = long && part 0 1000 = long)
+   | None -> check "an entry mapped, then replaced and unlinked, reads as it was" false);
   (* The limit: the entries used least lately go first, down to half of it; an old temporary file goes. *)
   let dir = Filename.concat top "prune" in
   Sys.mkdir dir 0o700;
@@ -327,6 +375,96 @@ let () =
   wait 500;
   check "the copy holds none of the program's descriptors"
     (Sys.file_exists marker && In_channel.with_open_bin marker In_channel.input_all = "closed")
+
+(* Every package of std/: its functions read from its entry, each body read, are those its sources resolve to, as the
+   ones taken when a record doesn't read must be. A program names one function of each, which loads its Cesia code. *)
+let () =
+  let each = Filename.concat app "each.ce" in
+  let first src =
+    List.find_map
+      (fun line ->
+         let line = if String.starts_with ~prefix:"defn " line then String.sub line 5 (String.length line - 5) else line in
+         let n = String.length line in
+         let rec stop i = if i < n && (match line.[i] with 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' -> true | _ -> false) then stop (i + 1) else i in
+         let i = stop 0 in
+         if i > 0 && i < n && line.[i] = '(' && (match line.[0] with 'A' .. 'Z' -> true | _ -> false) then Some (String.sub line 0 i)
+         else None)
+      (String.split_on_char '\n' src)
+  in
+  let functions name =
+    let w = Runtime.create_world { Runtime.default_options with o_sink = ignore; o_err = ignore } in
+    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+    let code = Loader.run_file w each [] in
+    Cache.save ();
+    let found = ref [] in
+    Array.iter
+      (fun (md : Types.modul) ->
+         if String.ends_with ~suffix:("std/" ^ name ^ ".ce") md.path then
+           List.iter
+             (fun (text, k) -> match md.cells.(k) with Fun { proto; _ } -> found := (text, proto.func) :: !found | _ -> ())
+             md.mnames)
+      w.modules;
+    code, List.sort compare (List.map fst !found), List.rev !found
+  in
+  let rec read (f : Ast.func) = Array.iter (fun (p : Ast.param) -> Option.iter expr p.default) f.params; Array.iter expr (Lazy.force f.body)
+  and expr (e : Ast.expr) = match e.e with Lambda g | Fn_def (_, g) -> read g | _ -> Resolve.children expr e in
+  let tried = ref 0 in
+  List.iter
+    (fun name ->
+       match Option.bind (Embedded.file name) first with
+       | None -> ()
+       | Some f ->
+         write each (Printf.sprintf "use std/%s\n\nx = %s.%s\n" name name f);
+         let code, names, plain = with_store "" (fun () -> Cache.store := None; functions name) in
+         if code = 0 && plain <> [] then begin
+           with_store "test" @@ fun () ->
+           ignore (functions name);
+           writes := 0;
+           let code', names', cached = functions name in
+           if List.exists (fun (_, (f : Ast.func)) -> not (Lazy.is_val f.body)) cached then incr tried;
+           List.iter (fun (_, f) -> read f) cached;
+           List.iter (fun (_, f) -> read f) plain;
+           check ("std/" ^ name ^ ": from its entry, the same functions as from its sources")
+             (code' = 0 && names' = names && !writes = 0
+              && List.for_all (fun (text, f) -> List.assoc_opt text plain = Some f) cached);
+           (* Every record damaged once the entry is read: each body is the one of the file resolved again. *)
+           let _, _, cached = functions name in
+           let unread = List.exists (fun (_, (f : Ast.func)) -> not (Lazy.is_val f.body)) cached in
+           let good = Hashtbl.copy mem in
+           Hashtbl.filter_map_inplace (fun _ s -> Some (String.mapi (fun i c -> if i < tail s then c else Char.chr (Char.code c lxor 1)) s)) mem;
+           writes := 0;
+           List.iter (fun (_, f) -> read f) cached;
+           check ("std/" ^ name ^ ": every record damaged, the same functions from its sources")
+             ((!writes > 0 || not unread) && List.for_all (fun (text, f) -> List.assoc_opt text plain = Some f) cached);
+           Hashtbl.reset mem;
+           Hashtbl.iter (Hashtbl.replace mem) good
+         end
+         else check ("std/" ^ name ^ " loads with " ^ f) false)
+    (List.filter (fun n -> n <> "natives") Embedded.names);
+  check "the packages of std/ compared, each with bodies read at their first need" (!tried >= 30)
+
+(* A body needed on another domain, which never happens: taken from the file resolved again, never raised. Last: no
+   fork may follow a domain. *)
+let () =
+  with_store "test" @@ fun () ->
+  ignore (world_run "loads.ce");
+  let entries = Hashtbl.fold (fun k v acc -> (k, v) :: acc) mem [] in
+  let w, _ = world_run "loads.ce" in
+  match Array.find_opt (fun (md : Types.modul) -> String.ends_with ~suffix:"more.ce" md.path) w.modules with
+  | Some md ->
+    (match md.cells.(List.assoc "More5" md.mnames) with
+     | Fun { proto; _ } ->
+       let f = proto.func in
+       check "a body never needed is not read" (not (Lazy.is_val f.body) && f.var_names = [||]);
+       writes := 0;
+       let read = Domain.join (Domain.spawn (fun () -> match Lazy.force f.body with b -> Some b | exception _ -> None)) in
+       check "a body read on another domain: from its source, with the names of its variables, the entry gone"
+         (read <> None && Array.length f.var_names = f.nvars && Array.length f.maybe_undef = f.nvars && !writes = 1);
+       Cache.save ();
+       check "a body read on another domain: the entries written again as they were"
+         (List.for_all (fun (k, good) -> Hashtbl.find_opt mem k = Some good) entries)
+     | _ -> check "a body read on another domain: More5 is a function" false)
+  | None -> check "a body read on another domain: more.ce is loaded" false
 
 let () =
   let rec remove path =

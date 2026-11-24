@@ -837,7 +837,7 @@ and back st =
 (* A small callee without a loop is lowered in place, one level deep: its frame is virtual, written only when an error or
    a limit unwinds through it, so traces and the limit of depth stay the interpreter's. *)
 and inlinable ?(any = false) ?(most = 40) (v : version) =
-  let f = v.owner.func in
+  let f = Cache.ready v.owner.func in
   let rec size (e : expr) =
     let blk b = Array.fold_left (fun n x -> n + size x) 0 b in
     1
@@ -875,7 +875,7 @@ and inline_args st (e : expr) (v : version) args vout =
   let entry = entry_step st ((vb, base, callsite) :: st.inl) v in
   emit st (Frame (vb, base));
   emit st (Enter (vb, base, callsite, entry, back st));
-  let f = v.owner.func in
+  let f = Cache.ready v.owner.func in
   (* A result of no kind takes the kind of the first value the body gives. *)
   let res = if vout = None && (v.ret == TI || v.ret == TF) then reg st (kind_of v.ret) else -1 and cont = block st in
   let dead = st.dyn.dead in
@@ -1144,7 +1144,7 @@ and native_call st e (v : version) args =
   let call () =
     fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back))
   in
-  let f = v.owner.func in
+  let f = Cache.ready v.owner.func in
   let np = Array.length f.params in
   let rec simple (x : expr) = match x.e with Lint _ | Lfloat _ -> true | Var { b = Local i; _ } -> i < np | _ -> false
   and test (x : expr) =
@@ -1590,7 +1590,7 @@ and inline_test st (e : expr) (v : version) args body yes no =
   let entry = entry_step st ((vb, base, callsite) :: st.inl) v in
   emit st (Frame (vb, base));
   emit st (Enter (vb, base, callsite, entry, back st));
-  let f = v.owner.func in
+  let f = Cache.ready v.owner.func in
   let child =
     { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); spec = Array.make f.nvars false;
               sunk = Array.make f.nvars None; inplace = Array.make f.nvars false; loops = [];
@@ -2531,7 +2531,7 @@ let numeric ?cold (loop : expr) i kept cells =
    goes from an iteration to the next and holds an Int or a Float now is kept as that number for the whole run, unless
    [values] names it: an iteration then boxes and unboxes nothing. *)
 let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) unit index (ver : version) =
-  let f = ver.owner.func in
+  let f = Cache.ready ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
   (* A whole function in native code skips the checks of its parameters' and result's types. *)

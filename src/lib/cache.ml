@@ -3,7 +3,7 @@ open Ast
 (* Below this, the sources parse faster than their entry is found, read and checked. *)
 let least = 512
 
-type store = { build : string; read : string -> string option; write : string -> string -> unit }
+type store = { build : string; map : string -> (int * (int -> int -> string)) option; write : string -> string -> unit }
 
 let store = ref None
 
@@ -15,12 +15,13 @@ type use = { upath : string; ualias : string; upos : Pos.t; unames : string list
 (* An entry that isn't what it should be: it is not used. *)
 exception Bad
 
-(* A source of the binary itself changes only with the build: it needs no digest. *)
+(* A source of the binary itself changes only with the build: it needs no digest. The name of an entry holds the build,
+   so that two versions of Cesia used in turn keep each its own entry instead of writing over the other's at each run. *)
 let slot ~key ~nesting ~fixed sources =
   match !store with
   | Some kept when List.fold_left (fun n (_, s) -> n + String.length s) 0 sources >= least ->
     let digest (_, src) = if fixed src then "" else Digest.BLAKE128.string src in
-    let name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string key) in
+    let name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string (kept.build ^ "\000" ^ key)) in
     Some { name; kept; nesting; digests = lazy (List.map digest sources); paths = List.map fst sources }
   | _ -> None
 
@@ -61,8 +62,10 @@ let abs p u j =
     if j >= 0 && j < n then modules.(n - 1 - j) else raise Bad
   | _ -> raise Bad
 
-(* An entry: these 8 bytes, the checksum of the rest, then the rest. *)
-let magic = "Cesia\000L3"
+(* An entry: these 8 bytes, the checksum of its head, the length of its head, its head, which holds the length of its
+   tail, then its tail: the record of each function whose body is read at its first need, which only that need reads and
+   checks. *)
+let magic = "Cesia\000L4"
 
 (* The checksum of an entry: XXH64 of Yann Collet, seed 0, as zstd and lz4 check their frames. It finds a damaged or cut
    entry, as BLAKE2b-128 did, 7 times faster here (4.1 GB/s against 0.57: 32 µs for the 133 KB of std/plot); neither
@@ -111,7 +114,8 @@ let checksum s off len =
   let h = Int64.mul (Int64.logxor h (Int64.shift_right_logical h 29)) p3 in
   Int64.logxor h (Int64.shift_right_logical h 32)
 
-(* Writing. The strings of an entry are written once, at its start, and named by their number. *)
+(* Writing. The texts of the head are written once, at its start, and so are those that only a record uses, at the start
+   of the record: a text is named by its number, even in the table of the head, odd in that of its record. *)
 module Out = struct
   (* A place is written as its distance from the one before, most often a byte, and so is the number of a node: the
      parser numbers the nodes as it ends them, so a node and the one written after it are most often close. *)
@@ -119,6 +123,8 @@ module Out = struct
     mutable b : Bytes.t;
     mutable n : int;
     strings : (string, int) Hashtbl.t;
+    own : (string, int) Hashtbl.t;  (* the texts of the record being written; [strings] itself in the head *)
+    tail : Buffer.t;
     rel : int -> int * int;
     mutable last : int;
     mutable last_id : int;
@@ -145,10 +151,18 @@ module Out = struct
     Bytes.blit_string s 0 o.b o.n k;
     o.n <- o.n + k
 
+  let number t s = match Hashtbl.find_opt t s with Some i -> i | None -> let i = Hashtbl.length t in Hashtbl.add t s i; i
+
   let str o s =
     match Hashtbl.find_opt o.strings s with
-    | Some i -> uint o i
-    | None -> let i = Hashtbl.length o.strings in Hashtbl.add o.strings s i; uint o i
+    | Some i -> uint o (2 * i)
+    | None when o.own == o.strings -> uint o (2 * number o.strings s)
+    | None -> uint o ((2 * number o.own s) + 1)
+
+  let i64 o x =
+    if o.n + 8 > Bytes.length o.b then grow o 8;
+    Bytes.set_int64_le o.b o.n x;
+    o.n <- o.n + 8
 
   let opt f o = function None -> byte o 0 | Some x -> byte o 1; f o x
   let arr f o a = uint o (Array.length a); Array.iter (f o) a
@@ -177,11 +191,7 @@ module Out = struct
 
   and node o = function
     | Lint n -> byte o 0; int o n
-    | Lfloat x ->
-      byte o 1;
-      if o.n + 8 > Bytes.length o.b then grow o 8;
-      Bytes.set_int64_le o.b o.n (Int64.bits_of_float x);
-      o.n <- o.n + 8
+    | Lfloat x -> byte o 1; i64 o (Int64.bits_of_float x)
     | Lbool x -> byte o 2; bool o x
     | Lmissing -> byte o 3
     | Ltext s -> byte o 4; str o s
@@ -247,22 +257,28 @@ module Out = struct
   and iface o i = str o i.iname; arr (fun o (s, ps, r) -> str o s; arr param o ps; opt ptype o r) o i.imethods
 
   (* A body is read at its first need, but that of a file, which runs at once, and that of a struct, which the load
-     reads: after its length, to skip it, with its places counted from the one before it. *)
+     reads. The names of its variables and those that can be read unset go with it, to its record in the tail, with its
+     places counted from its header; the header says where the record is, its length and its checksum. A function
+     inside goes to a record of its own, written before. *)
   and func now o f =
-    str o f.fname; arr param o f.params; opt ptype o f.ret; uint o f.nnodes; pos o f.fpos;
-    uint o f.nvars; arr str o f.var_names; arr (fun o (a, b) -> uint o a; uint o b) o f.captures;
-    arr bool o f.maybe_undef; bool o f.has_return; bool o f.has_self_tail; int o f.kept; arr int o f.cell_of;
-    arr int o f.export_of; opt (arr binding) o f.no_number;
-    if now || Resolve.struct_fields f <> None then (byte o 0; block o (Lazy.force f.body))
+    str o f.fname; arr param o f.params; opt ptype o f.ret; uint o f.nnodes; pos o f.fpos; uint o f.nvars;
+    arr (fun o (a, b) -> uint o a; uint o b) o f.captures; bool o f.has_return; bool o f.has_self_tail; int o f.kept;
+    arr int o f.cell_of; arr int o f.export_of; opt (arr binding) o f.no_number;
+    let rest o = arr str o f.var_names; arr bool o f.maybe_undef; block o (Lazy.force f.body) in
+    if now || Resolve.struct_fields f <> None then (byte o 0; rest o)
     else begin
+      let r = { o with b = Bytes.create 256; n = 0; own = Hashtbl.create 16 } in
+      rest r;
+      let texts = Array.make (Hashtbl.length r.own) "" in
+      Hashtbl.iter (fun s j -> texts.(j) <- s) r.own;
+      let t = { r with b = Bytes.create 256; n = 0 } in
+      arr raw t texts;
+      let record = Bytes.sub_string t.b 0 t.n ^ Bytes.sub_string r.b 0 r.n in
       byte o 1;
-      let at = o.n and last = o.last and last_id = o.last_id in
-      if o.n + 4 > Bytes.length o.b then grow o 4;
-      o.n <- o.n + 4;
-      block o (Lazy.force f.body);
-      Bytes.set_int32_le o.b at (Int32.of_int (o.n - at - 4));
-      o.last <- last;
-      o.last_id <- last_id
+      uint o (Buffer.length o.tail);
+      uint o (String.length record);
+      i64 o (checksum record 0 (String.length record));
+      Buffer.add_string o.tail record
     end
 
   let use o u = str o u.upath; str o u.ualias; pos o u.upos; list str o u.unames
@@ -284,11 +300,27 @@ module Out = struct
 
 end
 
+(* Function [f] in the tree [fn] of its file resolved again: the one defined at its place, of its name and sizes. *)
+let find (fn : func) (f : func) =
+  let exception Found of func in
+  let rec func (g : func) =
+    if g.fpos = f.fpos && String.equal g.fname f.fname && g.nnodes = f.nnodes && g.nvars = f.nvars then raise (Found g);
+    Array.iter (fun (p : param) -> Option.iter expr p.default) g.params;
+    Array.iter expr (Lazy.force g.body)
+  and expr (e : expr) = match e.e with Lambda g | Fn_def (_, g) -> func g | _ -> Resolve.children expr e in
+  match func fn with () -> None | exception Found g -> Some g
+
+let ready (f : func) = ignore (Lazy.force f.body); f
+
 (* Reading, with every count and number checked against what is left: a wrong entry raises, never more. *)
 module In = struct
-  (* [file] names the file whose tree is read, and [drop] removes the entry, for a body that doesn't read. *)
-  type inp = { s : string; mutable p : int; strs : string array; mutable abs : int -> int -> int; mutable last : int;
-               mutable last_id : int; mutable file : string; drop : unit -> unit }
+  (* The entry the records are copied from: [part], the place of its tail and its size, and [drop], which removes it. *)
+  type src = { part : int -> int -> string; tail : int; size : int; drop : unit -> unit }
+
+  (* [file] names the file whose tree is read, and [again] gives it resolved again from its source, for a body whose
+     record doesn't read. *)
+  type inp = { s : string; mutable p : int; strs : string array; mutable own : string array; mutable abs : int -> int -> int;
+               mutable last : int; mutable last_id : int; mutable file : string; src : src; mutable again : unit -> func }
 
   let[@inline] byte d =
     let c = Char.code d.s.[d.p] in
@@ -308,7 +340,7 @@ module In = struct
   let[@inline] bool d = match byte d with 0 -> false | 1 -> true | _ -> raise Bad
   let count d = let n = uint d in if n < 0 || n > String.length d.s - d.p then raise Bad else n
 
-  let str d = d.strs.(uint d)
+  let str d = let z = uint d in if z land 1 = 0 then d.strs.(z lsr 1) else d.own.(z lsr 1)
   let raw d = let n = count d in let s = String.sub d.s d.p n in d.p <- d.p + n; s
 
   (* The texts at the start of an entry, into an array made of "" then filled: one made of a young text, past 256, would
@@ -325,6 +357,7 @@ module In = struct
     in
     pieces n []
 
+  let i64 d = let x = String.get_int64_le d.s d.p in d.p <- d.p + 8; x
   let opt f d = match byte d with 0 -> None | 1 -> Some (f d) | _ -> raise Bad
   let arr f d = let n = count d in if n <= 256 then Array.init n (fun _ -> f d) else long n (fun () -> f d)
   let list f d = let n = count d in List.init n (fun _ -> f d)
@@ -378,10 +411,7 @@ module In = struct
   and node d =
     match byte d with
     | 0 -> Lint (int d)
-    | 1 ->
-      let x = String.get_int64_le d.s d.p in
-      d.p <- d.p + 8;
-      Lfloat (Int64.float_of_bits x)
+    | 1 -> Lfloat (Int64.float_of_bits (i64 d))
     | 2 -> Lbool (bool d)
     | 3 -> Lmissing
     | 4 -> Ltext (str d)
@@ -488,40 +518,56 @@ module In = struct
     let nnodes = uint d in
     let fpos = pos d in
     let nvars = uint d in
-    let var_names = arr str d in
     let captures = arr (fun d -> let a = uint d in a, uint d) d in
-    let maybe_undef = arr bool d in
     let has_return = bool d in
     let has_self_tail = bool d in
     let kept = int d in
     let cell_of = arr int d in
     let export_of = arr int d in
     let no_number = opt (arr binding) d in
-    let body =
-      match byte d with
-      | 0 -> Lazy.from_val (block d)
-      | 1 ->
-        let n = Int32.to_int (String.get_int32_le d.s d.p) in
-        if n < 0 || n > String.length d.s - d.p - 4 then raise Bad;
-        let later = { d with p = d.p + 4 } and stop = d.p + 4 + n in
-        d.p <- stop;
-        lazy (read_later later stop fpos)
-      | _ -> raise Bad
-    in
-    { fname; params; ret; body; nnodes; fpos; nvars; var_names; captures; maybe_undef; has_return; has_self_tail; kept;
-      cell_of; export_of; no_number }
+    match byte d with
+    | 0 ->
+      let var_names = arr str d in
+      let maybe_undef = arr bool d in
+      let body = Lazy.from_val (block d) in
+      { fname; params; ret; body; nnodes; fpos; nvars; var_names; captures; maybe_undef; has_return; has_self_tail; kept;
+        cell_of; export_of; no_number }
+    | 1 ->
+      let at = uint d in
+      let len = uint d in
+      let sum = i64 d in
+      let later = { d with s = ""; p = 0 } in
+      let rec f =
+        { fname; params; ret; body = lazy (fetch later f at len sum); nnodes; fpos; nvars; var_names = [||]; captures;
+          maybe_undef = [||]; has_return; has_self_tail; kept; cell_of; export_of; no_number }
+      in
+      f
+    | _ -> raise Bad
 
-  (* A body read at its first need, from the bytes checked with the entry: one that doesn't read as it was written is an
-     error of the entry, which goes, and the program stops there. *)
-  and read_later d stop fpos =
-    let bad () =
-      d.drop ();
-      let m = Messages.cache_damaged in
-      raise (Pos.Load_error { file = d.file; pos = fpos; kind = "load"; text = m.text; hint = m.hint })
-    in
-    match block d with
-    | b -> if d.p = stop then b else bad ()
-    | exception (Bad | Invalid_argument _ | Failure _ | Stack_overflow) -> bad ()
+  (* A body read at its first need: its record copied from the entry, checked, then read, which fills the names of its
+     variables and those that can be read unset. A record that doesn't read as it was written, or a body needed on another
+     domain than the main one, which never happens, is taken from the file resolved again from the source that the load
+     read, and the entry goes: the run goes on as without it. *)
+  and fetch d f at len sum =
+    match
+      if not (Domain.is_main_domain ()) || at < 0 || len < 0 || at > d.src.size - d.src.tail - len then raise Bad;
+      let r = { d with s = d.src.part (d.src.tail + at) len } in
+      if not (Int64.equal (checksum r.s 0 len) sum) then raise Bad;
+      r.own <- texts r;
+      let var_names = arr str r in
+      let maybe_undef = arr bool r in
+      let body = block r in
+      if r.p <> len || Array.length var_names <> f.nvars || Array.length maybe_undef <> f.nvars then raise Bad;
+      var_names, maybe_undef, body
+    with
+    | var_names, maybe_undef, body -> f.var_names <- var_names; f.maybe_undef <- maybe_undef; body
+    | exception (Bad | Invalid_argument _ | Failure _ | Stack_overflow) ->
+      d.src.drop ();
+      match find (d.again ()) f with
+      | Some g -> f.var_names <- g.var_names; f.maybe_undef <- g.maybe_undef; Lazy.force g.body
+      | None | (exception (Pos.Load_error _ | Bad | Invalid_argument _ | Failure _ | Not_found)) ->
+        let m = Messages.cache_damaged in
+        raise (Pos.Load_error { file = d.file; pos = f.fpos; kind = "load"; text = m.text; hint = m.hint })
 
   let use d =
     let upath = str d in
@@ -567,21 +613,29 @@ type saved = { d : In.inp; uses : use list array; paths : string list }
 
 let uses saved = saved.uses
 
-(* Nothing of an entry is decoded before its checksum and what it was made from, the build, the nesting limit and the
-   digest of each source, are those expected. *)
+(* Nothing of an entry is decoded before the checksum of its head and what it was made from, the build, the nesting limit
+   and the digest of each source, are those expected. Its tail is not read: each record is, at its first need. *)
 let read slot =
-  match slot.kept.read slot.name with
+  match slot.kept.map slot.name with
   | None -> None
-  | Some s ->
+  | Some (size, part) ->
     try
-      if String.length s < 16 || not (String.starts_with ~prefix:magic s)
-         || not (Int64.equal (String.get_int64_le s 8) (checksum s 16 (String.length s - 16)))
-      then raise Bad;
+      let top = if size < 24 then raise Bad else part 0 24 in
+      let n = Int64.to_int (String.get_int64_le top 16) in
+      if not (String.starts_with ~prefix:magic top) || n < 0 || n > size - 24 then raise Bad;
+      let s = part 24 n in
+      if not (Int64.equal (String.get_int64_le top 8) (checksum s 0 n)) then raise Bad;
       let open In in
+      let dropped = ref false in
+      let drop () = if not !dropped then (dropped := true; slot.kept.write slot.name "") in
+      let src = { part; tail = 24 + n; size; drop } in
       let none =
-        { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; drop = ignore }
+        { s; p = 0; strs = [||]; own = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; src;
+          again = (fun () -> raise Bad) }
       in
-      let d = { none with strs = texts none; drop = (fun () -> slot.kept.write slot.name "") } in
+      let d = { none with strs = texts none } in
+      (* The length of its tail: an entry cut or grown is not used, even where no record would read the difference. *)
+      if 24 + n + uint d <> size then raise Bad;
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
@@ -594,7 +648,7 @@ let now place =
   Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;
   { place with package = Hashtbl.find now }
 
-let trees saved place ~lookup ~spaces ~is_type =
+let trees saved place ~lookup ~spaces ~is_type ~again =
   let open In in
   let d = saved.d in
   d.abs <- abs (now place);
@@ -615,13 +669,20 @@ let trees saved place ~lookup ~spaces ~is_type =
     in
     same && asked (n - 1)
   in
-  let file path = d.file <- path; let fn = func d in fn, layout d fn in
-  try if asked (count d) && count d = List.length saved.paths then Some (List.map file saved.paths) else None
+  (* The files resolved again, once, for the first record that doesn't read. *)
+  let fresh = ref [||] in
+  let again i () = (if Array.length !fresh = 0 then fresh := Array.of_list (again ())); (!fresh).(i) in
+  let file i path = d.file <- path; d.again <- again i; let fn = func d in fn, layout d fn in
+  try if asked (count d) && count d = List.length saved.paths then Some (List.mapi file saved.paths) else None
   with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
 let encode slot place log uses trees =
   let open Out in
-  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0; last_id = 0 } in
+  let strings = Hashtbl.create 1024 in
+  let o =
+    { b = Bytes.create 65536; n = 0; strings; own = strings; tail = Buffer.create 65536; rel = memo place; last = 0;
+      last_id = 0 }
+  in
   try
     str o slot.kept.build;
     uint o slot.nesting;
@@ -641,10 +702,12 @@ let encode slot place log uses trees =
     Hashtbl.iter (fun s i -> all.(i) <- s) o.strings;
     o.n <- 0;
     arr raw o all;
-    let body = Bytes.sub_string o.b 0 o.n ^ rest in
-    let sum = Bytes.create 8 in
-    Bytes.set_int64_le sum 0 (checksum body 0 (String.length body));
-    slot.kept.write slot.name (String.concat "" [ magic; Bytes.to_string sum; body ])
+    uint o (Buffer.length o.tail);
+    let head = Bytes.sub_string o.b 0 o.n ^ rest in
+    let top = Bytes.create 16 in
+    Bytes.set_int64_le top 0 (checksum head 0 (String.length head));
+    Bytes.set_int64_le top 8 (Int64.of_int (String.length head));
+    slot.kept.write slot.name (String.concat "" [ magic; Bytes.to_string top; head; Buffer.contents o.tail ])
   with Exit -> ()
 
 (* The entries to write, by name: the trees don't change once resolved, so they are written when the run ends, off its

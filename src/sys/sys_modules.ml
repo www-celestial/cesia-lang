@@ -111,7 +111,7 @@ let cpp_natives =
   in
   let cache = lazy (Entries.store "") in
   [ "kept", Native.nat "kept" 1 1 (fun ctx a ->
-        match (Lazy.force cache).read (entry ctx "kept" a.(0)) with Some t -> Text t | None -> Missing);
+        match (Lazy.force cache).map (entry ctx "kept" a.(0)) with Some (n, part) -> Text (part 0 n) | None -> Missing);
     "keep", Native.nat "keep" 2 2 (fun ctx a ->
         (Lazy.force cache).write (entry ctx "keep" a.(0)) (Native.text_arg ctx "keep" a.(1));
         Missing) ]

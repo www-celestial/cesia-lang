@@ -154,7 +154,7 @@ let as_result (fn : func) t =
 let rec run w (ver : version) =
   if ver.state = 0 then begin
     ver.state <- 1;
-    let fn = ver.owner.func in
+    let fn = Cache.ready ver.owner.func in
     let generic = w.no_spec || (match ver.owner.generic with Some g -> g == ver | None -> false) in
     if generic then begin
       ver.tv <- Array.make fn.nvars TA;

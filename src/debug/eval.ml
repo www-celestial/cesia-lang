@@ -241,6 +241,7 @@ let same_code (w : world) (a : proto) (b : proto) =
     | Pstruct p, Pstruct q -> arr (fun (n, x) (m, y) -> public n; text n m; pat x y) p q
     | _ -> raise Differ
   and func (f : Ast.func) (g : Ast.func) =
+    let f = Cache.ready f and g = Cache.ready g in
     text f.fname g.fname;
     arr
       (fun (p : Ast.param) (q : Ast.param) -> text p.pname q.pname; opt expr p.default q.default; opt ptype p.ptype q.ptype)

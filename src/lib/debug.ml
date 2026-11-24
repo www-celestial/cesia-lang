@@ -26,7 +26,7 @@ let vars ctx base (site : site) =
   match site.sver with
   | None -> []
   | Some ver ->
-    let func = ver.owner.func in
+    let func = Cache.ready ver.owner.func in
     let known i = i < Bytes.length site.slive && Bytes.get site.slive i = '\001' in
     let visible i (s : slot) =
       (not (String.contains s.vname '#'))
