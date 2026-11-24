@@ -347,6 +347,9 @@ val need_count : string -> string -> t
 val cant_sort : string -> string -> t
 val need_char : string -> t
 val need_byte : string -> t
+val number_kind : string -> string -> t
+val number_bytes : string -> int -> int -> t
+val number_of : string -> int -> string -> t
 val doc_missing : string -> string
 
 (** [doc_moved name p]: cesia doc of a name of std/p written without its package, as Map for list.Map. *)

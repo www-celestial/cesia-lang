@@ -1,0 +1,171 @@
+(* std/mesh: each part made in code is closed, its triangles turned out, shaped as a sphere (V - E + F = 2) and of the
+   volume of its formula; moves, turns and scales keep what they must; STL read back as written, binary and text; and
+   each file that is no STL, from a header whose count lies to a text of garbage, gives an Err, never a panic. *)
+use std/fiber
+use std/dict
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/mesh
+use std/result
+use std/sys
+use std/test
+use std/text
+use std/value
+
+(* What a mesh is: its edges, its volume, how it turns. *)
+
+defn edgeCounts(m)
+  (** For each edge, by its two points, the lesser first: how many triangles take it each way, as "a b" -> [forward, back]. *)
+  t = m.Triangles
+  out = {}
+  for k in 1..value.Size(t)[1]
+    for s in [[1, 2], [2, 3], [3, 1]]
+      a = t[k, s[1]]
+      b = t[k, s[2]]
+      key = "$(list.Min(a, b)) $(list.Max(a, b))"
+      was = if key in out out[key] else [0, 0] end
+      out[key] = if a < b [was[1] + 1, was[2]] else [was[1], was[2] + 1] end
+    end
+  end
+  out
+end
+
+(** Is a mesh closed, each edge taken once each way by two triangles, as the faces of a solid? *)
+closed(m) = list.All([value.Equal(c, [1, 1]) for c in values(edgeCounts(m))])
+values(d) = [d[k] for k in keys(d)]
+keys(d) = dict.Keys(d)
+
+(** V - E + F, the characteristic of Euler: 2 for a closed surface shaped as a sphere. *)
+euler(m) = value.Size(m.Vertices)[1] - value.Len(keys(edgeCounts(m))) + value.Size(m.Triangles)[1]
+
+defn volume(m)
+  (** The volume inside a closed mesh, by the theorem of divergence: the sum of a · (b × c) / 6 over its triangles,
+      above 0 when they turn counterclockwise seen from outside. *)
+  v = m.Vertices
+  t = m.Triangles
+  total = 0.0
+  for k in 1..value.Size(t)[1]
+    a = v[t[k, 1], :]
+    b = v[t[k, 2], :]
+    c = v[t[k, 3], :]
+    total += a[1] * (b[2] * c[3] - b[3] * c[2]) + a[2] * (b[3] * c[1] - b[1] * c[3]) + a[3] * (b[1] * c[2] - b[2] * c[1])
+  end
+  total / 6.0
+end
+
+near(a, b, tolerance) = math.Abs(a - b) <= tolerance * list.Max(1.0, math.Abs(b))
+solid(m) = closed(m) and euler(m) == 2 and volume(m) > 0.0
+
+(** A polygon of n sides inscribed in a circle of radius r has the area n r^2 sin(2 pi / n) / 2. *)
+polygon(n, r) = n * r * r * math.Sin(2.0 * math.Pi / n) / 2.0
+
+isBox() = solid(mesh.Box([1, 2, 3], [4, 5, 6])) and near(volume(mesh.Box([1, 2, 3], [4, 5, 6])), 120.0, 1e-12) and value.Equal(value.Size(mesh.Box([0, 0, 0], [1, 1, 1]).Vertices), [8, 3])
+isRoundParts() = solid(mesh.Cylinder([0, 0, 0], 2, 3, segments = 7)) and near(volume(mesh.Cylinder([1, 1, 1], 2, 3, segments = 7)), polygon(7, 2.0) * 3.0, 1e-12) and solid(mesh.Cone([0, 0, 0], 1, 2, segments = 5)) and near(volume(mesh.Cone([0, 0, 0], 1, 2, segments = 5)), polygon(5, 1.0) * 2.0 / 3.0, 1e-12) and solid(mesh.Sphere([0, 0, 0], 1, segments = 6)) and solid(mesh.Sphere([1, 2, 3], 2))
+isSphereVolume() = volume(mesh.Sphere([0, 0, 0], 1)) < 4.0 / 3.0 * math.Pi and volume(mesh.Sphere([0, 0, 0], 1)) > 0.98 * 4.0 / 3.0 * math.Pi
+
+(** Each point once: no two rows of Vertices equal, and each used by a triangle. *)
+onceEach(m) = value.Len(list.Unique([value.Text(m.Vertices[k, :]) for k in 1..value.Size(m.Vertices)[1]])) == value.Size(m.Vertices)[1] and value.Len(list.Unique(list.Flatten([m.Triangles[k, :] for k in 1..value.Size(m.Triangles)[1]]))) == value.Size(m.Vertices)[1]
+isOnceEach() = list.All([onceEach(m) for m in [mesh.Box([0, 0, 0], [1, 2, 3]), mesh.Cylinder([0, 0, 0], 1, 1, segments = 5), mesh.Cone([0, 0, 0], 1, 1, segments = 3), mesh.Sphere([0, 0, 0], 1, segments = 8)]])
+
+(** The parts made in code, of random places, sizes and segments, are solid: closed, turned out, shaped as a sphere. *)
+parts = gen.Of({Kind: gen.Int(1, 4), At: gen.List(gen.Float(-100, 100), min = 3, max = 3), Size: gen.List(gen.Float(0.01, 50), min = 3, max = 3), Segments: gen.Int(4, 40)})
+defn made(c)
+  match c.Kind
+    1 -> mesh.Box(c.At, c.Size)
+    2 -> mesh.Cylinder(c.At, c.Size[1], c.Size[2], segments = c.Segments)
+    3 -> mesh.Cone(c.At, c.Size[1], c.Size[2], segments = c.Segments)
+    else -> mesh.Sphere(c.At, c.Size[1], segments = c.Segments)
+  end
+end
+isPartsSolid() = test.ForAll(c -> solid(made(c)), parts, cases = 30)
+
+(* Moves, turns and scales. *)
+
+isMove() = near(volume(mesh.Move(mesh.Box([0, 0, 0], [1, 2, 3]), [5, -5, 1.5])), 6.0, 1e-12) and value.Equal(mesh.Bounds(mesh.Move(mesh.Box([0, 0, 0], [1, 2, 3]), [5, -5, 1.5])).Low, [5.0, -5.0, 1.5])
+(** A turn keeps the volume and the distance of each point from the axis, and four quarter turns come back exactly. *)
+defn turnKeeps(c)
+  m = made(c)
+  t = mesh.Turn(m, [c.Size[1], c.Size[2] - 25.0, 1.0], c.At[1], about = c.At)
+  near(volume(t), volume(m), 1e-9) and value.Equal(mesh.Turn(mesh.Turn(mesh.Turn(mesh.Turn(m, [0, 0, 1], 90), [0, 0, 1], 90), [0, 0, 1], 90), [0, 0, 1], 90), m)
+end
+isTurnKeeps() = test.ForAll(turnKeeps, parts, cases = 20)
+isTurnQuarter() = value.Equal(mesh.Bounds(mesh.Turn(mesh.Box([0, 0, 0], [2, 1, 1]), [0, 0, 1], 90)), {Low: [-1.0, 0.0, 0.0], High: [0.0, 2.0, 1.0]}) and value.Equal(mesh.Bounds(mesh.Turn(mesh.Box([0, 0, 0], [2, 1, 1]), [0, 1, 0], -90, about = [1, 0, 0])), {Low: [0.0, 0.0, -1.0], High: [1.0, 1.0, 1.0]})
+(** A scale multiplies the volume by the product of its factors, and a mirror stays turned out. *)
+isScale() = near(volume(mesh.Scale(mesh.Box([0, 0, 0], [1, 2, 3]), [2, 3, 4])), 144.0, 1e-12) and near(volume(mesh.Scale(mesh.Box([0, 0, 0], [1, 2, 3]), [-1, 1, 1])), 6.0, 1e-12) and near(volume(mesh.Scale(mesh.Cylinder([0, 0, 0], 1, 1, segments = 6), [-1, -2, -1], about = [1, 1, 1])), 2.0 * polygon(6, 1.0), 1e-12)
+isMerge() = value.Equal(value.Size(mesh.Merge([mesh.Box([0, 0, 0], [1, 1, 1]), mesh.Sphere([0, 0, 0], 1, segments = 4)]).Triangles), [20, 3]) and near(volume(mesh.Merge([mesh.Box([0, 0, 0], [1, 1, 1]), mesh.Box([5, 0, 0], [1, 1, 2])])), 3.0, 1e-12) and euler(mesh.Merge([mesh.Box([0, 0, 0], [1, 1, 1]), mesh.Box([5, 0, 0], [1, 1, 2])])) == 4
+isNormals() = value.Equal(mesh.Normals(mesh.Box([0, 0, 0], [1, 1, 1]))[2, :], [0.0, 0.0, -1.0]) and value.Equal(mesh.Normals(result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 2, 0, 0], [1, 2, 3])))[1, :], [0.0, 0.0, 0.0])
+isOf() = value.Equal(result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], [1, 2, 3])).Vertices, [0.0, 0.0, 0.0; 1.0, 0.0, 0.0; 0.0, 1.0, 0.0]) and result.IsErr(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], [1, 2, 3.5])) and result.IsErr(mesh.Of([0, 0, 0; 1, 0, 1.0 / 0.0; 0, 1, 0], [1, 2, 3])) and result.IsErr(mesh.Of([0, 0; 1, 0], [1, 2, 1]))
+
+(* Bugs are panics: a size of 0, segments past their range, a turn about no axis. *)
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+panics(f, part) = match message(f)
+  result.Err(m) -> text.Contains(part, m)
+  else -> false
+end
+isPanics() = panics(() -> mesh.Box([0, 0, 0], [1, 0, 1]), "mesh.Box: size[2] is 0.0; give a length above 0.") and panics(() -> mesh.Sphere([0, 0, 0], 1, segments = 2), "mesh.Sphere: segments is 2; give a whole number from 4 to 1024.") and panics(() -> mesh.Turn(mesh.Box([0, 0, 0], [1, 1, 1]), [0, 0, 0], 90), "of length 0") and panics(() -> mesh.Scale(mesh.Box([0, 0, 0], [1, 1, 1]), 0), "a factor of 0 flattens the part") and panics(() -> mesh.Move(1, [0, 0, 0]), "mesh.Move: it is 1, not a mesh")
+
+(* STL: read back as written; each file that is no STL, an Err. *)
+
+defn file(name, body)
+  (** body written to a file of the test's folder: its path. *)
+  path = "$(test.Temp())/$name"
+  result.Unwrap(sys.Write(path, body))
+  path
+end
+defn written(m, name, ascii = false)
+  path = "$(test.Temp())/$name"
+  result.Unwrap(mesh.WriteStl(m, path, ascii = ascii))
+  path
+end
+(** A mesh whose coordinates are floats of 32 bits, as a binary STL holds them, comes back exactly, points and triangles in their order. *)
+defn binaryRoundTrip(c)
+  m = mesh.Move(mesh.Box([math.Round(c.At[1]), math.Round(c.At[2]), 0], [math.Round(c.Size[1]) + 1, 2, 3]), [0.5, 0.25, -8])
+  value.Equal(result.Unwrap(mesh.ReadStl(written(m, "box.stl"))), m)
+end
+isBinaryRoundTrip() = test.ForAll(binaryRoundTrip, parts, cases = 10)
+(** Any mesh: text STL comes back exactly; binary STL to the nearest float of 32 bits, and the same again after one more time. *)
+defn anyRoundTrip(c)
+  m = made(c)
+  once = result.Unwrap(mesh.ReadStl(written(m, "once.stl")))
+  twice = result.Unwrap(mesh.ReadStl(written(once, "twice.stl")))
+  value.Equal(result.Unwrap(mesh.ReadStl(written(m, "text.stl", ascii = true))), m) and value.Equal(once, twice) and value.Equal(once.Triangles, m.Triangles) and list.Max(math.Abs(once.Vertices - m.Vertices)) <= 1e-6 * list.Max(1.0, list.Max(math.Abs(m.Vertices)))
+end
+isAnyRoundTrip() = test.ForAll(anyRoundTrip, parts, cases = 10)
+isBinarySize() = result.Unwrap(sys.Stat(written(mesh.Box([0, 0, 0], [1, 1, 1]), "size.stl"))).Size == 84 + 50 * 12
+
+(** A binary STL of n triangles of these 12 floats each, with a header that counts count of them. *)
+binary(count, floats, n) = text.Str(text.Repeat(80, " "), text.FromNumbers("u32", [count]), text.Repeat(n, text.Str(text.FromNumbers("f32", floats), text.FromNumbers("u16", [0]))))
+one = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
+errs(r, part) = match r
+  result.Err(e) -> e.Kind == "mesh" and text.Contains(part, e.Message)
+  else -> false
+end
+read(name, body) = mesh.ReadStl(file(name, body))
+isBinaryOne() = value.Equal(result.Unwrap(read("one.stl", binary(1, one, 1))).Triangles, [1, 2, 3])
+(* A binary file that begins with solid, as some programs write, is binary when its size says so. *)
+isSolidBinary() = result.IsOk(read("solid.stl", text.Str("solid but binary", text.ByteSlice(17, 84, binary(2, one, 2)), text.ByteSlice(85, 184, binary(2, one, 2)))))
+isLyingCount() = errs(read("lie.stl", binary(1000, one, 2)), "header counts 1000 triangles, 50084 bytes, but it holds 184 bytes")
+isHugeCount() = errs(read("huge.stl", binary(4294967295, one, 1)), "header counts 4294967295 triangles")
+isTruncated() = errs(read("cut.stl", text.ByteSlice(1, 150, binary(2, one, 2))), "header counts 2 triangles, 184 bytes, but it holds 150 bytes")
+isNoTriangle() = errs(read("none.stl", binary(0, one, 0)), "holds no triangle")
+isNotFinite() = errs(read("nan.stl", binary(1, [0, 0, 1, 0, 0, 0, math.Nan, 0, 0, 0, 1, 0], 1)), "has a corner of triangle 1 at (nan, 0.0, 0.0)") and errs(read("inf.stl", binary(2, [0, 0, 1, 0, 0, 0, 1, 1.0 / 0.0, 0, 0, 1, 0], 2)), "has a corner of triangle 1 at (1.0, inf, 0.0)")
+isShort() = errs(read("short.stl", "abc"), "is no STL: 3 bytes")
+facetText = "facet normal 0 0 1\n outer loop\n  vertex 0 0 0\n  vertex 1 0 0\n  vertex 0 1 0\n endloop\nendfacet\n"
+isText() = value.Equal(result.Unwrap(read("t.stl", "solid t\n$facetText$facetText endsolid t\n")).Triangles, [1, 2, 3; 1, 2, 3]) and value.Equal(result.Unwrap(read("tabs.stl", "solid\r\n\tfacet normal 0 0 1 outer loop vertex 0 0 0 vertex 1 0 0\n vertex 0 1 0 endloop endfacet\nendsolid\n")).Vertices, [0.0, 0.0, 0.0; 1.0, 0.0, 0.0; 0.0, 1.0, 0.0]) and result.IsOk(read("two.stl", "solid a\n$facetText endsolid a\nsolid b\n$facetText endsolid b\n"))
+isTextGarbage() = errs(read("g1.stl", "solid x\n$(text.Replace("vertex 1 0 0", "vertex 1 zero 0", facetText))endsolid\n"), "has \"zero\" at line 5, where a number is") and errs(read("g2.stl", "solid x\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nendloop\nendfacet\nvertex 1 1 1\nvertex 2 2 2\nvertex 3 3 3\nendfacet\nendloop\nendloop\nendloop\nendloop\nendloop\nendloop\nendsolid\n"), "breaks the grammar of a facet") and errs(read("g3.stl", "solid x\n$facetText"), "ends inside a solid, without its endsolid") and errs(read("g4.stl", "solid x\nendsolid x\n"), "holds no triangle") and errs(read("g5.stl", "solid x\n$(text.Replace("0 1 0", "0 1 nan", facetText))endsolid\n"), "has \"nan\" at line 6, where a number is")
+isMissingFile() = errs(mesh.ReadStl("$(test.Temp())/no-such.stl"), "can't be read")
+(** Mutated files, binary and text: each gives an Ok or an Err, never a panic. *)
+defn mutantRead(c)
+  good = if c.Text "solid m\n$facetText$facetText endsolid m\n" else binary(2, one, 2) end
+  at = list.Min(c.At, text.ByteLength(good))
+  body = text.Str(text.ByteSlice(1, at - 1, good), text.FromBytes([c.Byte]), text.ByteSlice(at + 1, text.ByteLength(good), good))
+  match message(() -> read("mutant.stl", body))
+    result.Ok(r) -> result.IsOk(r) or r.Error.Kind == "mesh"
+    else -> false
+  end
+end
+isMutantsNeverPanic() = test.ForAll(mutantRead, gen.Of({Text: gen.Bool(), At: gen.Int(1, 200), Byte: gen.Int(0, 255)}), cases = 40)
+isWriteName() = errs(mesh.WriteStl(mesh.Box([0, 0, 0], [1, 1, 1]), "box.obj"), "writes STL, to a name that ends in .stl")

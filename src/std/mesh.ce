@@ -1,0 +1,599 @@
+(** Meshes of triangles: the solid parts of a machine, made in code as boxes, cylinders, spheres and cones, moved, turned
+    and joined, or read from an STL file, as a CAD program writes them; plot.Mesh draws them, lit. A mesh is a value, as a
+    graph is: each function gives a new one. Its points are the rows of a matrix and its triangles the rows of another,
+    as MATLAB's triangulation keeps them, so that a corner shared by six triangles is stored once. The chapter 3D objects
+    of the book shows each step. *)
+use std/bug
+use std/columns as col
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/result
+use std/sys
+use std/text
+use std/value
+
+struct Mesh
+  (** A mesh: Vertices, a matrix of a row x, y, z for each point, as floats, and Triangles, a matrix of a row for each
+      triangle, the rows of its three corners in Vertices, from 1, counterclockwise seen from outside, so that the right
+      hand's rule points out of the part, as the STL format of 3D Systems asks. The functions of this package make
+      meshes that hold each point once, in the order the triangles first use them; Of makes one of your own arrays.
+
+        Box([0, 0, 0], [1, 1, 1]).Triangles then value.Size() --> [12, 3] *)
+  Vertices
+  Triangles
+end
+
+mostSegments = 1024   (** The most segments around a Cylinder, a Cone or a Sphere. *)
+mostTriangles = 2000000   (** The most triangles that ReadStl reads: 100 MB of binary STL. *)
+chunk = 100000   (** The triangles of a binary STL decoded at a time, so that its bytes are never all numbers at once. *)
+
+(* Checks and the columns of a mesh. *)
+
+defn brief(v)
+  (** A value as an error shows it: its text, cut past 40 characters. *)
+  s = if value.IsText(v) "\"$(value.Text(v, 41))\"" else value.Text(v, 41) end
+  if value.Len(s) > 40 "$(text.Slice(1, 37, s))..." else s end
+end
+
+defn fault(m)
+  (** What is wrong with a mesh, in words, or missing: Vertices a matrix of 3 columns of finite numbers, Triangles a matrix
+      of 3 columns of whole numbers, each a row of Vertices. *)
+  if not value.IsStruct(m)
+    return "it is $(brief(m)), not a mesh, as mesh.Box or mesh.ReadStl makes"
+  end
+  v = m.Vertices
+  t = m.Triangles
+  if not value.IsArray(v) or value.Len(value.Size(v)) != 2 or value.Size(v)[2] != 3 or value.Size(v)[1] == 0
+    return "its Vertices are $(brief(v)), not a matrix of a row x, y, z for each point"
+  end
+  if not value.IsArray(t) or value.Len(value.Size(t)) != 2 or value.Size(t)[2] != 3 or value.Size(t)[1] == 0
+    return "its Triangles are $(brief(t)), not a matrix of a row of three corners for each triangle"
+  end
+  if not (col.Kind(v) in ["float", "int"])
+    k = list.FindFirst(k -> not value.IsNumber(v[k]), 1..value.Len(v))
+    if value.IsSome(k)
+      return "its Vertices hold $(brief(v[k])), not only numbers"
+    end
+  end
+  total = list.Sum(v * 0.0)
+  if total != 0.0
+    k = list.FindFirst(k -> v[k] - v[k] != 0.0, 1..value.Len(v))
+    rows = value.Size(v)[1]
+    return "its point $(math.Mod(k - 1, rows) + 1) has $(["x", "y", "z"][math.Div(k - 1, rows) + 1]) = $(value.Text(v[k])); give finite numbers"
+  end
+  n = value.Size(v)[1]
+  if not list.All([value.IsNumber(x) for x in (if col.Kind(t) in ["float", "int"] [1] else t end)]) or list.Sum(math.Abs(t - math.Floor(t * 1.0))) != 0.0 or list.Min(t) < 1 or list.Max(t) > n
+    k = list.FindFirst(k -> not (value.IsNumber(t[k]) and t[k] == math.Floor(t[k] * 1.0) and t[k] >= 1 and t[k] <= n), 1..value.Len(t))
+    return "a corner of its triangles is $(brief(t[k])), not a row of its $n points"
+  end
+  missing
+end
+
+defn checked(m, w)
+  (** A mesh as this package works on it, its corners as integers; a malformed one is a bug, which stops the program. *)
+  why = fault(m)
+  if value.IsSome(why)
+    bug.Panic("$w: $why.")
+  end
+  t = m.Triangles
+  (* Corners written as floats become integers, through their bytes. *)
+  Mesh(m.Vertices * 1.0, if col.Kind(t) == "int" t else matrix.Reshape(value.Size(t), text.Numbers("i32", text.FromNumbers("i32", t * 1.0))) end)
+end
+
+(** The x, y or z of each point of a mesh, a list: column k of Vertices. *)
+coords(m, k) = matrix.Reshape([1, value.Size(m.Vertices)[1]], m.Vertices[:, k])
+
+(** Corner k of each triangle of a mesh, a list of rows of Vertices: column k of Triangles. *)
+corners(m, k) = matrix.Reshape([1, value.Size(m.Triangles)[1]], m.Triangles[:, k])
+
+(** The matrix of a row x, y, z for each point, of three lists: each times a row of the identity, without joining
+    the lists, which would box their floats. *)
+vertexMatrix(xs, ys, zs) = matrix.Matmul(matrix.Reshape([value.Len(xs), 1], xs), matrix.Reshape([1, 3], [1.0, 0.0, 0.0])) + matrix.Matmul(matrix.Reshape([value.Len(ys), 1], ys), matrix.Reshape([1, 3], [0.0, 1.0, 0.0])) + matrix.Matmul(matrix.Reshape([value.Len(zs), 1], zs), matrix.Reshape([1, 3], [0.0, 0.0, 1.0]))
+
+(** The matrix of a row for each triangle of a list of corners, three a triangle. *)
+triangleMatrix(at) = matrix.Transpose(matrix.Reshape([3, math.Div(value.Len(at), 3)], at))
+
+(** A mesh of the x, y and z of its points and the three corners of its triangles, each a list. *)
+made(xs, ys, zs, a, b, c) = Mesh(vertexMatrix(xs, ys, zs), matrix.Reshape([value.Len(a), 3], list.Concat(list.Concat(a, b), c)))
+
+defn point(p, what, w)
+  (** A point or a direction, [x, y, z] as floats; anything else is a bug. *)
+  if not (value.IsArray(p) and value.Len(p) == 3 and list.All([value.IsNumber(x) and x - x == 0 for x in p]))
+    bug.Panic("$w: $what is $(brief(p)); give [x, y, z], three finite numbers.")
+  end
+  [p[1] * 1.0, p[2] * 1.0, p[3] * 1.0]
+end
+
+defn positive(x, what, w)
+  (** A length above 0, as a float; anything else is a bug. *)
+  if not (value.IsNumber(x) and x > 0 and x - x == 0)
+    bug.Panic("$w: $what is $(brief(x)); give a length above 0.")
+  end
+  x * 1.0
+end
+
+defn segmentsOf(n, least, w)
+  (** The segments around a round part: a whole number from least to mostSegments; anything else is a bug. *)
+  if not (value.IsInt(n) and n >= least and n <= mostSegments)
+    bug.Panic("$w: segments is $(brief(n)); give a whole number from $least to $mostSegments.")
+  end
+  n
+end
+
+(* Welding: the corners of triangles, each with its own x, y and z as an STL file holds them, become points shared by
+   the triangles that meet there. *)
+
+defn weld(xs, ys, zs)
+  (** The mesh of triangles given corner by corner, three corners a triangle: the corners at the same place, x, y and z
+      exactly equal, 0 and -0 alike, become one point, numbered in the order the triangles first use them. columns.Groups
+      finds them, by a table of hashes: O(n). *)
+  g = col.Groups([xs, ys, zs])
+  Mesh(vertexMatrix(col.Pick(g.Firsts, xs), col.Pick(g.Firsts, ys), col.Pick(g.Firsts, zs)), triangleMatrix(g.Ids))
+end
+
+defn soup(m)
+  (** The x, y and z of each corner of each triangle of a mesh, three corners a triangle, as an STL file lists them. *)
+  t = value.Size(m.Triangles)[1]
+  at = matrix.Reshape([1, 3 * t], matrix.Transpose(m.Triangles))
+  [col.Pick(at, coords(m, 1)), col.Pick(at, coords(m, 2)), col.Pick(at, coords(m, 3))]
+end
+
+defn Of(vertices, triangles)
+  (** A mesh of your own points and triangles, in an Ok, as they are given: vertices a matrix of a row x, y, z for each
+      point, triangles a matrix of a row for each triangle, the rows of its three corners in vertices, from 1,
+      counterclockwise seen from outside. An Err of kind "mesh" says what is wrong.
+
+        Of([0, 0, 0; 1, 0, 0; 0, 1, 0], [1, 2, 3]) then result.IsOk() --> true
+        Of([0, 0, 0; 1, 0, 0; 0, 1, 0], [1, 2, 4]) --> result.Err({Kind: "mesh", Message: "mesh.Of: a corner of its triangles is 4, not a row of its 3 points."}) *)
+  m = Mesh(vertices, triangles)
+  why = fault(m)
+  if value.IsSome(why)
+    return result.Err({Kind: "mesh", Message: "mesh.Of: $why."})
+  end
+  result.Ok(checked(m, "mesh.Of"))
+end
+
+(* Parts made in code. Each is closed, its triangles counterclockwise seen from outside, and holds each point once. *)
+
+defn quads(qs)
+  (** The two triangles of each quad, four corners counterclockwise: a b c and a c d. *)
+  out = []
+  for q in qs
+    out = list.Append([q[1], q[2], q[3]], list.Append([q[1], q[3], q[4]], out))
+  end
+  out
+end
+
+defn fromPoints(ps, ts)
+  (** The mesh of points, a list of [x, y, z], and triangles, a list of three places in it, welded and numbered as the
+      triangles use them. *)
+  at = list.Flatten(ts)
+  xs = col.Pick(at, [p[1] for p in ps])
+  ys = col.Pick(at, [p[2] for p in ps])
+  zs = col.Pick(at, [p[3] for p in ps])
+  weld(xs, ys, zs)
+end
+
+defn Box(corner, size)
+  (** A box from a corner, size[1] along x, size[2] along y and size[3] along z: 8 points and 12 triangles, two on
+      each side, as OpenSCAD's cube(size) from its corner.
+
+        Bounds(Box([0, 0, 0], [40, 20, 10])) --> {Low: [0.0, 0.0, 0.0], High: [40.0, 20.0, 10.0]} *)
+  c = point(corner, "corner", "mesh.Box")
+  s = point(size, "size", "mesh.Box")
+  for k in 1..3
+    positive(s[k], "size[$k]", "mesh.Box")
+  end
+  (* Corner 1 + x + 2 y + 4 z, each of x, y and z 0 or 1. *)
+  ps = [[c[1] + s[1] * math.Mod(k, 2), c[2] + s[2] * math.Mod(math.Div(k, 2), 2), c[3] + s[3] * math.Div(k, 4)] for k in 0..7]
+  fromPoints(ps, quads([[1, 3, 4, 2], [5, 6, 8, 7], [1, 2, 6, 5], [3, 7, 8, 4], [1, 5, 7, 3], [2, 4, 8, 6]]))
+end
+
+defn ring(c, r, z, n)
+  (** n points on a circle of radius r around (c[1], c[2]) at height z, from the side of +x, counterclockwise seen from
+      above. *)
+  [[c[1] + r * math.Cos(2.0 * math.Pi * k / n), c[2] + r * math.Sin(2.0 * math.Pi * k / n), z] for k in 0..n - 1]
+end
+
+(** The place of point k of a ring of n, from 0, past the first point of the ring at place first. *)
+around(first, k, n) = first + math.Mod(k, n)
+
+defn Cylinder(base, radius, height, segments = 48)
+  (** A cylinder standing on the center of its base, up along z: its side made of segments rectangles, two triangles
+      each, and its two ends of segments triangles around their centers. 48 segments put the side within 0.2 % of the
+      circle, less than a pixel at the size of a graph.
+
+        value.Size(Cylinder([0, 0, 0], 1, 2).Triangles) --> [192, 3]
+        Bounds(Cylinder([0, 0, 0], 1, 2, segments = 4)) --> {Low: [-1.0, -1.0, 0.0], High: [1.0, 1.0, 2.0]} *)
+  c = point(base, "base", "mesh.Cylinder")
+  r = positive(radius, "radius", "mesh.Cylinder")
+  h = positive(height, "height", "mesh.Cylinder")
+  n = segmentsOf(segments, 3, "mesh.Cylinder")
+  ps = list.Concat(list.Concat(ring(c, r, c[3], n), ring(c, r, c[3] + h, n)), [c, [c[1], c[2], c[3] + h]])
+  side = quads([[around(1, k, n), around(1, k + 1, n), around(n + 1, k + 1, n), around(n + 1, k, n)] for k in 0..n - 1])
+  ends = list.Concat([[2 * n + 1, around(1, k + 1, n), around(1, k, n)] for k in 0..n - 1], [[2 * n + 2, around(n + 1, k, n), around(n + 1, k + 1, n)] for k in 0..n - 1])
+  fromPoints(ps, list.Concat(side, ends))
+end
+
+defn Cone(base, radius, height, segments = 48)
+  (** A cone standing on the center of its base, its tip height above it along z: segments triangles from the circle
+      of its base to its tip, and its base of segments triangles around its center.
+
+        value.Size(Cone([0, 0, 0], 1, 2).Triangles) --> [96, 3] *)
+  c = point(base, "base", "mesh.Cone")
+  r = positive(radius, "radius", "mesh.Cone")
+  h = positive(height, "height", "mesh.Cone")
+  n = segmentsOf(segments, 3, "mesh.Cone")
+  ps = list.Concat(ring(c, r, c[3], n), [c, [c[1], c[2], c[3] + h]])
+  side = [[around(1, k, n), around(1, k + 1, n), n + 2] for k in 0..n - 1]
+  bottom = [[n + 1, around(1, k + 1, n), around(1, k, n)] for k in 0..n - 1]
+  fromPoints(ps, list.Concat(side, bottom))
+end
+
+defn Sphere(center, radius, segments = 48)
+  (** A sphere around its center, as a globe is drawn: segments meridians and segments / 2 bands between its poles,
+      the bands made of rectangles of two triangles and the two at the poles of triangles.
+
+        value.Size(Sphere([0, 0, 0], 1, segments = 8).Triangles) --> [48, 3] *)
+  c = point(center, "center", "mesh.Sphere")
+  r = positive(radius, "radius", "mesh.Sphere")
+  n = segmentsOf(segments, 4, "mesh.Sphere")
+  bands = math.Div(n, 2)
+  ps = [[c[1], c[2], c[3] + r]]
+  for i in 1..bands - 1
+    t = math.Pi * i / bands
+    ps = list.Concat(ps, ring(c, r * math.Sin(t), c[3] + r * math.Cos(t), n))
+  end
+  ps = list.Append([c[1], c[2], c[3] - r], ps)
+  south = value.Len(ps)
+  (* Ring i, from 1 at the north, starts at place 2 + (i - 1) n. *)
+  at = (i, k) -> around(2 + (i - 1) * n, k, n)
+  ts = [[1, at(1, k), at(1, k + 1)] for k in 0..n - 1]
+  for i in 1..bands - 2
+    ts = list.Concat(ts, quads([[at(i, k), at(i + 1, k), at(i + 1, k + 1), at(i, k + 1)] for k in 0..n - 1]))
+  end
+  ts = list.Concat(ts, [[south, at(bands - 1, k + 1), at(bands - 1, k)] for k in 0..n - 1])
+  fromPoints(ps, ts)
+end
+
+(* Moves, turns and scales: each changes the points and keeps the triangles. *)
+
+defn Move(m, by)
+  (** The mesh moved by [dx, dy, dz].
+
+        Bounds(Move(Box([0, 0, 0], [1, 1, 1]), [10, 0, -1])).Low --> [10.0, 0.0, -1.0] *)
+  m = checked(m, "mesh.Move")
+  d = point(by, "by", "mesh.Move")
+  Mesh(m.Vertices + matrix.Matmul(matrix.Ones(value.Size(m.Vertices)[1], 1), matrix.Reshape([1, 3], d)), m.Triangles)
+end
+
+defn Turn(m, axis, degrees, about = [0, 0, 0])
+  (** The mesh turned by an angle in degrees around an axis, a direction [x, y, z], through the point about: a positive
+      angle turns counterclockwise seen from the tip of the axis, by the right hand's rule, as MATLAB's rotate. The
+      formula of Rodrigues gives each point.
+
+        Bounds(Turn(Box([0, 0, 0], [2, 1, 1]), [0, 0, 1], 90)) --> {Low: [-1.0, 0.0, 0.0], High: [0.0, 2.0, 1.0]} *)
+  m = checked(m, "mesh.Turn")
+  k = point(axis, "axis", "mesh.Turn")
+  size = math.Sqrt(k[1] * k[1] + k[2] * k[2] + k[3] * k[3])
+  if size == 0.0
+    bug.Panic("mesh.Turn: axis is $(brief(axis)), of length 0; give the direction of the axis.")
+  end
+  if not (value.IsNumber(degrees) and degrees - degrees == 0)
+    bug.Panic("mesh.Turn: degrees is $(brief(degrees)); give an angle in degrees, a finite number.")
+  end
+  p = point(about, "about", "mesh.Turn")
+  k = k / size
+  (* A whole number of quarter turns takes its exact sine and cosine, so that a box turned by 90 degrees stays square
+     to the axes. *)
+  q = degrees / 90.0
+  quarter = q == math.Floor(q) and math.Abs(q) < 1e15
+  turn = q - 4.0 * math.Floor(q / 4.0) + 1.0
+  a = degrees * math.Pi / 180.0
+  c = if quarter [1.0, 0.0, -1.0, 0.0][turn] else math.Cos(a) end
+  s = if quarter [0.0, 1.0, 0.0, -1.0][turn] else math.Sin(a) end
+  (* Rodrigues: R = c I + s [k]x + (1 - c) k k^T; the points as rows times R^T. *)
+  r = [c + (1.0 - c) * k[1] * k[1], (1.0 - c) * k[1] * k[2] - s * k[3], (1.0 - c) * k[1] * k[3] + s * k[2];
+       (1.0 - c) * k[2] * k[1] + s * k[3], c + (1.0 - c) * k[2] * k[2], (1.0 - c) * k[2] * k[3] - s * k[1];
+       (1.0 - c) * k[3] * k[1] - s * k[2], (1.0 - c) * k[3] * k[2] + s * k[1], c + (1.0 - c) * k[3] * k[3]]
+  rows = value.Size(m.Vertices)[1]
+  shift = matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, 3], p))
+  Mesh(matrix.Matmul(m.Vertices - shift, matrix.Transpose(r)) + shift, m.Triangles)
+end
+
+defn Scale(m, by, about = [0, 0, 0])
+  (** The mesh scaled from the point about: by a number, the same along each axis, or [sx, sy, sz], one for each. A
+      negative factor mirrors it: when an odd count of them are, the corners of each triangle are taken in the other
+      order, so that they stay counterclockwise seen from outside.
+
+        Bounds(Scale(Box([0, 0, 0], [1, 2, 3]), 2)).High --> [2.0, 4.0, 6.0]
+        Normals(Scale(Box([0, 0, 0], [1, 1, 1]), [-1, 1, 1]))[1, :] --> [0.0, 0.0, -1.0] *)
+  m = checked(m, "mesh.Scale")
+  f = if value.IsNumber(by) [by, by, by] else by end
+  f = point(f, "by", "mesh.Scale")
+  if list.Any([x == 0.0 for x in f])
+    bug.Panic("mesh.Scale: by is $(brief(by)); a factor of 0 flattens the part: give factors other than 0.")
+  end
+  p = point(about, "about", "mesh.Scale")
+  rows = value.Size(m.Vertices)[1]
+  shift = matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, 3], p))
+  v = (m.Vertices - shift) * matrix.Matmul(matrix.Ones(rows, 1), matrix.Reshape([1, 3], f)) + shift
+  if f[1] * f[2] * f[3] > 0.0
+    return Mesh(v, m.Triangles)
+  end
+  Mesh(v, made([], [], [], corners(m, 1), corners(m, 3), corners(m, 2)).Triangles)
+end
+
+defn Merge(meshes)
+  (** One mesh of several: their points one after the other, and their triangles, which keep their own points. Each part
+      stays as it was; plot.Mesh draws one mesh in one color, so give each part of a machine its own plot.Mesh, which
+      also orders the parts whole.
+
+        value.Size(Merge([Box([0, 0, 0], [1, 1, 1]), Box([2, 0, 0], [1, 1, 1])]).Vertices) --> [16, 3] *)
+  if not (value.IsArray(meshes) and value.Len(meshes) > 0)
+    bug.Panic("mesh.Merge: meshes is $(brief(meshes)); give a list of meshes.")
+  end
+  xs = []
+  ys = []
+  zs = []
+  ts = [[], [], []]
+  for k in 1..value.Len(meshes)
+    m = checked(meshes[k], "mesh.Merge: mesh $k")
+    shift = value.Len(xs)
+    xs = list.Concat(xs, coords(m, 1))
+    ys = list.Concat(ys, coords(m, 2))
+    zs = list.Concat(zs, coords(m, 3))
+    ts = [list.Concat(ts[j], corners(m, j) + shift) for j in 1..3]
+  end
+  made(xs, ys, zs, ts[1], ts[2], ts[3])
+end
+
+(* What a mesh is: its normals and its bounds. *)
+
+defn Normals(m)
+  (** The normal of each triangle, a matrix of a row of length 1 for each: (b - a) × (c - a), from corner a to b and to
+      c, divided by its length, out of a part whose corners turn counterclockwise seen from outside. A triangle of no
+      area, its corners on one line, has [0, 0, 0].
+
+        Normals(Box([0, 0, 0], [1, 1, 1]))[1, :] --> [0.0, 0.0, -1.0] *)
+  m = checked(m, "mesh.Normals")
+  n = faceNormals(m)
+  matrix.Reshape([value.Len(n[1]), 3], list.Concat(list.Concat(n[1], n[2]), n[3]))
+end
+
+defn faceNormals(m)
+  (** The x, y and z of the normal of each triangle, three lists, of length 1, or 0 for a triangle of no area. *)
+  s = soup(m)
+  t = value.Size(m.Triangles)[1]
+  k = 0..t - 1
+  pick = (c, j) -> col.Pick(3 * k + j, s[c])
+  ux = pick(1, 2) - pick(1, 1)
+  uy = pick(2, 2) - pick(2, 1)
+  uz = pick(3, 2) - pick(3, 1)
+  vx = pick(1, 3) - pick(1, 1)
+  vy = pick(2, 3) - pick(2, 1)
+  vz = pick(3, 3) - pick(3, 1)
+  nx = uy * vz - uz * vy
+  ny = uz * vx - ux * vz
+  nz = ux * vy - uy * vx
+  size = math.Sqrt(nx * nx + ny * ny + nz * nz)
+  (* A length of 0 is divided by 1: the normal stays 0. *)
+  safe = size + (size == 0.0) * 1.0
+  [nx / safe, ny / safe, nz / safe]
+end
+
+defn Bounds(m)
+  (** The corners of the smallest box along the axes that holds a mesh: {Low, High}, each [x, y, z].
+
+        Bounds(Sphere([0, 0, 0], 2)) --> {Low: [-2.0, -2.0, -2.0], High: [2.0, 2.0, 2.0]} *)
+  m = checked(m, "mesh.Bounds")
+  {Low: [list.Min(coords(m, k)) for k in 1..3], High: [list.Max(coords(m, k)) for k in 1..3]}
+end
+
+(* STL, the format of 3D Systems (1989): a binary file of an 80-byte header, a count of triangles and 50 bytes for
+   each, its normal and its three corners as floats of 32 bits, then 2 bytes; or a text of facets. *)
+
+stlFail(path, words) = result.Err({Kind: "mesh", Message: "mesh.ReadStl: $(brief(path)) $words."})
+
+defn ReadStl(path)
+  (** The mesh of an STL file, binary or text, in an Ok: its triangles in their order, the corners at one place made
+      one point, numbered as the triangles first use them; the normals the file holds are left aside, as most readers
+      do, and the corners give them. An Err of kind "mesh" says what is wrong with the file, as a binary file whose
+      count of triangles doesn't match its size, a text that breaks the grammar of facets, a coordinate that is NaN or
+      infinite, more than 2,000,000 triangles. A file of binary STL is 84 + 50 n bytes for n triangles; one that begins
+      with the word solid, as some programs write binary files too, is read as text only when it isn't that size.
+      Needs the read permission.
+
+        ReadStl("none.stl") then result.IsErr() --> true *)
+  stat = sys.Stat(path)
+  if result.IsErr(stat)
+    return stlFail(path, "can't be read: $(stat.Error.Message)")
+  end
+  size = stat.Value.Size
+  if size > 300 * mostTriangles
+    return stlFail(path, "holds $size bytes, more than $mostTriangles triangles; ReadStl reads at most $mostTriangles")
+  end
+  got = sys.Read(path)
+  if result.IsErr(got)
+    return stlFail(path, "can't be read: $(got.Error.Message)")
+  end
+  s = got.Value
+  n = text.ByteLength(s)
+  if n >= 84
+    count = text.Numbers("u32", text.ByteSlice(81, 84, s))[1]
+    if n == 84 + 50 * count
+      return binaryStl(s, count, path)
+    end
+    if not text.StartsWith("solid", s)
+      return stlFail(path, "is a binary STL whose header counts $count triangles, $(84 + 50 * count) bytes, but it holds $n bytes")
+    end
+  end
+  if text.StartsWith("solid", s)
+    return textStl(s, path)
+  end
+  stlFail(path, "is no STL: $n bytes, shorter than the 84 of a binary STL, that don't begin with solid")
+end
+
+defn finite(xs, ys, zs, path)
+  (** An Err that names the first triangle with a coordinate that is NaN or infinite, or missing. *)
+  if list.Sum(xs * 0.0 + ys * 0.0 + zs * 0.0) == 0.0
+    return missing
+  end
+  k = list.FindFirst(k -> xs[k] - xs[k] != 0.0 or ys[k] - ys[k] != 0.0 or zs[k] - zs[k] != 0.0, 1..value.Len(xs))
+  stlFail(path, "has a corner of triangle $(math.Div(k - 1, 3) + 1) at ($(value.Text(xs[k])), $(value.Text(ys[k])), $(value.Text(zs[k]))); a corner is at finite coordinates")
+end
+
+(** Two lists one after the other; the first may be empty. *)
+join(a, b) = if value.Len(a) == 0 b else list.Concat(a, b) end
+
+defn binaryStl(s, count, path)
+  (** The mesh of a binary STL of count triangles. Its records of 50 bytes are read as 25 integers of 16 bits; the 24
+      of the floats, without the 2 bytes after them, are written again and read as floats of 32 bits. *)
+  if count == 0
+    return stlFail(path, "holds no triangle")
+  end
+  if count > mostTriangles
+    return stlFail(path, "holds $count triangles; ReadStl reads at most $mostTriangles")
+  end
+  xs = []
+  ys = []
+  zs = []
+  first = 1
+  while first <= count
+    n = list.Min(chunk, count - first + 1)
+    (* A record is 25 integers of 16 bits: a column of a matrix of 25 rows, whose rows 1 to 24 are the floats. *)
+    words = matrix.Reshape([25, n], text.Numbers("u16", text.ByteSlice(85 + 50 * (first - 1), 84 + 50 * (first + n - 1), s)))
+    floats = matrix.Reshape([12, n], text.Numbers("f32", text.FromNumbers("u16", matrix.Reshape([1, 24 * n], words[1..24, :]))))
+    (* Rows 4 to 12, the three corners, read as columns of 3: a corner after another, its x, y and z. *)
+    at = matrix.Reshape([3, 3 * n], floats[4..12, :])
+    xs = join(xs, matrix.Reshape([1, 3 * n], at[1, :]))
+    ys = join(ys, matrix.Reshape([1, 3 * n], at[2, :]))
+    zs = join(zs, matrix.Reshape([1, 3 * n], at[3, :]))
+    first += n
+  end
+  bad = finite(xs, ys, zs, path)
+  if value.IsSome(bad)
+    return bad
+  end
+  result.Ok(weld(xs, ys, zs))
+end
+
+defn textStl(s, path)
+  (** The mesh of an STL of text: solid and a name, facets, endsolid and the name, several solids one after the other.
+      A facet is "facet normal ni nj nk", "outer loop", three "vertex x y z", "endloop" and "endfacet", its words
+      apart by spaces, tabs or line ends, its numbers as C writes floats. *)
+  lines = text.Lines(text.Replace("\t", " ", text.Replace("\r", " ", s)))
+  numbers = []
+  words = []
+  at = []
+  inside = false
+  for i in 1..value.Len(lines)
+    line = text.Trim(lines[i])
+    if line == ""
+      (* A blank line says nothing. *)
+    else if not inside
+      if not (line == "solid" or text.StartsWith("solid ", line))
+        return stlFail(path, "has \"$(value.Text(line, 30))\" at line $i, where a solid begins")
+      end
+      inside = true
+    else if line == "endsolid" or text.StartsWith("endsolid ", line)
+      if value.Len(words) > 0
+        return stlFail(path, "ends a solid at line $i inside a facet")
+      end
+      inside = false
+    else
+      for w in text.Split(" ", line)
+        if w != ""
+          words = list.Append(w, words)
+          at = list.Append(i, at)
+        end
+      end
+      if value.Len(words) >= 21
+        if value.Len(words) > 21 or not facet(words)
+          return stlFail(path, "breaks the grammar of a facet at line $(at[list.Min(value.Len(at), 21)]): a facet is \"facet normal ni nj nk\", \"outer loop\", three \"vertex x y z\", \"endloop\" and \"endfacet\"")
+        end
+        for j in [9, 10, 11, 13, 14, 15, 17, 18, 19]
+          x = text.Number(words[j])
+          if not value.IsNumber(x)
+            return stlFail(path, "has \"$(value.Text(words[j], 30))\" at line $(at[j]), where a number is")
+          end
+          numbers = list.Append(x * 1.0, numbers)
+        end
+        words = []
+        at = []
+      end
+    end
+  end
+  if inside or value.Len(words) > 0
+    return stlFail(path, "ends inside a $(if value.Len(words) > 0 "facet" else "solid" end), without its endsolid")
+  end
+  t = math.Div(value.Len(numbers), 9)
+  if t == 0
+    return stlFail(path, "holds no triangle")
+  end
+  if t > mostTriangles
+    return stlFail(path, "holds $t triangles; ReadStl reads at most $mostTriangles")
+  end
+  k = 0..3 * t - 1
+  xs = col.Pick(3 * k + 1, numbers)
+  ys = col.Pick(3 * k + 2, numbers)
+  zs = col.Pick(3 * k + 3, numbers)
+  bad = finite(xs, ys, zs, path)
+  if value.IsSome(bad)
+    return bad
+  end
+  result.Ok(weld(xs, ys, zs))
+end
+
+(** Are the 21 words of a facet in its grammar, its numbers aside? *)
+facet(w) = w[1] == "facet" and w[2] == "normal" and w[6] == "outer" and w[7] == "loop" and w[8] == "vertex" and w[12] == "vertex" and w[16] == "vertex" and w[20] == "endloop" and w[21] == "endfacet"
+
+(** The matrix of rows by cols with a 1 at row c + shift of each column c, 0 elsewhere: a product with it moves the rows
+    of a matrix down by shift. *)
+shifted(rows, cols, shift) = matrix.Reshape([rows, cols], [if math.Mod(k, rows) == math.Div(k, rows) + shift 1.0 else 0.0 end for k in 0..rows * cols - 1])
+
+defn WriteStl(m, path, ascii = false)
+  (** Writes a mesh to an STL file: binary, 84 + 50 n bytes for n triangles, its numbers as floats of 32 bits, which
+      hold about 7 digits, or with ascii = true a text, each number with the digits that read back as the same float of
+      64 bits. Each triangle has its normal, as Normals gives it. Ok(missing), or an Err. Needs the write permission.
+
+        WriteStl(Box([0, 0, 0], [1, 1, 1]), "box.txt") --> result.Err({Kind: "mesh", Message: "mesh.WriteStl writes STL, to a name that ends in .stl, not \"box.txt\"."}) *)
+  m = checked(m, "mesh.WriteStl")
+  if not (value.IsText(path) and text.EndsWith(".stl", text.Lower(path)))
+    return result.Err({Kind: "mesh", Message: "mesh.WriteStl writes STL, to a name that ends in .stl, not $(brief(path))."})
+  end
+  if not value.IsBool(ascii)
+    bug.Panic("mesh.WriteStl: ascii is $(brief(ascii)); give true or false.")
+  end
+  n = faceNormals(m)
+  t = value.Size(m.Triangles)[1]
+  if ascii
+    s = soup(m)
+    k = 0..t - 1
+    corner = (c, j) -> col.Pick(3 * k + j, s[c])
+    rows = [n[1], n[2], n[3], corner(1, 1), corner(2, 1), corner(3, 1), corner(1, 2), corner(2, 2), corner(3, 2), corner(1, 3), corner(2, 3), corner(3, 3)]
+    out = ["solid cesia"]
+    for i in 1..t
+      v = [r[i] for r in rows]
+      out = list.Concat(out, ["facet normal $(value.Text(v[1])) $(value.Text(v[2])) $(value.Text(v[3]))", "outer loop",
+        "vertex $(value.Text(v[4])) $(value.Text(v[5])) $(value.Text(v[6]))", "vertex $(value.Text(v[7])) $(value.Text(v[8])) $(value.Text(v[9]))",
+        "vertex $(value.Text(v[10])) $(value.Text(v[11])) $(value.Text(v[12]))", "endloop", "endfacet"])
+    end
+    return sys.Write(path, text.Join("\n", list.Append("endsolid cesia\n", out)))
+  end
+  (* The 12 floats of each triangle in a column: the normal, then the three corners, x, y and z, as the points of
+     its corners read from the matrix of points across. Placed by products with columns of the identity, and read as
+     24 integers of 16 bits with a 0 under them. *)
+  flat = matrix.Reshape([1, 3 * value.Size(m.Vertices)[1]], matrix.Transpose(m.Vertices))
+  at = matrix.Reshape([1, 3 * t], matrix.Transpose(m.Triangles))
+  places = matrix.Reshape([1, 9 * t], matrix.Matmul(matrix.Ones(3, 1), matrix.Reshape([1, 3 * t], 3.0 * at - 3.0)) + matrix.Matmul(matrix.Reshape([3, 1], [1.0, 2.0, 3.0]), matrix.Ones(1, 3 * t)))
+  unit = (rows, k) -> matrix.Reshape([rows, 1], [if j == k 1.0 else 0.0 end for j in 1..rows])
+  table = matrix.Matmul(unit(12, 1), matrix.Reshape([1, t], n[1])) + matrix.Matmul(unit(12, 2), matrix.Reshape([1, t], n[2])) + matrix.Matmul(unit(12, 3), matrix.Reshape([1, t], n[3]))
+  table = table + matrix.Matmul(shifted(12, 9, 3), matrix.Reshape([9, t], col.Pick(places, flat)))
+  words = matrix.Reshape([24, t], text.Numbers("u16", text.FromNumbers("f32", matrix.Reshape([1, 12 * t], table))))
+  words = matrix.Matmul(shifted(25, 24, 0), words)
+  head = text.PadRight(80, " ", "binary STL, written by Cesia")
+  sys.Write(path, text.Str(head, text.FromNumbers("u32", [t]), text.FromNumbers("u16", matrix.Reshape([1, 25 * t], words))))
+end

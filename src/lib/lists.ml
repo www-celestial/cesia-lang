@@ -374,6 +374,75 @@ let from_bytes ctx (a : t array) =
     values;
   Text (Buffer.contents b)
 
+(* The numbers that the bytes of a text hold one after another, little-endian as x86 and ARM keep them, of a kind named
+   as std/c names it: what a binary file, as an STL mesh, holds. Floats and integers come out without a box. *)
+let number_size = function "u8" | "i8" -> 1 | "u16" | "i16" -> 2 | "u32" | "i32" | "f32" -> 4 | "f64" -> 8 | _ -> 0
+
+let kind_arg ctx name v =
+  let kind = text_arg ctx name v in
+  let size = number_size kind in
+  if size = 0 then Runtime.fail ctx Type (Messages.number_kind name kind);
+  kind, size
+
+let numbers ctx (a : t array) =
+  let (kind, size), s = kind_arg ctx "Numbers" a.(0), text_arg ctx "Numbers" a.(1) in
+  let n = String.length s / size in
+  if n * size <> String.length s then Runtime.fail ctx Type (Messages.number_bytes kind size (String.length s));
+  Runtime.pay ctx n;
+  if kind.[0] = 'f' then begin
+    let d = Runtime.alloc_float ctx n 0.0 in
+    for k = 0 to n - 1 do
+      Float.Array.set d k
+        (if size = 4 then Int32.float_of_bits (String.get_int32_le s (4 * k)) else Int64.float_of_bits (String.get_int64_le s (8 * k)))
+    done;
+    Arrays.of_float 1 n d
+  end
+  else begin
+    let get =
+      match kind with
+      | "u8" -> String.get_uint8 s
+      | "i8" -> String.get_int8 s
+      | "u16" -> fun k -> String.get_uint16_le s (2 * k)
+      | "i16" -> fun k -> String.get_int16_le s (2 * k)
+      | "u32" -> fun k -> Int32.to_int (String.get_int32_le s (4 * k)) land 0xFFFF_FFFF
+      | _ -> fun k -> Int32.to_int (String.get_int32_le s (4 * k))
+    in
+    let d = Runtime.alloc_ints ctx n 0 in
+    for k = 0 to n - 1 do d.(k) <- get k done;
+    Arrays.of_ints 1 n d
+  end
+
+let from_numbers ctx (a : t array) =
+  let kind, size = kind_arg ctx "FromNumbers" a.(0) in
+  let xs, n = cells ctx "FromNumbers" a.(1) in
+  Runtime.reserve ctx ((n * size / 8) + 1);
+  let b = Bytes.create (n * size) in
+  let lo, hi =
+    match kind with
+    | "u8" -> 0, 255 | "i8" -> -128, 127 | "u16" -> 0, 65535 | "i16" -> -32768, 32767 | "u32" -> 0, 0xFFFF_FFFF
+    | _ -> -0x8000_0000, 0x7FFF_FFFF
+  in
+  let wrong k = Runtime.fail ctx Type (Messages.number_of kind (k + 1) (Value.describe (Value.elt xs k))) in
+  for k = 0 to n - 1 do
+    if kind.[0] = 'f' then begin
+      let x = match xs.store with F d -> Float.Array.get d k | I d -> float_of_int d.(k) | V d -> (match d.(k) with Float x -> x | Int i -> float_of_int i | _ -> wrong k) in
+      if size = 4 then Bytes.set_int32_le b (4 * k) (Int32.bits_of_float x) else Bytes.set_int64_le b (8 * k) (Int64.bits_of_float x)
+    end
+    else begin
+      let i =
+        match xs.store with
+        | I d -> d.(k)
+        | F d -> let x = Float.Array.get d k in if Float.is_integer x && Float.abs x < 1e10 then int_of_float x else wrong k
+        | V _ -> (match Value.elt xs k with Int i -> i | Float x when Float.is_integer x && Float.abs x < 1e10 -> int_of_float x | _ -> wrong k)
+      in
+      if i < lo || i > hi then wrong k;
+      if size = 1 then Bytes.set_uint8 b k (i land 255)
+      else if size = 2 then Bytes.set_uint16_le b (2 * k) (i land 0xFFFF)
+      else Bytes.set_int32_le b (4 * k) (Int32.of_int i)
+    end
+  done;
+  Text (Bytes.to_string b)
+
 let bits name f =
   name, nat name 2 2 (fun ctx a -> Int (f (Arrays.whole_index ctx a.(0)) (Arrays.whole_index ctx a.(1))))
 
@@ -442,6 +511,8 @@ let text_natives =
         Runtime.build ctx (String.length s);
         list (Array.init (String.length s) (fun k -> Int (Char.code s.[k]))));
     "FromBytes", nat "FromBytes" 1 1 from_bytes;
+    "Numbers", nat "Numbers" 2 2 numbers;
+    "FromNumbers", nat "FromNumbers" 2 2 from_numbers;
     "Byte", nat "Byte" 2 2 (fun ctx a ->
         let i = Arrays.whole_index ctx a.(0) and s = text_arg ctx "Byte" a.(1) in
         byte_position ctx i s;

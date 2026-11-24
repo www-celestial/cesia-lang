@@ -1,0 +1,17 @@
+(** A binary STL of 400,000 triangles, 20 MB, read under a limit of memory: the reading stops at the limit in its fiber,
+    whose Wait gives the Err, and the program goes on. With make, it writes the file. *)
+use std/fiber
+use std/io
+use std/mesh
+use std/result
+use std/sys
+use std/text
+
+path = sys.Args[2]
+if sys.Args[1] == "make"
+  record = text.Str(text.FromNumbers("f32", [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]), text.FromNumbers("u16", [0]))
+  io.Print(sys.Write(path, text.Str(text.Repeat(80, " "), text.FromNumbers("u32", [400000]), text.Repeat(400000, record))))
+else
+  io.Print(fiber.Wait(fiber.Spawn(() -> mesh.ReadStl(path))) then result.MapErr(it.Message))
+  io.Print("after")
+end

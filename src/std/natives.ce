@@ -760,6 +760,24 @@ use std/test
 
       text.FromBytes([104, 105]) --> "hi" *)
 
+(** text.Numbers(kind, s)
+    The numbers that the bytes of a text hold one after another, as a binary file keeps them: kind is "u8", "i8", "u16",
+    "i16", "u32" or "i32", integers of 8, 16 or 32 bits, unsigned or signed, or "f32" or "f64", floats of 32 or 64 bits
+    (IEEE 754), each little-endian, its lowest byte first, as x86 and ARM store them. A float of 32 bits becomes the float
+    of 64 bits of the same value. The text holds a whole count of them; the numbers come out without a box, 8 bytes each.
+
+      text.Numbers("u16", text.FromBytes([1, 0, 0, 1])) --> [1, 256]
+      text.Numbers("f32", text.FromBytes([0, 0, 192, 63])) --> [1.5]
+      text.Numbers("i8", text.FromBytes([255])) --> [-1] *)
+
+(** text.FromNumbers(kind, xs)
+    The bytes of numbers one after another, as text.Numbers reads them: kind as there, each number little-endian. An
+    integer of the kind holds a whole number in its range, 0 to 255 for "u8"; a float of 32 bits takes the nearest one,
+    as a binary file of 32 bits holds a float of 64.
+
+      text.Bytes(text.FromNumbers("u16", [1, 256])) --> [1, 0, 0, 1]
+      text.Numbers("f32", text.FromNumbers("f32", [0.1])) --> [0.10000000149011612] *)
+
 (** text.Byte(i, s)
     The byte at position i, from 1, of a text.
 
