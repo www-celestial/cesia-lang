@@ -4,6 +4,7 @@ use std/columns as col
 use std/csv
 use std/dict
 use std/list
+use std/math
 use std/result
 use std/text
 use std/value
@@ -117,11 +118,25 @@ WhereMask(mask, df) = take(col.Positions(mask), df)
 Kinds(df) = [col.Kind(df.Columns[n]) for n in df.Names]
 
 defn SortBy(name, df, descending = false)
-  (** The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order.
+  (** The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order either way,
+      and the rows whose value is NaN come last, in their order, as pandas, R and numpy sort them.
 
-        Column("a", SortBy("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1] *)
-  ks = list.Order(df.Columns[name])
-  take(if descending list.Reverse(ks) else ks end, df)
+        Column("a", SortBy("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1]
+        Column("id", SortBy("v", Of({"v": [2.0, math.Nan, 1.0, 2.0], "id": ["a", "b", "c", "d"]}))) --> ["c", "a", "d", "b"]
+        Column("id", SortBy("v", Of({"v": [2.0, math.Nan, 1.0, 2.0], "id": ["a", "b", "c", "d"]}), descending = true)) --> ["a", "d", "c", "b"] *)
+  xs = df.Columns[name]
+  n = value.Len(xs)
+  if descending
+    (* The order of the column read backwards, read backwards: the greatest first, equal values in their order, and the
+       NaNs, which list.Order puts first, last. *)
+    return take(n + 1 - list.Reverse(list.Order(list.Reverse(xs))), df)
+  end
+  ks = list.Order(xs)
+  nans = 0
+  while nans < n and xs[ks[nans + 1]] != xs[ks[nans + 1]]
+    nans += 1
+  end
+  take(if nans == 0 ks else list.Concat(list.Skip(nans, ks), list.Take(nans, ks)) end, df)
 end
 
 (** The rows of a followed by the rows of b, which has the same columns.

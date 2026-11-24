@@ -1,5 +1,6 @@
 use std/frame
 use std/list
+use std/math
 use std/text
 use std/value
 
@@ -23,6 +24,11 @@ isWhere() = frame.RowCount(frame.Where(r -> r["city"] == "Paris", sales)) == 2
 isWhereColumn() = frame.RowCount(frame.WhereColumn("item", it == "a", sales)) == 2
 isSort() = value.Equal(frame.Column("city", frame.SortBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
 isSortDescending() = frame.Column("city", frame.SortBy("city", sales, descending = true))[1] == "Paris"
+isSortDescendingStable() = value.Equal(frame.Column("item", frame.SortBy("city", sales, descending = true)), ["a", "b", "a", "b"])
+defn isSortNanLast()
+  df = frame.Of({"v": [math.Nan, 2, 1, math.Nan, 1], "id": [1, 2, 3, 4, 5]})
+  value.Equal(frame.Column("id", frame.SortBy("v", df)), [3, 5, 2, 1, 4]) and value.Equal(frame.Column("id", frame.SortBy("v", df, descending = true)), [2, 3, 5, 1, 4])
+end
 isAppend() = frame.RowCount(frame.Append(sales, sales)) == 8
 isDropMissing() = frame.RowCount(frame.DropMissing(sales)) == 3
 isFillMissing() = frame.Column("amount", frame.FillMissing(0, sales))[4] == 0

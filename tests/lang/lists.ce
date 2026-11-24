@@ -14,6 +14,16 @@ isConcat() = value.Equal(list.Concat([1], [2, 3]), [1, 2, 3]) and value.Equal(li
 isReverse() = value.Equal(list.Reverse([1, 2, 3]), [3, 2, 1])
 isTake() = value.Equal(list.Take(2, [1, 2, 3]), [1, 2]) and value.Equal(list.Take(9, [1]), [1]) and value.Equal(list.Take(0, [1]), [])
 isSkip() = value.Equal(list.Skip(1, [1, 2, 3]), [2, 3]) and value.Equal(list.Skip(9, [1]), [])
+defn isTypedCopies()
+  xs = [1.0, 2.0, 3.0]
+  r = list.Reverse(xs)
+  t = list.Take(2, xs)
+  s = list.Skip(1, [1, 2, 3])
+  r[1] = 9.0
+  t[1] = 8.0
+  s[1] = 7
+  value.Equal(xs, [1.0, 2.0, 3.0]) and value.Equal(r, [9.0, 2.0, 1.0]) and value.Equal(t, [8.0, 2.0]) and value.Equal(s, [7, 3])
+end
 isIndexOf() = list.IndexOf(2, [1, 2]) == 2 and value.IsMissing(list.IndexOf(9, [1]))
 isSort() = value.Equal(list.Sort([3, 1.5, 2]), [1.5, 2, 3]) and value.Equal(list.Sort(["b", "a"]), ["a", "b"])
 isSortKeepsTheOriginal() = value.Equal(kept(), [2, 1])

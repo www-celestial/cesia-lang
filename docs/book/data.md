@@ -171,7 +171,8 @@ print(lyon, row.names = FALSE)
 ### Groups of rows
 
 [frame.GroupBy] makes one row per value of its columns, and a column for each [frame.Agg]: a new name, the column it reads,
-and the function of its values. [frame.SortBy] orders the rows:
+and the function of its values. [frame.SortBy] orders the rows, equal values in their order and the NaNs last either
+way, as pandas and R do:
 
 ```cesia allow=read
 byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", list.Sum), frame.Agg("rows", "day", value.Len)], df)

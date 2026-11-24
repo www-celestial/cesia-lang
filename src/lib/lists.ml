@@ -64,6 +64,13 @@ let push ctx x a =
 (* [n] cells of a list, each from the position that [at] gives. *)
 let picked a n at = Array.init n (fun k -> Value.share (Value.elt a (at k)))
 
+(* The list of the cells at [at 0], [at 1]...: one of floats or of integers stays typed, copied in parallel, where each cell
+   was boxed and the whole looked over again. *)
+let picked_list ctx (a : arr) n at =
+  match a.store with
+  | (F _ | I _) when n > 0 -> Arrays.pick ctx a (Array.init n at) 1 n
+  | _ -> Arrays.list (picked a n at)
+
 let list = Arrays.list
 
 let count_arg ctx name v =
@@ -389,14 +396,14 @@ let list_natives =
         list (Array.init (n + m) (fun k -> Value.share (if k < n then Value.elt xs k else Value.elt ys (k - n)))));
     "Reverse", nat "Reverse" 1 1 (fun ctx a ->
         let xs, n = cells ctx "Reverse" a.(0) in
-        list (picked xs n (fun k -> n - 1 - k)));
+        picked_list ctx xs n (fun k -> n - 1 - k));
     "Take", nat "Take" 2 2 (fun ctx a ->
         let xs, n = cells ctx "Take" a.(1) in
-        list (picked xs (min (count_arg ctx "Take" a.(0)) n) Fun.id));
+        picked_list ctx xs (min (count_arg ctx "Take" a.(0)) n) Fun.id);
     "Skip", nat "Skip" 2 2 (fun ctx a ->
         let xs, n = cells ctx "Skip" a.(1) in
         let k = min (count_arg ctx "Skip" a.(0)) n in
-        list (picked xs (n - k) (fun i -> k + i)));
+        picked_list ctx xs (n - k) (fun i -> k + i));
     "IndexOf", nat "IndexOf" 2 2 index_of;
     "Sort", nat "Sort" 1 1 sort;
     "Order", nat "Order" 1 1 order;

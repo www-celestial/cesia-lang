@@ -177,7 +177,8 @@ print(lyon, row.names = FALSE)
 ### Des groupes de lignes
 
 [frame.GroupBy] fait une ligne par valeur de ses colonnes, et une colonne pour chaque [frame.Agg] : un nouveau nom, la
-colonne qu'elle lit, et la fonction à appliquer à ses valeurs. [frame.SortBy] trie les lignes :
+colonne qu'elle lit, et la fonction à appliquer à ses valeurs. [frame.SortBy] trie les lignes, les valeurs égales dans
+leur ordre et les NaN à la fin dans les deux sens, comme pandas et R :
 
 ```cesia allow=read
 byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", list.Sum), frame.Agg("rows", "day", value.Len)], df)

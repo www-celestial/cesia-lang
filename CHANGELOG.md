@@ -176,6 +176,12 @@
 
 ### Fixes
 
+- `frame.SortBy` keeps equal values in their order when it sorts decreasing too, as its documentation said, where it
+  reversed them, and puts the NaNs last both ways, as pandas, R, numpy and the tables of Cemacs do, where they came
+  first in an increasing sort. A program that read a NaN at the top of an increasing sort finds it at the bottom.
+- `list.Reverse`, `list.Take` and `list.Skip` keep a list of floats or of integers typed, copied in parallel, where
+  each value was boxed and the list looked over again: 3 to 10 times faster on a million numbers (85 ms to 10 to 30 ms,
+  medians of 21 runs on a machine in use).
 - `plot.Svg` and `plot.Save` write the title of a graph of two dimensions as the `<title>` of its SVG, which a screen
   reader reads, as they wrote the words of a 3D graph, and for a grid the titles of its graphs: the image that a block of
   the book draws had, for those who can't see it, only its file name where the title of the graph was meant.
