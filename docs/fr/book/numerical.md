@@ -680,7 +680,7 @@ use std/num
 use std/plot
 ts = num.Linspace(0.0, 50.0, 5000)
 ys = l.At(ts)
-g = plot.Grid([plot.Of([plot.Line(ts, ys[:, 1])], x = "t", y = "x"), plot.Of([plot.Line(ys[:, 1], ys[:, 3])], x = "x", y = "z")], columns = 2)
+g = plot.Grid([plot.Of([plot.Line(ts, ys[:, 1])], x = "t", y = "x", title = "x over time"), plot.Of([plot.Line(ys[:, 1], ys[:, 3])], x = "x", y = "z", title = "z against x")], columns = 2)
 plot.Save(g, "lorenz-grid.svg") -->
 ```
 
@@ -1044,7 +1044,7 @@ qh = result.Unwrap(quad.Integral(h, 0.0, 1.0))
 math.Near(qh.Value, math.Sqrt(math.Pi) / 2.0 * special.Erf(1.0)) -->
 us = num.Linspace(0.0, 1.0, 100)
 xs = num.Linspace(-0.5, 1.5, 200)
-plot.Save(plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(qh.Value) ± $(qh.Error)"), plot.Line(xs, h(xs))]), "integral.svg") -->
+plot.Save(plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(qh.Value) ± $(qh.Error)"), plot.Line(xs, h(xs))], title = "The integral of exp(-x²) from 0 to 1"), "integral.svg") -->
 ```
 
 ### La vitesse d'Integral

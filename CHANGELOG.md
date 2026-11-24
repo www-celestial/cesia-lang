@@ -171,8 +171,8 @@
 ### Fixes
 
 - `plot.Svg` and `plot.Save` write the title of a graph of two dimensions as the `<title>` of its SVG, which a screen
-  reader reads, as they wrote the words of a 3D graph: the image that a block of the book draws had, for those who can't
-  see it, only its file name where the title of the graph was meant.
+  reader reads, as they wrote the words of a 3D graph, and for a grid the titles of its graphs: the image that a block of
+  the book draws had, for those who can't see it, only its file name where the title of the graph was meant.
 - A program whose current folder another process removed goes on: `path.Abs` of a relative path is a bug of the new kind
   `io`, which stops its fiber alone, as any bug, where an error of OCaml ended the program with exit 1, every fiber with
   it, saying only `cesia: No such file or directory`. An absolute path needs no folder and is given as before; a grant of

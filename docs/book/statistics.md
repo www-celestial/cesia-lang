@@ -652,7 +652,7 @@ The same histogram, made here and drawn to SVG:
 
 ```cesia allow=read,write
 use std/plot
-g = plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y = "draws")
+g = plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y = "draws", title = "100,000 draws of e^(-u^2)")
 plot.Save(g, "batch.svg") -->
 ```
 

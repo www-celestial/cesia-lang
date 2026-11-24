@@ -117,7 +117,7 @@ result.Unwrap(plot.Scene(noisy, 640, 400)).Dropped -->
 se tiennent côte à côte, une série pour chaque liste, et `label` et `color` sont des listes, une pour chaque série :
 
 ```cesia allow=read,write
-bars = plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])
+bars = plot.Of([plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])], title = "Two years in three regions")
 plot.Save(bars, "bars.svg") -->
 ```
 
@@ -130,6 +130,7 @@ fig, ax = plt.subplots()
 ax.bar(x - 0.2, [12, 9, 4], width=0.4, label="2025")
 ax.bar(x + 0.2, [14, 7, 6], width=0.4, label="2026")
 ax.set_xticks(x, names)
+ax.set_title("Two years in three regions")
 ax.legend()
 fig.savefig("bars.svg")
 ```
@@ -137,7 +138,7 @@ fig.savefig("bars.svg")
 ```r
 svg("bars.svg")
 barplot(rbind(c(12, 9, 4), c(14, 7, 6)), beside = TRUE, names.arg = c("north", "south", "west"),
-  legend.text = c("2025", "2026"))
+  legend.text = c("2025", "2026"), main = "Two years in three regions")
 invisible(dev.off())
 ```
 
@@ -171,7 +172,7 @@ lignes sont numérotées vers le bas. Un NaN laisse sa cellule vide.
 
 ```cesia allow=read,write
 m = [-2.0, 0.5, 1.0; 1.5, -0.5, 3.0]
-plot.Save(plot.Heatmap(m, colors = "diverging"), "heatmap.svg") -->
+plot.Save(plot.Of([plot.Heatmap(m, colors = "diverging")], title = "A matrix of two rows, diverging colors"), "heatmap.svg") -->
 ```
 
 ```python
@@ -181,13 +182,15 @@ m = np.array([[-2.0, 0.5, 1.0], [1.5, -0.5, 3.0]])
 fig, ax = plt.subplots()
 cells = ax.imshow(m, cmap="RdBu_r", vmin=-3.0, vmax=3.0)
 fig.colorbar(cells)
+ax.set_title("A matrix of two rows, diverging colors")
 fig.savefig("heatmap.svg")
 ```
 
 ```r
 m <- matrix(c(-2, 0.5, 1, 1.5, -0.5, 3), nrow = 2, byrow = TRUE)
 svg("heatmap.svg")
-image(t(m[nrow(m):1, ]), col = hcl.colors(21, "Blue-Red"), zlim = c(-3, 3), axes = FALSE)
+image(t(m[nrow(m):1, ]), col = hcl.colors(21, "Blue-Red"), zlim = c(-3, 3), axes = FALSE,
+  main = "A matrix of two rows, diverging colors")
 invisible(dev.off())
 ```
 
@@ -208,7 +211,7 @@ travers : un intervalle de confiance, l'enveloppe d'un signal. Un NaN dans l'un 
 ```cesia allow=read,write
 mean = math.Sin(t)
 spread = 0.2 + 0.1 * math.Cos(t)
-band = plot.Of([plot.Area(t, mean - spread, mean + spread, label = "±1 σ"), plot.Line(t, mean, label = "mean")])
+band = plot.Of([plot.Area(t, mean - spread, mean + spread, label = "±1 σ"), plot.Line(t, mean, label = "mean")], title = "A mean and its band of ±1 σ")
 plot.Save(band, "band.svg") -->
 ```
 
@@ -221,6 +224,7 @@ spread = 0.2 + 0.1 * np.cos(t)
 fig, ax = plt.subplots()
 ax.fill_between(t, mean - spread, mean + spread, alpha=0.3, label="±1 σ")
 ax.plot(t, mean, label="mean")
+ax.set_title("A mean and its band of ±1 σ")
 ax.legend()
 fig.savefig("band.svg")
 ```
@@ -231,7 +235,8 @@ middle <- sin(t)
 spread <- 0.2 + 0.1 * cos(t)
 band <- adjustcolor("steelblue", alpha.f = 0.3)
 svg("band.svg")
-plot(t, middle, type = "n", ylim = range(middle - spread, middle + spread), xlab = "", ylab = "")
+plot(t, middle, type = "n", ylim = range(middle - spread, middle + spread), xlab = "", ylab = "",
+  main = "A mean and its band of ±1 σ")
 polygon(c(t, rev(t)), c(middle - spread, rev(middle + spread)), col = band, border = NA)
 lines(t, middle)
 legend("topright", legend = c("±1 σ", "mean"), fill = c(band, NA), border = NA, lty = c(NA, 1))
@@ -261,7 +266,7 @@ reste assez petite pour Cemacs ; au-delà, un `Err` dit combien.
 ```cesia allow=read,write
 hour = [7, 8, 9, 10, 11]
 height = [5.0, 14.0, 21.0, 26.0, 28.0]
-morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])])
+morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])], title = "A height each hour, each point named")
 plot.Save(morning, "morning.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
 ```
@@ -274,7 +279,7 @@ exactement l'un des deux. Elle est grise sauf si `color` dit autre chose, prend 
 est laissé aux autres layers.
 
 ```cesia allow=read,write
-noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")])
+noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")], title = "A path, the south and the horizon")
 plot.Save(noon, "noon.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
 ```
@@ -287,7 +292,7 @@ La boîte n'a pas de cadre : ses lignes sont de l'encre des axes, sur le *paper*
 derrière elles. Les espaces sont gardés, pour que les deux-points des lignes puissent se tenir l'un sous l'autre :
 
 ```cesia allow=read,write
-place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984")
+place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984", title = "A height each hour, with a note")
 plot.Save(place, "place.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
 ```
@@ -300,7 +305,7 @@ marge de droite grandit pour les contenir. Les points et les bandes sont nommés
 et les histogrammes n'ont pas de bout, et avec `"ends"` ils sont un `Err`.
 
 ```cesia allow=read,write
-three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends")
+three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends", title = "Three lines named at their ends")
 plot.Save(three, "three.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
 ```
@@ -315,7 +320,7 @@ des ticks au-dessus de 0. Sans ces options, rien ne change.
 
 ```cesia allow=read,write
 use std/list
-compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])
+compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"], title = "Ticks of your own: N, E, S, W")
 plot.Save(compass, "compass.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
 ```
@@ -334,7 +339,7 @@ tiennent aux ticks de `y`, écrits le long du rayon de 0, et des rayons aux tick
 `xticks` les donne, écrits hors du bord avec un signe degré, comme les écrivent les axes polaires de matplotlib.
 
 ```cesia allow=read,write
-dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0])
+dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0], title = "A path in a circle, 90 at the center")
 plot.Save(dome, "dome.svg") -->
 [x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
 ```

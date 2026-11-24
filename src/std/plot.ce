@@ -242,17 +242,28 @@ defn Svg(g)
       white, the grid light grey. The texts name the font JetBrains Mono first, then the browser's monospace, whose
       characters are all as wide, so that their widths are the ones std/plot measured. Its <title>, which a screen reader
       reads and a page shows for those who can't see the graph, is the title of the graph, or for a 3D graph the words
-      that say what it draws; a graph of two dimensions without a title has none.
+      that say what it draws, or for a grid the titles of its graphs one after the other; a graph of two dimensions
+      without a title has none.
 
         text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
         text.Contains("<title>Two waves</title>", result.Unwrap(Svg(Of([Line([1, 2], [3, 4])], title = "Two waves")))) --> true
+        text.Contains("<title>a; b</title>", result.Unwrap(Svg(Grid([Of([Line([1, 2], [3, 4])], title = "a"), Line([1, 2], [3, 4]), Of([Line([1, 2], [3, 4])], title = "b")])))) --> true
         Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
   size = sizeOf(g, "plot.Svg")?
   if not value.IsMissing(g.frames)
     return animationSvg(g.frames, size[1], size[2])
   end
   scene = sceneOf(g, size[1], size[2], 1, missing)?
-  result.Ok(svgOf(scene, title = dict.GetOr("Summary", if value.IsText(g.title) g.title else missing end, scene)))
+  result.Ok(svgOf(scene, title = dict.GetOr("Summary", titleOf(g), scene)))
+end
+
+defn titleOf(g)
+  (** The title of a graph for its <title>: its own, else for a grid those of its graphs that have one, else missing. *)
+  if value.IsText(g.title)
+    return g.title
+  end
+  titles = if value.IsArray(g.cells) [c.title for c in g.cells if value.IsText(c.title)] else [] end
+  if value.Len(titles) == 0 missing else text.Join("; ", titles) end
 end
 
 defn Save(g, path)
