@@ -1,0 +1,198 @@
+(** std/plot's meshes on many scenes and views, beside tests/lang/plot-mesh.ce: at points of the screen, the triangle painted
+    last is the nearest, on 150 scenes of parts apart, and the part painted last is the one a ray from the eye meets
+    first, on 150 scenes of parts that cross, 100 points each; and a mesh of 200,001 triangles, or two of 100,001, are
+    past the limit of a graph, 200,000. Slow by nature: tools/check.sh runs it, past the change
+    loop. *)
+use std/columns as col
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/mesh
+use std/num
+use std/plot
+use std/random
+use std/result
+use std/test
+use std/value
+
+scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+tris(g) = list.FindFirst(x -> x.Kind == "triangles", scene(g, 640, 400).Items)
+message(g) = match plot.Svg(g)
+  result.Err(e) -> e.Message
+  else -> "no error"
+end
+
+(* The order: at points of the screen that two triangles or more cover, the one painted last is the nearest, its depth
+   computed here from the view, apart from std/plot. Parts apart from each other, boxes, cylinders and spheres, each on
+   a cell of a grid, at random views; the depth along the view, without perspective, is linear on a triangle. *)
+
+defn orderHolds(c)
+  ps = []
+  for k in 1..c.Count
+    at = [(k - 1) * 12.0 + c.Dx[k], c.Dy[k], c.Dz[k]]
+    ps = list.Append(match c.Kinds[k]
+      1 -> mesh.Box(at, [c.S[k], c.S[k] + 1.0, c.S[k] * 0.5 + 1.0])
+      2 -> mesh.Cylinder(at, c.S[k] * 0.5, c.S[k] + 2.0, segments = 9)
+      else -> mesh.Sphere(at, c.S[k] * 0.5, segments = 8)
+    end, ps)
+  end
+  t = list.FindFirst(x -> x.Kind == "triangles", scene(plot.Of([plot.Mesh(p) for p in ps], view = [c.Az, c.El]), 640, 400).Items)
+  (* The points of the item are those of the parts, one after the other; the box is as long on each axis. *)
+  xs = list.Flatten([p.Vertices[:, 1] for p in ps])
+  ys = list.Flatten([p.Vertices[:, 2] for p in ps])
+  zs = list.Flatten([p.Vertices[:, 3] for p in ps])
+  r = [list.Max(xs) - list.Min(xs), list.Max(ys) - list.Min(ys), list.Max(zs) - list.Min(zs)]
+  a = c.Az * math.Pi / 180
+  e = c.El * math.Pi / 180
+  v = [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)]
+  depth = xs * v[1] + ys * v[2] + zs * v[3]
+  n = math.Div(value.Len(t.Triangles), 3)
+  if n < 2
+    return true
+  end
+  k = 0..n - 1
+  corner = j -> col.Pick(3 * k + j, t.Triangles)
+  sx = [col.Pick(corner(j), t.Xs) for j in 1..3]
+  sy = [col.Pick(corner(j), t.Ys) for j in 1..3]
+  dz = [col.Pick(corner(j), depth) for j in 1..3]
+  ax = sx[2] - sx[1]
+  ay = sy[2] - sy[1]
+  bx = sx[3] - sx[1]
+  by = sy[3] - sy[1]
+  den = ax * by - ay * bx
+  for s in 1..c.Samples
+    px = list.Min(t.Xs) + (list.Max(t.Xs) - list.Min(t.Xs)) * random.Float()
+    py = list.Min(t.Ys) + (list.Max(t.Ys) - list.Min(t.Ys)) * random.Float()
+    cx = px - sx[1]
+    cy = py - sy[1]
+    w1 = (cx * by - cy * bx) / den
+    w2 = (ax * cy - ay * cx) / den
+    w0 = 1.0 - w1 - w2
+    hit = col.Positions((math.Abs(den) > 1e-9) * 1 + (w0 > 1e-6) * 1 + (w1 > 1e-6) * 1 + (w2 > 1e-6) * 1 == 4)
+    if value.Len(hit) >= 2
+      d = col.Pick(hit, w0 * dz[1] + w1 * dz[2] + w2 * dz[3])
+      (* The last painted is the nearest, to a millionth of the size of the parts. *)
+      if list.Max(d) - d[value.Len(d)] > 1e-6 * list.Max(r)
+        return false
+      end
+    end
+  end
+  true
+end
+scenes = gen.Of({Count: gen.Int(1, 4), Kinds: gen.List(gen.Int(1, 3), min = 4, max = 4), Dx: gen.List(gen.Float(0, 2), min = 4, max = 4), Dy: gen.List(gen.Float(-3, 3), min = 4, max = 4),
+  Dz: gen.List(gen.Float(-3, 3), min = 4, max = 4), S: gen.List(gen.Float(1, 6), min = 4, max = 4), Az: gen.Float(-180, 180), El: gen.Float(-89, 89), Samples: gen.Int(60, 60)})
+isOrderHolds() = test.ForAll(orderHolds, scenes, cases = 150)
+
+(* Parts that cross, as a shaft through a wheel and a plate, or a block through a ball: of two convex parts that cross,
+   one is cut by the planes of the other and what of it is inside is left out. At points of the screen, the part painted
+   last is the one that the ray from the eye meets first, found here apart from std/plot: the screen of the points of
+   the first part fitted to their places, the ray from the screen back into the box, and where it enters each part, all
+   convex, by the planes of its faces. Each part is known by its color, red, green or blue. *)
+
+defn planesOf(m)
+  v = m.Vertices
+  t = m.Triangles
+  at = (k, j) -> col.Pick(t[:, k], v[:, j])
+  u = [at(2, j) - at(1, j) for j in 1..3]
+  w = [at(3, j) - at(1, j) for j in 1..3]
+  n = [u[2] * w[3] - u[3] * w[2], u[3] * w[1] - u[1] * w[3], u[1] * w[2] - u[2] * w[1]]
+  size = math.Sqrt(n[1] * n[1] + n[2] * n[2] + n[3] * n[3])
+  {Nx: n[1] / size, Ny: n[2] / size, Nz: n[3] / size, D: (n[1] * at(1, 1) + n[2] * at(1, 2) + n[3] * at(1, 3)) / size}
+end
+
+defn entry(pl, p0, v)
+  (** How far along v from p0 the line p0 + s v enters a convex part from the side v points to, or missing. *)
+  a = pl.Nx * v[1] + pl.Ny * v[2] + pl.Nz * v[3]
+  b = pl.D - (pl.Nx * p0[1] + pl.Ny * p0[2] + pl.Nz * p0[3])
+  up = col.Positions(a > 1e-12)
+  down = col.Positions(a < -1e-12)
+  flat = col.Positions(math.Abs(a) <= 1e-12)
+  if value.Len(flat) > 0 and list.Min(col.Pick(flat, b)) < 0.0
+    return missing
+  end
+  hi = list.Min(col.Pick(up, b) / col.Pick(up, a))
+  lo = list.Max(col.Pick(down, b) / col.Pick(down, a))
+  if lo < hi hi else missing end
+end
+
+defn crossHolds(c)
+  plate = mesh.Box([-14, -3, c.Zp], [28, 6, 2])
+  parts = if c.Ball
+    [mesh.Sphere([0, 0, 10], 6, segments = 12), mesh.Box([c.Dx - 2, c.Dy - 2, 0], [4, 4, 20]), plate]
+  else
+    [mesh.Cylinder([0, 0, c.Zw], c.R, c.H, segments = 12), mesh.Cylinder([c.Dx, c.Dy, 0], c.Rs, 20, segments = 10), plate]
+  end
+  colors = ["#ff0000", "#00ff00", "#0000ff"]
+  t = tris(plot.Of([plot.Mesh(parts[k], color = colors[k]) for k in 1..3], view = [c.Az, c.El]))
+  v1 = parts[1].Vertices
+  n1 = value.Size(v1)[1]
+  a = matrix.Reshape([n1, 4], list.Concat(list.Concat(list.Concat(v1[:, 1] * 1.0, v1[:, 2] * 1.0), v1[:, 3] * 1.0), list.Fill(1.0, n1)))
+  mx = result.Unwrap(num.LeastSquares(a, t.Xs[1..n1]))
+  my = result.Unwrap(num.LeastSquares(a, t.Ys[1..n1]))
+  r1 = [mx[1], mx[2], mx[3]]
+  r2 = [my[1], my[2], my[3]]
+  v = [r1[2] * r2[3] - r1[3] * r2[2], r1[3] * r2[1] - r1[1] * r2[3], r1[1] * r2[2] - r1[2] * r2[1]]
+  az = c.Az * math.Pi / 180
+  el = c.El * math.Pi / 180
+  toward = [math.Cos(el) * math.Sin(az), 0.0 - math.Cos(el) * math.Cos(az), math.Sin(el)]
+  v = if v[1] * toward[1] + v[2] * toward[2] + v[3] * toward[3] < 0.0 [0.0 - v[1], 0.0 - v[2], 0.0 - v[3]] else v end
+  planes = [planesOf(p) for p in parts]
+  n = math.Div(value.Len(t.Triangles), 3)
+  k = 0..n - 1
+  corner = j -> col.Pick(3 * k + j, t.Triangles)
+  sx = [col.Pick(corner(j), t.Xs) for j in 1..3]
+  sy = [col.Pick(corner(j), t.Ys) for j in 1..3]
+  ax = sx[2] - sx[1]
+  ay = sy[2] - sy[1]
+  bx = sx[3] - sx[1]
+  by = sy[3] - sy[1]
+  den = ax * by - ay * bx
+  (* The distance in pixels from a corner to the side across: twice the area over the length of the side. *)
+  across = [math.Abs(den) / (math.Sqrt((sx[e[2]] - sx[e[1]]) ^ 2 + (sy[e[2]] - sy[e[1]]) ^ 2) + 1e-300) for e in [[2, 3], [3, 1], [1, 2]]]
+  tested = 0
+  for s in 1..c.Samples
+    px = list.Min(t.Xs) + (list.Max(t.Xs) - list.Min(t.Xs)) * random.Float()
+    py = list.Min(t.Ys) + (list.Max(t.Ys) - list.Min(t.Ys)) * random.Float()
+    cx = px - sx[1]
+    cy = py - sy[1]
+    w1 = (cx * by - cy * bx) / den
+    w2 = (ax * cy - ay * cx) / den
+    w0 = 1.0 - w1 - w2
+    (* How far inside each triangle the point is, in pixels: a point within half a pixel of a side of one is not tried. *)
+    inside = list.Min(list.Min(w0 * across[1], w1 * across[2]), w2 * across[3])
+    hit = col.Positions((math.Abs(den) > 1e-6) * 1 + (inside > 0.5) * 1 == 2)
+    near = col.Positions((math.Abs(den) > 1e-6) * 1 + (math.Abs(inside) <= 0.5) * 1 == 2)
+    if value.Len(hit) > 0 and value.Len(near) == 0
+      color = t.Colors[hit[value.Len(hit)]]
+      rgb = [math.Div(color, 65536), math.Mod(math.Div(color, 256), 256), math.Mod(color, 256)]
+      painted = list.IndexOf(list.Max(rgb), rgb)
+      p0 = result.Unwrap(num.Solve(matrix.Reshape([3, 3], [r1[1], r2[1], v[1], r1[2], r2[2], v[2], r1[3], r2[3], v[3]]), matrix.Reshape([3, 1], [px - mx[4], py - my[4], 0.0])))
+      at = [entry(planes[j], [p0[1], p0[2], p0[3]], v) for j in 1..3]
+      met = [j for j in 1..3 if value.IsSome(at[j])]
+      if value.Len(met) == 0
+        return false
+      end
+      depths = list.Sort([at[j] for j in met])
+      nearest = list.MaxBy(j -> at[j], met)
+      (* Where two parts meet, at the line where they cross, the nearer is not tried. *)
+      if value.Len(met) == 1 or depths[value.Len(depths)] - depths[value.Len(depths) - 1] > 0.05
+        tested += 1
+        if painted != nearest
+          return false
+        end
+      end
+    end
+  end
+  tested > 0
+end
+crossings = gen.Of({Ball: gen.Bool(), Zw: gen.Float(3, 12), R: gen.Float(4, 9), H: gen.Float(1, 4), Dx: gen.Float(-1.5, 1.5), Dy: gen.Float(-1.5, 1.5),
+  Rs: gen.Float(1, 2.5), Zp: gen.Float(1, 15), Az: gen.Float(-180, 180), El: gen.Float(-89, 89), Samples: gen.Int(100, 100)})
+isCrossingHolds() = test.ForAll(crossHolds, crossings, cases = 150)
+
+
+(* The limit of a graph: a mesh past 200,000 triangles, and two meshes each under it, past it together. *)
+half = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], matrix.Reshape([100001, 3], list.Concat(list.Concat(list.Fill(1, 100001), list.Fill(2, 100001)), list.Fill(3, 100001)))))
+many = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], matrix.Reshape([200001, 3], list.Fill(1, 600003)) * 0 + 1))
+isMeshLimit() = message(plot.Mesh(many)) == "plot.Mesh: 200001 triangles are too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each."
+isGraphLimit() = message(plot.Of([plot.Mesh(half), plot.Mesh(half)])) == "plot.Of: its meshes hold 200002 triangles, too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each."

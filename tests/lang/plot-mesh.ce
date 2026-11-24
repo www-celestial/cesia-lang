@@ -135,7 +135,7 @@ defn orderHolds(c)
 end
 scenes = gen.Of({Count: gen.Int(1, 4), Kinds: gen.List(gen.Int(1, 3), min = 4, max = 4), Dx: gen.List(gen.Float(0, 2), min = 4, max = 4), Dy: gen.List(gen.Float(-3, 3), min = 4, max = 4),
   Dz: gen.List(gen.Float(-3, 3), min = 4, max = 4), S: gen.List(gen.Float(1, 6), min = 4, max = 4), Az: gen.Float(-180, 180), El: gen.Float(-89, 89), Samples: gen.Int(60, 60)})
-isOrderHolds() = test.ForAll(orderHolds, scenes, cases = 10)
+isOrderHolds() = test.ForAll(orderHolds, scenes, cases = 6)
 
 (* Parts that cross, as a shaft through a wheel and a plate, or a block through a ball: of two convex parts that cross,
    one is cut by the planes of the other and what of it is inside is left out. At points of the screen, the part painted
@@ -241,7 +241,7 @@ defn crossHolds(c)
 end
 crossings = gen.Of({Ball: gen.Bool(), Zw: gen.Float(3, 12), R: gen.Float(4, 9), H: gen.Float(1, 4), Dx: gen.Float(-1.5, 1.5), Dy: gen.Float(-1.5, 1.5),
   Rs: gen.Float(1, 2.5), Zp: gen.Float(1, 15), Az: gen.Float(-180, 180), El: gen.Float(-89, 89), Samples: gen.Int(100, 100)})
-isCrossingHolds() = test.ForAll(crossHolds, crossings, cases = 12)
+isCrossingHolds() = test.ForAll(crossHolds, crossings, cases = 4)
 
 (* Parts that touch, as a shaft standing on a block, are set apart by the plane between them: the shaft, nearer at
    every view from above, is painted after the block, and the block after it from below. *)
@@ -262,8 +262,6 @@ isScene() = value.Equal(result.Unwrap(plot.Scene(machine, 640, 400, view = [10, 
 
 (* Every error, word for word. *)
 
-half = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], matrix.Reshape([100001, 3], list.Concat(list.Concat(list.Fill(1, 100001), list.Fill(2, 100001)), list.Fill(3, 100001)))))
-many = result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 0, 1, 0], matrix.Reshape([200001, 3], list.Fill(1, 600003)) * 0 + 1))
 errors = [
   [plot.Mesh(1), "plot.Mesh: m is 1, not a mesh, as mesh.Box or mesh.ReadStl makes."],
   [plot.Mesh(box, color = "green"), "plot.Mesh: color is \"green\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
@@ -278,8 +276,6 @@ errors = [
   [plot.Of([plot.Line([1], [1])], perspective = true), "plot.Line: perspective is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
   [plot.Of([plot.Line([1], [1])], axes = false), "plot.Line: axes is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
   [plot.Of([plot.Line([1], [1])], aspect = "equal"), "plot.Line: aspect is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."],
-  [plot.Mesh(many), "plot.Mesh: 200001 triangles are too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each."],
-  [plot.Of([plot.Mesh(half), plot.Mesh(half)]), "plot.Of: its meshes hold 200002 triangles, too many to draw, past 200,000 in a graph; an SVG holds about 60 bytes for each."],
   [plot.Mesh(result.Unwrap(mesh.Of([0, 0, 0; 1, 0, 0; 2, 0, 0], [1, 2, 3]))), "plot.Mesh: none of its 1 triangles has an area."],
   [plot.Of([plot.Line3([1], [1], [1]), plot.Mesh(box, label = 3)]), "plot.Mesh (layer 2): label is 3; give a text."]]
 isEachError() = value.Equal([message(e[1]) for e in errors], [e[2] for e in errors])
