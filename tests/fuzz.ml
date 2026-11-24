@@ -308,7 +308,32 @@ let thunks st =
   p "fuzzRun([%s], %s, %d, %d)\n" ops last turns (pick st [| 1; 1; 2; 1000; turns + 1 |]);
   Buffer.contents b
 
-let shaped st = match Random.State.int st 4 with 0 -> csc st | 1 -> thunks st | _ -> odes st
+(* A loop at the top of a file over variables of the file that its functions read, which machine code keeps in registers
+   and writes back to their cells: integers and a float, the loop's own variable one of them or not, a function inlined
+   that reads one, a loop inside, a branch left to the interpreter now and then, and late in the loop an index out of
+   its list, a float given to an integer or an overflow. *)
+let tops st =
+  let b = Buffer.create 1024 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let coin () = Random.State.bool st in
+  let v = if coin () then "fuzzI" else "i" and turns = int 21000 30000 in
+  p "use std/io\nuse std/math\n\nfuzzA = %d\nfuzzB = %d.5\nfuzzC = 0\nfuzzI = 0\nfuzzT = \"\"\n" (int 0 9) (int 0 9);
+  p "defn fuzzShow()\n  \"$fuzzA $fuzzB $fuzzC $fuzzI $fuzzT\"\nend\nfuzzGet(x) = x + fuzzA\n\n";
+  p "for %s in 1..%d\n  fuzzA = math.Mod(fuzzA * %d + %s, 1000003)\n" v turns (int 1 9) v;
+  if coin () then p "  fuzzB = fuzzB * 0.5 + %d.25\n" (int 0 9);
+  if coin () then p "  fuzzC = math.Mod(fuzzGet(fuzzC), 99991)\n";
+  if coin () then p "  for j in 1..%d\n    fuzzC = fuzzC + j\n  end\n" (int 1 4);
+  if coin () then p "  if math.Mod(%s, %d) == 0\n    fuzzT = \"t$fuzzA\"\n  end\n" v (pick st [| 1; 2; 7; 1000 |]);
+  (match int 0 5 with
+   | 0 -> p "  if %s == %d\n    fuzzA = fuzzA + [1, 2][3]\n  end\n" v (int 15000 turns)
+   | 1 -> p "  if %s == %d\n    fuzzA = 2.5\n  end\n" v (int 15000 turns)
+   | 2 -> p "  if %s == %d\n    fuzzC = 4611686018427387903 + fuzzC\n  end\n" v (int 15000 turns)
+   | _ -> ());
+  p "end\nio.Print(fuzzShow())\n";
+  Buffer.contents b
+
+let shaped st = match Random.State.int st 5 with 0 -> csc st | 1 -> thunks st | 2 -> tops st | _ -> odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"

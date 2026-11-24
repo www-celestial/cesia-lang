@@ -205,6 +205,12 @@ type func = {
           hidden float slots of its values, its value slot, and a map of its keys or a struct of its shape, without
           values. [Engine] puts the values there before a run, from the map or struct the slot holds, which must be of
           those keys or that shape and of floats, and makes a new one of them after a run that wrote its variables *)
+  globals : (var * int * int) array;
+      (** the variables of modules that a region of a file's top assigns, each kept as an integer or a float for the
+          whole run, in a hidden slot of its stack (also in [vars]), and its module and cell. [Engine] unboxes each there
+          before a run, the cell holding a number of its kind, and boxes it back into its cell after one that wrote its
+          variables: at its end, a checkpoint, a guard that failed, a statement left to the interpreter, an error. No other
+          function of the unit reads one, so that nothing sees the cell while the register holds the number *)
 }
 
 (** The frame of a call made from the outermost native frame starts [frame + hidden] above its base; a call from a nested

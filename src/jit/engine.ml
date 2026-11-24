@@ -132,11 +132,12 @@ let holds now v =
   | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
   | _ -> false
 
+let of_kind v kind = match v, kind with Int _, Ir.Kint | Float _, Ir.Kfloat -> true | _ -> false
+
 let cells_hold (w : world) code =
   Array.for_all (fun (m, k, v) -> holds w.modules.(m).cells.(k) v) code.cells
-  && Array.for_all
-    (fun (m, k, kind) -> match w.modules.(m).cells.(k), kind with Int _, Ir.Kint | Float _, Ir.Kfloat -> true | _ -> false)
-    code.fn.moving
+  && Array.for_all (fun (m, k, kind) -> of_kind w.modules.(m).cells.(k) kind) code.fn.moving
+  && Array.for_all (fun ((v : Ir.var), m, k) -> of_kind w.modules.(m).cells.(k) v.kind) code.fn.globals
 
 (* The variables taken as constants whose number changed, as a slider's set in place: code made after reads them from
    slots. One the session forgot (Undef) is gone for good, and one of another kind no number. *)
@@ -194,6 +195,15 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
        | Dict { vals = F d; _ } | Struct { fields = F d; _ } -> Float.Array.blit d 0 ctx.f (b + parts) (Float.Array.length d)
        | _ -> ())
     code.fn.sunk;
+  (* A variable of a module in a register: its number from its cell. A [stale] run whose cell holds another kind now goes
+     on with the number of its slot, written back at the last checkpoint. *)
+  Array.iter
+    (fun ((v : Ir.var), m, k) ->
+       match w.modules.(m).cells.(k), v.kind with
+       | Float x, Kfloat -> Float.Array.set ctx.f (b + v.slot) x
+       | Int n, Kint -> ctx.i.(b + v.slot) <- n
+       | _ -> ())
+    code.fn.globals;
   (* A small array kept in slots: its cells, or, for one a turn assigns before it reads it, nothing to read yet. *)
   Array.iter
     (fun (first, slot, rows, cols, flag) ->
@@ -255,6 +265,11 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
             | Dict { keys; _ } -> Dict { keys; vals = floats (Array.length keys.ks); d_owned = true }
             | v -> v))
       code.fn.sunk;
+  if wrote code.fn st then
+    Array.iter
+      (fun ((v : Ir.var), m, k) ->
+         w.modules.(m).cells.(k) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
+      code.fn.globals;
   if wrote code.fn st then
     Array.iter
       (fun (first, slot, rows, cols, flag) ->
@@ -439,6 +454,7 @@ let dropped (l : Tier.loop) code =
 let forgot (w : world) code =
   let gone m k = match w.modules.(m).cells.(k) with Undef -> true | _ -> false in
   Array.exists (fun (m, k, _) -> gone m k) code.cells || Array.exists (fun (m, k, _) -> gone m k) code.fn.moving
+  || Array.exists (fun (_, m, k) -> gone m k) code.fn.globals
 
 (* Under CESIA_JIT=always a loop is first lowered at its start, before any step, when its calls through a value have met
    no function yet: a refusal then is no sign, and the loop is lowered once more after its first steps, as one hot by its

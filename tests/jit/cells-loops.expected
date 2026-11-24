@@ -1,0 +1,21 @@
+@token TOKEN
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,3],"Rows":[["1000000","1000000","0.5525854563071567"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,3],"Rows":[["2000000","1000000","0.6107013730443901"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["2000000","1000000"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Error":{"Line":null,"Text":"<prompt>:4:16: Index 2 is outside this array of 1 elements.\n  4 |     n = n + [1][2]\n    |                ^"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,3],"Rows":[["2500000","500000","2500000"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Error":{"Line":null,"Text":"<prompt>:3:9: The integer result of 4611686018427387903 + 1 doesn't fit in 63 bits.\n  3 |   n = n + 1\n    |         ^\n  Integers have 63 bits. To go further, use a float: 1.0 * x."},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["4611686018427387903","904"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["3000000","3000000"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["0","3"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"100007"},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"variables","Rows":[{"Name":"x","Type":"Float","Size":"","Preview":"0.6107013730443901"},{"Name":"readN","Type":"Function","Size":"","Preview":"function readN"},{"Name":"start","Type":"Value","Size":"","Preview":"<channel 21>"},{"Name":"watch","Type":"Function","Size":"","Preview":"function watch"},{"Name":"task","Type":"Value","Size":"","Preview":"<task 22>"},{"Name":"n","Type":"Int","Size":"","Preview":"3000000"},{"Name":"i","Type":"Int","Size":"","Preview":"100000"},{"Name":"knob","Type":"Int","Size":"","Preview":"100007"}],"Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+the same with the JIT off
+the same with machine code from the first run
+exit 0

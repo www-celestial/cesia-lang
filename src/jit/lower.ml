@@ -92,6 +92,9 @@ type st = {
       (* the statements lowered now are points the interpreter can go on from: those of the region's loop and of the
          branches of its ifs, not of a loop inside nor of an inlined body *)
   cold : int list;  (* the statements, inside the branches of the region's ifs, left to the interpreter *)
+  globals : (int * int * int) list;
+      (* the variables of modules the region's loop assigns, kept in registers as [Ir.func.globals]: module, cell,
+         register; shared with inlined bodies, which read them there *)
 }
 
 and dyn = {
@@ -175,6 +178,8 @@ let assigned ?(sets = true) ?cold acc e =
     (fun (x : expr) ->
        (match x.e with
         | Assign ({ b = Local j; _ }, _) | For { var = { b = Local j; _ }; _ } -> acc := j :: !acc
+        (* A variable of code run before at a prompt: no local one. *)
+        | Assign ({ b = Cell { stable = false; _ }; _ }, _) | For { var = { b = Cell { stable = false; _ }; _ }; _ } -> ()
         | Set { root = { b = Local j; _ }; _ } -> if sets then acc := j :: !acc
         | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | Hook _ | Field _ | Struct_lit _ | Array_lit _ | While _ | If _
         | Return _ | Bin _ | And _ | Or _ | Range _ | Neg _ | Not _ | Index _ | Call _ | Interp _ | In_op _ | Question _
@@ -298,6 +303,33 @@ let plain st i =
 let var st i =
   if not (plain st i) || st.regs.(i) < 0 then raise No;
   st.regs.(i)
+
+(* The variable of a module that a name of a file's top stands for: one of the file that a function reads, which lives
+   in its cell, or one of code run before at a prompt, which the code there assigns in place. *)
+let module_var (f : func) (ver : version) (b : binding) =
+  match b with
+  | Cell { m; k; stable = false } -> Some (m, k)
+  | Local i when f.cell_of <> [||] && f.cell_of.(i) >= 0 -> Some (ver.owner.pm, f.cell_of.(i))
+  | _ -> None
+
+(* The register of such a variable, when the region keeps it in one. *)
+let global st b =
+  match module_var st.f st.ver b with
+  | Some (m, k) -> List.find_map (fun (m', k', r) -> if m = m' && k = k' then Some r else None) st.globals
+  | None -> None
+
+(* The registers of those that statement [e] assigns. *)
+let assigned_globals st (e : expr) =
+  let acc = ref [] in
+  walk ~cold:st.cold
+    (fun (x : expr) ->
+       (match x.e with
+        | Assign ({ b; _ }, _) | For { var = { b; _ }; _ } ->
+          (match global st b with Some r when not (List.mem r !acc) -> acc := r :: !acc | _ -> ())
+        | _ -> ());
+       true)
+    e;
+  !acc
 
 let array_of st (e : expr) =
   match e.e with
@@ -591,26 +623,26 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   (* Words of [Types.t] that are no block. *)
   | Lmissing -> Word 1, Kval
   | Lbool b -> Word (if b then 5 else 7), Kval
+  | Var { b; _ } when global st b <> None -> let r = Option.get (global st b) in Reg r, Vec.get st.kinds r
+  (* A variable of a module, as eps = 2.2e-16 at the top of a file, its own one that a function reads included: only the
+     code of the file's top assigns one, a region of it in a register (above) when its loop does, so its number now is a
+     constant of the unit, which [Engine] checks before each run. One that moved under native code before, or that a
+     session can set in place, as a slider's number, is read from its slot at each run instead. *)
+  | Var { b; _ } when module_var st.f st.ver b <> None ->
+    let m, k = Option.get (module_var st.f st.ver b) in
+    let v = st.w.modules.(m).cells.(k) in
+    if moves st.w m k then (match v with Int _ -> slot_of st m k Kint, Kint | Float _ -> slot_of st m k Kfloat, Kfloat | _ -> raise No)
+    else begin
+      let c = match v with Int n -> (Ir.Int n, Ir.Kint) | Float x when Float.is_finite x -> Float x, Kfloat | _ -> raise No in
+      if not (List.exists (fun (m', k', _) -> m' = m && k' = k) st.dyn.cells) then st.dyn.cells <- (m, k, v) :: st.dyn.cells;
+      c
+    end
   | Var { b = Local i; _ } -> Reg (var st i), Vec.get st.kinds (var st i)
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match st.w.modules.(m).cells.(k) with
      | Int n -> Int n, Kint
      | Float x when Float.is_finite x -> Float x, Kfloat
      | _ -> raise No)
-  (* A variable of a module, as eps = 2.2e-16 at the top of a file: native code never assigns one, and only the code of
-     the file's top does, so its number now is a constant of the unit, which [Engine] checks before each run. One that
-     moved under native code before, or that a session can set in place, as a slider's number, is read from its slot at
-     each run instead. *)
-  | Var { b = Cell { m; k; stable = false }; _ } when moves st.w m k ->
-    (match st.w.modules.(m).cells.(k) with
-     | Int _ -> slot_of st m k Kint, Kint
-     | Float _ -> slot_of st m k Kfloat, Kfloat
-     | _ -> raise No)
-  | Var { b = Cell { m; k; stable = false }; _ } ->
-    let v = st.w.modules.(m).cells.(k) in
-    let c = match v with Int n -> (Ir.Int n, Ir.Kint) | Float x when Float.is_finite x -> Float x, Kfloat | _ -> raise No in
-    if not (List.exists (fun (m', k', _) -> m' = m && k' = k) st.dyn.cells) then st.dyn.cells <- (m, k, v) :: st.dyn.cells;
-    c
   | Bin (((Add | Sub | Mul) as op), a, b) ->
     let x = expr st a in
     let y = expr st b in
@@ -1631,6 +1663,18 @@ and stmt st (e : expr) =
     if x.at <> d.slot then vstore st x d.slot;
     if st.flags.(i) >= 0 then emit st (Move (st.flags.(i), Int 1));
     shows st
+  | Assign ({ b; _ }, v) when global st b <> None ->
+    (* A variable of a module kept in a register: a number of its kind, else the loop stays interpreted, as the
+       interpreter would give the variable another kind. *)
+    let r = Option.get (global st b) and k = Vec.get st.kinds (Option.get (global st b)) in
+    let x =
+      match expr st v with
+      | x, k' when k' = k -> x
+      | x, Kval when st.dyn.bail <> None -> fst (unbox st x (if k = Kint then Only_int else Only_float))
+      | _ -> raise No
+    in
+    emit st (Move (r, x));
+    st.dyn.dirty <- true
   | Assign ({ b = Local i; _ }, v) when st.inl <> [] && st.ver.tv.(i) == TA && plain st i ->
     (* A variable of no type of an inlined body: a register of the kind of the first value assigned, which every other
        must have. *)
@@ -1706,11 +1750,11 @@ and stmt st (e : expr) =
     Vec.set st.arr a (slot, true, store, nd);
     let q = cell st a xs sp true in
     emit st (if store = 1 then Put (a, Reg q, x, site st sp) else Set_at (a, q, 0, x))
-  | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
+  | For { var = { b = v; _ }; iter = { e = Range (a, b); _ }; fbody; _ } when (match v with Local _ -> true | _ -> global st v <> None) ->
     let lo = expr st a in
     let hi = expr st b in
     if snd lo <> Kint || snd hi <> Kint then raise No;
-    inner_loop st (fun () -> ignore (for_loop ~lo:(fst lo, fst hi) st e i fbody))
+    inner_loop st (fun () -> ignore (for_loop ~lo:(fst lo, fst hi) st e v fbody))
   | While { cond = c; body; _ } ->
     inner_loop st (fun () ->
         let pre = block st and head = block st and inside = block st and exit = block st in
@@ -1823,6 +1867,7 @@ and allocates st (b : block) =
        | _ -> false)
       || Array.exists (fun (a : arg) -> made a.value) c.args
     | Assign ({ b = Local i; _ }, v) -> (st.regs.(i) >= 0 && Vec.get st.kinds st.regs.(i) = Ir.Kval) || made v
+    | Assign (_, v) -> made v
     | Set { root = { b = Local i; _ }; value; _ } ->
       (st.arrays.(i) >= 0 && (let _, _, store, _ = Vec.get st.arr st.arrays.(i) in store = 1)) || made value
     | _ -> false
@@ -1845,7 +1890,7 @@ and stmts st ~root (b : block) =
 and resume_at st k (x : expr) ~nested =
   (* The variables the statement may assign, whose copies the way back may need, made at its start. *)
   let vars = try List.sort_uniq compare (assigned ~sets:false ~cold:st.cold [] x) with Unknown -> [] in
-  st.dyn.vars <- List.filter (fun r -> r >= 0) (List.map (fun i -> st.regs.(i)) vars);
+  st.dyn.vars <- List.filter (fun r -> r >= 0) (List.map (fun i -> st.regs.(i)) vars) @ assigned_globals st x;
   st.dyn.start <- (st.cur, List.length (Vec.get st.blocks st.cur).ins);
   while Vec.length st.dyn.restores <= k do Vec.add_last st.dyn.restores [] done;
   while Vec.length st.dyn.keeps <= k do Vec.add_last st.dyn.keeps (-1, -1, -1) done;
@@ -1947,15 +1992,17 @@ and branch st (b : block) =
    (loop versioning, Midkiff, Moreira and Snir, 1998). A run that leaves comes back before the loop, through [decide], never into its body: the loop's one join is
    its body's start, where only what the loop changes meets (Fink and Qian's entry at the head of a loop), so MIR puts no
    copies of the other variables in it. Gives the block that tests the counter. *)
-and for_loop ?lo ?(root = false) st (e : expr) i fbody =
-  let r = var st i in
+and for_loop ?lo ?(root = false) st (e : expr) (v : binding) fbody =
+  (* A variable of a module kept in a register gets the counter at each turn, as a local one the body assigns: [i] is
+     then -1. *)
+  let r, i = match global st v, v with Some r, _ -> r, -1 | None, Local i -> var st i, i | None, _ -> raise No in
   (* The interpreter hands a [for] over to native code, and takes it back, only for a variable of integers: another
      one's loop keeps its counter and bound to itself, and a run that came back inside would not find them. *)
-  if Vec.get st.kinds r <> Kint || st.ver.tv.(i) != TI then raise No;
+  if Vec.get st.kinds r <> Kint || (i >= 0 && st.ver.tv.(i) != TI) then raise No;
   let written = try Some (Array.fold_left (assigned ~cold:st.cold) [] fbody) with Unknown -> None in
-  let own = match written with Some l -> not (List.mem i l) | None -> false in
+  let own = i >= 0 && match written with Some l -> not (List.mem i l) | None -> false in
   match Hashtbl.find_opt st.twins e.id, lo with
-  | Some tw, Some (l, x) -> twin_loop st e i fbody written tw l x
+  | Some tw, Some (l, x) -> twin_loop st e i r fbody written tw l x
   | _ ->
   let c = if own then r else hidden st in
   let cslot = if own then st.ver.map.(i) else (Vec.get_last st.hidden).slot in
@@ -2002,13 +2049,13 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   close st (Jump decide);
   st.cur <- decide;
   (match written with
-   | Some written when inner -> ignore (fast_copy st e i c h fbody written ~root ~slow:body ~exit)
+   | Some written when inner -> ignore (fast_copy st e i r c h fbody written ~root ~slow:body ~exit)
    (* A loop whose loops inside are innermost [for]s that allocate nothing, and that allocates nothing itself: its
       indexes' bounds checked once before it, its steps counted as it goes. A run that comes back inside it comes back
       into the slow copy, whose turns then go through [decide] again, so the next turn is the fast copy's. One level
       only, so that an innermost body is made at most four times. *)
    | Some written when (match need with Some n -> !n = 0 | None -> true) && nest fbody = 1 && plain_fors st fbody ->
-     if fast_copy ~again:p st e i c h fbody written ~root ~slow:body ~exit then (Vec.get st.blocks inc).term <- Jump decide
+     if fast_copy ~again:p st e i r c h fbody written ~root ~slow:body ~exit then (Vec.get st.blocks inc).term <- Jump decide
    | _ -> close st (Jump body));
   st.cur <- exit;
   head
@@ -2017,7 +2064,7 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
    only its own fast copy, and leaves for the first's slow copy, with the rest of the loop around it, when that fast
    copy's checks fail. So no point of the run comes back inside the fast copy around it, whose checks it would not have
    made, and the code is not made twice. *)
-and twin_loop st (e : expr) i fbody written tw l x =
+and twin_loop st (e : expr) i r fbody written tw l x =
   let c = tw.tc and h = tw.th and decide = block st and exit = block st in
   emit st (Move (h, x));
   let start = block st in
@@ -2026,7 +2073,7 @@ and twin_loop st (e : expr) i fbody written tw l x =
   emit st (Move (c, l));
   goto st decide;
   (match written with
-   | Some written when tw.tinner -> ignore (fast_copy st e i c h fbody written ~root:false ~slow:tw.tbody ~exit)
+   | Some written when tw.tinner -> ignore (fast_copy st e i r c h fbody written ~root:false ~slow:tw.tbody ~exit)
    | _ -> close st (Jump tw.tbody));
   st.cur <- exit;
   decide
@@ -2043,7 +2090,7 @@ and plain_fors st (b : block) =
     b;
   !ok
 
-and fast_copy ?again st e i c h fbody written ~root ~slow ~exit =
+and fast_copy ?again st e i r c h fbody written ~root ~slow ~exit =
   (* The checks before the loop run one after the other, each block after the one before: an operation, a size or a test
      made once serves every index after it. [dry]: only whether an index is affine, nothing made. *)
   let made = Hashtbl.create 16 and sizes = Hashtbl.create 8 and tested = Hashtbl.create 16 and dry = ref false in
@@ -2218,7 +2265,6 @@ and fast_copy ?again st e i c h fbody written ~root ~slow ~exit =
   end;
   let fbody_b = block st and finc = block st in
   goto st fbody_b;
-  let r = var st i in
   if r <> c then emit st (Move (r, Reg c));
   let around = st.fast in
   st.fast <- table;
@@ -2381,7 +2427,7 @@ let rec func st name =
   let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some (var_of i) else None) (List.init f.nvars Fun.id) in
   finish st name ~params ~vars
 
-and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
+and finish ?(numbers = []) ?(sunk = []) ?(globals = []) st name ~params ~vars =
   let ver = st.ver in
   let hidden = Vec.to_list st.hidden in
   let blocks = Vec.to_array st.blocks in
@@ -2410,7 +2456,8 @@ and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
       keeps = Vec.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Vec.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ | Into _ | Draw _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Vec.to_array st.chains;
-      spills = st.w.hooks;
+      (* An error writes a module's variables back to their cells too: one the code had assigned keeps that number. *)
+      spills = st.w.hooks || globals <> []; globals = Array.of_list globals;
       stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent;
       sunk = Array.of_list sunk; points = Vec.to_array st.dyn.points; vslots; vecs = Array.of_list vecs;
       cells = Array.of_list st.dyn.cells; moved = Array.of_list st.dyn.moved; moving = [||] },
@@ -2443,6 +2490,7 @@ let locals ?cold acc e =
        match x.e with
        | Var { b = Local j; _ } | Assign ({ b = Local j; _ }, _) | For { var = { b = Local j; _ }; _ }
        | Set { root = { b = Local j; _ }; _ } -> acc := j :: !acc; true
+       | Assign ({ b = Cell { stable = false; _ }; _ }, _) | For { var = { b = Cell { stable = false; _ }; _ }; _ } -> true
        | Assign _ | For _ | Set _ -> false
        | _ -> true)
     e;
@@ -2642,6 +2690,33 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
        end
      done
    | _ -> ());
+  (* The variables of modules the loop assigns, a for's included, each in a register of the kind its cell holds now, a
+     for's an integer, which the interpreter gives it at each turn: register promotion of globals. One that holds no
+     number gets none: a statement that assigns it stays the interpreter's, as before. *)
+  let globals =
+    match scope with
+    | Some loop when region ->
+      let found = ref [] in
+      walk ~cold
+        (fun (x : expr) ->
+           (match x.e with
+            | Assign ({ b; _ }, _) | For { var = { b; _ }; _ } ->
+              (match module_var f ver b with
+               | Some (m, k) when not (List.exists (fun (m', k', _) -> m = m' && k = k') !found) ->
+                 let kind =
+                   match x.e, w.modules.(m).cells.(k) with
+                   | For _, _ | _, Int _ -> Some Ir.Kint
+                   | _, Float _ -> Some Kfloat
+                   | _ -> None
+                 in
+                 Option.iter (fun kind -> found := (m, k, Vec.push kinds kind) :: !found) kind
+               | _ -> ())
+            | _ -> ());
+           true)
+        loop;
+      !found
+    | _ -> []
+  in
   (* A list whose maps no variable of the run holds: a write of a map of floats may go into the one it replaces. *)
   let inplace = Array.init f.nvars values_list in
   Option.iter
@@ -2654,7 +2729,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
   { w; ver; f; index; kinds; blocks = Vec.create (); cur = 0; regs; arrays; arr; hidden = Vec.create ();
     resumes = Vec.create (); loops = []; sites = Vec.create (); live = Bytes.empty; unit; body = 0; region; infos = Vec.create ();
     fast = Hashtbl.create 1; twins = Hashtbl.create 8; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
-    fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1);
+    fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1); globals;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
             vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
             inside = []; points = Vec.create (); copies = (false, false); colds = []; dead = false; starts = []; vslots = !vs; cells = [];
@@ -2718,8 +2793,8 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
     st.cur <- entry;
     close st Done;
     (match loop.e with
-     | For { var = { b = Local i; _ }; iter = { e = Range _; _ }; fbody; _ } ->
-       let head = for_loop ~root:true st loop i fbody in
+     | For { var = { b = v; _ }; iter = { e = Range _; _ }; fbody; _ } ->
+       let head = for_loop ~root:true st loop v fbody in
        close st Done;
        points := (point st head, 0)
      | While { cond = c; body; _ } ->
@@ -2761,6 +2836,15 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
            end)
         (List.init st.f.nvars Fun.id)
     in
+    (* A variable of a module kept in a register: in a hidden slot of its stack, as one kept as a number. *)
+    let globals =
+      List.map
+        (fun (m, k, r) ->
+           let v = { Ir.reg = r; kind = Vec.get st.kinds r; slot = ver.frame + Vec.length st.hidden } in
+           Vec.add_last st.hidden v;
+           v, m, k)
+        st.globals
+    in
     (* A map kept as its values: its values, in hidden float slots. *)
     let hide r = let v = { Ir.reg = r; kind = Kfloat; slot = ver.frame + Vec.length st.hidden } in Vec.add_last st.hidden v; v.slot in
     let sunk =
@@ -2772,11 +2856,21 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
     let found = List.sort_uniq compare (st.dyn.colds @ !roots) in
     if dead found loop <> st.cold then raise (Cold found);
     infos := Vec.to_array st.infos;
-    Some (finish ~numbers ~sunk st "f0" ~params:[] ~vars)
+    Some (finish ~numbers ~sunk ~globals st "f0" ~params:[] ~vars)
+  in
+  (* A variable of a module in a register that a function of the unit reads from its cell, as a constant or from a slot,
+     would see it as it was: the loop stays interpreted. Inlined, a body reads the register. *)
+  let read_elsewhere (fns : Ir.func array) =
+    let at m k (m', k', _) = m = m' && k = k' in
+    Array.exists
+      (fun ((_ : Ir.var), m, k) ->
+         Array.exists (at m k) fns.(0).moving || Array.exists (fun (f : Ir.func) -> Array.exists (at m k) f.cells) fns)
+      fns.(0).globals
   in
   let rec go values cold tries =
     roots := cold;
     match lower_unit ?ctx ~scope:loop ~values ~cold:(dead cold loop) w ver (Some make) with
+    | Some fns when read_elsewhere fns -> None
     | Some fns -> Some (fns, fst !points, !infos)
     | None -> None
     | exception Respec i -> go (i :: values) cold tries

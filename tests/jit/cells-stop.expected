@@ -1,0 +1,22 @@
+off:
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Error":{"Line":null,"Text":"Stopped."},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["true","true"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"forgot","Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+hot:
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Error":{"Line":null,"Text":"Stopped."},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["true","true"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"forgot","Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+always:
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Error":{"Line":null,"Text":"Stopped."},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,2],"Rows":[["true","true"]]},"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"forgot","Mark":"TOKEN"}
+@{"Kind":"stopped","Mark":"TOKEN"}
+exit 0

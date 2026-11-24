@@ -1,0 +1,6 @@
+(* The file of the session of cells-loops.cmd and cells-stop.cmd, which run its cells and code typed at its prompt: cesia
+   run --cells runs none of it. *)
+use std/cells
+
+(* %% Knob *)
+knob = cells.Slider(3, 0, 10)
