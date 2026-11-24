@@ -1,0 +1,2 @@
+Slow by nature: two loops of 200,000 calls that write an array of 200,000; with 50,000, one of its two level 2 is
+never made. tools/check.sh runs it, past the change loop.

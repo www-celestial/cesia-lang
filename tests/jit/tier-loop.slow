@@ -1,0 +1,2 @@
+Slow by nature: a walk of 1,000,000 turns in four runs; with 250,000, its level 2 is never made. tools/check.sh runs
+it, past the change loop.

@@ -1,0 +1,2 @@
+Slow by nature: a loop of 30,000 turns that reads outside its array at the 25,000th, in twelve runs of three modes;
+with a quarter of them, the default mode never loads the JIT. tools/check.sh runs it, past the change loop.

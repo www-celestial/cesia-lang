@@ -1,0 +1,2 @@
+Slow by nature: three loops of 100,000 calls in each of three modes; with 25,000, the hot mode never reaches level 2.
+tools/check.sh runs it, past the change loop.

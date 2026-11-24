@@ -1,0 +1,2 @@
+Slow by nature: twelve transposes of 2,000 columns in four runs; with 500, two of its three units are never made.
+tools/check.sh runs it, past the change loop.
