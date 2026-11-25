@@ -4,7 +4,7 @@ range.ce:2:7: random.Int needs a low that is at most its high, and a range that 
 empty.ce:2:7: random.Pick needs a list that isn't empty.
   2 | random.Pick([])
     |       ^
-  in Pick (std/random.ce:14)
+  in Pick (std/random.ce:N)
 -12
 cesia: invalid seed: twelve, a whole number
 exit 2

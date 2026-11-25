@@ -358,6 +358,9 @@
 
 ### Fixes
 
+- The golden tests compare a frame of a trace in `std/` with `N` for its line, `in Unwrap (std/result.ce:N)`, where
+  ten of them broke each time a comment of `std/` grew above the frame's line, with no fault: the frame and its
+  function are what they check, and the frames of a test's own files keep their lines.
 - The tests that listen, of `tests/net`, `tests/sys`, `tests/tls`, `tests/testing` and the book of `tests/site`, the
   OCaml tests of `std/net` and `tools/reload-test.sh`, take a port that the system gives free, `net.Listen(0)` and
   `net.Port`, or `tests/free-port.ce` where a `--allow` or another process names it first, where each wrote its own:
