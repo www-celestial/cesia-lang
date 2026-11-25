@@ -54,6 +54,16 @@ end
 
 one(l) = Graph([l])
 
+(* A layer holds the functions of its kind, as its function made it: Prep checks and measures it (prepare), Items draws it
+   in 2D (dataItems), Draw3 draws a graph of it in 3D, and a mesh's Cut cuts the parts that cross. It holds them, not a
+   name to look them up by, so that a program carries the code of the kinds it makes and no other: the interpreter
+   infers, and cesia build compiles, only the functions that a program can reach. *)
+linePrep(l, w) = pointsOf(l, w, false)
+pointsPrep(l, w) = pointsOf(l, w, true)
+readyOf(l, w) = renamed(l.Ready, w)
+barsItems(p, xa, ya, a, clip) = barItems(p, a, clip)
+binsItems(p, xa, ya, a, clip) = histogramItems(p, xa, a, clip)
+
 defn Line(x, y, label = missing, color = missing, width = 1, dash = missing)
   (** A line through the points (x[i], y[i]), in their order. A NaN or an infinity in x or y cuts it: a gap, as in
       matplotlib. color is written "#rrggbb"; without it, the line is black, the ink of the axes, and the lines without a
@@ -64,7 +74,7 @@ defn Line(x, y, label = missing, color = missing, width = 1, dash = missing)
 
         Svg(Line([1, 2, 3], [2, 4, 3])) then result.IsOk() --> true
         Svg(Line([1, 2, 3], [2, 4])) --> result.Err({Kind: "plot", Message: "plot.Line: x has 3 values and y has 2; give both the same number."}) *)
-  one({Fn: "Line", X: x, Y: y, Label: label, Color: color, Width: width, Dash: dash})
+  one({Fn: "Line", X: x, Y: y, Label: label, Color: color, Width: width, Dash: dash, Prep: linePrep, Items: lineItems, Draw3: missing})
 end
 
 defn Points(x, y, label = missing, color = missing, size = 6, shape = missing)
@@ -74,7 +84,7 @@ defn Points(x, y, label = missing, color = missing, size = 6, shape = missing)
       out, and Scene counts it in Dropped. At most 200,000 points: plot.Density counts more, per cell.
 
         Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)!.Dropped --> 1 *)
-  one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape})
+  one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape, Prep: pointsPrep, Items: markItems, Draw3: missing})
 end
 
 defn Bars(names, heights, label = missing, color = missing)
@@ -84,7 +94,7 @@ defn Bars(names, heights, label = missing, color = missing)
       axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
 
         Svg(Bars(["a", "b"], [[1, 2], [3, 4]], label = ["2025", "2026"])) then result.IsOk() --> true *)
-  one({Fn: "Bars", Names: names, Heights: heights, Label: label, Color: color})
+  one({Fn: "Bars", Names: names, Heights: heights, Label: label, Color: color, Prep: barsOf, Items: barsItems, Draw3: missing})
 end
 
 defn Histogram(values, bins = missing, label = missing, color = missing)
@@ -96,7 +106,7 @@ defn Histogram(values, bins = missing, label = missing, color = missing)
       left out. Without a color, it takes the shade of bars in turn.
 
         Svg(Histogram([1, 2, 2, 3], bins = 0)) --> result.Err({Kind: "plot", Message: "plot.Histogram: bins is 0; give a count of 1 or more, or the edges."}) *)
-  one({Fn: "Histogram", Values: values, Bins: bins, Label: label, Color: color})
+  one({Fn: "Histogram", Values: values, Bins: bins, Label: label, Color: color, Prep: histogramOf, Items: binsItems, Draw3: missing})
 end
 
 defn Heatmap(values, x = missing, y = missing, colors = "viridis")
@@ -107,7 +117,7 @@ defn Heatmap(values, x = missing, y = missing, colors = "viridis")
       merged by their mean.
 
         Svg(Heatmap([1, 2; 3, 4])) then result.IsOk() --> true *)
-  one({Fn: "Heatmap", Values: values, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing})
+  one({Fn: "Heatmap", Values: values, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing, Prep: heatmapOf, Items: cellsItems, Draw3: missing})
 end
 
 defn Density(x, y, bins = 100)
@@ -116,7 +126,7 @@ defn Density(x, y, bins = 100)
       point with a NaN or an infinity is left out, and Scene counts it in Dropped.
 
         Svg(Density([1, 2, 3], [3, 1, 2], bins = 2)) then result.IsOk() --> true *)
-  one({Fn: "Density", X: x, Y: y, Bins: bins, Label: missing, Color: missing})
+  one({Fn: "Density", X: x, Y: y, Bins: bins, Label: missing, Color: missing, Prep: densityOf, Items: cellsItems, Draw3: missing})
 end
 
 defn Area(x, low, high, label = missing, color = missing)
@@ -124,7 +134,7 @@ defn Area(x, low, high, label = missing, color = missing)
       at 30 % opacity, black by default, which shows grey. A NaN or an infinity cuts it.
 
         Svg(Area([1, 2, 3], [0, 1, 0], [2, 3, 2])) then result.IsOk() --> true *)
-  one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color})
+  one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color, Prep: areaOf, Items: areaItems, Draw3: missing})
 end
 
 defn Text(x, y, texts, color = missing, size = 11, anchor = "left", dx = 4, dy = -4)
@@ -137,7 +147,7 @@ defn Text(x, y, texts, color = missing, size = 11, anchor = "left", dx = 4, dy =
 
         Svg(Of([Line([1, 2, 3], [1, 4, 9]), Text([1, 2, 3], [1, 4, 9], ["7h", "8h", "9h"])])) then result.IsOk() --> true
         Svg(Text([1, 2], [1, 4], ["a"])) --> result.Err({Kind: "plot", Message: "plot.Text: there are 2 points and 1 texts; give one text for each point."}) *)
-  one({Fn: "Text", X: x, Y: y, Texts: texts, Label: missing, Color: color, Size: size, Anchor: anchor, Dx: dx, Dy: dy})
+  one({Fn: "Text", X: x, Y: y, Texts: texts, Label: missing, Color: color, Size: size, Anchor: anchor, Dx: dx, Dy: dy, Prep: textsOf, Items: textItems, Draw3: missing})
 end
 
 defn Rule(x = missing, y = missing, label = missing, dash = missing, color = missing)
@@ -148,7 +158,7 @@ defn Rule(x = missing, y = missing, label = missing, dash = missing, color = mis
 
         Svg(Of([Line([0, 360], [0, 50]), Rule(x = 180, label = "S")])) then result.IsOk() --> true
         Svg(Rule(x = 1, y = 2)) --> result.Err({Kind: "plot", Message: "plot.Rule: give x or y, one of them, not both."}) *)
-  one({Fn: "Rule", X: x, Y: y, Label: label, Color: color, Dash: dash})
+  one({Fn: "Rule", X: x, Y: y, Label: label, Color: color, Dash: dash, Prep: ruleOf, Items: ruleItems, Draw3: missing})
 end
 
 defn Surface(z, x = missing, y = missing, colors = "viridis")
@@ -163,7 +173,7 @@ defn Surface(z, x = missing, y = missing, colors = "viridis")
 
         Scene(Surface([1, 2; 3, 5]), 640, 400)!.View --> [-37.5, 30.0]
         Svg(Surface([1, 2; 3, 1.0 / 0.0])) --> result.Err({Kind: "plot", Message: "plot.Surface: z[2, 2] is inf; give finite values, or NaN for a hole."}) *)
-  l = {Fn: "Surface", Values: z, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing}
+  l = {Fn: "Surface", Values: z, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing, Prep: readyOf, Items: missing, Draw3: drawGraph3}
   one(dict.Put("Ready", surfaceOf(l, "plot.Surface"), l))
 end
 
@@ -173,7 +183,7 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
       1,000,000 points. Several Line3 share a graph, drawn in their order, the later on top, but never with a Surface.
 
         Scene(Line3([1, 2, 3], [1, 4, 9], [0, 1, 0]), 640, 400)!.View --> [-37.5, 30.0] *)
-  one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
+  one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash, Prep: line3Of, Items: missing, Draw3: drawGraph3})
 end
 
 defn Mesh(m, color = missing, edges = false, label = missing)
@@ -191,8 +201,8 @@ defn Mesh(m, color = missing, edges = false, label = missing)
       and one of no area too. label names it in the legend.
 
         Svg(Mesh(1)) --> result.Err({Kind: "plot", Message: "plot.Mesh: m is 1, not a mesh, as mesh.Box or mesh.ReadStl makes."}) *)
-  l = {Fn: "Mesh", Mesh: m, Label: label, Color: color, Edges: edges}
-  one(dict.Put("Ready", lazily(meshReady)(l, "plot.Mesh"), l))
+  l = {Fn: "Mesh", Mesh: m, Label: label, Color: color, Edges: edges, Prep: readyOf, Items: missing, Draw3: drawGraph3, Cut: cutParts}
+  one(dict.Put("Ready", meshReady(l, "plot.Mesh"), l))
 end
 
 defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing, polar = false, light = missing, perspective = false, aspect = missing, axes = true)
@@ -244,8 +254,9 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
   (* Meshes that cross are cut once, here, as no view changes their pieces. *)
-  ready = [l.Ready for l in ls if l.Fn == "Mesh"]
-  pieces = if value.Len(ready) > 1 and list.All([result.IsOk(r) for r in ready]) lazily(cutParts)([result.Unwrap(r) for r in ready]) else missing end
+  meshes = [l for l in ls if l.Fn == "Mesh"]
+  ready = [l.Ready for l in meshes]
+  pieces = if value.Len(ready) > 1 and list.All([result.IsOk(r) for r in ready]) meshes[1].Cut([result.Unwrap(r) for r in ready]) else missing end
   pieces = if value.IsSome(pieces) and value.Len(pieces) == value.Len(ready) missing else pieces end
   Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels, polar = polar, light = light, perspective = perspective, aspect = aspect, axes = axes, pieces = pieces)
 end
@@ -642,7 +653,7 @@ bad(name, xs, i) = if i == 0 missing else "$name[$i] is $(value.Text(xs[i]))" en
 
 defn base(l, w)
   {Fn: l.Fn, W: w, Label: l.Label, Color: l.Color, Cells: false, Sticky: false, Flip: false, Category: false,
-   Xbad: missing, Ybad: missing, Dropped: 0}
+   Xbad: missing, Ybad: missing, Dropped: 0, Items: l.Items, Draw3: l.Draw3}
 end
 
 defn prepare(l, at, count)
@@ -660,20 +671,7 @@ defn prepare(l, at, count)
   if not (value.IsMissing(l.Color) or isColor(l.Color) or l.Fn == "Bars")
     return fail("$w: color is $(brief(l.Color)); write a color as \"#rrggbb\", as \"#d55e00\".")
   end
-  match l.Fn
-    "Line" -> pointsOf(l, w, false)
-    "Points" -> pointsOf(l, w, true)
-    "Area" -> areaOf(l, w)
-    "Bars" -> barsOf(l, w)
-    "Histogram" -> histogramOf(l, w)
-    "Heatmap" -> heatmapOf(l, w)
-    "Surface" -> renamed(l.Ready, w)
-    "Line3" -> line3Of(l, w)
-    "Mesh" -> renamed(l.Ready, w)
-    "Text" -> lazily(textsOf)(l, w)
-    "Rule" -> lazily(ruleOf)(l, w)
-    else -> densityOf(l, w)
-  end
+  l.Prep(l, w)
 end
 
 defn pointsOf(l, w, marks)
@@ -1898,16 +1896,7 @@ end
 
 defn dataItems(p, xa, ya, a, clip)
   (** The items of a layer in pixels. *)
-  match p.Fn
-    "Line" -> lineItems(p, xa, ya, a, clip)
-    "Points" -> markItems(p, xa, ya, a, clip)
-    "Area" -> areaItems(p, xa, ya, a, clip)
-    "Bars" -> barItems(p, a, clip)
-    "Histogram" -> histogramItems(p, xa, a, clip)
-    "Text" -> lazily(textItems)(p, xa, ya, a, clip)
-    "Rule" -> lazily(ruleItems)(p, xa, ya, a, clip)
-    else -> cellsItems(p, xa, ya, a, clip)
-  end
+  p.Items(p, xa, ya, a, clip)
 end
 
 defn lineRuns(p, xa, ya, a)
@@ -2109,8 +2098,9 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     ps = list.Append(p, ps)
   end
   gw = if count == 1 ps[1].W else "plot.Of" end
-  if list.Any([is3d(p) for p in ps])
-    return drawGraph3(g, ps, ox, oy, w, h, note, view)
+  three = [p for p in ps if is3d(p)]
+  if value.Len(three) > 0
+    return three[1].Draw3(g, ps, ox, oy, w, h, note, view)
   end
   for o in [["z", g.ztitle], ["zlim", g.zlim], ["view", g.view], ["light", g.light], ["aspect", g.aspect]]
     if not value.IsMissing(o[2])
