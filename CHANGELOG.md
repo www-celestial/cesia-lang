@@ -222,9 +222,30 @@
   the interpreter and at an error: `n = n + 1` over 10^6 turns, `n` read by a function, in 8.4 ms instead of 21.7, over
   10^7 in 17.3 instead of 161.9, and the same loop typed a second time at a prompt in 2.96 ms instead of 26.8 (medians of
   21 runs, alternated). A loop that only reads such a variable of the file is machine code too.
+- Machine code calls a function that has defaults directly, an argument left out, given, or named in any order, bound
+  as the interpreter binds it and made in the order of the parameters, the default made in the callee's frame after its
+  step, where the loop around such a call stayed interpreted: 10^7 calls of `f(i)` with `step = 1` in 27.0 ms instead
+  of 321.6, of `f(i, 2)` in 27.3 instead of 284.4, of `f(i, step = 2)` in 27.1 instead of 283.0. A self tail call into
+  another version, as `count(n - 1, acc + 1)` from `count(50)` with `acc = 0`, is a call, as the interpreter's, and no
+  more keeps the whole function interpreted: 20,000 calls of `count(50)` in 10.5 ms instead of 16.4 (medians of 21 runs,
+  alternated).
+- A native costs less to call: only an owned list, struct or map is looked for among its arguments to be shared, where
+  every result was, a sixth of a call of `math.Abs`, and one with no argument makes no array through a map: 10^7 calls of
+  `text.ByteLength` in 269.8 ms instead of 322.7, of `sys.Now` in 422.9 instead of 517.6; and machine code makes
+  `math.Abs` of an integer itself, 10^7 calls in 20.2 ms instead of 302.1 (medians of 21 runs, alternated).
 
 ### Fixes
 
+- An error of the system that a native lets out instead of an Err, a `Sys_error` or an error of Unix, is a panic of the
+  kind io at the native's call, which stops its fiber alone, where it ended the program with a line naming no place, or
+  with an internal error. No native of `std/` is known to let one out: it is a safety net, and it costs nothing, caught
+  where panics are, where a handler at each call cost 0.5 to 1.4 ns.
+- Under `--limit steps`, the limit is reached at the step that goes past it in whatever fiber, in the interpreter and in
+  machine code alike: a fiber started with a whole quantum of 10,000 steps, whatever was left, and a main program that
+  waited kept its last steps uncounted while the fibers ran, so the limit came later, where the checkpoints fell, which
+  machine code put elsewhere than the interpreter: a program that ran a fiber after a loop of machine code needed 37,999
+  steps interpreted and 41,016 in machine code; both need 41,016. A loop of short fibers now stops inside the fiber that
+  goes past the limit, where it stopped at the spawn of one after it ended.
 - Under `CESIA_JIT=always`, a loop at the top of a file, of a cell or of code typed at a prompt gives its variables
   their last values: the top was machine code as a whole from its first run, which kept them in registers and wrote them
   to the frame only at a checkpoint, so a variable read after it, by another file, a function defined later or the

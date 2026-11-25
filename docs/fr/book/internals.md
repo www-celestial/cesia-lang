@@ -910,6 +910,127 @@ f(total, x)                      in machine code
 └── else                         back to the interpreter, before the statement
 ```
 
+### Les appels avec des defaults et des arguments nommés
+
+Un paramètre peut avoir un *default* (une valeur par défaut), comme `defn f(x, step = 1)`, et un appel peut l'omettre,
+`f(i)`, le donner, `f(i, 2)`, ou le nommer, `f(i, step = 2)`, les noms dans n'importe quel ordre. L'interpréteur lie un
+tel appel une fois, quand il le compile : chaque argument va à son paramètre, par sa place ou par son nom, et les
+arguments sont faits dans l'ordre des paramètres, quel que soit l'ordre où ils sont écrits, si bien que la première
+erreur est toujours la même. Un paramètre omis a le type *pas encore de type* dans les types de la version : la version
+est celle de ces types, et elle fait le default dans son propre frame, après le pas de l'appel, comme un frame de Python
+fait ses defaults quand il commence.
+
+Le code machine laissait à l'interpréteur tout appel d'une fonction qui a un default, et tout appel qui nomme un
+argument, et la boucle autour d'un tel appel restait interprétée : 10^7 appels de `f(i)` prenaient 321,6 ms, contre
+27,3 pour une fonction sans default. Il lie maintenant l'appel comme l'interpréteur et appelle la même version.
+Inliné, le corps de la fonction appelée fait sur place, le default est fait après le pas de son frame, dans le registre
+du paramètre. Appelé, l'appelant passe un nombre quelconque dans ce registre, et l'entrée de la fonction appelée fait
+le default après son pas, comme elle le faisait déjà pour un appel venu de l'interpréteur. Un test de feuille qui lit
+un default, comme `if n < lim` avec `lim = 3`, est fait à l'appel quand le default est un littéral, qui ne coûte alors
+rien avant le pas (l'*inlining* partiel de [Ce qu'il produit](#ce-quil-produit)). Un *self tail call* (l'appel d'une
+fonction à elle-même en toute dernière position, qui boucle au lieu d'empiler un frame) vers une autre version, comme
+`count(n - 1, acc + 1)` dans le frame que `count(50)` a fait avec `acc = 0`, est un appel, dans un frame à lui, comme
+celui de l'interpréteur, là où il mettait fin au code machine de toute la fonction : l'interpréteur faisait alors le
+frame du dessus de chaque `count(50)`.
+
+Mesuré le 2026-11-25, profil `release`, 21 lancements de chacun en alternance avec le binaire de main, du début du
+processus à sa fin ; les médianes et leurs intervalles à 95 %, en ms :
+
+| Appel dans une boucle, 10^7 fois | Avant | Maintenant |
+|---|---:|---:|
+| `f(i)`, `step` laissé à son default | 321,6 (320,6–324,3) | 27,0 (27,0–27,3) |
+| `f(i, 2)` | 284,4 (283,3–285,6) | 27,3 (26,9–27,7) |
+| `f(i, step = 2)` | 283,0 (282,0–285,3) | 27,1 (27,0–27,3) |
+| `f(i, 1)`, une fonction sans default | 27,3 (27,1–27,8) | 27,4 (27,1–28,8) |
+| `count(50)` 20 000 fois, un self tail call vers la version qui donne `acc` | 16,4 (16,2–16,6) | 10,5 (10,5–10,7) |
+
+V8 faisait passer un appel qui a moins d'arguments que de paramètres par un *arguments adaptor frame* (un frame
+d'adaptation des arguments), mis entre les deux, qui remplissait ceux qui manquent avec `undefined`, jusqu'en 2021, où
+il a retiré ce frame et gagné jusqu'à 40 % sur de tels appels (Gomes, 2021). À côté des géants, 10^7 appels de `f(i)`,
+`step` omis, prennent 26,7 ms, contre Python 3.14 1 017, Node 26 59,2, Lua 5.5 280, où `step = step or 1` tient lieu de
+default, et LuaJIT 2.1 11,4 ; donné, 26,9, contre 980, 59,8, 272 et 11,4 ; nommé, `f(i, step = 2)`, 27,1, contre Python
+1 142, Node 63,6 avec un objet pour les noms, Lua 1 675 avec une table, et LuaJIT 11,4 (tout le processus, médianes de
+21 lancements en alternance). LuaJIT gagne : il démarre en une milliseconde environ et fait tout de suite de la boucle
+du code machine, là où Cesia démarre en 4 et charge son JIT à la première boucle hot ; un tour coûte ensuite 1,7 ns à
+Cesia et 1 à LuaJIT.
+
+Ce qui reste interprété : un default qui n'est pas un nombre, comme un texte ou une liste ; un appel à travers une
+valeur d'une fonction qui a des defaults ; un self tail call qui omet un argument ; et une récursion dont deux versions
+s'appellent l'une l'autre, comme `fib(n, lim = 2)` qui appelle `fib(n - 2, lim)`, la version de `lim` omis appelant
+celle de `lim` donné, qui appelle la première : l'inférence ne suit pas un cycle entre versions, donc elle leur donne le
+type n'importe quoi, et elles tournent dans l'interpréteur, qui met alors chaque entier dans une boîte.
+
+### Les appels de natives
+
+Une native, une fonction de `std/` écrite en OCaml, comme `math.Abs` ou `text.ByteLength`, est déjà du code machine,
+mais le code machine ne l'appelle jamais : le code natif ne rappelle jamais OCaml, pour que rien ne collecte pendant une
+exécution, et une boucle avec une instruction qui en appelle une reste dans l'interpréteur. Le JIT en fait certaines
+lui-même, sur place : celles de libm, comme `math.Sqrt`, et `math.Abs`, `math.Div`, `math.Mod`, `list.Max` et
+`list.Min` de deux nombres, `value.Len`, `random.Float`, et quelques-unes sur de petits arrays de floats. L'appel des
+autres par l'interpréteur prenait 28 à 36 ns. Un *sampling profiler* (un outil qui arrête le programme à intervalles
+réguliers et note où il en est), ici `gdb` qui arrête le processus toutes les 10 ms et lit sa pile, 300 fois, sur
+3 × 10^8 appels de `math.Abs(i)`, a dit où :
+
+```text
+math.Abs(i) in a loop, 31 ns a turn, interpreted    share of the samples
+├── the turn of the loop, its sum and its store     26 %
+├── the result looked for among the arguments       15 %   Array.memq
+├── the argument boxed, an Int made of i            13 %
+├── math.Abs itself, its Int made                   11 %
+├── the wrapper of the native                       10 %
+├── the call's closure, its site written             8 %
+├── calls of closures of unknown arity               8 %   caml_apply2
+└── the result unboxed                               6 %
+```
+
+Soit : le tour de la boucle, sa somme et son écriture, 26 % ; la recherche du résultat parmi les arguments
+(`Array.memq`), 15 % ; l'argument mis dans une boîte, un `Int` fait de `i`, 13 % ; `math.Abs` lui-même et son `Int`,
+11 % ; le wrapper de la native, 10 % ; la closure de l'appel, qui écrit son site, 8 % ; les appels de closures dont le
+nombre d'arguments n'est pas connu d'avance (`caml_apply2`), 8 % ; le résultat sorti de sa boîte, 6 %.
+
+La recherche du résultat parmi les arguments sert à une native qui rend l'un d'eux, comme `dict.GetOr` rend le
+default qu'on lui a donné : l'appel ne partage pas ses arguments, pour que mesurer une variable la laisse *owned*, et un
+résultat trouvé parmi eux doit être partagé avant d'avoir un second nom, sinon une écriture par l'un changerait l'autre
+([copy-on-write](#value-semantics-et-copy-on-write)). Seule une liste, une struct ou une map *owned* a quelque chose à
+partager : un nombre, un texte ou une valeur déjà partagée saute maintenant la recherche, un test du *tag* du résultat
+(l'étiquette qui dit sa sorte). Une native sans argument, comme `sys.Now`, ne fait plus son array vide par un map des
+arguments. Et le code machine fait lui-même `math.Abs` d'un entier, un entier négatif changé de signe avec son overflow
+vérifié, pour que le plus petit entier soit l'erreur de l'interpréteur à l'appel ; une boucle qui l'appelait restait
+interprétée.
+
+Une erreur du système qu'une native laisse sortir, un `Sys_error` d'OCaml ou une erreur de Unix, au lieu de donner un
+`Err`, finissait le programme avec une ligne qui ne nommait aucun endroit, ou avec une erreur interne, et arrêtait
+toutes les fibers. C'est maintenant un panic du genre io à l'appel de la native, qui arrête sa fiber seule, comme tout
+panic : un filet de sécurité, puisque chaque native de `std/` essayée donne déjà un `Err`, le dossier courant supprimé
+compris. Installer un *handler* d'exceptions d'OCaml (le code qui rattrape une exception) pousse deux mots sur la pile,
+l'adresse du handler et le handler d'avant, et le retirer les enlève (Sivaramakrishnan et d'autres, 2021) ; un handler
+dans le *wrapper* (l'enveloppe) de chaque native gardait aussi le contexte et la native pendant l'appel, neuf
+instructions de plus : avec lui, 10^7 appels de `text.ByteLength` prenaient 274,7 ms au lieu de 269,8, et de `sys.Now`
+437,0 au lieu de 422,9, 0,5 et 1,4 ns par appel, et l'écart sur `text.Slice` restait dans le bruit de ses allocations.
+Donc aucun handler n'est installé à un appel : l'erreur monte, comme un panic, jusqu'à ce qui rattrape déjà les panics,
+l'exécution du programme, de chaque fiber et de chaque test, qui en fait le panic qu'elle est, au site que l'appel de la
+native a écrit avant de la lancer. Cela ne coûte rien tant que rien n'est levé.
+
+Mesuré le 2026-11-25, profil `release`, 21 lancements de chacun en alternance avec le binaire de main, tout le
+processus ; les médianes et leurs intervalles à 95 %, en ms :
+
+| Boucle de 10^7 appels | Avant | Maintenant |
+|---|---:|---:|
+| `math.Abs(i)`, maintenant du code machine | 302,1 (300,2–305,4) | 20,2 (20,1–20,6) |
+| `text.ByteLength(s)` | 322,7 (319,5–324,4) | 269,8 (267,8–273,4) |
+| `sys.Now()` | 517,6 (515,7–520,5) | 422,9 (420,9–424,2) |
+| `text.ByteLength(text.Slice(2, 4, s))`, deux appels | 1 250,4 (1 247,5–1 262,8) | 1 098,5 (1 097,0–1 106,9) |
+
+CPython 3.11 appelle une fonction intégrée écrite en C, comme `len()`, directement depuis l'instruction de l'appel, que
+son interpréteur adaptatif spécialise pour elle une fois qu'il l'y a vue, sans la convention générale d'un appel :
+jusqu'à 20 % plus vite (PEP 659, et les notes de Python 3.11). À côté d'eux, 10^7 appels de la valeur absolue d'un
+entier prennent 19,8 ms dans Cesia, maintenant du code machine, contre Python 730, Node 83,3, Lua 192 et LuaJIT 11,4 ;
+de la longueur d'un texte, 268, contre Python 641, Node 50,6, où la longueur est une propriété et pas un appel, Lua 239
+et LuaJIT 11,4 ; de `math.Sqrt`, que le code machine de Cesia fait lui-même, 49,2, contre 763, 53,2, 205 et 11,4.
+L'interpréteur de Lua appelle `string.len` en 24 ns par tour, contre 27 pour Cesia : son appel passe les arguments sur
+sa pile, là où celui de Cesia fait un array et les met dans des boîtes, comme une native les prend. Node et LuaJIT font
+de tels appels du code machine ; Cesia ne le fait que pour les natives que son JIT connaît.
+
 ### Le contrat
 
 Le même programme donne la même sortie, les mêmes erreurs aux mêmes lignes et les mêmes limites, dans l'interpréteur et
@@ -921,7 +1042,9 @@ une différence est un bug du JIT.
 
 ### Ce qui reste dans l'interpréteur
 
-- les natives, des fonctions de `std/` écrites en OCaml, comme [text.Split] : elles sont déjà du code machine ;
+- un appel d'une native, une fonction de `std/` écrite en OCaml, comme [text.Split], sauf celles que le JIT fait
+  lui-même ([Les appels de natives](#les-appels-de-natives)) : la native est déjà du code machine, et la boucle autour
+  de l'appel reste interprétée, ou l'instruction seule dans une branche de ses ifs ;
 - `for x in xs` sur les éléments d'une liste, et un appel à travers une valeur qui a atteint cinq fonctions ou plus, ou
   une fonction qui a capturé des variables ;
 - dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme un `return` d'une struct ou un
@@ -1026,6 +1149,18 @@ Puisqu'une fiber n'est changée qu'à ces moments-là, le code entre deux d'entr
 pas de *data races*, deux threads qui changent la même mémoire en même temps, et aucun lock (ce qui réserve une donnée à
 un seul à la fois et fait attendre les autres) à prendre. Les valeurs ne sont de toute façon pas partagées : une valeur
 envoyée sur un channel agit comme une copie.
+
+Les pas de `--limit steps` appartiennent à tout le programme, et chaque fiber compte les siens entre deux checkpoints.
+Sous une telle limite, les pas qu'une fiber qui attend a faits depuis son dernier checkpoint sont maintenant retirés de
+ce qui reste tant qu'elle attend, et une fiber qui repart, ou qui commence, ne prend pas plus de *fuel* (le carburant de
+pas qu'elle a jusqu'à son prochain checkpoint) que les pas que les autres ont laissés : la limite est donc atteinte au
+pas qui la dépasse, dans n'importe quelle fiber, comme dans le programme principal seul. Sans limite, rien de cela ne
+tourne. Avant, une fiber commençait avec un quantum entier de 10 000 pas, quoi qu'il reste, et un programme
+principal qui attendait gardait ses derniers pas non comptés pendant que les fibers tournaient : la limite était
+atteinte plus tard, à un endroit qui dépendait d'où tombaient les checkpoints, que le code machine, dont le budget est
+exact, plaçait ailleurs que l'interpréteur. Une boucle qui lançait des fibers de 500 pas sous `--limit steps=20000`
+s'arrêtait au lancement de l'une d'elles, après sa fin ; elle s'arrête à l'intérieur, au pas qui passe 20 000
+(`tests/limits/fiber-short.ce`), dans l'interpréteur comme en code machine.
 
 ### Attendre le système
 
