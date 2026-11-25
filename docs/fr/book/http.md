@@ -702,9 +702,9 @@ use std/http
 use std/io
 use std/result
 use std/tls
-api = result.Unwrap(tls.Open())
+api = tls.Open()!
 page = http.Fetch("https://example.com/", secure = tls.Client(api))
-io.Print(result.Unwrap(page).Status)
+io.Print(page!.Status)
 ```
 
 ```bash

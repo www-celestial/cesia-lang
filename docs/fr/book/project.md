@@ -102,7 +102,7 @@ end
 Le stockage marche seul, avant tout web. Une base de données en mémoire suffit pour l'essayer :
 
 ```cesia
-db = result.Unwrap(Open("sqlite::memory:"))
+db = Open("sqlite::memory:")!
 Save("buy bread", db) -->
 Save("", db) -->
 Finish(1, db) -->
@@ -182,7 +182,7 @@ use std/http
 use std/result
 
 defn ask(method, path, body = "")
-  db = result.Unwrap(Open("sqlite::memory:"))
+  db = Open("sqlite::memory:")!
   handle = http.Handler(App(db))
   handle({Method: method, Path: path, Query: "", Headers: [], Body: body})
 end
@@ -212,12 +212,11 @@ cesia test
 programme avec le message d'une `Err`, comme un port déjà pris, là où un résultat ignoré le finirait sans un mot :
 
 ```text
-use std/result
 use std/http
 use src/notes
 
-db = result.Unwrap(notes.Open("sqlite:data/notes.db"))
-result.Unwrap(http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080))
+db = notes.Open("sqlite:data/notes.db")!
+http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080)!
 ```
 
 `cesia do serve` le lance avec les permissions de sa tâche, et un client peut lui parler :
@@ -239,7 +238,7 @@ use std/sys
 use std/http
 use std/fiber
 use std/io
-served = result.Unwrap(Open("sqlite::memory:"))
+served = Open("sqlite::memory:")!
 fiber.Spawn(() -> http.Serve(http.Wrap(http.Logger, App(served)), port = 18781))
 sys.Sleep(0)
 base = "http://127.0.0.1:18781/notes"

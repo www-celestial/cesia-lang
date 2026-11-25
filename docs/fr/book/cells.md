@@ -427,7 +427,7 @@ n = cells.Slider(3, 1, 10)
 
 (* %% Lorenz *)
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
-s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+s = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!
 ```
 
 ![Cemacs sur ce fichier après quatre pas à droite sur rho : le fichier dit maintenant cells.Slider(30.0, 0.0, 50.0, step = 0.5), le slider de rho montre 30.0 et rerun 10 ms, celui de n montre 3 ; en bas, les touches d'un slider et la signature de cells.Slider.](../../book/images/cells-sliders.png)
@@ -685,5 +685,5 @@ comme ces huit caractères.
 use std/cells
 use std/result
 use std/sys
-sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce")))
+sys.Write("mean.html", cells.Html("mean.ce")!)
 ```

@@ -65,7 +65,7 @@ texte dans un fichier, et [plot.Scene] donne les formes dont il est fait, en pix
 [Des scènes](#des-scènes-pour-un-back-end). Voici les labels des ticks de l'axe du temps ci-dessus :
 
 ```cesia
-scene = result.Unwrap(plot.Scene(waves, 640, 400))
+scene = plot.Scene(waves, 640, 400)!
 [item.Text for item in scene.Items if item.Role == "xlabel"] -->
 ```
 
@@ -108,7 +108,7 @@ compte n'importe quel nombre de points par cellule.
 
 ```cesia
 noisy = plot.Points([1, 2, 3, 4], [2.0, math.Nan, 3.5, 1.0], shape = "diamond")
-result.Unwrap(plot.Scene(noisy, 640, 400)).Dropped -->
+plot.Scene(noisy, 640, 400)!.Dropped -->
 ```
 
 ### Barres et histogrammes
@@ -268,7 +268,7 @@ hour = [7, 8, 9, 10, 11]
 height = [5.0, 14.0, 21.0, 26.0, 28.0]
 morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])], title = "A height each hour, each point named")
 plot.Save(morning, "morning.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+[x.Text for x in plot.Scene(morning, 640, 400)!.Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
 Les textes sont une liste en compréhension, `["$h h" for h in hour]`, la forme courte de [list.Map]`(h -> "$h h", hour)`.
@@ -281,7 +281,7 @@ est laissé aux autres layers.
 ```cesia allow=read,write
 noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")], title = "A path, the south and the horizon")
 plot.Save(noon, "noon.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+[x.Text for x in plot.Scene(noon, 640, 400)!.Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
 ### Une note, et des noms aux bouts
@@ -294,7 +294,7 @@ derrière elles. Les espaces sont gardés, pour que les deux-points des lignes p
 ```cesia allow=read,write
 place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984", title = "A height each hour, with a note")
 plot.Save(place, "place.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
+[x.Text for x in plot.Scene(place, 640, 400)!.Items if x.Role == "info" and x.Kind == "text"] -->
 ```
 
 `legend = "ends"` nomme chaque courbe à son bout, à la place de la boîte de la légende : son label à droite de son
@@ -307,7 +307,7 @@ et les histogrammes n'ont pas de bout, et avec `"ends"` ils sont un `Err`.
 ```cesia allow=read,write
 three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends", title = "Three lines named at their ends")
 plot.Save(three, "three.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
+[x.Text for x in plot.Scene(three, 640, 400)!.Items if x.Role == "legend"] -->
 ```
 
 ### Des ticks à vous
@@ -322,7 +322,7 @@ des ticks au-dessus de 0. Sans ces options, rien ne change.
 use std/list
 compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"], title = "Ticks of your own: N, E, S, W")
 plot.Save(compass, "compass.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
+[x.Text for x in plot.Scene(compass, 640, 400)!.Items if x.Role == "xlabel"] -->
 ```
 
 [list.Range]`(0, 360, step = 90)` vaut `[0, 90, 180, 270, 360]` ; `0..360`, sa forme courte sans pas, serait chaque
@@ -341,7 +341,7 @@ tiennent aux ticks de `y`, écrits le long du rayon de 0, et des rayons aux tick
 ```cesia allow=read,write
 dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0], title = "A path in a circle, 90 at the center")
 plot.Save(dome, "dome.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
+[x.Text for x in plot.Scene(dome, 500, 500)!.Items if x.Role == "ylabel"] -->
 ```
 
 Un graphique polaire est carré, son disque au milieu de la place que laissent les textes. Il dessine [plot.Line],
@@ -360,7 +360,7 @@ demande la forme de sa taille : un graphique de 640 sur 400 dans un panneau de 5
 graphique polaire reste carré. [plot.Scene] donne cette taille à un back-end quand sa hauteur manque :
 
 ```cesia
-[result.Unwrap(plot.Scene(dome, 900, missing)).Width, result.Unwrap(plot.Scene(waves, 500, missing)).Height] -->
+[plot.Scene(dome, 900, missing)!.Width, plot.Scene(waves, 500, missing)!.Height] -->
 ```
 
 ## La course du soleil, avec des formules simples
@@ -412,7 +412,7 @@ dial = plot.Of(list.Concat([plot.Line(east(days[k]).Az, east(days[k]).El, label 
   polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), yticks = list.Range(0, 90, step = 10),
   legend = "ends", note = where, size = [760, 560], title = "Sun path")
 plot.Save(dial, "sundial.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(dial, 760, 560)).Items if x.Role == "legend"] -->
+[x.Text for x in plot.Scene(dial, 760, 560)!.Items if x.Role == "legend"] -->
 ```
 
 La page dessine une image faite sur son serveur ; ici le graphique est une valeur, dessinée de la même façon par
@@ -444,7 +444,7 @@ Une animation est un graphique : [plot.Svg] et [plot.Save] l'écrivent entière,
 images, `frame` à partir de 1, avec deux champs de plus dans la scène, `Frames`, leur nombre, et `Fps` :
 
 ```cesia
-one = result.Unwrap(plot.Scene(wave, 640, 400, frame = 30))
+one = plot.Scene(wave, 640, 400, frame = 30)!
 [one.Frames, one.Fps, [item.Text for item in one.Items if item.Role == "title"]] -->
 ```
 
@@ -545,8 +545,8 @@ du plan de x et y : 90 regarde d'en haut à la verticale, $-30$ d'en dessous. Sa
 `[-37.5, 30]` :
 
 ```cesia
-result.Unwrap(plot.Scene(ripple, 640, 400)).View -->
-result.Unwrap(plot.Scene(ripple, 640, 400, view = [0, 90])).View -->
+plot.Scene(ripple, 640, 400)!.View -->
+plot.Scene(ripple, 640, 400, view = [0, 90])!.View -->
 ```
 
 [plot.Scene] prend aussi une `view`, qui tourne le graphique sans le changer : c'est ainsi que Cemacs tourne un graphique,
@@ -619,7 +619,7 @@ mis de côté ; une note sous le graphique le dit :
 
 ```cesia
 big = matrix.Ones(1000, 300)
-[item.Text for item in result.Unwrap(plot.Scene(plot.Surface(big), 640, 400)).Items if item.Role == "note"] -->
+[item.Text for item in plot.Scene(plot.Surface(big), 640, 400)!.Items if item.Role == "note"] -->
 ```
 
 matplotlib garde par défaut 50 points par direction, « downsampled (by slicing) » : une ligne sur $k$, qui peut enjamber
@@ -636,7 +636,7 @@ en profondeur sont dessinées dans l'ordre des couches, une limite de cette vers
 ```cesia allow=read,write
 use std/ode
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (28.0 - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
-ys = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])).At(num.Linspace(0.0, 50.0, 5000))
+ys = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!.At(num.Linspace(0.0, 50.0, 5000))
 plot.Save(plot.Of([plot.Line3(ys[:, 1], ys[:, 2], ys[:, 3])], x = "x", y = "y", z = "z"), "lorenz.svg") -->
 ```
 
@@ -813,7 +813,7 @@ d'une longue ligne, au plus 100 000, leurs places en pixels, au centième, et le
 
 ```cesia
 path3 = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2, 3], [3, 4, 2])])
-marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
+marked = plot.Scene(path3, 640, 400, mark = [2, 3])!
 [x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
 [[p.Kind, p.At] for p in marked.Points] -->
 ```
@@ -831,7 +831,7 @@ la place des siennes, comme les options de [plot.Of], sans changer le graphique 
 le fait avec la molette et la souris ; un graphique polaire ne prend que `ylim`, `[center, rim]` (le centre, le bord).
 
 ```cesia
-zoomed = result.Unwrap(plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true))
+zoomed = plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true)!
 [zoomed.Axes.X.Low, zoomed.Axes.X.High, zoomed.Axes.X.Scale] -->
 [[p.Layer, p.At, p.Values.Y] for p in zoomed.Points] -->
 ```

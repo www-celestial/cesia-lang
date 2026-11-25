@@ -100,7 +100,7 @@ end
 The store works on its own, before any web. A database in memory is enough to try it:
 
 ```cesia
-db = result.Unwrap(Open("sqlite::memory:"))
+db = Open("sqlite::memory:")!
 Save("buy bread", db) -->
 Save("", db) -->
 Finish(1, db) -->
@@ -179,7 +179,7 @@ use std/http
 use std/result
 
 defn ask(method, path, body = "")
-  db = result.Unwrap(Open("sqlite::memory:"))
+  db = Open("sqlite::memory:")!
   handle = http.Handler(App(db))
   handle({Method: method, Path: path, Query: "", Headers: [], Body: body})
 end
@@ -204,16 +204,15 @@ cesia test
 
 ## Serving
 
-`src/main.ce` opens the database in `data/`, and serves the routes behind [http.Logger]. [result.Unwrap] stops the program
-with the message of an `Err`, as a port already taken, where a dropped result would end it without a word:
+`src/main.ce` opens the database in `data/`, and serves the routes behind [http.Logger]. [`!`](errors.md#when-an-err-is-a-bug) after a
+result stops the program with the message of an `Err`, as a port already taken, where a dropped result would end it without a word:
 
 ```text
-use std/result
 use std/http
 use src/notes
 
-db = result.Unwrap(notes.Open("sqlite:data/notes.db"))
-result.Unwrap(http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080))
+db = notes.Open("sqlite:data/notes.db")!
+http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080)!
 ```
 
 `cesia do serve` runs it with the permissions of its task, and a client can talk to it:
@@ -235,7 +234,7 @@ use std/sys
 use std/http
 use std/fiber
 use std/io
-served = result.Unwrap(Open("sqlite::memory:"))
+served = Open("sqlite::memory:")!
 fiber.Spawn(() -> http.Serve(http.Wrap(http.Logger, App(served)), port = 18781))
 sys.Sleep(0)
 base = "http://127.0.0.1:18781/notes"

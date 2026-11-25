@@ -396,7 +396,7 @@ n = cells.Slider(3, 1, 10)
 
 (* %% Lorenz *)
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
-s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+s = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!
 ```
 
 ![Cemacs on this file after four steps to the right on rho: the file now says cells.Slider(30.0, 0.0, 50.0, step = 0.5), the slider of rho shows 30.0 and rerun 10 ms, the one of n shows 3; below, the keys of a slider and the signature of cells.Slider.](images/cells-sliders.png)
@@ -639,5 +639,5 @@ text of a cell is escaped, so `<script>` in a frame shows as those eight charact
 use std/cells
 use std/result
 use std/sys
-sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce")))
+sys.Write("mean.html", cells.Html("mean.ce")!)
 ```

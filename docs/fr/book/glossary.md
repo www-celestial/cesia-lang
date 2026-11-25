@@ -1069,6 +1069,12 @@ La règle qui dit que la probabilité qu'au moins un de plusieurs événements a
 probabilités. Elle ne suppose rien sur la façon dont les événements dépendent les uns des autres, et c'est pourquoi elle
 donne si simplement la birthday bound : voir [Résoudre un vrai problème](duplicates.md#4-la-recherche).
 
+## Unwrap
+
+« Déballer » : sortir la valeur d'un résultat là où une erreur ne peut être qu'un bug, et le programme s'arrête plutôt que
+de continuer avec une erreur qu'il n'attend pas. Cesia l'écrit `x!`, forme courte de [result.Unwrap]`(x)` ; Rust écrit
+`x.unwrap()`, et Swift `x!` pour une valeur qui peut être `nil` : voir [Erreurs](errors.md#quand-un-err-est-un-bug).
+
 ## UTF-8
 
 La façon habituelle d'écrire un texte en octets : `a` en prend un, `é` deux, un emoji quatre. Un texte de Cesia est en

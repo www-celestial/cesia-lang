@@ -17,7 +17,7 @@ somewhere between them.
 use std/math
 use std/optimize
 use std/result
-r = result.Unwrap(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0]))
+r = optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0])!
 r -->
 ```
 
@@ -117,7 +117,7 @@ use std/optimize
 use std/result
 rosen(x) = (1.0 - x[1]) ^ 2 + 100.0 * (x[2] - x[1] ^ 2) ^ 2
 grad(x) = [-2.0 * (1.0 - x[1]) - 400.0 * x[1] * (x[2] - x[1] ^ 2), 200.0 * (x[2] - x[1] ^ 2)]
-m = result.Unwrap(optimize.Minimize(rosen, [-1.2, 1.0], gradient = grad))
+m = optimize.Minimize(rosen, [-1.2, 1.0], gradient = grad)!
 m -->
 ```
 
@@ -126,7 +126,7 @@ calls of `f`. Without `gradient`, Minimize computes it from `f` by differences, 
 
 ```cesia
 optimize.Minimize(rosen, [-1.2, 1.0]).Value.Evaluations -->
-s = result.Unwrap(optimize.Simplex(rosen, [-1.2, 1.0]))
+s = optimize.Simplex(rosen, [-1.2, 1.0])!
 s -->
 ```
 
@@ -330,7 +330,7 @@ the state at a first time, `y0`, it fixes the state at every later time: a decay
 
 ```cesia
 use std/ode
-s = result.Unwrap(ode.Solve((t, y) -> -y, [0.0, 1.0], 1.0))
+s = ode.Solve((t, y) -> -y, [0.0, 1.0], 1.0)!
 s.At(0.5) -->
 math.Exp(-0.5) -->
 s.Stats -->
@@ -345,7 +345,7 @@ sigma = 10.0
 rho = 28.0
 beta = 8.0 / 3.0
 lorenz(t, y) = [sigma * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - beta * y[3]]
-l = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+l = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!
 l.At(2.5) -->
 value.Size(l.Y) -->
 ```
@@ -418,7 +418,7 @@ from below 0 to above, or `"down"`.
 ```cesia
 fall(t, y) = [y[2], -9.81]
 ground = ode.Event((t, y) -> y[1], stop = true, direction = "down")
-b = result.Unwrap(ode.Solve(fall, [0.0, 10.0], [10.0, 0.0], events = [ground]))
+b = ode.Solve(fall, [0.0, 10.0], [10.0, 0.0], events = [ground])!
 b.Events -->
 math.Sqrt(20.0 / 9.81) -->
 ```
@@ -501,7 +501,7 @@ tries the test every 1,000 steps, and at each step once one is past. Its message
 method made for stiff problems, which takes some hundred steps where this one would take millions:
 
 ```cesia
-w = result.Unwrap(ode.Solve(vdp, [0.0, 3000.0], [2.0, 0.0], stiff = true))
+w = ode.Solve(vdp, [0.0, 3000.0], [2.0, 0.0], stiff = true)!
 w.Stats -->
 w.At(3000.0) -->
 ```
@@ -624,7 +624,7 @@ sigma = 10.0
 rho = 28.0
 beta = 8.0 / 3.0
 lorenz(t, y) = [sigma * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - beta * y[3]]
-s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+s = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!
 s.Stats
 
 (* %% Graph *)
@@ -774,7 +774,7 @@ from 0 to 1, which is 4, of a function that grows without bound at 0:
 ```cesia
 use std/quad
 logRoot(x) = x ^ (-0.5) * math.Log(1.0 / x)
-q = result.Unwrap(quad.Integral(logRoot, 0.0, 1.0))
+q = quad.Integral(logRoot, 0.0, 1.0)!
 q -->
 ```
 
@@ -970,7 +970,7 @@ use std/result
 
 (* %% Integral *)
 h(x) = math.Exp(-x * x)
-q = result.Unwrap(quad.Integral(h, 0.0, 1.0))
+q = quad.Integral(h, 0.0, 1.0)!
 q.Value
 
 (* %% Graph *)
@@ -984,7 +984,7 @@ plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(q.Value) ± $(q.Error)"), plo
 ```cesia allow=read,write
 use std/special
 h(x) = math.Exp(-x * x)
-qh = result.Unwrap(quad.Integral(h, 0.0, 1.0))
+qh = quad.Integral(h, 0.0, 1.0)!
 math.Near(qh.Value, math.Sqrt(math.Pi) / 2.0 * special.Erf(1.0)) -->
 us = num.Linspace(0.0, 1.0, 100)
 xs = num.Linspace(-0.5, 1.5, 200)
@@ -1114,7 +1114,7 @@ use std/matrix
 k = 50
 t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
 a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
-u = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2)))
+u = sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2))!
 list.Max(u) -->
 ```
 
@@ -1201,7 +1201,7 @@ itself can be larger, by the *condition number* of `a`, which measures how much 
 
 ```cesia
 use std/math
-x = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k)))
+x = sparse.Solve(a, matrix.Ones(1, k * k))!
 r = sparse.Mul(a, x) - matrix.Ones(1, k * k)
 norm = list.Max(list.Sum(math.Abs(sparse.Dense(a)), dim = 2))
 list.Max(math.Abs(r)) / (norm * list.Max(math.Abs(x)) + 1.0) < 1e-15 -->
@@ -1252,7 +1252,7 @@ use std/sparse
 k = 300
 t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
 a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
-u = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2)))
+u = sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2))!
 plot.Heatmap(matrix.Reshape([k, k], u))
 ```
 

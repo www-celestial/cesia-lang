@@ -13,7 +13,7 @@ programme. Un fichier demande les permissions `read` et `write` de son dossier ;
 ```cesia
 use std/sql
 use std/result
-db = result.Unwrap(sql.Open("sqlite::memory:"))
+db = sql.Open("sqlite::memory:")!
 ```
 
 [sql.Script] exécute plusieurs instructions, pour un schéma (la déclaration des tables) :
@@ -74,7 +74,7 @@ sql.Exec("select 1; drop table notes", [], db) -->
 publics : `created_at` se lit `CreatedAt`. NULL donne `missing`, et une colonne déclarée `boolean` donne un Bool :
 
 ```cesia
-rows = result.Unwrap(sql.Query("select * from notes", [], db))
+rows = sql.Query("select * from notes", [], db)!
 rows -->
 rows[1].CreatedAt -->
 ```

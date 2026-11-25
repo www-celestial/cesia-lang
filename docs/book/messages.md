@@ -35,6 +35,7 @@ The lexer and the parser, when a file loads: nothing of it has run. `cesia check
 | `return can only be used inside a function.` | At the top of a file, the program ends at its last line: sys.Exit ends it sooner. |
 | `A name can't hold a _: "…".` | `Join the words with capitals: …, or … when it is public.` |
 | `? must follow its value, with no space.` | Write `x?`, the `?` against its value. |
+| `! must follow its value, with no space.` | Write `x!`, the `!` against its value. |
 | `Two ; in a row: an array written in the code has rows and columns only.` | `An array of more dimensions comes from matrix.Reshape: [1 3; 2 4;;; 5 7; 6 8] is matrix.Reshape([2, 2, 2], 1..8).` |
 | `A struct can only be defined at the top of a file.` | Move the struct to the top level of the file. |
 | `Only fields can be written inside a struct.` | `One per line: a name, its type if it has one, and = with a default. The struct ends with end.` |
@@ -158,8 +159,10 @@ A bug, when the line runs: an operation on a value that it can't take. The progr
 | `This pattern needs a struct, not ….` | The value is no struct: match it first. |
 | `This pattern needs an array, not ….` | The value is no array: match it first. |
 | `This pattern needs …, not ….` | The value doesn't have the shape of the pattern: use match, with an else. |
-| `? can only be used inside a function, which it leaves with the Err.` | `At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result.` |
+| `? can only be used inside a function, which it leaves with the Err.` | `At the top of a file, write ! in place of ? where an Err would be a bug, or match on the result.` |
 | `? needs an Ok or an Err, not ….` | `Return a result from the function you call.` |
+| `! needs an Ok or an Err, not ….` | `Return a result from the function you call.` |
+| `! needs an Ok, not an Err: ….` | The result was an Err where none should be: handle it with ? or match if it can happen. |
 | `Assertion failed.` | The condition of bug.Assert was false. |
 | `date.Local can't place … seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.` | Give a time within about 31 million years of 1970. |
 | `random.Int needs a low that is at most its high, and a range that fits in 63 bits: … to ….` | Give random.Int a low at most its high. |
@@ -200,7 +203,7 @@ Not errors: `cesia check` shows them, and they don't change its exit code.
 
 | Message | Hint, or what to do |
 |---|---|
-| `… gives a result, used here as a plain value.` | `An Err would pass for a value: add ?, match it, or Unwrap it.` |
+| `… gives a result, used here as a plain value.` | `An Err would pass for a value: add ? or !, or match it.` |
 | `… gives a result, which is dropped here.` | `Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose.` |
 | `… can give an Err, which … doesn't say: write …!.` | Write the `!` after the result type the message names. |
 

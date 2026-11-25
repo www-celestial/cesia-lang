@@ -79,6 +79,55 @@ result.IsOk(age("31")) -->
 result.IsErr(age("old")) -->
 ```
 
+### Quand un Err est un bug
+
+`!` juste après un résultat en sort la valeur d'un `Ok`, comme `?` : c'est un *unwrap*, « déballer » en anglais. Un
+`Err` à cet endroit est un [bug](#erreurs-et-bugs) : il arrête le programme au `!`, avec le texte de l'erreur.
+Écrivez-le là où un `Err` ne peut être qu'une erreur du programme, comme un fichier livré avec lui, un motif écrit dans le
+code, ou une base de données ouverte au départ. Il ne sort jamais de la fonction, et marche donc aussi en haut d'un
+fichier, là où `?` ne peut pas aller :
+
+```cesia
+age("31")! -->
+age("31")! + 1 -->
+```
+
+```cesia fails
+age("old")!
+```
+
+`x!` est la forme courte de [result.Unwrap]`(x)`, qui fait la même chose par un appel, et reste la façon de la passer
+comme fonction, par exemple à [list.Map]. Rust l'écrit `.unwrap()`, et Swift `!` après une valeur qui peut être `nil` :
+
+```cesia
+age("31")! --> result.Unwrap(age("31"))
+```
+
+Les trois façons de regarder dans un résultat, côte à côte :
+
+| Écrit | Pour un `Ok` | Pour un `Err` | Où |
+|---|---|---|---|
+| `x?` | sa valeur | la fonction rend l'`Err` tout de suite | dans une fonction |
+| `x!` | sa valeur | un bug : le programme s'arrête au `!`, ou seulement sa [fiber](fibers.md), le fil où il tourne | partout |
+| `match x` | la branche `result.Ok(v)` | la branche `result.Err(e)` | partout |
+
+`!` reste collé à sa valeur comme `?`, sans espace avant lui, et s'enchaîne de la même façon : `f(x)!.Name`, `rows[1]!`.
+`a!=b` reste la comparaison « différent de », lue comme un seul signe `!=` ; `a! == b` fait l'unwrap de `a`, puis compare. Après le
+type de ce que donne une fonction, comme dans `Int!` ([Types](types.md)), `!` dit que la fonction peut échouer ; après une
+valeur, il dit que cette valeur ne doit pas avoir échoué.
+
+`?` et `!` marchent aussi au bout d'une étape de [then] : `x then f()?` est `f(x)?`, et `x then f()!` est `f(x)!`.
+
+```cesia
+defn ageInMonths(t)
+  n = t then age()?
+  result.Ok(n * 12)
+end
+ageInMonths("31") -->
+ageInMonths("old") -->
+"31" then age()! then it + 1 -->
+```
+
 ## Une valeur par défaut
 
 [result.UnwrapOr] donne la valeur d'un `Ok`, ou une valeur par défaut pour un `Err`. Servez-vous-en quand une erreur a
@@ -125,8 +174,8 @@ ageNextYearLong("old") --> ageNextYear("old")
 
 ### Seulement dans une fonction
 
-`?` ne marche que dans une fonction, puisqu'il en sort. Utilisé sur une valeur qui n'est pas un résultat, il arrête le
-programme : le message dit de donner un résultat.
+`?` ne marche que dans une fonction, puisqu'il en sort : en haut d'un fichier, `!` prend sa place. Utilisé sur une valeur
+qui n'est pas un résultat, il arrête le programme : le message dit de donner un résultat.
 
 ```cesia fails
 defn wrong(t)
@@ -183,11 +232,13 @@ le conseil pour le corriger. On ne traite pas un bug : on corrige le code.
 
 ### Unwrap
 
-[result.Unwrap] prend la valeur d'un `Ok`. Ne vous en servez que là où un `Err` serait un bug, comme pour un fichier
-livré avec votre programme :
+[result.Unwrap] prend la valeur d'un `Ok`, comme [`!`](#quand-un-err-est-un-bug), dont il est la forme simple : une
+fonction, à passer là où va une fonction. Ne vous en servez que là où un `Err` serait un bug, comme pour un fichier livré
+avec votre programme :
 
 ```cesia
 result.Unwrap(age("31")) -->
+list.Map(result.Unwrap, [age("31"), age("40")]) -->
 ```
 
 ```cesia fails

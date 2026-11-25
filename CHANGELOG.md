@@ -16,7 +16,8 @@
   million unwraps and adds takes 223 ms in the interpreter and 32 ms as machine code, against 746 ms with
   `result.Unwrap`, which stays interpreted; with arithmetic around it, 787 and 234 ms against 1432 ms (medians of 21
   runs). `cesia check` gives `f(x)!` and `f(x)?` the type before the `!` of f's result, `Int` for `Int!`, and says when
-  it doesn't fit.
+  it doesn't fit. The book and the examples of std/ write `x!` where they wrote `result.Unwrap(x)`, 196 places, and the
+  chapter Errors tells it beside `?` and `match`, in English and in French.
 - `x then f(a)?` is `f(a, x)?`, and `x then f(a)!` is `f(a, x)!`: a `?` or a `!` that ends the right side of `then`
   comes after the pipe, with `it` too, `x then f(it, a)?`. It called `f(a)` without the piped value, and failed with
   « f needs the argument b »; and `x then f(a, it)?` made the function `it -> f(a, it)?`, whose `?` left that hidden

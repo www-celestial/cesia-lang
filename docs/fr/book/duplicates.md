@@ -217,7 +217,7 @@ defn readOnce(folder)
   result.Ok(p -> result.Ok(kept[p]))
 end
 
-naive("downloads", read = result.Unwrap(readOnce("downloads"))) --> naive("downloads")
+naive("downloads", read = readOnce("downloads")!) --> naive("downloads")
 ```
 
 Les mêmes dossiers, la même méthode :

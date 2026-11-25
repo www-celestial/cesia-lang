@@ -226,6 +226,24 @@ appels, qui se lisent de l'intérieur vers l'extérieur :
 numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() --> list.Sum(list.Map(x -> x * 10, list.Filter(math.IsOdd, numbers)))
 ```
 
+Une étape peut finir par `?` ou `!`, qui viennent alors après le passage de la valeur : `x then f(a)?` est `f(a, x)?`,
+qui rend tout de suite un `Err` depuis la fonction, et `x then f(a)!` est `f(a, x)!`, où un `Err` est un bug
+([Erreurs](errors.md#quand-un-err-est-un-bug)). `it` seul est la place de la valeur de [then], comme `_` seul est celle
+d'un [do block](#do-blocks) : un signe chacun, et `_` n'est donc pas une deuxième façon d'écrire une étape.
+
+```cesia
+use std/result
+halved(n) = if math.Mod(n, 2) == 0 result.Ok(math.Div(n, 2)) else result.Err("odd: $n") end
+defn quarter(n)
+  q = n then halved()? then halved()?
+  result.Ok(q)
+end
+quarter(12) -->
+quarter(6) -->
+12 then halved()! then halved()! -->
+12 then halved()! --> halved(12)!
+```
+
 ## do blocks
 
 Une fonction de plusieurs lignes donnée à un appel se lit mieux après l'appel que dans ses parenthèses, où son `end`

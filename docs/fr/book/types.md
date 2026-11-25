@@ -143,6 +143,14 @@ end
 third(-1)
 ```
 
+`!` après un type et `!` après une valeur vont ensemble : `Float!` dit que `half` peut échouer, et `half(3)!` dit que cet
+appel ne doit pas avoir échoué, et donne le `Float` qui est dans l'`Ok` ([Erreurs](errors.md#quand-un-err-est-un-bug)).
+`cesia check` le sait : `half(3)!` est un `Float`, et le donner à un paramètre typé `Text` est donc une erreur.
+
+```cesia
+half(3)! -->
+```
+
 ## Les données venues de l'extérieur
 
 `From`, du chapitre [Structs](structs.md), vérifie aussi les types. L'`Err` nomme le champ et ce qu'il a trouvé : un
@@ -227,7 +235,7 @@ cesia check
 src/main.ce:7:22: warning: sys.Read gives a result, used here as a plain value.
   7 |   io.Print(value.Len(sys.Read(path)))
     |                      ^^^^^^^^
-  An Err would pass for a value: add ?, match it, or Unwrap it.
+  An Err would pass for a value: add ? or !, or match it.
 check: 0 errors, 1 warning, in 3 files.
 ```
 
@@ -235,7 +243,7 @@ Une erreur est ce qui arrêterait sûrement le programme ; un warning (un averti
 ne change pas l'exit code (le nombre que la commande rend en finissant). Les warnings portent sur les résultats :
 
 - un résultat utilisé comme une simple valeur, comme ci-dessus : `value.Len` d'un `Err` compte ses champs, et un fichier
-  qui manque a donc une longueur de 1. `?`, `match`, [result.Unwrap] ou le fait de le garder dans une variable ne donnent
+  qui manque a donc une longueur de 1. `?`, `!`, `match`, [result.Unwrap] ou le fait de le garder dans une variable ne donnent
   pas de warning, pas plus que [io.Print], qui l'affiche, et [fiber.Send], qui le fait suivre ;
 - un résultat jeté : `sys.Write(path, text)` seul perd son `Err`. `_ = sys.Write(path, text)` le jette exprès ;
 - une fonction typée qui peut donner un `Err` sans `!` : un `defn size(path) Int` qui contient un `?` reçoit le conseil

@@ -223,7 +223,7 @@ use std/result
 cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1, 14.3, 24.4, 22.8, 19.2, 17.8],
                  "wt": [2.62, 2.32, 3.215, 3.44, 3.46, 3.57, 3.19, 3.15, 3.44, 3.44],
                  "hp": [110, 93, 110, 175, 105, 245, 62, 95, 123, 123]})
-fit = result.Unwrap(stats.Lm("mpg", ["wt", "hp"], cars))
+fit = stats.Lm("mpg", ["wt", "hp"], cars)!
 fit.Coefficients -->
 fit.Sigma -->
 fit.RSquared -->
@@ -260,7 +260,7 @@ niveaux sauf le premier dans l'ordre trié, nommée `name[level]`, le codage par
 
 ```cesia
 cars = frame.SetColumn("cyl", ["6", "4", "6", "8", "6", "8", "4", "4", "6", "6"], cars)
-frame.Column("term", result.Unwrap(stats.Lm("mpg", ["wt", "cyl"], cars)).Coefficients) -->
+frame.Column("term", stats.Lm("mpg", ["wt", "cyl"], cars)!.Coefficients) -->
 ```
 
 Un produit ou une puissance est une colonne que vous faites d'abord,
@@ -331,7 +331,7 @@ manquante, trop peu de valeurs, des valeurs toutes égales là où la statistiqu
 ```cesia
 x = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0]
 y = [1.9, 0.8, 1.1, 0.1, -0.1, 4.4, 5.5, 1.6, 4.6, 3.4]
-t = result.Unwrap(stats.TTest2(x, y))
+t = stats.TTest2(x, y)!
 t.PValue -->
 t.Interval -->
 t -->
@@ -601,10 +601,10 @@ l'intervalle doit atteindre :
 use std/math
 use std/num
 use std/random
-mc = result.Unwrap(stats.MonteCarlo(() -> math.Exp(-num.Uniform(100000) ^ 2), tol = 1e-3))
+mc = stats.MonteCarlo(() -> math.Exp(-num.Uniform(100000) ^ 2), tol = 1e-3)!
 mc.Interval[2] - mc.Mean <= 1e-3 -->
 math.Abs(mc.Mean - special.Erf(1) * math.Sqrt(math.Pi) / 2) < 5 * mc.StdError -->
-p = result.Unwrap(stats.MonteCarlo(() -> random.Float() < 0.25, n = 10000))
+p = stats.MonteCarlo(() -> random.Float() < 0.25, n = 10000)!
 p.N -->
 ```
 

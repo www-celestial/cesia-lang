@@ -1074,7 +1074,7 @@ use std/test
       sys.Read(file) --> result.Ok("two")
       sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing)
       sys.Write(file, "three", mode = 416) --> result.Ok(missing)
-      old = result.Unwrap(sys.Stat(file))
+      old = sys.Stat(file)!
       sys.Write("$(file).new", "four", mode = old.Mode, group = old.Group) --> result.Ok(missing)
       sys.Rename("$(file).new", file) --> result.Ok(missing)
       sys.Stat(file)?.Mode --> 416

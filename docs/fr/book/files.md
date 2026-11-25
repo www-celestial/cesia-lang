@@ -42,7 +42,7 @@ Pour un fichier livré avec votre programme, où un `Err` serait un bug, [result
 
 ```cesia allow=read
 use std/value
-value.Len(text.Lines(result.Unwrap(sys.Read("todo.txt")))) -->
+value.Len(text.Lines(sys.Read("todo.txt")!)) -->
 ```
 
 ## Écrire
@@ -53,7 +53,7 @@ deux donnent `Ok(missing)` quand tout s'est bien passé, puisqu'il n'y a rien de
 ```cesia allow=read,write
 sys.Write("done.txt", "buy bread\n") -->
 sys.Append("done.txt", "call Bo\n") -->
-text.Lines(result.Unwrap(sys.Read("done.txt"))) -->
+text.Lines(sys.Read("done.txt")!) -->
 ```
 
 Un texte de plusieurs lignes s'écrit tel quel : finissez chaque ligne par `\n`, ou joignez-les avec [text.Join].
@@ -108,10 +108,10 @@ donné, comme avec `chgrp` ; un autre donne un `Err`, et un fichier qui était l
 bien que personne ne peut mettre d'abord un lien au nom du nouveau fichier pour que l'enregistrement écrive à travers.
 
 ```cesia allow=read,write
-old = result.Unwrap(sys.Stat("todo.txt"))
+old = sys.Stat("todo.txt")!
 sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group, new = true) -->
 sys.Rename("todo.txt.new", "todo.txt") -->
-result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
+sys.Stat("todo.txt")!.Mode == old.Mode -->
 ```
 
 ## Dossiers
@@ -187,7 +187,7 @@ numéros de son utilisateur et de son groupe (0 sur Windows, où un fichier n'a 
 
 ```cesia allow=read
 sys.Exists("todo.txt") -->
-info = result.Unwrap(sys.Stat("todo.txt"))
+info = sys.Stat("todo.txt")!
 info.Size -->
 info.IsDir -->
 ```
@@ -234,7 +234,7 @@ rond :
 use std/list
 sys.Write("archive/2026/june.txt", "sold 3\n") -->
 sys.Walk("archive") -->
-list.Filter(p -> path.Ext(p) == ".txt", result.Unwrap(sys.Walk("."))) -->
+list.Filter(p -> path.Ext(p) == ".txt", sys.Walk(".")!) -->
 ```
 
 Ensemble, ces fonctions renomment un arbre entier. Celle-ci donne à chaque photo d'un dossier l'extension `.jpg`, en
@@ -270,7 +270,7 @@ use std/text
 use std/value
 
 for file in sys.Args
-  n = value.Len(text.Lines(result.Unwrap(sys.Read(file))))
+  n = value.Len(text.Lines(sys.Read(file)!))
   io.Print(file, n)
 end
 ```
@@ -285,7 +285,7 @@ nomment pas est un `Err` qui dit quels flags existent :
 ```cesia
 use std/flags
 args = ["-i", "--max", "2", "bread", "todo.txt"]
-a = result.Unwrap(flags.Parse({i: false, max: 0}, args))
+a = flags.Parse({i: false, max: 0}, args)!
 a.Flags -->
 a.Words -->
 flags.Parse({i: false, max: 0}, ["--min", "2"]) -->
@@ -316,7 +316,7 @@ use std/result
 use std/text
 use std/value
 
-input = result.Unwrap(sys.ReadInput())
+input = sys.ReadInput()!
 n = value.Len(text.Lines(input))
 io.Print(n, "lines")
 if n == 0
@@ -352,7 +352,7 @@ personne n'a écrite.
 ```cesia norun
 use std/io
 use std/result
-r = result.Unwrap(sys.Run("git", args = ["log", "--oneline", "-3"]))
+r = sys.Run("git", args = ["log", "--oneline", "-3"])!
 if r.Code == 0
   io.Print(r.Out)
 else

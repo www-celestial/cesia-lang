@@ -40,7 +40,7 @@ defn Open(url, max = 8, wait = 5)
       busy waits at most wait seconds, then gives an Err with Code "pool". sqlite::memory: keeps one connection, since each
       would hold its own database. Another URL is an Err with Code "url".
 
-        db = result.Unwrap(Open("sqlite::memory:"))
+        db = Open("sqlite::memory:")!
         Open("postgres://localhost/shop") then result.MapErr(it.Code) --> result.Err("url") *)
   if not text.StartsWith("sqlite:", url)
     return failure("url", "No database for $url: use sqlite:PATH or sqlite::memory:.")

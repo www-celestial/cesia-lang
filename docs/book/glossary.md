@@ -987,6 +987,12 @@ The rule that the chance that at least one of several events happens is at most 
 assumption about how the events depend on each other, which is why it gives the birthday bound so simply: see
 [Solving a real problem](duplicates.md#4-research).
 
+## Unwrap
+
+Taking the value out of a result where an error can only be a bug: the program stops rather than go on with an error it
+doesn't expect. Cesia writes it `x!`, short for [result.Unwrap]`(x)`; Rust writes `x.unwrap()`, and Swift `x!` for a
+value that may be `nil`: see [Errors](errors.md#when-an-err-is-a-bug).
+
 ## UTF-8
 
 The usual way to write a text in bytes: `a` takes one, `é` two, an emoji four. A text of Cesia is UTF-8: [value.Len] and [text.Slice]
