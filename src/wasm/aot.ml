@@ -44,6 +44,7 @@ type st = {
   shape_ids : (string, shape option) Hashtbl.t;  (* by keys: the typed map, or none for keys that stay general *)
   mutable reads : (Ast.func * (int, string list) Hashtbl.t) list;  (* each function's variables: the fields read of them *)
   mutable nums : (Ast.func * (int, kind option) Hashtbl.t) list;  (* each function's variables guessed to hold numbers *)
+  pages : (string, int) Hashtbl.t;  (* a package of std/ by its path, to the module of its version for a page *)
 }
 
 (* A function being compiled. *)
@@ -108,7 +109,10 @@ let site_at st file pos fname =
     let place = if fname = "" then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
     let lib = String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path in
     let i = Vec.length st.sites in
-    Vec.add_last st.sites (Printf.sprintf "[%s,%s,%s,%d]" (json_text header) (json_text excerpt) (json_text place) (if lib then 1 else 0));
+    (* Its header and line of code, the function it is in, whether in a library, and its file and line, which a fiber's
+       panic gives its task. *)
+    Vec.add_last st.sites
+      (Printf.sprintf "[%s,%s,%s,%d,%s,%d]" (json_text header) (json_text excerpt) (json_text place) (if lib then 1 else 0) (json_text path) (Pos.line pos));
     Hashtbl.replace st.site_ids key i;
     i
 
@@ -234,6 +238,11 @@ let cell_global st m k =
 type native_call = fc -> expr array -> pos -> kind -> ins list
 
 let natives : (string * string, native_call) Hashtbl.t = Hashtbl.create 32
+
+(* Natives whose arguments may be named or left out, as their parameters say: each argument in its parameter's place. *)
+type bound_call = fc -> expr option array -> pos -> kind -> ins list
+
+let with_names : (string * string, bound_call) Hashtbl.t = Hashtbl.create 16
 
 (* The variables of the function that this code reads or writes, into [seen], and whether it can leave the function
    (a return, a ?). A function defined in it has its own variables, but reads here those it captures. *)
@@ -1207,6 +1216,21 @@ and call_expr fc e (call : call) : kind * ins list =
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; text } ->
     (match w.modules.(m).cells.(k) with
+     | Native nat when Hashtbl.mem with_names (w.modules.(m).mname, nat.nname) ->
+       let slots = Array.make (max nat.max_args (Array.length call.args)) None in
+       let k = ref 0 in
+       Array.iter
+         (fun (a : arg) ->
+            match a.aname with
+            | None -> if !k < Array.length slots then slots.(!k) <- Some a.value; incr k
+            | Some n ->
+              (match Array.find_index (String.equal n) nat.params with
+               | Some j -> slots.(j) <- Some a.value
+               | None -> unsupported fc e.pos (Printf.sprintf "the argument %s of %s" n text)))
+         call.args;
+       if !k > nat.max_args then unsupported fc e.pos (Printf.sprintf "%s with %d arguments" text !k);
+       let k = kind fc e in
+       k, (Hashtbl.find with_names (w.modules.(m).mname, nat.nname)) fc slots e.pos k
      | Native nat ->
        let key = (w.modules.(m).mname, nat.nname) in
        (match Hashtbl.find_opt natives key with
@@ -1215,9 +1239,31 @@ and call_expr fc e (call : call) : kind * ins list =
           let k = kind fc e in
           k, f fc (Array.map (fun (a : arg) -> a.value) call.args) e.pos k
         | None -> unsupported fc e.pos (Printf.sprintf "%s.%s" (fst key) nat.nname))
-     | Fun { proto; env = [||] } -> static_call fc e call proto
+     | Fun { proto; env = [||] } ->
+       let path = w.modules.(proto.pm).path in
+       if path = "std/js.ce" && proto.pname = "Call" then js_call fc e call
+       else
+         (match Hashtbl.find_opt fc.st.pages path with
+          | Some pm ->
+            (* A package that a page has a version of: its function of the same name. *)
+            (match List.assoc_opt proto.pname w.modules.(pm).mnames with
+             | Some c -> (match w.modules.(pm).cells.(c) with Fun { proto = p; env = [||] } -> static_call fc e call p | _ -> static_call fc e call proto)
+             | None -> static_call fc e call proto)
+          | None -> static_call fc e call proto)
      | _ -> dynamic_call fc e call)
   | _ -> dynamic_call fc e call
+
+(* js.Call(module, name, args): an import of the module named, which the loader finds beside the program; both texts
+   written in the call, so that the module's imports say all that a page calls. *)
+and js_call fc e (call : call) =
+  let rt = fc.st.rt in
+  match Array.map (fun (a : arg) -> a.aname, a.value) call.args with
+  | [| None, { e = Ltext m; _ }; None, { e = Ltext n; _ }; None, args |] ->
+    let name = "js:" ^ m ^ "#" ^ n in
+    Wasm.import rt.m name m n [ Rt.v ] [ Rt.v ];
+    Rt.for_js rt;
+    V, expr fc args V @ [ Call name ]
+  | _ -> unsupported fc e.pos "js.Call without its module and name written as texts, then its list of arguments"
 
 and static_call fc e (call : call) (proto : proto) =
   let rt = fc.st.rt in
@@ -1539,6 +1585,39 @@ let () =
   filled "matrix" "Zeros" (Some [ F64 0.; Call "box_f" ]);
   filled "matrix" "Ones" (Some [ F64 1.; Call "box_f" ])
 
+(* Fibers: std/fiber and the waits of std/sys, on the loader's scheduler (Rt). *)
+let () =
+  let reg pkg name f = Hashtbl.replace with_names ("std/" ^ pkg, name) f in
+  let opt fc = function Some a -> expr fc a V | None -> [ missing ] in
+  let give fc k code = code @ convert fc ~from:V ~into:k in
+  (* The start of a fiber, which the loader calls: its function, then its task's result. *)
+  let fiber_entry st =
+    let rt = st.rt in
+    if not (Wasm.has_func rt.m "x_fiber") then begin
+      let f = Wasm.func rt.m "x_fiber" [ Rt.nn rt.fib; Rt.nn rt.fn ] [] in
+      let call0 = dyn_call st 0 in
+      f.body <-
+        [ Lget 0; Gset (Rt.current rt); I32 0; Gset (depth rt); I32 0; I32 (-1); store32 (calls + 4);
+          Lget 0; struct_get rt.fib Rt.fb_cancelled; If (Bnone, [ host rt "unwind" ], []);
+          Lget 0; struct_get rt.fib Rt.fb_task; Cast (false, T rt.task) ]
+        @ Rt.ok_of rt [ Lget 1; I32 (-1); Call call0 ] @ [ call rt "finish" ];
+      Wasm.export rt.m "fiber" "x_fiber";
+      Rt.for_fibers rt
+    end
+  in
+  reg "fiber" "Spawn" (fun fc a pos k ->
+      fiber_entry fc.st;
+      give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "spawn" ]));
+  reg "fiber" "Wait" (fun fc a pos k -> Rt.for_fibers fc.st.rt; give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "wait" ]));
+  reg "fiber" "Cancel" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "cancel" ]));
+  reg "fiber" "Channel" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "chan_make" ]));
+  reg "fiber" "Send" (fun fc a pos k ->
+      give fc k ((match a.(0) with Some x -> stored fc x | None -> [ missing ]) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "chan_send" ]));
+  reg "fiber" "Receive" (fun fc a pos k -> give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "receive" ]));
+  reg "fiber" "Close" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "close" ]));
+  reg "sys" "Sleep" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "sleep" ]));
+  reg "sys" "Now" (fun fc _ _ k -> give fc k [ call fc.st.rt "now" ])
+
 (* The runtime's functions of typed maps, now that every typed map is known: for each, a test of its type. *)
 let finish st =
   let rt = st.rt in
@@ -1564,10 +1643,11 @@ let finish st =
                    @ each sh (fun j -> field sh j @ (if sh.skinds.(j) = V then [ call rt "share" ] else [])) @ [ struct_new sh.sty; ret ], []) ])
 
 (* The program: its files, in the order the interpreter runs them, become the start of the module. *)
-let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
+let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let rt = Rt.create () in
   let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
-             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = [] } in
+             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = []; pages = Hashtbl.create 4 } in
+  List.iter (fun (path, m) -> Hashtbl.replace st.pages path m) pages;
   ignore (need rt "box_f");
   let hoisted = List.concat_map (fun (_, _, _, (l : layout)) -> List.map snd (Array.to_list l.hoisted)) prepared in
   List.iter
@@ -1610,6 +1690,7 @@ let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   (* Last, when every text of the code is known: the start makes them first. *)
   start.body <- rt.inits @ run;
   Wasm.export rt.m "main" "main";
+  Wasm.export rt.m "flush" (Rt.need rt "flush");
   let sites = Buffer.create 4096 in
   Buffer.add_char sites '[';
   for i = 0 to Vec.length st.sites - 1 do

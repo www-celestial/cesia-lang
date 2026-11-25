@@ -17,8 +17,13 @@
    with its site and the depth of the calls, whose sites are in the memory: the loader writes the error as Cesia does,
    from the table of sites that the compiler puts in the custom section cesia.sites, and stops the program.
 
-   Memory, one page: the output's buffer from 0, a scratch area from [scratch], and the call sites from [calls], one i32
-   per depth. *)
+   Memory, two pages: the output's buffer from 0, a scratch area from [scratch], the call sites from [calls], one i32 per
+   depth, and in the second page the window through which texts cross to JavaScript and back.
+
+   Fibers. A fiber is a struct of its parks (odd while it waits: a wake that holds the same count resumes it, once), its
+   cancel, its timer's mark, the depth and call sites it had when it parked, and its task; a channel a struct of its
+   values, its size, the receivers and senders that wait on it, each with the count of their park. The scheduler is the
+   loader's: [park] suspends the fiber's whole stack by JSPI, [wake] queues it again. *)
 
 open Wasm
 
@@ -26,7 +31,11 @@ let out_cap = 16384
 let scratch = 16384
 let calls = 20480
 let max_depth = 10_000
-let fuel_period = 1_000_000
+(* The fuel: a checkpoint every [fuel_period] steps, at which the page may get the event loop back, and every [full_every]
+   of them a full one, at the interpreter's million steps, where the fibers ready run. *)
+let fuel_period = 62_500
+let full_every = 16
+let window = 65536
 let v = Ref (true, Eq)
 
 type t = {
@@ -48,6 +57,13 @@ type t = {
   fn : int;
   buf : int;
   cache : int;
+  i32s : int;
+  fib : int;
+  tok : int;
+  q : int;
+  chan : int;
+  sender : int;
+  task : int;
   fns : (int, int) Hashtbl.t;  (* arity to the type of a function value's code *)
   texts : (string, string) Hashtbl.t;  (* constant texts: their globals *)
   mutable inits : ins list;  (* what the start makes: long texts *)
@@ -58,7 +74,7 @@ let nl i = Ref (true, T i)
 
 let create () =
   let m = Wasm.create () in
-  m.memory <- 1;
+  m.memory <- 2;
   let bytes = fresh_ty m (Ar (I8, true)) in
   let vals = fresh_ty m (Ar (S v, true)) in
   let f64s = fresh_ty m (Ar (S F64, true)) in
@@ -86,8 +102,21 @@ let create () =
   let buf = fresh_ty m (St [ S (nn bytes), true; S I32, true ]) in
   (* What a read of a field remembers: the keys or shape it last met, and the place of the field there. *)
   let cache = fresh_ty m (St [ S (Ref (true, Eq)), true; S I32, true ]) in
-  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; own; list; keys; map; smap; shape; recd; fn; buf; cache; fns = Hashtbl.create 8;
-    texts = Hashtbl.create 64; inits = [] }
+  let i32s = fresh_ty m (Ar (S I32, true)) in
+  (* A fiber: its parks, cancel, timer's mark, depth and call sites when parked, task, and the site that spawned it. *)
+  let fib = fresh_ty m (St [ S I32, true; S I32, true; S I32, true; S I32, true; S (nl i32s), true; S v, true; S I32, false ]) in
+  (* A wake: the fiber and the count of its park. *)
+  let tok = fresh_ty m (St [ S (nn fib), false; S I32, false ]) in
+  (* A queue: a ring of values, its first and its count. *)
+  let q = fresh_ty m (St [ S (nn vals), true; S I32, true; S I32, true ]) in
+  (* A channel: its values, size, receivers, senders, whether closed, and its number. *)
+  let chan = fresh_ty m (St [ S (nn q), false; S I32, false; S (nn q), false; S (nn q), false; S I32, true; S I32, false ]) in
+  (* A sender that waits on a full channel: its value, its wake, and whether a receiver took it. *)
+  let sender = fresh_ty m (St [ S v, false; S (nn tok), false; S I32, true ]) in
+  (* A task: whether done, its result, the wakes of those who wait for it, its fiber while it runs, its number. *)
+  let task = fresh_ty m (St [ S I32, true; S v, true; S (nn q), false; S (nl fib), true; S I32, false ]) in
+  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; own; list; keys; map; smap; shape; recd; fn; buf; cache; i32s; fib; tok; q; chan;
+    sender; task; fns = Hashtbl.create 8; texts = Hashtbl.create 64; inits = [] }
 
 (* Fields. *)
 let l_owned = 0
@@ -241,10 +270,18 @@ let host rt name =
   let js = "js:" ^ name in
   (match name with
    | "write" -> import rt.m js "rt" "write" [ I32; I32; I32 ] []
-   | "fail" -> import rt.m js "rt" "fail" [ I32; I32 ] []
+   | "fail" -> import rt.m js "rt" "fail" [ I32; I32; I32 ] []
    | "ftoa" -> import rt.m js "rt" "ftoa" [ F64 ] [ I32 ]
-   | "checkpoint" -> import rt.m js "rt" "checkpoint" [] []
+   | "checkpoint" -> import rt.m js "rt" "checkpoint" [ I32 ] [ I32 ]
    | "rand32" -> import rt.m js "rt" "rand32" [] [ I32 ]
+   | "now" -> import rt.m js "rt" "now" [] [ F64 ]
+   | "park" -> import rt.m js "rt" "park" [ nn rt.fib; I32 ] [ I32 ]
+   | "wake" -> import rt.m js "rt" "wake" [ nn rt.fib ] []
+   | "spawn" -> import rt.m js "rt" "spawn" [ nn rt.fib; nn rt.fn; I32 ] []
+   | "timer" -> import rt.m js "rt" "timer" [ nn rt.fib; F64 ] [ I32 ]
+   | "untimer" -> import rt.m js "rt" "untimer" [ I32 ] []
+   | "unwind" -> import rt.m js "rt" "unwind" [] []
+   | "first" -> import rt.m js "rt" "first" [ nn rt.fib ] []
    | "pow" -> import rt.m js "Math" "pow" [ F64; F64 ] [ F64 ]
    | f -> import rt.m js "Math" f [ F64 ] [ F64 ]);
   Call js
@@ -510,7 +547,12 @@ let () =
                               @ sub [ Lget vs; Lget k; array_get rt.vals ])) ]
             @ byte ')' @ [ ret ], []);
         Lget x; Test (false, T rt.fn);
-        If (Bnone, add "function " @ [ Lget 0; Lget x; Cast (false, T rt.fn); struct_get rt.fn f_name; call rt "buf_add"; ret ], []) ]
+        If (Bnone, add "function " @ [ Lget 0; Lget x; Cast (false, T rt.fn); struct_get rt.fn f_name; call rt "buf_add"; ret ], []);
+        (* A channel or a task as the interpreter shows a handle: <channel 3>. *)
+        Lget x; Test (false, T rt.chan);
+        If (Bnone, add "<channel " @ [ Lget 0; Lget x; Cast (false, T rt.chan); struct_get rt.chan 5; i64_extend_u; call rt "write_int" ] @ byte '>' @ [ ret ], []);
+        Lget x; Test (false, T rt.task);
+        If (Bnone, add "<task " @ [ Lget 0; Lget x; Cast (false, T rt.task); struct_get rt.task 4; i64_extend_u; call rt "write_int" ] @ byte '>' @ [ ret ], []) ]
       @ add "undefined");
   def "show" (fun rt -> [ v ], [ nn rt.bytes ], fun fb ->
       let x = local fb (nn rt.buf) in
@@ -534,6 +576,8 @@ let () =
         Lget 0; Test (false, T rt.fn);
         If (Bnone, [ call rt "buf_new"; Lset x; Lget x; text rt "function "; call rt "buf_add";
                      Lget x; Lget 0; Cast (false, T rt.fn); struct_get rt.fn f_name; call rt "buf_add"; Lget x; call rt "buf_done"; ret ], []);
+        Lget 0; Test (false, T rt.chan); If (Bnone, [ text rt "a channel"; ret ], []);
+        Lget 0; Test (false, T rt.task); If (Bnone, [ text rt "a task"; ret ], []);
         text rt "an undefined value" ])
 
 (* Errors. *)
@@ -550,7 +594,7 @@ let () =
                 Lget k; I32 1; i32_add; Lset k; Lget i; I32 1; i32_add; Lset i; Br 0 ]) ]);
             I32 0; Lget k; Lget 1; host rt "write"; Br 0 ]) ]) ]);
   (* The message [t] with the texts [a] and [b] for its \001 and \002, the hint [h], at [site]. *)
-  def "fail" (fun rt -> [ nn rt.bytes; nl rt.bytes; nl rt.bytes; nl rt.bytes; I32 ], [], fun fb ->
+  def "fail" (fun rt -> [ nn rt.bytes; nl rt.bytes; nl rt.bytes; nl rt.bytes; I32; I32 ], [], fun fb ->
       let x = local fb (nn rt.buf) and i = local fb I32 and c = local fb I32 and n = local fb I32 in
       [ call rt "flush"; call rt "buf_new"; Lset x; Lget 0; array_len; Lset n ]
       @ upto i n [ Lget 0; Lget i; array_get_u rt.bytes; Lset c;
@@ -560,11 +604,18 @@ let () =
                          If (Bnone, [ Lget x; Lget 3; as_non_null; call rt "buf_add" ], [ Lget x; Lget c; call rt "buf_byte" ]) ]) ]
       @ [ Lget x; call rt "buf_done"; I32 3; call rt "send";
           Lget 1; ref_is_null; If (Bnone, [], [ Lget 1; as_non_null; I32 4; call rt "send" ]);
-          Lget 4; Gget (depth rt); host rt "fail"; unreachable ])
+          Lget 5; Gget (depth rt); Lget 4; host rt "fail"; unreachable ])
+
+(* The kinds of errors, as the interpreter names them (Value.kind_name), by their number for the loader. *)
+let k_type = 2
+let k_index = 3
+let k_field = 4
+let k_math = 5
+let k_user = 7
 
 (* Fails with a message of Messages made with "\001" and "\002" for its operands, which [operands] puts on the stack as
-   texts, at the site [site] puts there. *)
-let fail rt (m : Messages.t) operands site =
+   texts, at the site [site] puts there; [kind] is the error's, which a fiber's task holds. *)
+let fail ?(kind = k_type) rt (m : Messages.t) operands site =
   let ops =
     match operands with
     | [] -> [ Rnull (T rt.bytes); Rnull (T rt.bytes) ]
@@ -572,14 +623,14 @@ let fail rt (m : Messages.t) operands site =
     | [ a; b ] -> a @ b
     | _ -> invalid_arg "Rt.fail"
   in
-  [ text rt m.text; (match m.hint with Some h -> text rt h | None -> Rnull (T rt.bytes)) ] @ ops @ site @ [ call rt "fail"; unreachable ]
+  [ text rt m.text; (match m.hint with Some h -> text rt h | None -> Rnull (T rt.bytes)) ] @ ops @ [ I32 kind ] @ site @ [ call rt "fail"; unreachable ]
 
 let a1 = "\001"
 let a2 = "\002"
 
 (* Integers, checked as the interpreter checks them. *)
 let () =
-  let ovf rt op site = fail rt (Messages.overflow a1 op a2) [ [ Lget 0; call rt "itoa" ]; [ Lget 1; call rt "itoa" ] ] [ Lget site ] in
+  let ovf rt op site = fail ~kind:k_math rt (Messages.overflow a1 op a2) [ [ Lget 0; call rt "itoa" ]; [ Lget 1; call rt "itoa" ] ] [ Lget site ] in
   def "add_fail" (fun rt -> [ I64; I64; I32 ], [], fun _ -> ovf rt "+" 2);
   def "sub_fail" (fun rt -> [ I64; I64; I32 ], [], fun _ -> ovf rt "-" 2);
   def "add_i" (fun rt -> [ I64; I64; I32 ], [ I64 ], fun fb ->
@@ -599,19 +650,19 @@ let () =
       @ ovf rt "*" 2);
   def "neg_i" (fun rt -> [ I64; I32 ], [ I64 ], fun _ ->
       [ Lget 0; I64 (Int64.of_int min_int); i64_ne; If (Bnone, [ i64 0; Lget 0; i64_sub; ret ], []) ]
-      @ fail rt (Messages.overflow_neg a1) [ [ Lget 0; call rt "itoa" ] ] [ Lget 1 ]);
+      @ fail ~kind:k_math rt (Messages.overflow_neg a1) [ [ Lget 0; call rt "itoa" ] ] [ Lget 1 ]);
   (* math.Div and math.Mod: rounded down. *)
   def "div_i" (fun rt -> [ I64; I64; I32 ], [ I64 ], fun fb ->
       let q = local fb I64 in
-      [ Lget 1; i64_eqz; If (Bnone, fail rt (Messages.div_zero "Div") [] [ Lget 2 ], []);
+      [ Lget 1; i64_eqz; If (Bnone, fail ~kind:k_math rt (Messages.div_zero "Div") [] [ Lget 2 ], []);
         Lget 0; I64 (Int64.of_int min_int); i64_eq; Lget 1; i64 (-1); i64_eq; i32_and;
-        If (Bnone, fail rt (Messages.overflow a1 "/" "-1") [ [ Lget 0; call rt "itoa" ] ] [ Lget 2 ], []);
+        If (Bnone, fail ~kind:k_math rt (Messages.overflow a1 "/" "-1") [ [ Lget 0; call rt "itoa" ] ] [ Lget 2 ], []);
         Lget 0; Lget 1; i64_div_s; Lset q;
         Lget 0; Lget 1; i64_rem_s; i64 0; i64_ne; Lget 0; i64 0; i64_lt_s; Lget 1; i64 0; i64_lt_s; i32_xor; i32_and;
         If (Bval I64, [ Lget q; i64 1; i64_sub ], [ Lget q ]) ]);
   def "mod_i" (fun rt -> [ I64; I64; I32 ], [ I64 ], fun fb ->
       let r = local fb I64 in
-      [ Lget 1; i64_eqz; If (Bnone, fail rt (Messages.div_zero "Mod") [] [ Lget 2 ], []);
+      [ Lget 1; i64_eqz; If (Bnone, fail ~kind:k_math rt (Messages.div_zero "Mod") [] [ Lget 2 ], []);
         Lget 0; Lget 1; i64_rem_s; Lset r;
         Lget r; i64 0; i64_ne; Lget r; i64 0; i64_lt_s; Lget 1; i64 0; i64_lt_s; i32_xor; i32_and;
         If (Bval I64, [ Lget r; Lget 1; i64_add ], [ Lget r ]) ]);
@@ -846,7 +897,7 @@ let () =
       [ Lget 0; Test (false, T rt.list);
         If (Bnone, [ Lget 0; Cast (false, T rt.list); Lset l;
                      Lget 1; i64 1; i64_lt_s; Lget 1; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_gt_s; i32_or;
-                     If (Bnone, fail rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
+                     If (Bnone, fail ~kind:k_index rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
                                   [ [ Lget 1; call rt "itoa" ]; [ Lget l; as_non_null; call rt "cells"; i64_extend_u; call rt "itoa" ] ] [ Lget 2 ], []);
                      Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; call rt "elem"; ret ], []) ]
       @ fail rt (Messages.index_value a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ]);
@@ -872,7 +923,7 @@ let () =
         If (Bnone, [ Lget 0; Cast (false, T rt.list); Lset l;
                      Lget l; struct_get rt.list l_owned; i32_eqz; If (Bnone, [ Lget l; as_non_null; call rt "copy_list"; Lset l ], []);
                      Lget 1; i64 1; i64_lt_s; Lget 1; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_gt_s; i32_or;
-                     If (Bnone, fail rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
+                     If (Bnone, fail ~kind:k_index rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
                                   [ [ Lget 1; call rt "itoa" ]; [ Lget l; as_non_null; call rt "cells"; i64_extend_u; call rt "itoa" ] ] [ Lget 3 ], []);
                      Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; Lget 2; call rt "store_elt"; Lget l; ret ], []) ]
       @ fail rt (Messages.index_value a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 3 ]);
@@ -1091,7 +1142,7 @@ let () =
                      Lget k; I32 0; i32_ge_s;
                      If (Bnone, [ Lget 2; Lget mp; struct_get rt.map m_keys; struct_set rt.cache 0; Lget 2; Lget k; struct_set rt.cache 1;
                                   Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; ret ], []) ]
-                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
+                   @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
         Lget 0; Test (false, T rt.smap);
         If (Bnone, [ Lget 0; Cast (false, T rt.smap); Lset sm;
                      Lget sm; struct_get rt.smap s_keys; Lget 2; struct_get rt.cache 0; ref_eq;
@@ -1100,7 +1151,7 @@ let () =
                      Lget k; I32 0; i32_ge_s;
                      If (Bnone, [ Lget 2; Lget sm; struct_get rt.smap s_keys; struct_set rt.cache 0; Lget 2; Lget k; struct_set rt.cache 1;
                                   Lget sm; as_non_null; Lget k; call rt "sget"; ret ], []) ]
-                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
+                   @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
         Lget 0; Test (false, T rt.recd);
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc;
                      Lget rc; struct_get rt.recd r_shape; Lget 2; struct_get rt.cache 0; ref_eq;
@@ -1132,7 +1183,7 @@ let () =
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc;
                      Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 1; Lget 1; call rt "find_name"; Lset k;
                      Lget k; I32 0; i32_lt_s;
-                     If (Bnone, fail rt (Messages.named_field "\003" a2 |> fun m -> { m with text = replace m.text [ "\003", a1 ] })
+                     If (Bnone, fail ~kind:k_field rt (Messages.named_field "\003" a2 |> fun m -> { m with text = replace m.text [ "\003", a1 ] })
                                   [ [ Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 0 ]; [ Lget 1 ] ] [ Lget 3 ], []);
                      Lget rc; struct_get rt.recd r_owned; i32_eqz;
                      If (Bnone, [ Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
@@ -1146,8 +1197,15 @@ let () =
 let () =
   def "enter" (fun rt -> [ I32 ], [], fun _ ->
       [ Gget (depth rt); I32 1; i32_add; Gset (depth rt);
-        Gget (depth rt); I32 max_depth; i32_gt_u; If (Bnone, fail rt (Messages.limit "depth") [] [ Lget 0 ], []) ]);
-  def "refuel" (fun rt -> [], [], fun _ -> [ host rt "checkpoint"; i64 fuel_period; Gset (fuel rt) ])
+        Gget (depth rt); I32 max_depth; i32_gt_u; If (Bnone, fail ~kind:k_user rt (Messages.limit "depth") [] [ Lget 0 ], []) ]);
+  (* The checkpoint: the loader says whether the fibers ready run now (at a full one) or the event loop turns. *)
+  def "refuel" (fun rt -> [], [], fun fb ->
+      let c = local fb I32 in
+      let left = gl rt "fulls" I32 true [ I32 full_every ] in
+      [ i64 fuel_period; Gset (fuel rt);
+        Gget left; I32 1; i32_sub; Gset left;
+        Gget left; i32_eqz; If (Bval I32, [ I32 full_every; Gset left; I32 1 ], [ I32 0 ]); host rt "checkpoint"; Ltee c;
+        If (Bnone, [ Lget c; I32 (-1); call rt "park"; I32 2; i32_eq; If (Bnone, [ host rt "unwind" ], []) ], []) ])
 
 (* The fuel of one step, inline. *)
 let tick rt = [ Gget (fuel rt); i64 1; i64_sub; Gset (fuel rt); Gget (fuel rt); i64_eqz; If (Bnone, [ call rt "refuel" ], []) ]
@@ -1186,11 +1244,11 @@ let () =
         If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp;
                      Lget mp; as_non_null; Lget 1; Cast (false, T rt.bytes); call rt "map_find"; Lset k;
                      Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; call rt "share"; ret ], []) ]
-                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
+                   @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
         Lget 0; Test (false, T rt.smap); Lget 1; Test (false, T rt.bytes); i32_and;
         If (Bnone, [ Lget 0; Cast (false, T rt.smap); struct_get rt.smap s_keys; struct_get rt.keys k_names; Lget 1; Cast (false, T rt.bytes); call rt "find_name"; Lset k;
                      Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget 0; Cast (false, T rt.smap); Lget k; call rt "sget"; call rt "share"; ret ], []) ]
-                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
+                   @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
         Lget 0; Lget 1; Lget 2; call rt "whole"; Lget 2; call rt "index" ]);
   def "set_index_v" (fun rt -> [ v; v; v; I32 ], [ v ], fun _ ->
       [ Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; Lget 1; Test (false, T rt.bytes); i32_and;
@@ -1270,7 +1328,7 @@ let () =
       @ upto i m [ Lget w; Lget n; Lget i; i32_add; Lget b; as_non_null; Lget i; call rt "elem"; call rt "share"; array_set rt.vals ]
       @ [ I32 1; Lget n; Lget m; i32_add; Lget w; call rt "list_of" ]);
   (* bug.Panic(x): an error of the program, its message the text of x. *)
-  def "panic" (fun rt -> [ v; I32 ], [ v ], fun _ -> fail rt (Messages.plain a1) [ [ Lget 0; call rt "text_of" ] ] [ Lget 1 ])
+  def "panic" (fun rt -> [ v; I32 ], [ v ], fun _ -> fail ~kind:k_user rt (Messages.plain a1) [ [ Lget 0; call rt "text_of" ] ] [ Lget 1 ])
 
 (* list.Take, list.Skip and list.Reverse: the cells picked, a list of their kind ([Lists.picked_list]). *)
 let () =
@@ -1413,3 +1471,355 @@ let () =
     [ "Floor", "floor_v"; "Ceil", "ceil_v"; "Round", "round_v"; "Abs", "abs_v" ];
   def "abs_i" (fun rt -> [ I64; I32 ], [ I64 ], fun _ ->
       [ Lget 0; i64 0; i64_lt_s; If (Bval I64, [ Lget 0; Lget 1; call rt "neg_i" ], [ Lget 0 ]) ])
+
+(* Fibers and channels: std/fiber, as Fiber of the interpreter, on the loader's scheduler. *)
+
+let i32_rem_u = Op 0x70
+let i32_and1 = [ I32 1; i32_and ]
+
+(* The records of std/result and the errors of a wait: result.Ok(x), result.Err(x), and Err({Kind, Message}). *)
+let ok_of rt x = [ I32 1; shape rt "Ok" [| "Value" |] ] @ x @ [ call rt "share"; array_new_fixed rt.vals 1; struct_new rt.recd ]
+let err_of rt x = [ I32 1; shape rt "Err" [| "Error" |] ] @ x @ [ call rt "share"; array_new_fixed rt.vals 1; struct_new rt.recd ]
+let failure rt kind (m : Messages.t) =
+  err_of rt [ I32 1; keys rt [| "Kind"; "Message" |]; text rt kind; text rt m.text; array_new_fixed rt.vals 2; I32 2; I32 0; struct_new rt.map ]
+
+let current rt = gl rt "current" (nl rt.fib) true [ Rnull (T rt.fib) ]
+let got rt = gl rt "got" I32 true [ I32 0 ]
+let next_id rt = gl rt "next_id" I32 true [ I32 1 ]
+
+(* Queues. *)
+let q_arr = 0
+let q_head = 1
+let q_n = 2
+
+let () =
+  def "q_new" (fun rt -> [], [ nn rt.q ], fun _ -> [ I32 4; array_new_default rt.vals; I32 0; I32 0; struct_new rt.q ]);
+  def "q_grow" (fun rt -> [ nn rt.q ], [], fun fb ->
+      let a = local fb (nn rt.vals) and w = local fb (nn rt.vals) and n = local fb I32 and i = local fb I32 in
+      [ Lget 0; struct_get rt.q q_arr; Lset a; Lget a; array_len; Lset n; Lget n; I32 2; i32_mul; array_new_default rt.vals; Lset w ]
+      @ upto i n [ Lget w; Lget i; Lget a; Lget 0; struct_get rt.q q_head; Lget i; i32_add; Lget n; i32_rem_u; array_get rt.vals; array_set rt.vals ]
+      @ [ Lget 0; Lget w; struct_set rt.q q_arr; Lget 0; I32 0; struct_set rt.q q_head ]);
+  def "q_push" (fun rt -> [ nn rt.q; v ], [], fun _ ->
+      [ Lget 0; struct_get rt.q q_n; Lget 0; struct_get rt.q q_arr; array_len; i32_eq; If (Bnone, [ Lget 0; call rt "q_grow" ], []);
+        Lget 0; struct_get rt.q q_arr;
+        Lget 0; struct_get rt.q q_head; Lget 0; struct_get rt.q q_n; i32_add; Lget 0; struct_get rt.q q_arr; array_len; i32_rem_u;
+        Lget 1; array_set rt.vals;
+        Lget 0; Lget 0; struct_get rt.q q_n; I32 1; i32_add; struct_set rt.q q_n ]);
+  (* At the front: a receiver woken for a value another took waits first again. *)
+  def "q_front" (fun rt -> [ nn rt.q; v ], [], fun _ ->
+      [ Lget 0; struct_get rt.q q_n; Lget 0; struct_get rt.q q_arr; array_len; i32_eq; If (Bnone, [ Lget 0; call rt "q_grow" ], []);
+        Lget 0; Lget 0; struct_get rt.q q_head; Lget 0; struct_get rt.q q_arr; array_len; i32_add; I32 1; i32_sub;
+        Lget 0; struct_get rt.q q_arr; array_len; i32_rem_u; struct_set rt.q q_head;
+        Lget 0; struct_get rt.q q_arr; Lget 0; struct_get rt.q q_head; Lget 1; array_set rt.vals;
+        Lget 0; Lget 0; struct_get rt.q q_n; I32 1; i32_add; struct_set rt.q q_n ]);
+  (* The first, taken out; missing when empty. *)
+  def "q_shift" (fun rt -> [ nn rt.q ], [ v ], fun fb ->
+      let x = local fb v in
+      [ Lget 0; struct_get rt.q q_n; i32_eqz; If (Bnone, [ missing; ret ], []);
+        Lget 0; struct_get rt.q q_arr; Lget 0; struct_get rt.q q_head; array_get rt.vals; Lset x;
+        Lget 0; struct_get rt.q q_arr; Lget 0; struct_get rt.q q_head; missing; array_set rt.vals;
+        Lget 0; Lget 0; struct_get rt.q q_head; I32 1; i32_add; Lget 0; struct_get rt.q q_arr; array_len; i32_rem_u; struct_set rt.q q_head;
+        Lget 0; Lget 0; struct_get rt.q q_n; I32 1; i32_sub; struct_set rt.q q_n; Lget x ]);
+  (* Takes this one out, the others in their order. *)
+  def "q_drop" (fun rt -> [ nn rt.q; v ], [], fun fb ->
+      let i = local fb I32 and n = local fb I32 and y = local fb v in
+      [ Lget 0; struct_get rt.q q_n; Lset n ]
+      @ upto i n [ Lget 0; call rt "q_shift"; Lset y; Lget y; Lget 1; ref_eq; If (Bnone, [], [ Lget 0; Lget y; call rt "q_push" ]) ])
+
+(* Fields. *)
+let fb_parks = 0
+let fb_cancelled = 1
+let fb_late = 2
+let fb_depth = 3
+let fb_calls = 4
+let fb_task = 5
+let fb_site = 6
+let c_items = 0
+let c_size = 1
+let c_receivers = 2
+let c_senders = 3
+let c_closed = 4
+let c_id = 5
+let t_done = 0
+let t_result = 1
+let t_waiters = 2
+let t_fib = 3
+let t_id = 4
+
+let () =
+  (* The fiber that runs: the main program's, made at the first need. *)
+  def "cur" (fun rt -> [], [ nn rt.fib ], fun fb ->
+      let f = local fb (nn rt.fib) in
+      [ Gget (current rt); ref_is_null;
+        If (Bnone, [ I32 0; I32 0; I32 0; I32 0; Rnull (T rt.i32s); missing; I32 (-1); struct_new rt.fib; Lset f;
+                     Lget f; Gset (current rt); Lget f; host rt "first" ], []);
+        Gget (current rt); as_non_null ]);
+  (* Wakes the fiber of a wake still current: 1 if it did. *)
+  def "try_wake" (fun rt -> [ v ], [ I32 ], fun fb ->
+      let t = local fb (nn rt.tok) and f = local fb (nn rt.fib) in
+      [ Lget 0; Cast (false, T rt.tok); Lset t; Lget t; struct_get rt.tok 0; Lset f;
+        Lget f; struct_get rt.fib fb_parks; Lget t; struct_get rt.tok 1; i32_eq;
+        If (Bval I32, [ Lget f; Lget t; struct_get rt.tok 1; I32 1; i32_add; struct_set rt.fib fb_parks; Lget f; host rt "wake"; I32 1 ], [ I32 0 ]) ]);
+  (* Wakes a fiber wherever it waits: a cancel, a timer. *)
+  def "wake_fib" (fun rt -> [ nn rt.fib ], [], fun _ ->
+      [ Lget 0; struct_get rt.fib fb_parks ] @ i32_and1
+      @ [ If (Bnone, [ Lget 0; Lget 0; struct_get rt.fib fb_parks; I32 1; i32_add; struct_set rt.fib fb_parks; Lget 0; host rt "wake" ], []) ]);
+  (* The wake of the park about to be: the parks of the current fiber, odd now. *)
+  def "begin_park" (fun rt -> [], [ nn rt.tok ], fun fb ->
+      let f = local fb (nn rt.fib) in
+      [ call rt "cur"; Lset f; Lget f; Lget f; struct_get rt.fib fb_parks; I32 1; i32_add; struct_set rt.fib fb_parks;
+        Lget f; Lget f; struct_get rt.fib fb_parks; struct_new rt.tok ]);
+  (* Parks the current fiber, mode 0 until a wake, 1 behind the fibers ready, 2 until the event loop turned: its depth and
+     call sites kept and put back. 2 when it was cancelled; a deadlock is the error of the main program at [site]. *)
+  def "park" (fun rt -> [ I32; I32 ], [ I32 ], fun fb ->
+      let f = local fb (nn rt.fib) and n = local fb I32 and i = local fb I32 and c = local fb (nn rt.i32s) and code = local fb I32 in
+      [ call rt "cur"; Lset f;
+        Gget (depth rt); I32 2; i32_add; Lset n;
+        Lget f; struct_get rt.fib fb_calls; ref_is_null;
+        If (Bval I32, [ I32 1 ], [ Lget f; struct_get rt.fib fb_calls; as_non_null; array_len; Lget n; i32_lt_u ]);
+        If (Bnone, [ Lget f; Lget n; I32 16; i32_add; array_new_default rt.i32s; struct_set rt.fib fb_calls ], []);
+        Lget f; struct_get rt.fib fb_calls; as_non_null; Lset c ]
+      @ upto i n [ Lget c; Lget i; Lget i; I32 4; i32_mul; load32 calls; array_set rt.i32s ]
+      @ [ Lget f; Gget (depth rt); struct_set rt.fib fb_depth;
+          Lget f; Lget 0; host rt "park"; Lset code;
+          Lget f; Gset (current rt); Lget f; struct_get rt.fib fb_depth; Gset (depth rt);
+          Lget f; struct_get rt.fib fb_calls; as_non_null; Lset c ]
+      @ upto i n [ Lget i; I32 4; i32_mul; Lget c; Lget i; array_get rt.i32s; store32 calls ]
+      @ [ Lget code; I32 1; i32_eq; If (Bnone, fail ~kind:k_user rt Messages.deadlock [] [ Lget 1 ], []);
+          Lget f; struct_get rt.fib fb_cancelled; If (Bval I32, [ I32 2 ], [ I32 0 ]) ]);
+  (* A timeout or a wait in seconds: -1 for none. *)
+  def "seconds" (fun rt -> [ v; I32 ], [ F64 ], fun fb ->
+      let x = local fb F64 in
+      [ Lget 0; ref_is_null; Lget 0; g_undef rt; ref_eq; i32_or; If (Bnone, [ F64 (-1.); ret ], []);
+        Lget 0; call rt "is_int"; If (Bnone, [ Lget 0; call rt "int_of"; i64 0; i64_ge_s; If (Bnone, [ Lget 0; call rt "int_of"; f64_of_i64; ret ], []) ], []);
+        Lget 0; Test (false, T rt.boxf); If (Bnone, [ Lget 0; call rt "float_of"; Ltee x; F64 0.; f64_ge; If (Bnone, [ Lget x; ret ], []) ], []) ]
+      @ fail rt (Messages.bad_timeout a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
+  (* sys.Sleep's seconds, as Proc.seconds: at least 0, finite, at most a day of seconds... as the interpreter's max_sleep. *)
+  def "duration" (fun rt -> [ v; I32 ], [ F64 ], fun fb ->
+      let x = local fb F64 in
+      [ Lget 0; call rt "is_int"; If (Bnone, [ Lget 0; call rt "int_of"; i64 0; i64_ge_s; If (Bnone, [ Lget 0; call rt "int_of"; f64_of_i64; ret ], []) ], []);
+        Lget 0; Test (false, T rt.boxf);
+        If (Bnone, [ Lget 0; call rt "float_of"; Ltee x; F64 0.; f64_ge; Lget x; F64 infinity; f64_lt; i32_and; If (Bnone, [ Lget x; ret ], []) ], []) ]
+      @ fail rt (Messages.bad_duration "Sleep" a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ])
+
+(* Channels. *)
+let () =
+  def "chan_make" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let size = local fb I32 in
+      [ I32 0x7fffffff; Lset size;
+        Lget 0; ref_is_null; Lget 0; g_undef rt; ref_eq; i32_or;
+        If (Bnone, [], [ Lget 0; call rt "is_int"; If (Bval I32, [ Lget 0; call rt "int_of"; i64 0; i64_ge_s ], [ I32 0 ]);
+                         If (Bnone, [ Lget 0; call rt "int_of"; i64 0x7fffffff; i64_lt_s;
+                                      If (Bval I32, [ Lget 0; call rt "int_of"; i32_wrap ], [ I32 0x7fffffff ]); Lset size ],
+                             fail rt (Messages.channel_size a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]) ]);
+        call rt "q_new"; Lget size; call rt "q_new"; call rt "q_new"; I32 0; Gget (next_id rt); struct_new rt.chan;
+        Gget (next_id rt); I32 1; i32_add; Gset (next_id rt) ]);
+  let check name ty need =
+    def ("as_" ^ name) (fun rt -> [ v; nn rt.bytes; I32 ], [ nn (ty rt) ], fun _ ->
+        [ Lget 0; Test (false, T (ty rt)); If (Bnone, [ Lget 0; Cast (false, T (ty rt)); ret ], []) ]
+        @ fail rt (need "\003" a2 |> fun (m : Messages.t) -> { m with text = replace m.text [ "\003", a1 ] }) [ [ Lget 1 ]; [ Lget 0; call rt "describe" ] ] [ Lget 2 ])
+  in
+  check "chan" (fun rt -> rt.chan) Messages.need_channel;
+  check "task" (fun rt -> rt.task) Messages.need_task;
+  (* The oldest sender still waiting, which goes on its way, or none. *)
+  def "from_sender" (fun rt -> [ nn rt.chan ], [ nl rt.sender ], fun fb ->
+      let s = local fb v in
+      [ Loop (Bnone, [
+            Lget 0; struct_get rt.chan c_senders; call rt "q_shift"; Lset s;
+            Lget s; ref_is_null; If (Bnone, [ Rnull (T rt.sender); ret ], []);
+            Lget s; Cast (false, T rt.sender); struct_get rt.sender 1; call rt "try_wake";
+            If (Bnone, [ Lget s; Cast (false, T rt.sender); I32 1; struct_set rt.sender 2; Lget s; Cast (true, T rt.sender); ret ], []);
+            Br 0 ]);
+        unreachable ]);
+  (* The oldest value of a channel, [got] 1; or [got] 0. A full channel takes in the value of its oldest sender. *)
+  def "next" (fun rt -> [ nn rt.chan ], [ v ], fun fb ->
+      let x = local fb v and s = local fb (nl rt.sender) in
+      [ I32 1; Gset (got rt);
+        Lget 0; struct_get rt.chan c_items; struct_get rt.q q_n;
+        If (Bnone, [ Lget 0; struct_get rt.chan c_items; call rt "q_shift"; Lset x;
+                     Lget 0; struct_get rt.chan c_senders; struct_get rt.q q_n;
+                     If (Bnone, [ Lget 0; call rt "from_sender"; Lset s;
+                                  Lget s; ref_is_null; If (Bnone, [], [ Lget 0; struct_get rt.chan c_items; Lget s; struct_get rt.sender 0; call rt "q_push" ]) ], []);
+                     Lget x; ret ], []);
+        Lget 0; call rt "from_sender"; Lset s;
+        Lget s; ref_is_null; If (Bnone, [], [ Lget s; struct_get rt.sender 0; ret ]);
+        I32 0; Gset (got rt); missing ]);
+  def "has_value" (fun rt -> [ nn rt.chan ], [ I32 ], fun _ ->
+      [ Lget 0; struct_get rt.chan c_items; struct_get rt.q q_n; Lget 0; struct_get rt.chan c_senders; struct_get rt.q q_n; i32_or ]);
+  def "wake_receiver" (fun rt -> [ nn rt.chan ], [], fun fb ->
+      let t = local fb v in
+      [ Loop (Bnone, [
+            Lget 0; struct_get rt.chan c_receivers; call rt "q_shift"; Lset t;
+            Lget t; ref_is_null; If (Bnone, [ ret ], []);
+            Lget t; call rt "try_wake"; If (Bnone, [ ret ], []);
+            Br 0 ]) ]);
+  (* fiber.Receive: an Ok of the oldest value, waiting at most [timeout] seconds for one. *)
+  def "receive" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let ch = local fb (nn rt.chan) and secs = local fb F64 and x = local fb v and f = local fb (nn rt.fib) in
+      let timer = local fb I32 and t = local fb (nn rt.tok) and again = local fb I32 and code = local fb I32 in
+      let untimer = [ Lget timer; I32 0; i32_ge_s; If (Bnone, [ Lget timer; host rt "untimer" ], []) ] in
+      [ Lget 0; text rt "Receive"; Lget 2; call rt "as_chan"; Lset ch;
+        Lget 1; Lget 2; call rt "seconds"; Lset secs;
+        Lget ch; call rt "next"; Lset x; Gget (got rt); If (Bnone, ok_of rt [ Lget x ] @ [ ret ], []);
+        Lget ch; struct_get rt.chan c_closed; If (Bnone, failure rt "closed" Messages.channel_closed @ [ ret ], []);
+        Lget secs; F64 0.; f64_eq; If (Bnone, failure rt "timeout" Messages.receive_timeout @ [ ret ], []);
+        call rt "cur"; Lset f; Lget f; I32 0; struct_set rt.fib fb_late; I32 (-1); Lset timer;
+        Lget secs; F64 0.; f64_gt; If (Bnone, [ Lget f; Lget secs; host rt "timer"; Lset timer ], []);
+        Loop (Bnone, [
+            call rt "begin_park"; Lset t;
+            Lget again; If (Bnone, [ Lget ch; struct_get rt.chan c_receivers; Lget t; call rt "q_front" ], [ Lget ch; struct_get rt.chan c_receivers; Lget t; call rt "q_push" ]);
+            I32 0; Lget 2; call rt "park"; Lset code;
+            Lget code; I32 2; i32_eq;
+            If (Bnone, [ Lget ch; struct_get rt.chan c_receivers; Lget t; call rt "q_drop" ] @ untimer
+                       @ [ Lget ch; call rt "has_value"; If (Bnone, [ Lget ch; call rt "wake_receiver" ], []); host rt "unwind" ], []);
+            Lget ch; call rt "next"; Lset x; Gget (got rt); If (Bnone, untimer @ ok_of rt [ Lget x ] @ [ ret ], []);
+            Lget ch; struct_get rt.chan c_closed; If (Bnone, untimer @ failure rt "closed" Messages.channel_closed @ [ ret ], []);
+            Lget f; struct_get rt.fib fb_late;
+            If (Bnone, [ Lget ch; struct_get rt.chan c_receivers; Lget t; call rt "q_drop" ] @ failure rt "timeout" Messages.receive_timeout @ [ ret ], []);
+            I32 1; Lset again; Br 0 ]);
+        unreachable ]);
+  (* fiber.Send: at the end of the channel; on one full, it waits for a receiver to take it. *)
+  def "chan_send" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let ch = local fb (nn rt.chan) and x = local fb v and s = local fb (nn rt.sender) and code = local fb I32 in
+      [ Lget 1; text rt "Send"; Lget 2; call rt "as_chan"; Lset ch;
+        Lget ch; struct_get rt.chan c_closed; If (Bnone, fail ~kind:k_user rt Messages.send_closed [] [ Lget 2 ], []);
+        Lget 0; call rt "share"; Lset x;
+        Lget ch; struct_get rt.chan c_items; struct_get rt.q q_n; Lget ch; struct_get rt.chan c_size; i32_lt_u;
+        If (Bnone, [ Lget ch; struct_get rt.chan c_items; Lget x; call rt "q_push"; Lget ch; call rt "wake_receiver"; missing; ret ], []);
+        Lget x; call rt "begin_park"; I32 0; struct_new rt.sender; Lset s;
+        Lget ch; struct_get rt.chan c_senders; Lget s; call rt "q_push"; Lget ch; call rt "wake_receiver";
+        I32 0; Lget 2; call rt "park"; Lset code;
+        Lget code; I32 2; i32_eq;
+        If (Bnone, [ Lget s; struct_get rt.sender 2; i32_eqz; If (Bnone, [ Lget ch; struct_get rt.chan c_senders; Lget s; call rt "q_drop" ], []); host rt "unwind" ], []);
+        Lget s; struct_get rt.sender 2; If (Bnone, [ missing; ret ], []) ]
+      @ fail ~kind:k_user rt Messages.send_closed [] [ Lget 2 ]);
+  (* Closes a channel: its receivers wake to what is left, its senders find it closed. *)
+  def "close_chan" (fun rt -> [ nn rt.chan ], [], fun fb ->
+      let t = local fb v in
+      [ Lget 0; I32 1; struct_set rt.chan c_closed;
+        Block (Bnone, [ Loop (Bnone, [ Lget 0; struct_get rt.chan c_receivers; call rt "q_shift"; Lset t; Lget t; ref_is_null; Br_if 1;
+                                       Lget t; call rt "try_wake"; drop; Br 0 ]) ]);
+        Block (Bnone, [ Loop (Bnone, [ Lget 0; struct_get rt.chan c_senders; call rt "q_shift"; Lset t; Lget t; ref_is_null; Br_if 1;
+                                       Lget t; Cast (false, T rt.sender); struct_get rt.sender 1; call rt "try_wake"; drop; Br 0 ]) ]) ]);
+  def "close" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let ch = local fb (nn rt.chan) in
+      [ Lget 0; text rt "Close"; Lget 1; call rt "as_chan"; Lset ch;
+        Lget ch; struct_get rt.chan c_closed; If (Bnone, fail ~kind:k_user rt Messages.closed_twice [] [ Lget 1 ], []);
+        Lget ch; call rt "close_chan"; missing ]);
+  (* From JavaScript: a value put in a channel, past its size if need be (1), or none to a closed one (0); a close. *)
+  def "x_post" (fun rt -> [ v; v ], [ I32 ], fun fb ->
+      let ch = local fb (nn rt.chan) in
+      [ Lget 0; Cast (false, T rt.chan); Lset ch; Lget ch; struct_get rt.chan c_closed; If (Bnone, [ I32 0; ret ], []);
+        Lget ch; struct_get rt.chan c_items; Lget 1; call rt "q_push"; Lget ch; call rt "wake_receiver"; I32 1 ]);
+  def "x_shut" (fun rt -> [ v ], [], fun fb ->
+      let ch = local fb (nn rt.chan) in
+      [ Lget 0; Cast (false, T rt.chan); Lset ch; Lget ch; struct_get rt.chan c_closed; If (Bnone, [ ret ], []); Lget ch; call rt "close_chan" ])
+
+(* Tasks. *)
+let panic_keys = [| "Message"; "Kind"; "File"; "Line" |]
+
+let () =
+  (* fiber.Spawn: the task of f(), which starts once the fibers before it parked. *)
+  def "spawn" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let t = local fb (nn rt.task) and f = local fb (nn rt.fib) in
+      [ Lget 0; Test (false, T rt.fn); If (Bnone, [], fail rt (Messages.not_function a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
+        I32 0; missing; call rt "q_new"; Rnull (T rt.fib); Gget (next_id rt); struct_new rt.task; Lset t;
+        Gget (next_id rt); I32 1; i32_add; Gset (next_id rt);
+        I32 0; I32 0; I32 0; I32 0; Rnull (T rt.i32s); Lget t; Lget 1; struct_new rt.fib; Lset f;
+        Lget t; Lget f; struct_set rt.task t_fib;
+        Lget f; Lget 0; Cast (false, T rt.fn); Lget 1; host rt "spawn"; Lget t ]);
+  (* The end of a task: its result, its waiters woken. *)
+  def "finish" (fun rt -> [ nn rt.task; v ], [], fun fb ->
+      let w = local fb v in
+      [ Lget 0; Lget 1; struct_set rt.task t_result; Lget 0; I32 1; struct_set rt.task t_done; Lget 0; Rnull (T rt.fib); struct_set rt.task t_fib;
+        Block (Bnone, [ Loop (Bnone, [ Lget 0; struct_get rt.task t_waiters; call rt "q_shift"; Lset w; Lget w; ref_is_null; Br_if 1;
+                                       Lget w; call rt "try_wake"; drop; Br 0 ]) ]) ]);
+  (* From the loader: a fiber stopped by a panic (its message) or a cancel (none): the Err of its task. *)
+  def "x_ended" (fun rt -> [ nn rt.fib; v; v; v; I32 ], [], fun _ ->
+      [ Lget 0; struct_get rt.fib fb_task; Cast (false, T rt.task) ]
+      @ err_of rt [ I32 1; keys rt panic_keys;
+                    Lget 1; ref_is_null; If (Bval v, [ text rt Messages.cancelled.text ], [ Lget 1 ]);
+                    Lget 2; Lget 3; Lget 4; i64_extend_s; call rt "box_i"; array_new_fixed rt.vals 4; I32 4; I32 0; struct_new rt.map ]
+      @ [ call rt "finish" ]);
+  (* fiber.Wait: the result of a task once it ended, waiting at most [timeout] seconds. *)
+  def "wait" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let t = local fb (nn rt.task) and secs = local fb F64 and f = local fb (nn rt.fib) and k = local fb (nn rt.tok) in
+      let timer = local fb I32 and code = local fb I32 in
+      [ Lget 0; text rt "Wait"; Lget 2; call rt "as_task"; Lset t;
+        Lget 1; Lget 2; call rt "seconds"; Lset secs;
+        Lget t; struct_get rt.task t_done; If (Bnone, [ Lget t; struct_get rt.task t_result; call rt "share"; ret ], []);
+        Lget secs; F64 0.; f64_eq; If (Bnone, failure rt "timeout" Messages.wait_timeout @ [ ret ], []);
+        call rt "cur"; Lset f; Lget f; I32 0; struct_set rt.fib fb_late; I32 (-1); Lset timer;
+        call rt "begin_park"; Lset k; Lget t; struct_get rt.task t_waiters; Lget k; call rt "q_push";
+        Lget secs; F64 0.; f64_gt; If (Bnone, [ Lget f; Lget secs; host rt "timer"; Lset timer ], []);
+        I32 0; Lget 2; call rt "park"; Lset code;
+        Lget timer; I32 0; i32_ge_s; If (Bnone, [ Lget timer; host rt "untimer" ], []);
+        Lget code; I32 2; i32_eq; If (Bnone, [ Lget t; struct_get rt.task t_waiters; Lget k; call rt "q_drop"; host rt "unwind" ], []);
+        Lget t; struct_get rt.task t_done; If (Bnone, [ Lget t; struct_get rt.task t_result; call rt "share"; ret ], []);
+        Lget t; struct_get rt.task t_waiters; Lget k; call rt "q_drop" ]
+      @ failure rt "timeout" Messages.wait_timeout);
+  (* fiber.Cancel: the fiber stops at its next wait, at once when it is the one that runs. *)
+  def "cancel" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let f = local fb (nl rt.fib) in
+      [ Lget 0; text rt "Cancel"; Lget 1; call rt "as_task"; struct_get rt.task t_fib; Lset f;
+        Lget f; ref_is_null; If (Bnone, [ missing; ret ], []);
+        Lget f; struct_get rt.fib fb_cancelled; If (Bnone, [ missing; ret ], []);
+        Lget f; I32 1; struct_set rt.fib fb_cancelled;
+        Lget f; Gget (current rt); ref_eq; If (Bnone, [ host rt "unwind" ], []);
+        Lget f; as_non_null; call rt "wake_fib"; missing ]);
+  (* From the loader: the timer of a wait ran out. *)
+  def "x_timeout" (fun rt -> [ nn rt.fib ], [], fun _ ->
+      [ Lget 0; struct_get rt.fib fb_parks ] @ i32_and1 @ [ If (Bnone, [ Lget 0; I32 1; struct_set rt.fib fb_late; Lget 0; call rt "wake_fib" ], []) ]);
+  (* sys.Sleep: 0 lets the fibers ready run first. *)
+  def "sleep" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let secs = local fb F64 and f = local fb (nn rt.fib) and timer = local fb I32 in
+      [ Lget 0; Lget 1; call rt "duration"; Lset secs;
+        Lget secs; F64 0.; f64_le;
+        If (Bnone, [ I32 1; Lget 1; call rt "park"; I32 2; i32_eq; If (Bnone, [ host rt "unwind" ], []); missing; ret ], []);
+        call rt "cur"; Lset f; call rt "begin_park"; drop;
+        Lget f; Lget secs; host rt "timer"; Lset timer;
+        I32 0; Lget 1; call rt "park"; I32 2; i32_eq; If (Bnone, [ Lget timer; host rt "untimer"; host rt "unwind" ], []);
+        missing ]);
+  def "now" (fun rt -> [], [ v ], fun _ -> [ host rt "now"; call rt "box_f" ])
+
+(* Values to JavaScript and back, for the loader: what a value is (0 missing, 1 an integer, 2 a float, 3 a boolean, 4 a text,
+   5 a list, 6 a channel, 7 anything else), its number, the bytes of a text through the second page, a list's cells; a
+   text, a number (an integer when it is one), a boolean and a list made from JavaScript. *)
+let () =
+  def "x_kind" (fun rt -> [ v ], [ I32 ], fun _ ->
+      [ Lget 0; ref_is_null; If (Bnone, [ I32 0; ret ], []);
+        Lget 0; call rt "is_int"; If (Bnone, [ I32 1; ret ], []);
+        Lget 0; Test (false, T rt.boxf); If (Bnone, [ I32 2; ret ], []);
+        Lget 0; g_true rt; ref_eq; Lget 0; g_false rt; ref_eq; i32_or; If (Bnone, [ I32 3; ret ], []);
+        Lget 0; Test (false, T rt.bytes); If (Bnone, [ I32 4; ret ], []);
+        Lget 0; Test (false, T rt.list); If (Bnone, [ I32 5; ret ], []);
+        Lget 0; Test (false, T rt.chan); If (Bval I32, [ I32 6 ], [ I32 7 ]) ]);
+  def "x_num" (fun rt -> [ v ], [ F64 ], fun _ ->
+      [ Lget 0; g_true rt; ref_eq; If (Bnone, [ F64 1.; ret ], []); Lget 0; g_false rt; ref_eq; If (Bnone, [ F64 0.; ret ], []);
+        Lget 0; call rt "as_float" ]);
+  def "x_size" (fun rt -> [ v ], [ I32 ], fun _ -> [ Lget 0; Cast (false, T rt.bytes); array_len ]);
+  def "x_bytes" (fun rt -> [ v; I32; I32 ], [], fun fb ->
+      let b = local fb (nn rt.bytes) and i = local fb I32 in
+      [ Lget 0; Cast (false, T rt.bytes); Lset b ]
+      @ upto i 2 [ Lget i; Lget b; Lget 1; Lget i; i32_add; array_get_u rt.bytes; store8 window ]);
+  def "x_count" (fun rt -> [ v ], [ I32 ], fun _ -> [ Lget 0; Cast (false, T rt.list); call rt "cells" ]);
+  def "x_item" (fun rt -> [ v; I32 ], [ v ], fun _ -> [ Lget 0; Cast (false, T rt.list); Lget 1; call rt "elem" ]);
+  def "x_text" (fun rt -> [ I32 ], [ v ], fun _ -> [ Lget 0; array_new_default rt.bytes ]);
+  def "x_fill" (fun rt -> [ v; I32; I32 ], [], fun fb ->
+      let b = local fb (nn rt.bytes) and i = local fb I32 in
+      [ Lget 0; Cast (false, T rt.bytes); Lset b ]
+      @ upto i 2 [ Lget b; Lget 1; Lget i; i32_add; Lget i; load8 window; array_set rt.bytes ]);
+  def "x_number" (fun rt -> [ F64 ], [ v ], fun _ ->
+      [ Lget 0; f64_trunc; Lget 0; f64_eq; Lget 0; f64_abs; F64 9007199254740992.; f64_le; i32_and;
+        If (Bval v, [ Lget 0; i64_trunc_sat; call rt "box_i" ], [ Lget 0; call rt "box_f" ]) ]);
+  def "x_boolean" (fun rt -> [ I32 ], [ v ], fun _ -> [ Lget 0; If (Bval v, [ g_true rt ], [ g_false rt ]) ]);
+  def "x_list" (fun rt -> [ I32 ], [ v ], fun _ -> [ Lget 0; array_new_default rt.vals ]);
+  def "x_put" (fun rt -> [ v; I32; v ], [], fun _ -> [ Lget 0; Cast (false, T rt.vals); Lget 1; Lget 2; array_set rt.vals ]);
+  def "x_listed" (fun rt -> [ v ], [ v ], fun fb ->
+      let a = local fb (nn rt.vals) in
+      [ Lget 0; Cast (false, T rt.vals); Lset a; I32 1; Lget a; array_len; Lget a; call rt "list_of" ])
+
+(* The exports that the loader calls: [flush] always; for fibers and js.Call, the ones of their values. *)
+let export_all rt names = List.iter (fun n -> if not (List.exists (fun (e, _) -> e = n) (Vec.to_list rt.m.exports)) then Wasm.export rt.m n (need rt ("x_" ^ n))) names
+let for_js rt = export_all rt [ "kind"; "num"; "size"; "bytes"; "count"; "item"; "text"; "fill"; "number"; "boolean"; "list"; "put"; "listed"; "post"; "shut" ]
+let for_fibers rt = export_all rt [ "text"; "fill"; "ended"; "timeout" ]
