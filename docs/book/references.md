@@ -338,7 +338,6 @@ BLAKE2 is under [Cryptography](#cryptography), QuickCheck and the shrinking of H
 - V. I. Levenshtein. "Binary codes capable of correcting deletions, insertions, and reversals". *Soviet Physics Doklady*
   10(8):707–710, 1966; the Russian original, 1965: <https://www.mathnet.ru/eng/dan31411>. The edit distance of
   [algo.Levenshtein].
-
 - Jonathan Richard Shewchuk. "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates".
   *Discrete & Computational Geometry* 18(3):305–363, 1997. <https://doi.org/10.1007/PL00009321>. The exact sum of
   floats whose sign decides the few cases of [math.Cbrt] near the middle of two floats.

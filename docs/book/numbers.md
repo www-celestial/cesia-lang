@@ -255,8 +255,9 @@ rain = [0.0, 0.0, 0.2, 1.5, 12.0, 0.4, 0.0, 30.0]
 
 **1. Find the holes.** [math.IsNan] finds the NaN, and `value.IsMissing` the missing value: they are not the same
 thing, a number that went wrong and no number at all, but both are holes. numpy and MATLAB have NaN alone for both, and
-R has both, `NaN` and `NA`, which `is.na` finds together; MATLAB's `fillmissing` of step 2 is in its core, and in a package of Octave. [math.IsFinite] keeps the numbers that are neither, and an
-infinity of a broken sensor would go with them:
+R has both, `NaN` and `NA`, which `is.na` finds together; the MATLAB tab of step 2 fills by index, as `fillmissing` is
+in a package of Octave. [math.IsFinite] keeps the numbers that are neither, and an infinity of a broken sensor would go
+with them:
 
 ```cesia
 holes = [value.IsMissing(x) or math.IsNan(x) for x in temp]
