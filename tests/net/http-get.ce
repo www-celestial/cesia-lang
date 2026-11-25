@@ -29,12 +29,14 @@ end
 
 summary(r) = r then result.MapOk(x -> [x.Status, x.Body, value.Len(x.Headers)])
 
-listener = result.Unwrap(net.Listen(18097))
+listener = result.Unwrap(net.Listen(0))
+raw = net.Port(listener)
+served = net.Listen(0)!
 fiber.Spawn(() -> rawServer(listener))
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 201, Body: "é"}), port = 18098))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 201, Body: "é"}), listener = served))
 sys.Sleep(0)
-io.Print(http.Fetch("http://127.0.0.1:18097/a") then summary)
-io.Print(http.Fetch("http://127.0.0.1:18097/b?x=1") then summary)
-io.Print(http.Fetch("http://127.0.0.1:18097") then summary)
-io.Print(http.Fetch("http://127.0.0.1:18097/keep") then summary)
-io.Print(http.Fetch("http://127.0.0.1:18098/") then summary)
+io.Print(http.Fetch("http://127.0.0.1:$raw/a") then summary)
+io.Print(http.Fetch("http://127.0.0.1:$raw/b?x=1") then summary)
+io.Print(http.Fetch("http://127.0.0.1:$raw") then summary)
+io.Print(http.Fetch("http://127.0.0.1:$raw/keep") then summary)
+io.Print(http.Fetch("http://127.0.0.1:$(net.Port(served))/") then summary)

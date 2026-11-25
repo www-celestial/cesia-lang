@@ -4,10 +4,10 @@ row 3
  chunked text/csv
 HEAD, the head alone: true
 HTTP/1.0, no chunks: true
-http-stream.ce:26:6: no more rows
-  26 |   bug.Panic("no more rows")
+http-stream.ce:29:6: no more rows
+  29 |   bug.Panic("no more rows")
      |      ^
-  in broken (http-stream.ce:26)
+  in broken (http-stream.ce:29)
   called from <anonymous> (std/http.ce:204)
   called from pour (std/http.ce:204)
 Err("This chunked body is cut short.")

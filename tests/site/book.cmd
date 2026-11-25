@@ -2,15 +2,20 @@
 t=$(mktemp -d)
 cp -r proj "$t/"
 cd "$t/proj"
+# The server of files.md listens on a port the system gave free, which the pages show as 18751, the number that stands
+# for it there: a port written in a test could be held by another test running beside it. Not sed -i, which macOS reads
+# otherwise.
+port=$(cesia run --allow net=own "$root/tests/free-port.ce")
+sed "s/18751/$port/g" docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
 export XDG_CACHE_HOME="$t/cache"
 cesia doc --site > /dev/null
 echo "built: $?"
 for page in index first files; do
   echo "== $page.html"
-  sed -n '/<main/,/<\/main>/p' "site/$page.html"
+  sed -n '/<main/,/<\/main>/p' "site/$page.html" | sed "s/$port/18751/g"
 done
 echo "== the tabs, for tools/tabs.ce: each with what its cesia block showed"
-sed "s#$t#TMP#g" site/.tabs; echo
+sed "s#$t#TMP#g; s/$port/18751/g" site/.tabs; echo
 echo "== the columns of a method: its module, then its struct, then itself"
 sed -n '/<nav class="side"/,/<\/nav>/p' site/ref/src/greet/Greeter.Say.html | grep -E 'greet|Greeter|Say|Hello'
 grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html

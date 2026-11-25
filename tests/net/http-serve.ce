@@ -8,6 +8,9 @@ use std/regex
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "$(r.Method) $(r.Path) $(r.Query["x"]) $(r.Headers[2].Value)"}
 
@@ -17,7 +20,7 @@ defn exchange(c, request)
 end
 
 defn client()
-  c = net.Connect("127.0.0.1", 18090)?
+  c = net.Connect("127.0.0.1", port)?
   request = "GET /a?x=1 HTTP/1.1$(crlf)Host: cesia$(crlf)X-Two: 2$(crlf)$crlf"
   first = exchange(c, request)?
   second = exchange(c, request)?
@@ -25,7 +28,7 @@ defn client()
   result.Ok([first, second])
 end
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18090))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 (* The Date of each response, which changes with the clock, is checked by tests/net/http-date.ce. *)
 undated(t) = regex.Replace("date: [A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9:]{8} GMT", "date: (now)", t)

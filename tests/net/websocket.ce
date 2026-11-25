@@ -9,6 +9,9 @@ use std/result
 use std/math
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 
 (** Masks a client's payload: each byte xor the byte of the key at its place, the key repeated. *)
@@ -16,7 +19,7 @@ mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k
 
 a = http.App()
 a = http.Websocket("/echo", (m, send) -> send("got $m"), a)
-fiber.Spawn(() -> http.Serve(a, port = 18202))
+fiber.Spawn(() -> http.Serve(a, listener = served))
 sys.Sleep(0.05)
 
 defn masked(opcode, textValue)
@@ -26,7 +29,7 @@ defn masked(opcode, textValue)
 end
 
 defn main()
-  c = net.Connect("127.0.0.1", 18202)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")?
   head = net.Read(c)?
   io.Print(text.Split(crlf, head)[1])

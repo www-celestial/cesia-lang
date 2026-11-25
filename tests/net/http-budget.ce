@@ -9,13 +9,16 @@ use std/result
 use std/text
 use std/value
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 size = 1000000
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(text.ByteLength(r.Body))"}), port = 18403))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(text.ByteLength(r.Body))"}), listener = served))
 sys.Sleep(0)
 
 defn begin()
-  c = net.Connect("127.0.0.1", 18403)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "POST / HTTP/1.1$(crlf)Host: a$(crlf)Content-Length: $size$(crlf)$(crlf)0123456789")?
   sys.Sleep(0.05)
   result.Ok(c)

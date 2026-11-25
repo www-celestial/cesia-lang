@@ -7,8 +7,11 @@ use std/fiber
 use std/io
 use std/result
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 defn garbage()
-  c = net.Connect("127.0.0.1", 18210)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "not TLS")?
   net.Read(c)
   net.Close(c)
@@ -18,7 +21,7 @@ end
 defn main()
   api = tls.Open()?
   wrap = tls.Server(sys.Args[1], sys.Args[2], api)?
-  fiber.Spawn(() -> http.Serve(http.App(), port = 18210, wrap = wrap))
+  fiber.Spawn(() -> http.Serve(http.App(), listener = served, wrap = wrap))
   sys.Sleep(0.05)
   for k in 1..600
     garbage()?

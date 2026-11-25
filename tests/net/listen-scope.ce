@@ -3,6 +3,7 @@ use std/net
 use std/io
 use std/sys
 use std/result
+use std/text
 host = sys.Args[1]
-l = net.Listen(18301, host = host)
+l = net.Listen(text.Number(sys.Args[2]), host = host)
 io.Print(l then result.MapOk(_ -> "listening on $host", it))

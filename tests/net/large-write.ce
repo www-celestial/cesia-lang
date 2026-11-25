@@ -23,13 +23,14 @@ defn readAll(c, total)
 end
 
 defn client()
-  c = net.Connect("127.0.0.1", 18087)?
+  c = net.Connect("127.0.0.1", port)?
   first = net.Read(c)?
   fiber.Wait(fiber.Spawn(() -> io.Print("ticking")))
   readAll(c, value.Len(first))
 end
 
-listener = result.Unwrap(net.Listen(18087))
+listener = result.Unwrap(net.Listen(0))
+port = net.Port(listener)
 server = fiber.Spawn(() -> serveBig(listener))
 sys.Sleep(0)
 io.Print(client())

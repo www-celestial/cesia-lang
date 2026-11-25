@@ -1,4 +1,4 @@
-tests/isolation.ce:46: isFailsAndKeepsItsTemp returned false
+tests/isolation.ce:47: isFailsAndKeepsItsTemp returned false
   Its Temp folder is kept: TMP/16-isFailsAndKeepsItsTemp
 15 passed, 1 failed
 exit 1

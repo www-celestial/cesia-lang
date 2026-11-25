@@ -8,6 +8,9 @@ use std/io
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 defn handle(r)
   if r.Path == "/slow"
@@ -15,11 +18,11 @@ defn handle(r)
   end
   {Status: 200, Body: "done"}
 end
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18402, timeout = 0.2))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served, timeout = 0.2))
 sys.Sleep(0)
 
 defn get(path)
-  c = net.Connect("127.0.0.1", 18402)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   reply = net.Read(c)?
   closed = net.Read(c)?

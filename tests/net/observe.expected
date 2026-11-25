@@ -1,4 +1,4 @@
-{"time":T,"level":"info","message":"started","Port":18412}
+{"time":T,"level":"info","message":"started","Port":P}
 {"time":T,"level":"info","message":"request","Method":"GET","Path":"/","Status":200,"Ms":M}
 {"time":T,"level":"info","message":"request","Method":"GET","Path":"/","Status":200,"Ms":M}
 {"time":T,"level":"info","message":"request","Method":"GET","Path":"/nowhere","Status":404,"Ms":M}

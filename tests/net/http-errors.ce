@@ -7,11 +7,14 @@ use std/list
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "ok"}
 
 defn statusOf(request)
-  c = net.Connect("127.0.0.1", 18092)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, request)?
   reply = net.Read(c)?
   net.Close(c)
@@ -25,7 +28,7 @@ badHeader = "GET / HTTP/1.1$(crlf)no colon here$(crlf)$crlf"
 
 twoSizes = "POST / HTTP/1.1$(crlf)Content-Length: 3$(crlf)Content-Length: 1$(crlf)$(crlf)abc"
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18092))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 io.Print(statusOf("garbage$crlf$crlf"))
 io.Print(statusOf(bigHeader))

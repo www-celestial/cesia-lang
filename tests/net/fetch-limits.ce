@@ -9,7 +9,6 @@ use std/sys
 use std/text
 
 crlf = "\r\n"
-port = 18462
 
 defn serveOne(listener, talk)
   c = net.Accept(listener)?
@@ -20,9 +19,9 @@ defn serveOne(listener, talk)
 end
 
 defn ask(talk, timeout = 300, maxBody = missing)
-  listener = net.Listen(port)?
+  listener = net.Listen(0)?
   server = fiber.Spawn(() -> serveOne(listener, talk))
-  got = http.Fetch("http://127.0.0.1:$port/", timeout = timeout, maxBody = maxBody)
+  got = http.Fetch("http://127.0.0.1:$(net.Port(listener))/", timeout = timeout, maxBody = maxBody)
   fiber.Wait(server)
   net.Close(listener)
   got

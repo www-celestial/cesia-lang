@@ -4,6 +4,7 @@
 # mistake stops the build and names its place: an image that isn't there, from elsewhere, outside images/ or with no
 # text; a file of images/ that is no image a browser shows, an SVG that is no drawing, a link.
 t=$(mktemp -d)
+port=$(cesia run --allow net=own "$root/tests/free-port.ce")
 trap 'rm -rf "$t"' EXIT
 export XDG_CACHE_HOME="$t/cache"
 here=$PWD
@@ -11,8 +12,9 @@ fresh() {
   rm -rf "$t/proj"
   cp -r "$here/proj" "$t/"
   cd "$t/proj" || exit 99
-  # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
-  sed 's/18751/18754/g' docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
+  # The server of files.md listens on a port the system gave free: 18751 there stands for it, and another test could
+  # hold it. Not sed -i, which macOS reads otherwise.
+  sed "s/18751/$port/g" docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
   mkdir -p docs/book/images/parts docs/guides/images
   # A PNG of one pixel, and a drawing made by hand with the shapes of SVG.
   echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > docs/book/images/dot.png

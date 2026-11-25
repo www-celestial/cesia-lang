@@ -1,6 +1,8 @@
 use std/net
 use std/io
-c = net.Connect("127.0.0.1", 18088)
+use std/sys
+use std/text
+c = net.Connect("127.0.0.1", text.Number(sys.Args[1]))
 io.Print("started")
 defn forever()
   while true end

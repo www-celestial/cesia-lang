@@ -2,12 +2,16 @@
 use std/dict
 use std/fiber
 use std/http
+use std/net
 use std/io
 use std/result
 use std/sys
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 signed(next, r) = next(dict.Put("User", "Ana", r))
 app = http.App() then http.Get("/", r -> http.Plain("$(r.User) from $(r.Peer)")) then http.Wrap(signed)
-fiber.Spawn(() -> http.Serve(app, port = 18117))
+fiber.Spawn(() -> http.Serve(app, listener = served))
 sys.Sleep(0)
-io.Print(http.Fetch("http://127.0.0.1:18117/") then result.MapOk(x -> x.Body))
+io.Print(http.Fetch("http://127.0.0.1:$port/") then result.MapOk(x -> x.Body))

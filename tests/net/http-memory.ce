@@ -8,13 +8,16 @@ use std/matrix
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: if r.Path == "/big" "$(matrix.Zeros(4000000)[1])" else "small" end}
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18404))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 
 defn get(path)
-  c = net.Connect("127.0.0.1", 18404)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   reply = net.Read(c)?
   net.Close(c)

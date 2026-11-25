@@ -214,22 +214,24 @@ wait_for out "pack 7" 2000 || fail "7: a function moved to the other file"
 no_internal "package"
 stop
 
-# An HTTP server: a change applies when it is idle, and under load without a failed request.
-sed 's/19100/19102/' bench/http.ce > "$dir/server.ce"
+# An HTTP server: a change applies when it is idle, and under load without a failed request. Its port is one the system
+# gave free: one written here could be held by a server of another suite running beside.
+port=$("$cesia" run --allow net=own tests/free-port.ce)
+sed "s/19100/$port/" bench/http.ce > "$dir/server.ce"
 get() {
-  exec 3<>/dev/tcp/127.0.0.1/19102
+  exec 3<>/dev/tcp/127.0.0.1/$port
   printf 'GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n' >&3
   tail -c 1000 <&3 | tail -1
   exec 3<&-
 }
-(cd "$dir" && exec "$cesia" run --watch $flags --allow net=:19102 server.ce) > "$dir/out" 2> "$dir/err" &
+(cd "$dir" && exec "$cesia" run --watch $flags --allow net=:$port server.ce) > "$dir/out" 2> "$dir/err" &
 pid=$!
-for _ in $(seq 1 50); do (exec 3<>/dev/tcp/127.0.0.1/19102) 2>/dev/null && break; sleep 0.05; done
+for _ in $(seq 1 50); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null && break; sleep 0.05; done
 [ "$(get)" = "Cesia" ] || fail "server: first answer"
 sed -i 's/Body: "Cesia"/Body: "Idle"/' "$dir/server.ce"
 sleep 0.15
 [ "$(get)" = "Idle" ] || fail "server: a change while idle"
-_build/default/bench/http_load.exe --port 19102 --connections 20 --seconds 1 > "$dir/load" 2>&1 &
+_build/default/bench/http_load.exe --port $port --connections 20 --seconds 1 > "$dir/load" 2>&1 &
 load=$!
 sleep 0.3
 sed -i 's/Body: "Idle"/Body: "Busy"/' "$dir/server.ce"

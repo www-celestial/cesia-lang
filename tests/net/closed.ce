@@ -1,7 +1,7 @@
 use std/net
 use std/io
 use std/result
-l = result.Unwrap(net.Listen(18085))
+l = result.Unwrap(net.Listen(0))
 net.Close(l)
 net.Close(l)
 io.Print(net.Accept(l) then result.MapErr(it.Kind))

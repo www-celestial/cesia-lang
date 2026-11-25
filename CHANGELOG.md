@@ -358,6 +358,11 @@
 
 ### Fixes
 
+- The tests that listen, of `tests/net`, `tests/sys`, `tests/tls`, `tests/testing` and the book of `tests/site`, the
+  OCaml tests of `std/net` and `tools/reload-test.sh`, take a port that the system gives free, `net.Listen(0)` and
+  `net.Port`, or `tests/free-port.ce` where a `--allow` or another process names it first, where each wrote its own:
+  two suites running side by side, or a server of another program, took the same port, and a test failed that had no
+  fault.
 - `cesia fmt` reads an `if` that takes no `end` as the parser does: `a if c else b`, a guard `return x if c` or
   `break if c`, opens no block, where it opened one that no `end` closed, so that every line after it moved two spaces
   in: ten files of Ceres and two of Cesia's tests were named out of the style for it. An `if` after the `else` of

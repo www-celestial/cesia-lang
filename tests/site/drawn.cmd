@@ -3,6 +3,7 @@
 # is no image of the block. Only a drawing is shown: an image with a script, a link, a file it would load or an element a
 # drawing has no use for stops the build, so that nothing in the site runs, even an image opened alone.
 t=$(mktemp -d)
+port=$(cesia run --allow net=own "$root/tests/free-port.ce")
 trap 'rm -rf "$t"' EXIT
 export XDG_CACHE_HOME="$t/cache"
 f='```'
@@ -17,8 +18,9 @@ fresh() {
   rm -rf "$t/proj"
   cp -r "$here/proj" "$t/"
   cd "$t/proj" || exit 99
-  # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
-  sed 's/18751/18753/g' docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
+  # The server of files.md listens on a port the system gave free: 18751 there stands for it, and another test could
+  # hold it. Not sed -i, which macOS reads otherwise.
+  sed "s/18751/$port/g" docs/book/files.md > "$t/files.md" && mv "$t/files.md" docs/book/files.md
 }
 fresh
 printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"><rect width="4" height="2"/></svg>' > docs/book/files/kept.svg

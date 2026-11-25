@@ -1,12 +1,13 @@
 # Each way: the program gets TERM once its child runs; the child must be gone after it.
 for serve in no yes; do
   out=$(mktemp)
-  SERVE=$serve "$root/_build/default/src/bin/main.exe" run $no_spec --allow exec=sh,env=SERVE,net=:18407 stop-children.ce > "$out" 2>&1 &
+  port=$("$root/_build/default/src/bin/main.exe" run --allow net=own "$root/tests/free-port.ce")
+  SERVE=$serve "$root/_build/default/src/bin/main.exe" run $no_spec --allow exec=sh,env=SERVE,net=:$port stop-children.ce $port > "$out" 2>&1 &
   pid=$!
   line=""
   for _ in $(seq 1 500); do read -r line < "$out"; [ -n "$line" ] && break; sleep 0.01; done
   child=${line#child }
-  [ "$serve" = yes ] && for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/18407) 2> /dev/null && break; sleep 0.01; done
+  [ "$serve" = yes ] && for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2> /dev/null && break; sleep 0.01; done
   kill -TERM $pid
   wait $pid
   code=$?

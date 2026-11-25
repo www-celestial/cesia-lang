@@ -1,22 +1,23 @@
 # HUP replaces the workers by new ones, from the file as it is now, while two clients ask without a pause, one on kept
 # connections and one on a new connection for each request: not one request fails. Then a version that can't start:
 # the running workers stay.
+port=$("$root/_build/default/src/bin/main.exe" run --allow net=own "$root/tests/free-port.ce")
 dir=$(mktemp -d)
 cp workers-reload.ce "$dir/server.ce"
 load="$root/_build/default/bench/http_load.exe"
 ask() {
-  exec 3<>/dev/tcp/127.0.0.1/18411 || return 1
+  exec 3<>/dev/tcp/127.0.0.1/$port || return 1
   printf 'GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n' >&3
   tail -1 <&3
   exec 3<&-
 }
-(cd "$dir" && exec "$root/_build/default/src/bin/main.exe" run $no_spec --workers 2 --allow net=:18411 server.ce) > "$dir/out" 2>&1 &
+(cd "$dir" && exec "$root/_build/default/src/bin/main.exe" run $no_spec --workers 2 --allow net=:$port server.ce $port) > "$dir/out" 2>&1 &
 pid=$!
-for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/18411) 2> /dev/null && break; sleep 0.01; done
+for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2> /dev/null && break; sleep 0.01; done
 echo "before: $(ask)"
-"$load" --port 18411 --connections 20 --seconds 2 > "$dir/kept" &
+"$load" --port $port --connections 20 --seconds 2 > "$dir/kept" &
 kept=$!
-"$load" --port 18411 --connections 4 --seconds 2 --new > "$dir/new" &
+"$load" --port $port --connections 4 --seconds 2 --new > "$dir/new" &
 new=$!
 sleep 0.5
 sed -i.bak 's/version = "first"/version = "second"/' "$dir/server.ce"

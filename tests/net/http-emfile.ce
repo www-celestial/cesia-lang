@@ -6,6 +6,9 @@ use std/io
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "fine"}
 
@@ -13,7 +16,7 @@ defn openAll(n, opened)
   if n == 0
     opened
   else
-    match net.Connect("127.0.0.1", 18094)
+    match net.Connect("127.0.0.1", port)
       result.Ok(c) -> openAll(n - 1, [c, opened])
       else -> opened
     end
@@ -25,9 +28,9 @@ defn ask(c)
   net.Read(c) then result.MapOk(reply -> text.Split(crlf, reply)[1])
 end
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18094))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
-first = result.Unwrap(net.Connect("127.0.0.1", 18094))
+first = result.Unwrap(net.Connect("127.0.0.1", port))
 io.Print(ask(first))
 openAll(100, missing)
 sys.Sleep(0.4)

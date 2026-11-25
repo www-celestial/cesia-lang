@@ -1,7 +1,7 @@
-http-memory.ce:12:62: Limit "memory" reached.
-  12 | handle(r) = {Status: 200, Body: if r.Path == "/big" "$(matrix.Zeros(4000000)[1])" else "small" end}
+http-memory.ce:15:62: Limit "memory" reached.
+  15 | handle(r) = {Status: 200, Body: if r.Path == "/big" "$(matrix.Zeros(4000000)[1])" else "small" end}
      |                                                              ^
-  in handle (http-memory.ce:12)
+  in handle (http-memory.ce:15)
   called from dispatch (std/http.ce:917)
   called from <anonymous> (std/http.ce:928)
   called from <anonymous> (std/http.ce:175)

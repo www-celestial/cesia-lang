@@ -1,8 +1,9 @@
+port=$("$root/_build/default/src/bin/main.exe" run --allow net=own "$root/tests/free-port.ce")
 out=$(mktemp)
-"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:18406 stop-twice.ce > "$out" 2>&1 &
+"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:$port stop-twice.ce $port > "$out" 2>&1 &
 pid=$!
-for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/18406) 2> /dev/null && break; sleep 0.01; done
-exec 3<>/dev/tcp/127.0.0.1/18406
+for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2> /dev/null && break; sleep 0.01; done
+exec 3<>/dev/tcp/127.0.0.1/$port
 printf 'GET / HTTP/1.1\r\nHost: a\r\n\r\n' >&3
 sleep 0.1
 start=$SECONDS
