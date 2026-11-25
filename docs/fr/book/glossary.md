@@ -1050,7 +1050,8 @@ et les défait tous sur un `Err` ou une panic : voir [SQLite](sqlite.md#transact
 
 Un arbre où chaque niveau est choisi par un morceau de la clé, comme un dictionnaire de mots est rangé par leur première
 lettre, puis la deuxième. Dans un hash trie, les morceaux viennent du hash de la clé : voir
-[hash array mapped trie](#hash-array-mapped-trie).
+[hash array mapped trie](#hash-array-mapped-trie). [http.Handler] range les routes dans un trie, un niveau pour chaque
+partie de leurs chemins : voir [HTTP](http.md#comment-une-requête-trouve-sa-route).
 
 ## Type coercion
 

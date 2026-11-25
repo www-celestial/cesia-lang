@@ -3,6 +3,11 @@
 A small language for solving real problems directly: a script that cleans a CSV, a web server on a database, a program that
 drives other programs. It starts at once, it is safe by default, and when something goes wrong it says what to write.
 
+**Documentation: https://www-celestial.github.io/cesia-lang/** (in French: https://www-celestial.github.io/cesia-lang/fr/)
+
+The family: [Cesia](https://www-celestial.github.io/cesia-lang/) (the language) · [Cemacs](https://www-celestial.github.io/cemacs/) (the editor) ·
+[Cepheus](https://www-celestial.github.io/cepheus/) (the database) · [Ceti](https://www-celestial.github.io/ceti/) (the browser driver).
+
 ```cesia
 use std/http
 

@@ -4,6 +4,11 @@ Un petit langage pour résoudre directement de vrais problèmes : un script qui 
 données, un programme qui pilote d'autres programmes. Il démarre tout de suite, il est sûr par défaut, et quand quelque chose
 ne va pas, il dit quoi écrire.
 
+**Documentation : https://www-celestial.github.io/cesia-lang/fr/** (en anglais : https://www-celestial.github.io/cesia-lang/)
+
+La famille : [Cesia](https://www-celestial.github.io/cesia-lang/) (le langage) · [Cemacs](https://www-celestial.github.io/cemacs/) (l'éditeur) ·
+[Cepheus](https://www-celestial.github.io/cepheus/) (la base de données) · [Ceti](https://www-celestial.github.io/ceti/) (le pilote de navigateur).
+
 ```cesia
 use std/http
 

@@ -8,8 +8,8 @@ http-stream.ce:26:6: no more rows
   26 |   bug.Panic("no more rows")
      |      ^
   in broken (http-stream.ce:26)
-  called from <anonymous> (std/http.ce:190)
-  called from pour (std/http.ce:190)
+  called from <anonymous> (std/http.ce:203)
+  called from pour (std/http.ce:203)
 Err("This chunked body is cut short.")
 meanwhile: pong
 the slow client got some pieces, not all: true

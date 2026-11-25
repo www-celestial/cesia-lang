@@ -975,6 +975,8 @@ Changes to a database that happen all together or not at all. SQLite's are ACID:
 
 A tree where each level is chosen by one piece of the key, as a dictionary of words is ordered by their first letter, then
 the second. In a hash trie the pieces come from the key's hash: see [hash array mapped trie](#hash-array-mapped-trie).
+[http.Handler] keeps the routes in one, a level for each part of their paths: see
+[HTTP](http.md#how-a-request-finds-its-route).
 
 ## Type coercion
 
