@@ -968,7 +968,9 @@ let () =
         Lget 0; Test (false, T rt.recd);
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc;
                      Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 1; Lget 1; call rt "find_name"; Lset k;
-                     Lget k; I32 0; i32_lt_s; If (Bnone, fail rt (Messages.no_field a1) [ [ Lget 1 ] ] [ Lget 3 ], []);
+                     Lget k; I32 0; i32_lt_s;
+                     If (Bnone, fail rt (Messages.named_field "\003" a2 |> fun m -> { m with text = replace m.text [ "\003", a1 ] })
+                                  [ [ Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 0 ]; [ Lget 1 ] ] [ Lget 3 ], []);
                      Lget rc; struct_get rt.recd r_owned; i32_eqz;
                      If (Bnone, [ Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
                                   Lget w; I32 0; Lget rc; struct_get rt.recd r_fields; I32 0; Lget n; array_copy rt.vals rt.vals;
@@ -1011,3 +1013,18 @@ let cache rt =
   let g = "cache" ^ string_of_int !caches in
   Wasm.global rt.m g (nn rt.cache) false [ Rnull None_; I32 0; struct_new rt.cache ];
   Gget g
+
+(* An index of any type: a map's key, else a whole number of a list. *)
+let () =
+  def "index_v" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let mp = local fb (nl rt.map) and k = local fb I32 in
+      [ Lget 0; Test (false, T rt.map); Lget 1; Test (false, T rt.bytes); i32_and;
+        If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp;
+                     Lget mp; struct_get rt.map m_keys; struct_get rt.keys 0; Lget 1; Cast (false, T rt.bytes); call rt "find_name"; Lset k;
+                     Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; call rt "share"; ret ], []) ]
+                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
+        Lget 0; Lget 1; Lget 2; call rt "whole"; Lget 2; call rt "index" ]);
+  def "set_index_v" (fun rt -> [ v; v; v; I32 ], [ v ], fun _ ->
+      [ Lget 0; Test (false, T rt.map); Lget 1; Test (false, T rt.bytes); i32_and;
+        If (Bnone, [ Lget 0; Lget 1; Cast (false, T rt.bytes); Lget 2; Lget 3; call rt "set_field"; ret ], []);
+        Lget 0; Lget 1; Lget 3; call rt "whole"; Lget 2; Lget 3; call rt "set_index" ])

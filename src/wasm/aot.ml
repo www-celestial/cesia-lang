@@ -244,7 +244,7 @@ and natural fc (e : expr) : kind * ins list =
   | If (c, y, n) -> k, cond fc c @ [ iff fc (Bval (vt_of k)) (fun () -> block_value fc y k) (fun () -> block_value fc n k) ]
   | Call call -> call_expr fc e call
   | Lambda f -> V, closure fc f
-  | Range (a, b) -> V, bound fc a @ bound fc b @ site fc e.pos @ [ call rt "range" ]
+  | Range (a, b) -> V, bound fc a e.pos @ bound fc b e.pos @ site fc e.pos @ [ call rt "range" ]
   | In_op _ -> unsupported fc e.pos "in"
   | Array_lit rows -> V, array_lit fc e rows
   | Comp { cbody; cvar; csrc; cguard } -> V, comprehension fc e cbody cvar csrc cguard
@@ -278,7 +278,7 @@ and stmt fc (e : expr) : ins list =
       (* A function that calls itself holds itself in its captured values. *)
       let self = List.filter_map (fun (j, (outer, _)) -> if outer = i then Some j else None) (List.mapi (fun j p -> j, p) (Array.to_list f.captures)) in
       let g = Rt.local fc.fb Rt.v in
-      closure fc f @ [ Ltee g ]
+      closure fc f @ [ Lset g ]
       @ List.concat_map (fun j -> [ Lget g; Cast (false, T rt.fn); struct_get rt.fn f_env; as_non_null; I32 j; Lget g; array_set rt.vals ]) self
       @ write_var fc n e.pos [ Lget g ] V
     end
@@ -393,6 +393,11 @@ and var fc e (n : name) : kind * ins list =
   | Cell { m; k; stable = true } ->
     (match fc.st.w.modules.(m).cells.(k) with
      | Fun { proto; env = [||] } -> V, [ fn_global fc.st proto ]
+     | Float x when fc.st.w.modules.(m).path = "" -> F, [ F64 x ]
+     | Int i when fc.st.w.modules.(m).path = "" -> I, [ i64 i ]
+     | Text s when fc.st.w.modules.(m).path = "" -> V, [ text rt s ]
+     | (True | False) as b when fc.st.w.modules.(m).path = "" -> V, [ if b = True then g_true rt else g_false rt ]
+     | Missing when fc.st.w.modules.(m).path = "" -> V, [ missing ]
      | Native nat -> unsupported fc e.pos ("the native " ^ nat.nname ^ " as a value")
      | _ -> V, unset_check [ Gget (cell_global fc.st m k) ])
   | Cell { m; k; _ } -> V, unset_check [ Gget (cell_global fc.st m k) ]
@@ -407,10 +412,10 @@ and write_var fc (n : name) pos value k =
   | Unresolved -> unsupported fc pos "an unresolved name"
 
 (* A bound of a..b, as an i64: a float of a whole value is accepted. *)
-and bound fc (e : expr) =
+and bound fc (e : expr) pos =
   match kind fc e with
   | I -> expr fc e I
-  | _ -> expr fc e V @ site fc e.pos @ [ call fc.st.rt "range_bound" ]
+  | _ -> expr fc e V @ site fc pos @ [ call fc.st.rt "range_bound" ]
 
 and array_lit fc e rows =
   let rt = fc.st.rt in
@@ -432,7 +437,7 @@ and for_loop fc (var : name) (iter : expr) body =
   match iter.e with
   | Range (a, b) ->
     let i = Rt.local fc.fb I64 and hi = Rt.local fc.fb I64 in
-    bound fc a @ [ Lset i ] @ bound fc b @ [ Lset hi ]
+    bound fc a iter.pos @ [ Lset i ] @ bound fc b iter.pos @ [ Lset hi ]
     @ [ block fc "break" Bnone (fun () ->
           [ loop fc "loop" Bnone (fun () ->
                 [ Lget i; Lget hi; i64_gt_s; Br_if (depth_of fc "break") ]
@@ -481,8 +486,9 @@ and index_read fc e b ixs uses_end =
     (match i.e with
      | Range _ -> unsupported fc e.pos "a slice"
      | _ -> ());
-    let idx = with_end (fun () -> match kind fc i with I -> expr fc i I | _ -> expr fc i V @ site fc e.pos @ [ call rt "whole" ]) in
-    if ty fc b == TFA && kind fc e = F then
+    let idx = with_end (fun () -> match kind fc i with I -> expr fc i I | _ -> expr fc i V) in
+    if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index_v" ]
+    else if ty fc b == TFA && kind fc e = F then
       (* A float array: its cell, checked. *)
       let x = Rt.local fc.fb I64 and l = Rt.local fc.fb (Rt.nl rt.list) in
       F, expr fc b V @ [ Lset base ] @ idx @ [ Lset x; Lget base; Cast (false, T rt.list); Lset l;
@@ -623,12 +629,13 @@ and set_path fc e root path value =
   (* The containers along the path: the root, then each level read. *)
   let n = List.length steps in
   let cs = Array.init n (fun _ -> Rt.local fc.fb Rt.v) in
-  let idx = Array.map (fun _ -> Rt.local fc.fb I64) path in
+  let vix (st : step) = match st.sk with Sindex ([| Ix i |], _) -> kind fc i <> I | _ -> false in
+  let idx = Array.map (fun st -> Rt.local fc.fb (if vix st then Rt.v else I64)) path in
   let read_step j (st : step) =
     match st.sk with
     | Sindex ([| Ix i |], uses_end) ->
       if uses_end then fc.ends <- cs.(j) :: fc.ends;
-      let code = (match kind fc i with I -> expr fc i I | _ -> expr fc i V @ site fc st.sp @ [ call rt "whole" ]) @ [ Lset idx.(j) ] in
+      let code = (match kind fc i with I -> expr fc i I | _ -> expr fc i V) @ [ Lset idx.(j) ] in
       if uses_end then fc.ends <- List.tl fc.ends;
       code
     | Sindex _ -> unsupported fc st.sp "this index"
@@ -636,12 +643,12 @@ and set_path fc e root path value =
   in
   let get_step j (st : step) =
     match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt "index" ]
+    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt (if vix st then "index_v" else "index") ]
     | Sfield name -> [ Lget cs.(j); text rt name; cache rt ] @ site fc st.sp @ [ call rt "field" ]
   in
   let set_step j (st : step) v =
     match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt "set_index" ]
+    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt (if vix st then "set_index_v" else "set_index") ]
     | Sfield name -> [ Lget cs.(j); text rt name ] @ v @ site fc st.sp @ [ call rt "set_field" ]
   in
   let x = Rt.local fc.fb Rt.v in
@@ -752,8 +759,13 @@ and dyn_call st n =
 let compile_version st (v : version) name ~hoisted ~main =
   let rt = st.rt in
   let f = Cache.ready v.owner.func in
+  let path = fst (Vec.get st.w.files v.owner.file) in
+  if f.ret <> None then raise (Unsupported (path, f.fpos, "a declared result type"));
+  Array.iter (fun (p : param) -> if p.ptype <> None then raise (Unsupported (path, f.fpos, "a declared parameter type"))) f.params;
   ready st.w v;
   let ps, rs = signature st v in
+  (* A file's level gives nothing that anything reads. *)
+  let rs = if main then [ Rt.v ] else rs in
   let wf = Wasm.func rt.m name ps rs in
   let fb = { Rt.f = wf; n = 0; rev = [] } in
   let np = Array.length f.params in
@@ -768,7 +780,7 @@ let compile_version st (v : version) name ~hoisted ~main =
     { st; fb; ver = v; fn = f; path = fst (Vec.get st.w.files v.owner.file); pname = v.owner.pname; file = v.owner.file;
       pm = v.owner.pm; locs; kinds; env; labels = []; ends = []; hoisted; tail = (if main then -1 else 0) }
   in
-  let rk = kind_of v.ret in
+  let rk = if main then V else kind_of v.ret in
   let generic = match v.owner.generic with Some g -> g == v | None -> false in
   let prologue =
     (* Unset variables, captured values, defaults. *)
@@ -923,6 +935,12 @@ let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [] } in
   ignore (need rt "box_f");
   let hoisted = List.concat_map (fun (_, _, _, (l : layout)) -> List.map snd (Array.to_list l.hoisted)) prepared in
+  List.iter
+    (fun (file, _, (fn : Ast.func), (l : layout)) ->
+       let path = fst (Vec.get w.files file) in
+       if l.methods <> [] then raise (Unsupported (path, fn.fpos, "a method"));
+       if l.interfaces <> [] then raise (Unsupported (path, fn.fpos, "an interface")))
+    prepared;
   let mains =
     List.filter_map
       (fun (file, m, (fn : Ast.func), _) ->
