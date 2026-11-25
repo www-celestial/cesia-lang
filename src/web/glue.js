@@ -16,7 +16,12 @@
 const node = typeof process === 'object' && process.versions != null && process.versions.node != null
 const url = new URL('@WASM@', import.meta.url)
 const readFileSync = node ? (await import('node:fs')).readFileSync : null
-const bytes = node ? readFileSync(url) : await (await fetch(url)).arrayBuffer()
+// The module and the JavaScript modules that js.Call names, all asked for at once: a page compiles the module while its
+// bytes arrive, when the server says application/wasm, and the browser loads those modules meanwhile.
+const compiled = node ? WebAssembly.compile(readFileSync(url)) : fetch(url).then(r =>
+  /^application\/wasm/.test(r.headers.get('content-type') || '') ? WebAssembly.compileStreaming(r) : r.arrayBuffer().then(b => WebAssembly.compile(b)))
+const scripts = new Map(@SCRIPTS@.map(s => [s, import(new URL(s, import.meta.url).href)]))
+for (const p of scripts.values()) p.catch(() => {})
 const SCRATCH = 16384, CALLS = 20480, WINDOW = 65536, SLICE = 8
 const KINDS = ['syntax', 'name', 'type', 'index', 'field', 'math', 'permission', 'user', 'io']
 const jspi = typeof WebAssembly.Suspending === 'function'
@@ -96,7 +101,9 @@ function report (here, depth, kind, calls, m, h, by, fib) {
 // The scheduler: what runs next, in order; the fibers parked, each with what resumes it; one fiber runs at a time.
 const ready = [], parked = new Map(), timers = new Map(), spawned = new WeakMap(), handles = new WeakMap()
 let running = false, kicked = false, over = false, current = null, main = null, paused = false, handed = 0, nextTimer = 1
-let sliceStart = performance.now()
+// A slice starts when the program runs again after it gave the event loop back: after a yield, or after it waited with
+// nothing ready (idle), which a run from an event, a timer or a message ends.
+let sliceStart = performance.now(), idle = false
 // The event loop given back: a message, which costs microseconds; past a frame's time since the last time, through the
 // browser's next frame first, since Firefox runs no frame between messages (measured: 12 frames a second without it).
 const later = node ? f => setImmediate(f) : (() => {
@@ -110,10 +117,14 @@ function kick () { if (!kicked) { kicked = true; queueMicrotask(step) } }
 function step () {
   kicked = false
   if (running || over || paused) return
-  if (ready.length) { running = true; ready.shift()(); return }
+  if (ready.length) {
+    if (idle) { idle = false; sliceStart = performance.now() }
+    running = true; ready.shift()(); return
+  }
   x.flush()
   // Nothing can wake the main program: no fiber ready, no timer, no channel that JavaScript holds.
-  if (timers.size === 0 && handed === 0 && parked.has(main)) { running = true; resume(main, 1) }
+  if (timers.size === 0 && handed === 0 && parked.has(main)) { running = true; resume(main, 1); return }
+  idle = true
 }
 function resume (fib, code) { const r = parked.get(fib); parked.delete(fib); current = fib; r(code) }
 function ran () { running = false; kick() }
@@ -282,12 +293,12 @@ const rt = {
   first (fib) { main = current = fib },
 }
 
-module = await WebAssembly.compile(bytes)
+module = await compiled
 const imports = { rt, Math }
 for (const imp of WebAssembly.Module.imports(module)) {
   if (imp.module === 'rt' || imp.module === 'Math') continue
   if (!imports[imp.module]) imports[imp.module] = {}
-  const m = own[imp.module] || await import(new URL(imp.module, import.meta.url).href)
+  const m = own[imp.module] || await (scripts.get(imp.module) || import(new URL(imp.module, import.meta.url).href))
   const f = m[imp.name]
   if (typeof f !== 'function') throw new Error('js.Call: ' + imp.module + ' has no function ' + imp.name + '.')
   imports[imp.module][imp.name] = args => encode(f(...decode(args)))

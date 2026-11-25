@@ -58,9 +58,14 @@ let build (ctx : Types.ctx) path =
   end;
   Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
   Out_channel.with_open_bin (base ^ ".sites") (fun oc -> Out_channel.output_string oc sites);
-  let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
-  let at = find 0 in
-  let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
+  (* Its module's name, and the JavaScript modules it imports at once, as the module names them. *)
+  let fill key value s =
+    let rec find i = if String.sub s i (String.length key) = key then i else find (i + 1) in
+    let at = find 0 in
+    String.sub s 0 at ^ value ^ String.sub s (at + String.length key) (String.length s - at - String.length key)
+  in
+  let listed = "[" ^ String.concat ", " (List.map (fun (_, base) -> Aot.json_text ("./" ^ base)) scripts) ^ "]" in
+  let js = fill "@SCRIPTS@" listed (fill "@WASM@" (name ^ ".wasm") glue) in
   Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js);
   (* The JavaScript modules that js.Call names, beside the program, where its loader imports them. *)
   List.iter

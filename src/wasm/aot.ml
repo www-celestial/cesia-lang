@@ -173,7 +173,8 @@ let ver_name st (v : version) =
   | Some n -> n
   | None ->
     st.counter <- st.counter + 1;
-    let n = Printf.sprintf "f%d:%s" st.counter v.owner.pname in
+    (* Its name says its file too, which CESIA_WASM_NAMES writes in the module, for the sizes of each file. *)
+    let n = Printf.sprintf "f%d:%s@%s" st.counter v.owner.pname (fst (Vec.get st.w.files v.owner.file)) in
     st.vers <- (v, n) :: st.vers;
     st.todo <- v :: st.todo;
     n
@@ -654,6 +655,9 @@ and operands fc a b =
    and product fit; else by the runtime's arith, which takes every case and its errors. *)
 and quick_arith fc e op a b =
   let rt = fc.st.rt in
+  if kind fc a = V && kind fc b = V then
+    expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt ("arith_" ^ match op with Add -> "add" | Sub -> "sub" | Mul -> "mul" | _ -> "div") ]
+  else
   let (ka, la), (kb, lb), pre = operands fc a b in
   let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
   let generic = [ I32 (match op with Add -> 0 | Sub -> 1 | Mul -> 2 | _ -> 3) ] @ boxed (ka, la) @ boxed (kb, lb) @ site fc e.pos @ [ call rt "arith" ] in
@@ -688,6 +692,10 @@ and quick_arith fc e op a b =
    errors; eqv compares anything). An integer against a float goes to the runtime, which compares them exactly. *)
 and quick_compare fc e op a b ~test =
   let rt = fc.st.rt in
+  if kind fc a = V && kind fc b = V then
+    expr fc a V @ expr fc b V @ site fc e.pos
+    @ [ call rt ((if test then "test_" else "cmp_") ^ match op with Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge" | Eq -> "eq" | _ -> "ne") ]
+  else
   let (ka, la), (kb, lb), pre = operands fc a b in
   let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
   let generic =
@@ -851,7 +859,7 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   let ps = state @ List.map (fun i -> vt_of fc.kinds.(i)) live in
   let rs = ps @ (if !leaves then [ vt_of rk ] else []) @ [ I32 ] in
   st.counter <- st.counter + 1;
-  let wf = Wasm.func rt.m (Printf.sprintf "loop%d:%s" st.counter fc.pname) ps rs in
+  let wf = Wasm.func rt.m (Printf.sprintf "loop%d:%s@%s" st.counter fc.pname fc.path) ps rs in
   let fb = { Rt.f = wf; n = 0; rev = []; tmp = -1 } in
   let ns = List.length state in
   let locs = Array.map (fun l -> if l = -1 then -1 else -3) fc.locs in
@@ -869,11 +877,10 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   in
   let cf = { fc with fb; locs; labels = []; ends = []; tail = -1; exit = Some (push, rv); fixed } in
   let turns = Rt.local fb I32 in
-  (* The fuel of the turns taken, at once. *)
-  let spend =
-    [ Gget (fuel rt); i64 chunk_size; Lget turns; i64_extend_u; i64_sub; i64_sub; Gset (fuel rt);
-      Gget (fuel rt); i64 0; i64_le_s; If (Bnone, [ call rt "refuel" ], []) ]
-  in
+  (* The fuel of the turns taken, at once; the caller refuels. A call here, after the loop, with the loop's variables
+     alive across it, made SpiderMonkey's Ion keep them in memory through the whole loop: mandel's chunk ran 2 times
+     slower in Firefox, 124 ms against 64 without the call. *)
+  let spend = [ Gget (fuel rt); i64 chunk_size; Lget turns; i64_extend_u; i64_sub; i64_sub; Gset (fuel rt) ] in
   let out status = spend @ push @ (if !leaves then zero rk else []) @ [ I32 status; ret ] in
   let la = Rt.local fb (Rt.nl rt.list) in
   let hoist =
@@ -901,6 +908,7 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   @ [ block fc "done" Bnone (fun () ->
         [ loop fc "again" Bnone (fun () ->
               gets @ [ Call wf.fname; Lset status ] @ (if !leaves then [ Lset back ] else []) @ sets
+              @ [ Gget (fuel rt); i64 0; i64_le_s; If (Bnone, [ call rt "refuel" ], []) ]
               @ [ Lget status; I32 1; i32_eq; Br_if (depth_of fc "again") ]
               @ (if !leaves then [ Lget status; I32 2; i32_eq; iff fc Bnone (fun () -> leave_with fc [ Lget back ]) (fun () -> []) ] else [])) ]) ]
 
@@ -1327,7 +1335,14 @@ and static_call fc e (call : call) (proto : proto) =
   match Infer.bind_args f call.args with
   | Error m -> V, Rt.fail rt m [] (site fc e.pos)
   | Ok slots ->
-    let sg = Array.map (function None -> TBot | Some (a : expr) -> fc.ver.tn.(a.id)) slots in
+    (* An argument left out whose default is no number is a value either way: the version that takes one given takes it
+       too, and tests for it, so that no version is made for the defaults alone. *)
+    let absent k =
+      match f.params.(k).default with
+      | Some { e = Lmissing | Lbool _ | Ltext _ | Interp _ | Array_lit _ | Struct_lit _ | Lambda _; _ } -> TA
+      | _ -> TBot
+    in
+    let sg = Array.mapi (fun k -> function None -> absent k | Some (a : expr) -> fc.ver.tn.(a.id)) slots in
     let v = Infer.version_for w proto sg in
     ready w v;
     let self = v == fc.ver && call.self_tail && fc.tail >= 0 in
