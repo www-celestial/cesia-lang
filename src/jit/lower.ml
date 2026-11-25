@@ -2662,7 +2662,9 @@ let rec func st name =
      A self tail call gives every argument: it comes back after them. One kept as an array of floats, read from its
      slot, stays interpreted. *)
   let omitted = List.filter (fun j -> ver.sg.(j) == TBot) (List.init (Array.length f.params) Fun.id) in
-  if omitted = [] then ignore (tick st body (entry_step st st.inl ver))
+  (* The point after the frame's step, at its body when no default is made: where the room of the body is checked too. *)
+  let at_body = ref (-1) in
+  if omitted = [] then at_body := tick st body (entry_step st st.inl ver)
   else begin
     ignore (tick st (block st) (entry_step st st.inl ver));
     List.iter
@@ -2682,7 +2684,7 @@ let rec func st name =
   (* With calls, the outermost frame checks room for what their nested frames make too ([Engine.make]). *)
   if !need > 0 || (st.index = 0 && (not st.region) && st.ncalls > 0) then begin
     let b = Vec.get st.blocks body in
-    b.ins <- b.ins @ [ Ir.Reserve (need, if st.index > 0 then -1 else point st body) ]
+    b.ins <- b.ins @ [ Ir.Reserve (need, if st.index > 0 then -1 else if !at_body >= 0 then !at_body else point st body) ]
   end;
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)

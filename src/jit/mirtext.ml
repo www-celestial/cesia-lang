@@ -844,7 +844,7 @@ let emit (fns : Ir.func array) =
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
   pr "  mov b, %s\n  mov entry, %s\n  mov fuel, %s\n  mov ip, %s\n  lsh x0, b, 3\n  add ip, ip, x0\n  mov fp, %s\n  add fp, fp, x0\n"
     (cx Ir.io_base) (cx Ir.io_entry) (cx Ir.io_fuel) (cx 0) (cx 1);
-  pr "  mov vp, %s\n  add vp, vp, x0\n" (cx 2);
+  if f0.result = Kval || Array.exists (fun (v : Ir.var) -> v.kind = Kval) f0.params then pr "  mov vp, %s\n  add vp, vp, x0\n" (cx 2);
   Array.iter
     (fun (v : Ir.var) ->
        match v.kind with
