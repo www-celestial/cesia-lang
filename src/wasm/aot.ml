@@ -639,9 +639,15 @@ and quick_arith fc e op a b =
   pre
   @ (match ka, kb with
       | V, V ->
+        (* A float and an integer of 31 bits: the integer as a float, as Arith. *)
+        let num l = [ Lget l; Test (false, T rt.boxf);
+                      If (Bval F64, [ Lget l; Cast (false, T rt.boxf); struct_get rt.boxf 0 ], [ Lget l; Cast (false, I31); i31_get_s; f64_of_i32 ]) ] in
+        let is_n l = [ Lget l; Test (false, T rt.boxf); Lget l; Test (false, I31); i32_or ] in
         is_f la @ is_f lb @ [ i32_and;
                               If (Bval Rt.v, on_floats,
-                                  [ Lget la; Test (false, I31); Lget lb; Test (false, I31); i32_and; If (Bval Rt.v, on_ints, generic) ]) ]
+                                  [ Lget la; Test (false, I31); Lget lb; Test (false, I31); i32_and;
+                                    If (Bval Rt.v, on_ints,
+                                        is_n la @ is_n lb @ [ i32_and; If (Bval Rt.v, num la @ num lb @ [ fop; call rt "box_f" ], generic) ]) ]) ]
       | V, (F | I) -> is_f la @ [ If (Bval Rt.v, on_floats, generic) ]
       | (F | I), V -> is_f lb @ [ If (Bval Rt.v, on_floats, generic) ]
       | _ -> generic)

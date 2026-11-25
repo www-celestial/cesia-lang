@@ -38,6 +38,7 @@ type t = {
   boxi : int;
   boxf : int;
   atom : int;
+  own : int;
   list : int;
   keys : int;
   map : int;
@@ -65,24 +66,27 @@ let create () =
   let boxi = fresh_ty m (St [ S I64, false ]) in
   let boxf = fresh_ty m (St [ S F64, false ]) in
   let atom = fresh_ty m (St [ S I32, false ]) in
+  (* What a value may own, first of a list, map or struct: its ownership, so that one test shares any of them. *)
+  let own = Wasm.sub_ty m ~final:false [] (St [ S I32, true ]) in
+  let owned c = Wasm.sub_ty m ~final:true [ own ] c in
   (* tip: no Append went on from this list yet, so the free cells of its store after its last are still free. *)
-  let list = fresh_ty m (St [ S I32, true; S I32, true; S I32, true; S (Ref (false, Array)), true; S I32, true ]) in
+  let list = owned (St [ S I32, true; S I32, true; S I32, true; S (Ref (false, Array)), true; S I32, true ]) in
   (* Keys: their names, from the first in the order of insertion; past 8 names, the slots of a table, each one a hash's
      high 32 bits and its name's place + 1, 0 for none; the seed of that table's hash. *)
   let keys = fresh_ty m (St [ S (nn vals), false; S (nl i64s), false; S I64, false ]) in
   (* mine: no other map holds these keys, so a new name goes in their free room. *)
-  let map = fresh_ty m (St [ S I32, true; S (nn keys), true; S (nn vals), true; S I32, true; S I32, true ]) in
+  let map = owned (St [ S I32, true; S (nn keys), true; S (nn vals), true; S I32, true; S I32, true ]) in
   (* A map of a literal whose keys and kinds the compiler knows, its values typed: this base, its ownership and keys,
      then a field each, of the type the compiler made for those keys (Aot.shape_type). *)
-  let smap = Wasm.sub_ty m ~final:false [] (St [ S I32, true; S (nn keys), false ]) in
+  let smap = Wasm.sub_ty m ~final:false [ own ] (St [ S I32, true; S (nn keys), false ]) in
   (* A shape: the name of its struct, its fields, and how a message names it, "an Ok". *)
   let shape = fresh_ty m (St [ S (nn bytes), false; S (nn vals), false; S (nn bytes), false ]) in
-  let recd = fresh_ty m (St [ S I32, true; S (nn shape), false; S (nn vals), true ]) in
+  let recd = owned (St [ S I32, true; S (nn shape), false; S (nn vals), true ]) in
   let fn = fresh_ty m (St [ S (Ref (false, Func)), false; S I32, false; S I32, false; S (nn bytes), false; S (nl vals), false ]) in
   let buf = fresh_ty m (St [ S (nn bytes), true; S I32, true ]) in
   (* What a read of a field remembers: the keys or shape it last met, and the place of the field there. *)
   let cache = fresh_ty m (St [ S (Ref (true, Eq)), true; S I32, true ]) in
-  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; list; keys; map; smap; shape; recd; fn; buf; cache; fns = Hashtbl.create 8;
+  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; own; list; keys; map; smap; shape; recd; fn; buf; cache; fns = Hashtbl.create 8;
     texts = Hashtbl.create 64; inits = [] }
 
 (* Fields. *)
@@ -175,6 +179,7 @@ let f64_div = Op 0xa3
 let i32_wrap = Op 0xa7
 let i64_extend_s = Op 0xac
 let i64_extend_u = Op 0xad
+let f64_of_i32 = Op 0xb7
 let f64_of_i64 = Op 0xb9
 let i64_trunc_sat = Fc (6, [])
 let ref_is_null = Op 0xd1
@@ -822,10 +827,7 @@ let () =
         Lget 0; call rt "to_vals"; Lget 1; Lget 2; array_set rt.vals ]);
   (* Clears the ownership of a list, map or struct: a second reference is about to lead to it. *)
   def "share" (fun rt -> [ v ], [ v ], fun _ ->
-      [ Block (Bnone, [ Block (Bval (nn rt.list), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.list); Br 1 ]); I32 0; struct_set rt.list l_owned; Lget 0; ret ]);
-        Block (Bnone, [ Block (Bval (nn rt.map), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.map); Br 1 ]); I32 0; struct_set rt.map m_owned; Lget 0; ret ]);
-        Block (Bnone, [ Block (Bval (nn rt.recd), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.recd); Br 1 ]); I32 0; struct_set rt.recd r_owned; Lget 0; ret ]);
-        Block (Bnone, [ Block (Bval (nn rt.smap), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.smap); Br 1 ]); I32 0; struct_set rt.smap s_owned ]);
+      [ Block (Bnone, [ Block (Bval (nn rt.own), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.own); Br 1 ]); I32 0; struct_set rt.own 0 ]);
         Lget 0 ]);
   (* xs[i], i a whole number. *)
   def "index" (fun rt -> [ v; I64; I32 ], [ v ], fun fb ->

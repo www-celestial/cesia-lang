@@ -1,0 +1,18 @@
+use std/io
+
+(* Arithmetic on values whose kinds only the run knows: floats, small and large integers, and what isn't a number. *)
+ops = [(a, b) -> a + b, (a, b) -> a - b, (a, b) -> a * b, (a, b) -> a / b]
+tests = [(a, b) -> a < b, (a, b) -> a >= b, (a, b) -> a == b, (a, b) -> a != b]
+xs = [3, 2.5, -7, 1073741823, 1099511627776, 0.1, true, missing]
+ns = [3, 2.5, -7, 1073741823, 1048576, 0.1, 2, 2.0]
+for f in ops
+  io.Print([f(x, 2) for x in xs])
+  io.Print([f(2.5, x) for x in xs])
+  io.Print([f(x, -1073741824) for x in ns])
+end
+for f in tests
+  io.Print([f(x, 2) for x in ns], [f(2.0, x) for x in ns])
+end
+big = 1073741823
+io.Print(ops[1](big, big), ops[3](big, big), ops[3](-1073741824, -1073741824))
+io.Print(ops[1](4611686018427387903, 1))
