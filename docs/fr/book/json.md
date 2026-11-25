@@ -127,7 +127,8 @@ check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, P
   chaque liste, son nombre d'éléments au plus.
 - Un jour est un `check.Date()`, `"2026-12-01"`, et un instant un `check.Time()`, `"2026-12-01T08:30:00Z"` ou avec son
   décalage : les deux sont lus en secondes depuis 1970, comme Cepheus les garde, et réécrits en texte par `check.Out`.
-- Un champ que la forme ne déclare pas est ôté par `Read` : qui ajoute `Admin: true` n'ajoute rien.
+- Un champ que la forme ne déclare pas est ôté par `Read` : qui ajoute `Admin: true` n'ajoute rien. Un champ facultatif
+  qu'il omet est là, avec sa valeur par défaut ou `missing`, pour que `x.Note` n'échoue jamais.
 - `check.Read(shape, query, texts = true)` lit des valeurs écrites en texte, comme les donnent une *query string* ou
   l'environnement : `"42"` pour un `Int`, `""` pour un champ absent.
 - [check.Out] rend une valeur au-dehors par sa forme : les champs déclarés seuls, les dates en texte, jamais un

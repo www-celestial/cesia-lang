@@ -88,10 +88,12 @@ OneOf(values, optional = false, default = missing) = shape("oneof", optional, de
 List(of, min = 0, max = 100, optional = false, default = missing) = shape("list", optional, default, {Of: of, Min: min, Max: max})
 
 (** A map of fields, each with its shape. Read keeps the fields of the shape and drops any other, so that a field the
-    sender adds never reaches what is written; Out gives the fields of the shape only, so that a field added later to
+    sender adds never reaches what is written; an optional field the sender leaves out is there too, as its default
+    or missing, so that x.Note never fails. Out gives the fields of the shape only, so that a field added later to
     the data never leaves by accident.
 
-      Read(Record({A: Int()}), {A: 1, Admin: true}) --> result.Ok({A: 1}) *)
+      Read(Record({A: Int()}), {A: 1, Admin: true}) --> result.Ok({A: 1})
+      Read(Record({A: Int(), Note: Text(optional = true)}), {A: 1}).Value.Note --> missing *)
 Record(fields, optional = false, default = missing) = shape("record", optional, default, {Fields: fields})
 
 defn Read(shape, x, texts = false)
@@ -216,12 +218,10 @@ defn read(shape, x, texts, path)
 end
 
 defn record(names, values)
-  (** The map of names to values, without the fields whose value is missing. *)
+  (** The map of names to values, every name there: an optional field absent is missing, so that x.Note never fails. *)
   out = {}
   for k in 1..value.Len(names)
-    if not value.IsMissing(values[k])
-      out[names[k]] = values[k]
-    end
+    out[names[k]] = values[k]
   end
   out
 end
