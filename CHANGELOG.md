@@ -31,6 +31,19 @@
   a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
   log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.
 
+### Servers
+
+- `http.Route` takes `stream`, the most bytes the body of its requests may hold: a body too large for one read, or than
+  `maxBody`, comes to its handler in pieces as it reads them, `r.Read()` giving each and `r.Size` the length, so that an
+  upload of a file is never whole in memory; a body larger than `stream` is a `413` before the handler, a client that
+  sent `Expect: 100-continue` is told to go on at the first read only, and the connection closes after the response.
+  Each piece has the request's timeout, and the whole a second more for each 64 KiB. A route without it, and every
+  program that served before, reads as before (`tests/net/http-pieces.ce`).
+- `http.Fetch` takes `peer`, a function of the address the connection reached, run before any byte goes, TLS's too: an
+  `Err` it gives closes the connection and is Fetch's. A program that asks an address it was given checks the very
+  address a name was found at, with no second lookup (against server-side request forgery and DNS rebinding).
+- `tls.Client` takes `ca`, the path of a PEM file of the authorities to trust instead of the system's, as a company's own.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
@@ -328,8 +341,29 @@
   `text.ByteLength` in 269.8 ms instead of 322.7, of `sys.Now` in 422.9 instead of 517.6; and machine code makes
   `math.Abs` of an integer itself, 10^7 calls in 20.2 ms instead of 302.1 (medians of 21 runs, alternated).
 
+- A page compiled to WebAssembly is smaller, and holds only what it may run. `std/plot` keeps in each layer the functions
+  of its kind, put there by `plot.Bars`, `plot.Surface` and the others, where it looked them up by the kind's name: a
+  program carries the code of the kinds of graphs it makes and no other, in the interpreter, which infers only those,
+  and in a module. `+`, `-`, `*`, `/` and the comparisons of two values of unknown type call one small function of the
+  runtime each, in place of their tests written at each place; an argument left out whose default is no number makes no
+  version of a function of its own; a module holds only what its exports reach. The invoices page of Ceres: 388,054
+  bytes instead of 1,023,363, 103,145 with Brotli instead of 177,562, its frames as fast. The book's chapter Compiling to
+  WebAssembly weighs it part by part, beside the frameworks of JavaScript.
+- A page starts sooner: its loader asks for the module and for the JavaScript modules that `js.Call` names at once, and
+  compiles the module while its bytes arrive when the server says `application/wasm`. The invoices page of Ceres, a
+  first page of a new Firefox, paints in 193 to 239 ms instead of 447 to 499.
+- A loop compiled to WebAssembly runs 1.7 times faster in Firefox when it is called often, as the inner loop of
+  `mandel`, 133 ms to 76: its chunk counts its fuel and its caller refuels, where a call after the loop, its variables
+  alive across it, made Firefox's Ion keep them in memory through the whole loop.
+
 ### Fixes
 
+- A page compiled to WebAssembly no longer gives the event loop back in the middle of a frame: its slice of 8 ms
+  started at its last yield only, so that the first checkpoint after a wait, as a page waits for its next event, yielded
+  at once and painted a frame late, 18 to 35 ms (p99) while the invoices page of Ceres scrolled; it starts when the
+  program runs again after it waited, and Firefox's p99 fell to 3 to 4 ms.
+- `std/http` serves a `.wasm` file as `application/wasm`, where it said `application/octet-stream`: a browser compiles a
+  module while it arrives only when it is typed so.
 - A server no longer slows down as it serves. Once the large allocations reserved since the last full checkpoint passed
   a quarter of the memory limit (with the default limit, a few minutes of a busy server), every reservation after it
   asked OCaml for the size of its heap, `Gc.quick_stat`, which took a third to a half of a request's time, and only a

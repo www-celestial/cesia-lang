@@ -372,6 +372,41 @@ Measured on 2026-11-13, an export of 100,000 rows of 7 cells, 6 MB of CSV, the r
 database gives them (`bench/export.ce`): the peak of the server's memory grew by 77 MB for the whole body, by 32 MB in
 pieces of 1,000 rows, most of it what the collector had not yet taken back of the pages before.
 
+### A body that comes in pieces
+
+A request's body is read whole before its handler runs, at most `maxBody` bytes: a file sent to the server can't fit.
+A route given `stream`, the most bytes its body may hold, gets a body too large for one read in pieces instead, as the
+handler reads them: `r.Body` is `""`, `r.Size` its length, and `r.Read()` gives an `Ok` of the next piece, `""` once
+it is all read, or an `Err` when the client stops sending.
+
+```cesia norun
+use std/result
+use std/text
+defn upload(r)
+  (* stores a scan as it comes; a small one came whole, in r.Body *)
+  n = 0
+  piece = r.Read()?
+  while piece != ""
+    n += text.ByteLength(piece)   (* write it where it goes: a part of a file of the database *)
+    piece = r.Read()?
+  end
+  http.Plain("$n bytes")
+end
+app = http.App() then http.Route("POST", "/scans", upload, stream = 10485760)
+```
+
+- The body is read only as the handler asks for it, a piece at a time (what one read of the socket brings, 64 KiB at
+  most): the server never holds it whole, whatever its size.
+- A body larger than `stream` gets a `413` before the handler runs; a head with two `Content-Length` lines a `400`, as
+  for any request.
+- A client that sent `Expect: 100-continue`, as curl does for a large body, is told to go on at the first `Read` only:
+  a handler that refuses the request first (a `401`, a type it doesn't take) answers before the client sent its body.
+- The handler has the request's `timeout`, plus a second for each 64 KiB of the body, and each piece must come within
+  `timeout` seconds of the one before: a client that sends a byte a minute is closed, one on a slow line is not.
+- The connection closes after the response.
+- A body that came whole, small enough for one read, is in `r.Body`, and `r.Read` is missing: a handler that takes
+  both looks for `Read` with `dict.Has("Read", r)`.
+
 ## More of std/http
 
 | To | Use |
@@ -726,6 +761,19 @@ its body in bytes: a server can't fill the memory of the program.
 http.Fetch("http://127.0.0.1:1/") -->
 ```
 
+A program that asks an address it was given, as a server that calls back the address of a partner, must not reach
+its own machine or its network for whoever gave it (*server-side request forgery*, SSRF): `peer`, a function of the
+address the connection reached, as [net.Peer] gives it, runs once it is open and before any byte is sent, TLS's
+included; an `Err` it gives closes the connection, and `Fetch` gives that `Err`. A host given by its name is thus
+checked at the very address it was found at: a second lookup, which a server of names could answer otherwise (*DNS
+rebinding*), never happens.
+
+```cesia norun
+use std/result
+mine(address) = if address == "127.0.0.1" or address == "::1" result.Err({Kind: "http", Message: "This address is of this machine."}) else result.Ok(missing) end
+http.Fetch("http://localhost:8080/", peer = mine)   (* Err: This address is of this machine. *)
+```
+
 ### https
 
 For `https`, [std/tls] gives the client its encryption, through OpenSSL. It needs the permission to load it, and to reach the
@@ -745,6 +793,9 @@ io.Print(page!.Status)
 ```bash
 cesia run --allow net=example.com,ffi=ssl,ffi=crypto page.ce
 ```
+
+The certificate of the server must be signed by an authority the system trusts, and name the host; `ca`, the path of
+a PEM file of authorities, trusts those instead, as a company's own: `tls.Client(api, ca = "/etc/ssl/company.pem")`.
 
 A server serves `https` the same way: `wrap = tls.Server(certificate, key, api)?` given to [http.Serve], with the paths of
 its certificate and its key, from a *certificate authority* such as Let's Encrypt. [std/tls] keeps the sockets with

@@ -149,11 +149,12 @@ end
 (** The text of a response with just a status and its reason, after which the server closes the connection. *)
 failure(status) = render({Status: status, Body: Reason(status)}, closing = true)
 
-defn ready(response, headOnly, chunked)
+defn ready(response, headOnly, chunked, last = false)
   (** A response made ready to send: a struct with reply (its text, or its head when its body is streamed), upgrade (a
       function or missing), stream (the function of a body that Stream gives, missing for HEAD), chunked, and close,
-      true when the server stops: the response tells the client, which asks again on a new connection, not on this
-      one. A client that doesn't read chunks, as HTTP/1.0, gets a streamed body that ends with the connection. *)
+      true when the server stops, or for the last response of its connection: the response tells the client, which asks
+      again on a new connection, not on this one. A client that doesn't read chunks, as HTTP/1.0, gets a streamed body
+      that ends with the connection. *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
     else -> missing
@@ -163,15 +164,15 @@ defn ready(response, headOnly, chunked)
     else -> missing
   end
   streamed = if value.IsMissing(stream) "" else if chunked "chunked" else "closed" end
-  closing = stopping() or streamed == "closed"
+  closing = last or stopping() or streamed == "closed"
   {Reply: render(response, headOnly = headOnly, closing = closing, streamed = streamed), Upgrade: upgrade, Stream: if headOnly missing else stream end,
     Chunked: chunked, Close: closing}
 end
 
-defn answer(handle, request, left, chunked)
+defn answer(handle, request, left, chunked, last = false)
   (** The response of a handler to a request, ready to send, within left seconds. A panic in the handler stops its own
       fiber only, and answers 500. A handler that takes longer gets a 503, and the connection closes while it runs on. *)
-  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD", chunked)), timeout = list.Max(0, left))
+  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD", chunked, last = last)), timeout = list.Max(0, left))
     result.Ok(done) -> done
     result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Stream: missing, Chunked: chunked, Close: true}
   end
@@ -270,7 +271,10 @@ defn connection(handle, conn, buffer, options, deadline)
       client can't hold a connection with a byte at a time. A body that takes more than the bodies being read may take
       together gets a 503 at once: see hold. *)
   parsed = if buffer == "" result.Ok(missing) else parseRequest(buffer, limit = options.MaxBody) end
-  if result.IsErr(parsed)
+  streamed = if value.IsMissing(options.Streams) missing else streaming(buffer, parsed, options) end
+  if not value.IsMissing(streamed)
+    inPieces(handle, conn, streamed, options, deadline)
+  else if result.IsErr(parsed)
     conn.Write(failure(parsed.Error))
     conn.Close()
   else if value.IsMissing(parsed.Value)
@@ -319,6 +323,128 @@ defn connection(handle, conn, buffer, options, deadline)
   end
 end
 
+defn streaming(buffer, parsed, options)
+  (** A request whose route takes its body in pieces (Route's stream), when that body isn't all in the buffer or is
+      larger than maxBody: {Request, First, Size, Chunked}, First the bytes of the body that came with the head, or
+      {Status} to refuse it at once, a body larger than its route takes (413) or a head with a second length (400).
+      Missing for any other request, which goes on as before. The head is read by request, the native, without its
+      line of content-length, so that it is read as every head is, and a second length is seen. *)
+  big = result.IsErr(parsed) and parsed.Error == 413
+  if not (big or (result.IsOk(parsed) and waits(parsed.Value)))
+    return missing
+  end
+  ends = offset(blank, buffer)
+  if value.IsMissing(ends)
+    return missing
+  end
+  head = text.ByteSlice(1, ends, buffer)
+  at = text.ByteFind("$(crlf)content-length:", 1, head, fold = true)
+  if value.IsMissing(at)
+    return missing
+  end
+  stop = text.ByteFind(crlf, at + 2, head)
+  stop = if value.IsMissing(stop) text.ByteLength(head) + 1 else stop end
+  digits = text.Trim(text.ByteSlice(at + 17, stop - 1, head))
+  before = text.ByteSlice(1, at - 1, head)
+  after = if stop > text.ByteLength(head) "" else text.ByteSlice(stop, text.ByteLength(head), head) end
+  again = parseRequest("$before$after$blank", limit = 0)
+  size = text.Number(digits)
+  if result.IsErr(again) or value.IsMissing(again.Value) or waits(again.Value) or not value.IsInt(size) or text.ByteLength(digits) > 18
+    return {Status: 400}
+  end
+  request = again.Value.Request
+  most = options.Streams(request.Path, request.Method)
+  if value.IsMissing(most)
+    return missing
+  end
+  if size > most
+    return {Status: 413}
+  end
+  first = if ends + 4 >= text.ByteLength(buffer) "" else text.ByteSlice(ends + 5, text.ByteLength(buffer), buffer) end
+  {Request: request, First: first, Size: size, Chunked: again.Value.Chunked}
+end
+
+(* The bytes a second that a body read in pieces is given at least, past the timeout of its request: 64 KiB. *)
+leastRate = 65536
+
+defn inPieces(handle, conn, streamed, options, deadline)
+  (** Serves a request whose body comes in pieces, then closes its connection: the handler reads the body as it
+      comes, by Read, within the request's deadline plus a second for each 64 KiB of its size, each piece within
+      timeout seconds of the one before. *)
+  if dict.Has("Status", streamed)
+    conn.Write(failure(streamed.Status))
+    conn.Close()
+    return missing
+  end
+  request = streamed.Request
+  request.Peer = conn.Peer
+  request.Size = streamed.Size
+  told = http100(request.Headers)
+  start = fiber.Channel()
+  pieces = fiber.Channel(size = 1)
+  task = fiber.Spawn(() -> feeding(conn, streamed.First, streamed.Size, told, options.Timeout, start, pieces))
+  request.Read = () -> piece(start, pieces)
+  conn.Arm(0)
+  done = answer(handle, request, deadline - sys.Now() + streamed.Size / leastRate, streamed.Chunked, last = true)
+  fiber.Cancel(task)
+  _ = fiber.Wait(task)
+  conn.Arm(options.Timeout)
+  sent = conn.Write(done.Reply)
+  if result.IsOk(sent) and not value.IsMissing(done.Stream)
+    _ = pour(conn, done.Stream, done.Chunked, options.Timeout)
+  end
+  conn.Close()
+end
+
+defn http100(headers)
+  (** Did the client ask to be told to send its body (Expect: 100-continue, RFC 9110, section 10.1.1)? *)
+  asked = HeaderValue("expect", headers)
+  value.IsText(asked) and sameBytes(text.Trim(asked), "100-continue")
+end
+
+defn piece(start, pieces)
+  (** The next piece of a body that comes in pieces, as the handler reads it: an Ok of its bytes, "" once it is all
+      read, or an Err. The first read tells the producer to start. *)
+  fiber.Send(true, start)
+  got = fiber.Receive(pieces)
+  if result.IsErr(got) result.Ok("") else got.Value end
+end
+
+defn feeding(conn, first, size, told, timeout, start, pieces)
+  (** Reads a body of size bytes from a connection, once its handler first reads it, and gives it in pieces, an Ok of
+      each, an Ok of "" at its end, or an Err when the client stops sending: each read has timeout seconds. A client
+      that asked for it is told 100 Continue then, and not before: a handler that refuses the request before it reads
+      its body never makes the client send it. *)
+  _ = fiber.Receive(start)
+  if told and text.ByteLength(first) < size
+    conn.Arm(timeout)
+    conn.Write("HTTP/1.1 100 Continue$crlf$crlf")
+  end
+  had = if text.ByteLength(first) > size text.ByteSlice(1, size, first) else first end
+  got = text.ByteLength(had)
+  if got > 0
+    fiber.Send(result.Ok(had), pieces)
+  end
+  while got < size
+    conn.Arm(timeout)
+    more = readOn(conn)
+    conn.Arm(0)
+    if result.IsErr(more) or text.ByteLength(more.Value) == 0
+      fiber.Send(failed("The body of this request was cut short after $got of its $size bytes."), pieces)
+      fiber.Close(pieces)
+      return missing
+    end
+    bytes = more.Value
+    if got + text.ByteLength(bytes) > size
+      bytes = text.ByteSlice(1, size - got, bytes)
+    end
+    got += text.ByteLength(bytes)
+    fiber.Send(result.Ok(bytes), pieces)
+  end
+  fiber.Send(result.Ok(""), pieces)
+  fiber.Close(pieces)
+end
+
 defn start(handle, c, options)
   (** Serves a new connection: its deadline, then TLS if the options wrap it, then its requests. The deadline starts before
       TLS, so a client that connects and says nothing reaches it too. The connection gets Arm, which sets it again: the
@@ -365,7 +491,7 @@ defn waitForConnections(deadline)
   end
 end
 
-defn serve(handle, port, host, timeout, maxBody, wrap, listener)
+defn serve(handle, port, host, timeout, maxBody, wrap, listener, streams = missing)
   (** Serves the requests to handle until a stop signal, then lets those in progress end, each by its deadline.
       handle(request) receives {Method, Path, Query, Headers, Body, Peer}, Peer the address of the client as net.Peer
       gives it, and returns {Status, Body}, with optional headers, and
@@ -373,7 +499,7 @@ defn serve(handle, port, host, timeout, maxBody, wrap, listener)
       after the response. *)
   listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
-  acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end})?
+  acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end, Streams: streams})?
   net.Close(listener)
   waitForConnections(sys.Now() + timeout)
   result.Ok(missing)
@@ -545,15 +671,24 @@ defn hostOf(target)
   if target.Port == (if target.Secure 443 else 80 end) target.Host else "$(target.Host):$(target.Port)" end
 end
 
-defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing)
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing)
   (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
       answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api). A server
       silent for timeout seconds, as it starts TLS or between two reads of its response, gives an Err of kind
       "timeout": a slow download goes on as long as bytes come; missing waits for ever. The head of a response holds at
       most 16 KiB, and its body at most maxBody bytes, the marks of a chunked one too: past them an Err, and with missing
-      the body is only bounded by the memory of the program.
+      the body is only bounded by the memory of the program. peer, when given, is a function of the address the
+      connection reached, as net.Peer gives it ("203.0.113.7", "::1"), called once it is open and before any byte is
+      sent, those of TLS too: an Err it gives closes the connection, and Fetch gives that Err. A server named by its
+      host is thus checked by the very address it was found at, with no second lookup that a server of names could
+      answer otherwise (DNS rebinding): what a program asks for another, at an address it was given, can't reach this
+      machine or its network when peer refuses their addresses.
 
-        Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http") *)
+        Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http")
+        l = net.Listen(0)!
+        fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
+        mine(address) = if address == "127.0.0.1" result.Err({Kind: "http", Message: "not here"}) else result.Ok(missing) end
+        Fetch("http://localhost:$(net.Port(l))/", peer = mine) --> result.Err({Kind: "http", Message: "not here"}) *)
   target = ParseUrl(url)?
   if not (clean(method) and clean(target.Host) and clean(target.Path))
     return failed("This request has a space or a line end where it can't.")
@@ -562,6 +697,13 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
     return failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
   end
   c = net.Connect(target.Host, target.Port)?
+  if not value.IsMissing(peer)
+    allowed = peer(net.Peer(c))
+    if result.IsErr(allowed)
+      net.Close(c)
+      return allowed
+    end
+  end
   made = within(timeout, c, () -> if target.Secure secure(c, target.Host) else tcp(c) end)
   if result.IsErr(made)
     net.Close(c)
@@ -582,12 +724,22 @@ end
       Handler(App())({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 404 *)
 App() = {Routes: [], Middleware: []}
 
-defn Route(method, pattern, handler, a)
+defn Route(method, pattern, handler, a, stream = missing)
   (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path.
+      With stream, the most bytes the body of its requests may hold, a body too large for one read or for maxBody
+      comes to the handler in pieces, as an upload of a file: r.Body is "", r.Size its length, and r.Read() gives an
+      Ok of its next piece, "" once it is all read, or an Err when the client stops sending. Serve then reads it only as
+      the handler asks, a piece at a time, so the body is never whole in memory; a client that sent Expect:
+      100-continue is told to go on at the first Read only, so a request refused before its body is read never sends
+      it. A body larger than stream gets a 413 before the handler runs. The handler has the timeout of Serve, and a
+      second more for each 64 KiB of the body, each piece coming within timeout seconds of the one before; the
+      connection closes after its response. A smaller body that came whole is in r.Body, as for any route.
 
         files = App() then Route("PATCH", "/files/*", r -> Plain(r.Params["*"]))
-        Handler(files)({Method: "PATCH", Path: "/files/a/b.txt", Query: "", Headers: [], Body: ""}).Body --> "a/b.txt" *)
-  entry = {Method: method, Parts: segments(pattern), Handler: handler}
+        Handler(files)({Method: "PATCH", Path: "/files/a/b.txt", Query: "", Headers: [], Body: ""}).Body --> "a/b.txt"
+        scans = App() then Route("POST", "/scans", r -> Plain("$(r.Size) bytes"), stream = 10485760)
+        scans.Routes[1].Stream --> 10485760 *)
+  entry = {Method: method, Parts: segments(pattern), Handler: handler, Stream: stream}
   {Routes: list.Append(entry, a.Routes), Middleware: a.Middleware}
 end
 
@@ -795,16 +947,30 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody
       end, each by its deadline, with a response that tells its client that the connection closes, and gives Ok. It listens
       on port, on this machine only unless host says otherwise. timeout is the seconds a connection has for each request,
       to send it and to have it answered: a handler that takes longer gets a 503 and runs on alone. maxBody is the
-      largest body read, in bytes; the bodies read at once take at most a quarter of the memory limit, and past it a
-      request gets a 503 at once. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
+      largest body read, in bytes, but for a route that takes its body in pieces (Route's stream); the bodies read at
+      once take at most a quarter of the memory limit, and past it a request gets a 503 at once. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
       net.Port, takes the place of port and host.
 
         l = net.Listen(0)!
         fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
         Fetch("http://localhost:$(net.Port(l))/").Value.Body --> "hi" *)
-  serve(Handler(a), port, host, timeout, maxBody, wrap, listener)
+  serve(Handler(a), port, host, timeout, maxBody, wrap, listener, streams = streams(a))
 end
+
+defn streams(a)
+  (** The function that gives, from the path and method of a request, the most bytes of the body of its route when the
+      route takes its body in pieces (Route's stream), else missing; missing when no route does, so that the others pay
+      nothing. *)
+  mosts = [dict.Get("Stream", r) for r in a.Routes]
+  if list.All([value.IsMissing(m) for m in mosts])
+    return missing
+  end
+  find = router([r.Method for r in a.Routes], [r.Parts for r in a.Routes])
+  (path, method) -> mostOf(find(segments(path), method), mosts)
+end
+
+mostOf(k, mosts) = if k > 0 mosts[k] else missing end   (* The most bytes of the body of route k, or missing. *)
 
 (** An application with a WebSocket route added: onMessage(text, send) runs for each message, and send(text) answers. A
     request that isn't a WebSocket one gets a 400.
@@ -905,7 +1071,7 @@ end
 
 (* Static files under a folder. A path can't leave it. *)
 types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/javascript", "json": "application/json",
-  "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
+  "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8", "wasm": "application/wasm"}
 
 defn FileResponse(path)
   (** The response with the content of a file, typed by its extension, or a 404 if it can't be read.

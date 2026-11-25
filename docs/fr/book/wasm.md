@@ -279,7 +279,12 @@ prend aucun clic. À chaque checkpoint de son fuel (le compte de ses pas), tous 
 l'horloge ; au-delà de 8 ms, le programme attend la boucle d'événements de la page, qui peint et prend ses événements,
 puis reprend, le premier. Cela coûte un message de JavaScript, quelques microsecondes, et une fois passé le temps d'une
 frame (une image de l'écran) il passe par la frame suivante du navigateur : Firefox, entre des messages seuls, peint 12
-fois par seconde. Et tous les millions de pas, comme `cesia run`, les fibers prêtes tournent. Mesuré sur une boucle de
+fois par seconde. Les 8 ms comptent depuis le moment où le programme a repris le thread : après avoir rendu la main à
+la boucle d'événements, ou après avoir attendu sans rien à faire tourner, comme une page attend son prochain événement.
+Comptées depuis son dernier passage de main seul, comme dans la première version de ce loader, le premier checkpoint
+après une attente rendait la main tout de suite, au milieu d'une frame, qui venait alors une frame plus tard : chacun
+des 10 checkpoints d'un défilement de la page de Ceres le faisait. Et tous les millions de pas, comme `cesia run`, les
+fibers prêtes tournent. Mesuré sur une boucle de
 500 millions de racines carrées en un seul appel, 2,1 secondes, avec une page qui compte ses frames :
 
 | | Chrome 158 | Firefox 160 |
@@ -398,9 +403,22 @@ Trois choses rendent ce code rapide dans les moteurs des navigateurs :
 
 Chaque fonction du runtime, l'écriture d'un float ou l'arithmétique de deux valeurs de type inconnu, n'entre dans le
 module qu'à sa première utilisation : un programme qui ne divise jamais n'a pas de division dans son module, et seuls
-les types que son code utilise sont écrits. Les textes des messages sont des octets d'un data segment (un bloc d'octets
-du module), un octet chacun. Le module et le loader sont écrits par Cesia lui-même, sans aucun outil de WebAssembly à
-installer.
+les types que son code utilise sont écrits. `+`, `-`, `*`, `/` et les comparaisons de deux valeurs dont le compilateur
+ne connaît pas le type appellent une petite fonction du runtime, une par opérateur, qui teste d'abord deux floats ou
+deux petits entiers : écrits à chaque endroit, ces tests rendaient la page de Ceres 40 % plus grosse, et les moteurs
+mettent le code d'une petite fonction en place là où elle tourne beaucoup (ils l'inlinent), si bien que ses frames
+prennent autant de temps. Une fonction appelée sans un argument dont la valeur par défaut n'est pas un nombre, comme
+`missing` ou `false`, a une seule version pour les deux cas : donné ou laissé, cet argument est une valeur, et la
+version teste lequel. Quand le module est écrit, seul ce que ses exports atteignent y entre : une fonction, une globale
+ou un data segment que nul code ne nomme est laissé dehors. Les textes des messages sont des octets d'un data segment
+(un bloc d'octets du module), un octet chacun. Le module et le loader sont écrits par Cesia lui-même, sans aucun outil
+de WebAssembly à installer.
+
+Un programme contient le code que ses appels atteignent, donc celui de ce qu'il peut faire tourner : une fonction
+qu'une branche appelle par son nom vient avec lui, même si la branche ne tourne jamais. [std/plot] garde dans chaque
+couche les fonctions de sa sorte, mises là par la fonction qui a fait la couche, comme `plot.Bars` ou `plot.Surface`,
+là où il les cherchait par le nom de la sorte : une page qui dessine des barres contient le code des barres, et rien
+d'une surface en trois dimensions, qui faisait la plus grande part du module.
 
 ## Vitesse et taille
 
@@ -446,12 +464,32 @@ et `structs` arrivent à 2 à 24 % de JavaScript dans Node et Chrome.
 - *Une nouvelle map à chaque tour.* `points` fait une map à chacun de ses 2 millions de tours, une struct de WasmGC
   désormais, et l'écrit dans sa liste, ce qui teste que rien d'autre ne tient la liste et que la case est dedans ; V8
   écrit son objet sur place : 1,4 à 2,6 fois.
-- *Firefox.* SpiderMonkey fait tourner ces modules 1,2 à 2,4 fois plus lentement que Chrome, là où son JavaScript suit
-  celui de V8 : une page qui doit être rapide se mesure aussi dans Firefox. Des boucles dans des fonctions à elles,
-  Firefox n'a gagné que sur `matmul`, de 1 069 ms à 439 dans ses propres mesures, comme s'il faisait tourner les autres
-  dans son code optimisé dès le départ ; pourquoi ce code est plus lent sur ces modules n'a pas été trouvé dans cette
-  tranche.
+- *Firefox.* SpiderMonkey faisait tourner ces modules 1,2 à 2,4 fois plus lentement que Chrome, là où son JavaScript
+  suit celui de V8. Deux causes, trouvées sur `mandel`, dont la boucle prenait 107 à 147 ms dans Firefox, là où la même
+  boucle écrite à la main en WebAssembly prenait 55 à 60 dans Firefox comme dans Chrome :
+  - *Un appel après une boucle.* Chaque chunk d'une boucle comptait le fuel de ses tours à sa fin, et appelait `refuel`
+    du runtime quand il était épuisé, avec les variables de la boucle vivantes à travers cet appel, puisqu'il les rend
+    après. Ion, le compilateur optimisant de SpiderMonkey, les gardait alors en mémoire pendant toute la boucle (au lieu
+    de les tenir dans les registres du processeur) : avec Ion seul, `mandel` prenait 112 à 125 ms avec cet appel et 61
+    à 67 sans lui, et rien d'autre du chunk ne comptait, ni la vérification des 63 bits ni le compte des tours. Un chunk
+    ne fait plus que compter son fuel, et son appelant fait le plein.
+  - *Le code optimisé qui arrive tard.* Firefox fait tourner une fonction d'abord dans son code baseline (vite compilé,
+    peu optimisé), puis dans celui d'Ion une fois qu'Ion l'a compilée, sur un thread à lui, qui attend quand la machine
+    est occupée : sous charge, ses temps s'approchaient de ceux de son code baseline seul, `mandel` 125 à 136 ms là
+    où Ion seul prend 60.
 - Rust ou C compilés vers WebAssembly, sans vérification de dépassement, n'ont pas été mesurés ici.
+
+*Firefox, avant et après la première cause*, le même jour (charge de 2,7 à 2,4), médianes de 3 tours, en ms :
+
+| Firefox 160, WebAssembly | `fib` | `mandel` | `matmul` | `structs` | `dyn` | `points` | `maps` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Avant | 246 | 133 | 510 | 364 | 460 | 121 | 790 |
+| Après | 220 | 76 | 501 | 325 | 605 | 138 | 769 |
+| Le JavaScript de Firefox | 236 à 244 | 56 à 58 | 112 à 121 | 120 à 121 | 123 à 150 | 38 à 40 | 538 à 600 |
+
+Les autres ont bougé dans le bruit d'une machine occupée, comme le JavaScript de Firefox a bougé, `dyn` de 123 à 150 ms ;
+Chrome et Node n'ont pas bougé. Là où le JavaScript de Firefox suit celui de V8 et son WebAssembly non, comme sur
+`matmul` et `structs`, la cause n'a pas été trouvée dans cette tranche.
 
 Et `cesia run`, avec son JIT, gagne chaque ligne sauf `points` et `mandel` face à WebAssembly, bien que son temps
 contienne son démarrage.
@@ -461,18 +499,18 @@ compresse les fichiers une fois à l'avance, à côté de la première tranche d
 
 | Programme | Module | Module, Brotli | Première tranche | Première tranche, Brotli | Source JavaScript, Brotli |
 |---|---:|---:|---:|---:|---:|
-| hello world, `io.Print("Hello from Cesia")` | 322 | 244 | 431 | 321 |  |
-| `fib` | 2 277 | 1 061 | 2 615 | 1 173 | 79 |
-| `mandel` | 3 249 | 1 499 | 2 928 | 1 409 | 238 |
-| `matmul` | 10 879 | 3 138 | 11 194 | 3 243 | 210 |
-| `structs` | 13 100 | 4 725 | 13 448 | 4 393 | 250 |
-| `dyn` | 10 571 | 3 958 | 11 461 | 4 053 | 199 |
-| `points` | 10 576 | 4 344 | 11 754 | 4 271 | 196 |
-| `maps` | 9 480 | 4 214 | 10 934 | 4 122 | 135 |
-| `loan.ce` de ce chapitre | 20 258 | 6 609 | 18 988 | 5 762 |  |
+| hello world, `io.Print("Hello from Cesia")` | 295 | 226 | 431 | 321 |  |
+| `fib` | 2 117 | 1 178 | 2 615 | 1 173 | 79 |
+| `mandel` | 3 099 | 1 527 | 2 928 | 1 409 | 238 |
+| `matmul` | 11 573 | 4 784 | 11 194 | 3 243 | 210 |
+| `structs` | 13 051 | 5 675 | 13 448 | 4 393 | 250 |
+| `dyn` | 11 541 | 4 784 | 11 461 | 4 053 | 199 |
+| `points` | 12 367 | 5 413 | 11 754 | 4 271 | 196 |
+| `maps` | 11 658 | 5 124 | 10 934 | 4 122 | 135 |
+| `loan.ce` de ce chapitre | 15 414 | 6 151 | 18 988 | 5 762 |  |
 
-Le loader, `NAME.js`, ajoute 3 149 octets, 1 313 avec Brotli, là où il en ajoutait 3 820 et 1 525 : il vient sans les
-commentaires de sa source. Un module ne contient que les types que son code utilise, et le texte d'un message prend un
+Le loader, `NAME.js`, ajoute 10 820 octets, 3 813 avec Brotli, avec ses fibers et ses appels de JavaScript, là où celui
+de la première tranche en ajoutait 3 820 et 1 525 : il vient sans les commentaires de sa source. Un module ne contient que les types que son code utilise, et le texte d'un message prend un
 octet par octet. Une boucle dans une fonction à elle, et une instruction en deux versions, rendent plus gros un
 programme de boucles, comme `loan.ce`. Un programme qui affiche une liste, une map ou une valeur d'un type que le
 compilateur ne connaît pas apporte l'écriture de toutes les valeurs ; la source JavaScript reste plus petite, puisque
@@ -480,25 +518,119 @@ son moteur est déjà dans le navigateur.
 
 *Une page de Ceres.* La page des factures de Ceres, l'interface utilisateur du projet, compilée vers WebAssembly et live
 depuis son app : un formulaire, une liste que l'app tient à jour, un graphique de `std/plot` et une table de 100 000
-lignes. Mesuré dans `tests/web/frames.html` de Ceres, sur la même machine (charge 2 à 3), sans fenêtre : de la frame du
-navigateur à la page peinte, son travail en WebAssembly et celui de WebGL, pendant que la molette fait défiler la table
-de 200 crans, un toutes les 16 ms, et pendant qu'on tape dans un champ, médianes de 2 à 3 tours ; WebGL en a pris 1,0 à
-1,4 ms :
+lignes. Mesuré par `tests/web/frames.html` de Ceres, sur la même machine, sans fenêtre, pendant que la molette fait
+défiler la table de 200 crans, un toutes les 16 ms, et pendant qu'on tape dans un champ : pour chaque frame, le temps de
+la frame du navigateur à la page peinte, et ses deux parts, l'attente avant que le navigateur appelle la page et le
+travail propre de la page, WebAssembly et WebGL ; médianes de 3 tours (charge de 4,1 à 5,6, d'autres travaux
+tournaient), chacun un nouveau navigateur. Chrome dessine sans GPU (la carte graphique), comme Chrome sans fenêtre le
+fait par défaut, et avec le GPU de la machine (`--use-angle=gl`) :
 
-| | Chrome 158 | Firefox 160 |
-|---|---|---|
-| Premier affichage, depuis le début de la page | 462 à 600 ms | 175 à 231 ms |
-| Une frame pendant le défilement, p50 / p99 | 8,2 à 9,7 / 19 à 35 ms | 1,7 à 2,2 / 7 à 19 ms |
-| Une frame pendant la frappe, p50 / p99 | 1,2 à 1,6 / 2,2 à 18 ms | 1,3 à 1,7 / 2,0 à 18 ms |
-| Frames du navigateur pendant le défilement, écart p50 / p99 | 16,7 / 33 à 50 ms | 17,1 / 17,1 à 17,2 ms |
+| | Chrome 158, sans GPU | Chrome 158, GPU | Firefox 160 |
+|---|---|---|---|
+| Une frame pendant le défilement, p50 / p99 | 8,7 à 9,5 / 18 à 26,5 ms | 1,4 à 1,5 / 3,6 à 7,2 ms | 1,8 à 2,5 / 4,5 à 19,6 ms |
+| Dont le travail de la page, p50 / p99 | 1,7 à 2,6 / 7,9 à 11,4 ms | 1,1 à 1,2 / 3,2 à 5,8 ms | 1,6 à 2,1 / 3,1 à 4,9 ms |
+| Dont l'attente de l'appel du navigateur, p50 | 5,7 à 7,2 ms | 0,3 ms | 0,2 à 0,8 ms |
+| Dont WebGL, p50 | 0,9 à 1,4 ms | 0,6 à 0,8 ms | 0,7 à 0,8 ms |
+| Une frame pendant la frappe, le travail de la page, p50 / p99 | 1,0 à 1,5 / 1,3 à 2,5 ms | 0,9 à 5,0 / 1,6 à 25 ms | 1,1 à 1,3 / 3,2 à 3,6 ms |
+| Frames du navigateur pendant le défilement, écart p50 / p99 | 16,7 à 33,3 / 50 ms | 16,7 / 16,8 ms | 17,1 / 17,1 à 100,5 ms |
+| Frames peintes pour les 200 crans | 128 à 154 | 199 à 200 | 175 à 200 |
 
-V8 fait tourner cette page 4 fois plus lentement que SpiderMonkey, alors qu'il faisait tourner les programmes ci-dessus
-plus vite ; sans son premier compilateur, Liftoff (`--no-liftoff`), ses frames prennent 7,2 à 7,8 ms, ce n'est donc pas
-que la longue boucle de la page reste dans ce code ; pourquoi il en est ainsi n'a pas été trouvé dans cette tranche. Le
-module de la page fait 1 023 363 octets, 177 562 en Brotli, son loader 10 433 (3 698), et la glue de Ceres (le code
-JavaScript qui la relie au navigateur) 5 765 en Brotli ; `browser.sites`, 1 091 744 octets, ne vient qu'à une erreur.
-`std/plot`, dont le module contient toutes les sortes de graphiques alors que la page dessine des barres, en est la plus
-grande part : ses plus grosses fonctions dessinent des graphiques en trois dimensions.
+Les premières mesures de cette page, avant les changements de cette section, donnaient une frame pendant le défilement
+de 8,2 à 9,7 / 19 à 35 ms dans Chrome sans GPU et de 1,7 à 2,2 / 7 à 19 ms dans Firefox. Un tour qui a pris une frame de
+25 ms ou plus dans Chrome avec le GPU, ou de 100 ms dans Firefox, a rencontré les autres travaux de la machine.
+
+**Les frames de Chrome.** Ces premières mesures prenaient une frame depuis le temps que
+`requestAnimationFrame` donne à son callback (la fonction que le navigateur appelle à chaque frame), et trouvaient Chrome
+4 fois plus lent que Firefox pendant le défilement. Chrome donne le début de sa frame, qu'il prend avant de faire tourner
+la frame ; Firefox, le moment où il appelle. Pris au callback, Chrome avait attendu 2,6 à 5,4 ms (p50), Firefox 0,2.
+Sans GPU, Chrome dessine avec SwiftShader, WebGL en logiciel : une trace de la page montre son compositor (la partie qui
+assemble l'image de la page) à 31 ms (p50) d'une frame soumise à la frame montrée, si bien que la frame suivante commence
+en retard ; sur une page vide, l'attente est de 0,3 ms, et avec le GPU aussi. Le travail propre de la page n'a jamais été
+plus lent dans Chrome : 1,9 ms (p50) contre 2,0 pour Firefox, son programme 4,6 à 5,7 ms du thread pour chaque cran
+contre 4,0 à 4,3, et chaque fonction du module aussi rapide dans V8 que dans SpiderMonkey ou plus, dans les profils des
+deux. `frames.html` donne maintenant l'attente et le travail à part. Les p99 de 18 à 35 ms, dans les deux, venaient des
+passages de main du premier loader, chacun une frame en retard (voir *Une page reste fluide*) : celui de Firefox est
+tombé à 3 à 4 ms.
+
+**Ce que coûte un cran.** Chaque cran de la molette prend à la page environ 1 ms pour prendre l'événement, puis 3,5 ms à
+la frame : 1,6 jusqu'au canvas peint, puis 2 pour l'arbre de sémantique, son JSON et le DOM caché que lisent les lecteurs
+d'écran, que Chrome met ensuite en page, 1,5 ms de plus de style, de mise en page et de peinture.
+
+**La taille, part par part.** Ce qu'envoie la page, en octets, tel quel et avec Brotli à sa qualité 11 :
+
+| Part | Octets | Brotli |
+|---|---:|---:|
+| `browser.wasm`, le module | 388 054 | 103 145 |
+| son code, de `std/plot` | 147 799 | environ 41 800 |
+| son code, de Ceres | 105 114 | environ 29 700 |
+| son code, du runtime | 37 466 | environ 10 600 |
+| son code, des versions pour une page de `std/json`, `std/list`, `std/columns`, `std/websocket` | 17 334 | environ 4 900 |
+| son code, de la page, de son départ, de `std/list`, `std/result` et `std/dict` | 10 630 | environ 3 000 |
+| ses constantes (textes, clés, fonctions), données, types et imports | 69 711 | environ 13 200 |
+| `browser.js`, le loader | 10 834 | 3 805 |
+| `ceres.js`, la glue de Ceres | 18 402 | 6 053 |
+| `browser.sites`, les endroits des erreurs, chargé à la première erreur seulement | 706 991 | 100 836 |
+
+Les parts du code sont mesurées avec `CESIA_WASM_NAMES=1`, dont les noms disent le fichier de chaque fonction ; elles se
+partagent le Brotli du code, 89 945 octets, selon leurs octets. Le module faisait 1 023 363 octets, 177 562 avec Brotli.
+Ces changements l'ont réduit :
+
+- *Les sortes de graphiques qu'un programme fait, et aucune autre* (voir *Comment ça marche*) : 628 800 octets, 120 476
+  avec Brotli.
+- *Les opérateurs de deux valeurs dans des fonctions du runtime* : 412 683 et 103 742.
+- *Pas de version pour une valeur par défaut* : 390 041 et 103 089.
+- *Un chunk qui laisse le plein à son appelant* (voir *Firefox* plus haut) : 388 054 et 103 145.
+
+Un module qui ne contient que ce que ses exports atteignent en a retiré 715 octets : le compilateur ne compilait déjà
+une fonction qu'une fois qu'un appel l'atteint. Ce qui reste de `std/plot` dessine les barres, leurs axes et leurs
+graduations, et les options de `plot.Of` et de `plot.Scene` que la page n'utilise pas, que le code atteint par une
+valeur de fonction : un graphique polaire, 28 Ko, une note, des graduations données, les noms au bout des lignes, les
+marques d'un point. Les octets qui restent appartiennent à ce que la page fait tourner.
+
+**wasm-opt.** Le `wasm-opt` de Binaryen 133 sur ce module : `-Oz` donne 343 984 octets, 102 155 avec Brotli, 1 % de
+moins ; `--closed-world --gufa -Oz`, qui prend le module comme tout ce qui existe et suit chaque valeur à travers lui,
+312 754 et 93 602, 9 % de moins, en 2,7 s, et la page tourne de même dans Chrome et Firefox. Avec `-all`, il écrit les
+types exacts d'une proposition que Chrome refuse : nommez les fonctionnalités, `--enable-gc --enable-reference-types
+--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int --enable-tail-call --enable-multivalue`.
+`cesia build` ne le lance pas : Cesia n'apporte aucun outil de WebAssembly à installer.
+
+**Le premier affichage.** Du début de la page à sa première frame peinte, et ses parts, que le loader et la glue de
+Ceres marquent, avant les changements ci-dessous et maintenant, 3 à 4 chargements chacun dans un même navigateur :
+
+| | Chrome 158, sans GPU | Chrome 158, GPU | Firefox 160 |
+|---|---|---|---|
+| Premier affichage, la première page d'un nouveau navigateur, avant / maintenant | 557 à 581 / 496 à 499 ms | 1 379 / 1 393 ms | 447 à 499 / 193 à 239 ms |
+| Premier affichage, les pages suivantes, avant / maintenant | 263 à 343 / 157 à 286 ms | 77 à 142 / 80 à 137 ms | 107 à 162 / 100 à 157 ms |
+| Dont WebGL mis en place, `getContext("webgl2")` | 117 à 431 ms | 8 à 71 ms, 1 266 la première fois | 6 à 17 ms |
+| Dont, avant : le module chargé, compilé et lancé | 39 à 56 ms | 30 à 33 ms | 71 à 105 ms |
+
+Le loader demande maintenant le module et les modules JavaScript que `js.Call` nomme en même temps, et compile le module
+pendant que ses octets arrivent, avec `WebAssembly.compileStreaming`, quand le serveur dit `application/wasm`, comme
+[http.Static] le fait maintenant pour un `.wasm`. La glue de Ceres met WebGL en place dès qu'elle est chargée, pendant
+que le module compile : dans Chrome, le module est compilé quand WebGL est prêt. Chrome sans GPU passe la plus grande
+part d'un premier affichage à mettre WebGL en place, ce qu'aucune page ne raccourcit ; avec le GPU, comme un navigateur
+de bureau l'a, et dans Firefox, un premier affichage prend 80 à 160 ms. La première page d'un nouveau navigateur prend
+plus longtemps : 1,3 s avec le GPU de Chrome, le temps que démarre son processus du GPU, et Firefox, qui compilait son
+module une fois arrivé en entier, l'affiche maintenant en deux fois moins de temps.
+
+**À côté des frameworks de JavaScript.** Les pages du js-framework-benchmark de Stefan Krause, une table de 1 000
+lignes que chaque framework construit et change, telles qu'elles sont construites pour lui, en octets, tels quels et
+avec Brotli :
+
+| Page | Octets | Brotli |
+|---|---:|---:|
+| Solid 1.9 | 11 563 | 4 359 |
+| Svelte 5 | 26 953 | 9 716 |
+| Angular 22 | 148 909 | 45 950 |
+| React 19 | 194 643 | 52 423 |
+| Leptos 0.7, Rust compilé vers WebAssembly | 193 500 | 49 266 |
+| Yew 0.23, Rust compilé vers WebAssembly | 206 786 | 57 743 |
+| La page des factures de Ceres : module, loader et glue | 417 290 | 113 003 |
+
+Ces pages donnent au navigateur leurs éléments, qu'il met en page et écrit avec son propre moteur ; Ceres met en page
+et peint sa page elle-même, sur un canvas, de ses règles de mise en page aux lignes virtuelles de sa table, et sa page
+contient un graphique et une table tenue live par un serveur. Un graphique apporterait à ces pages une bibliothèque à
+lui. La page de Ceres fait 2,2 à 2,3 fois celle de React ou de Leptos, et 26 fois celle de Solid.
 
 ## Pour aller plus loin
 
