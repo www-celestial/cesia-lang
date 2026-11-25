@@ -11,9 +11,9 @@ let mode = ref hot
    reload; a version's native code as a whole would go on with the old code to its end. *)
 let watching = ref false
 
-(* A version runs natively after this many calls; a loop after this many checkpoints inside it. *)
+(* A version runs natively after this many calls, 16 times as many for a value while the JIT isn't loaded. *)
 let calls_before = 1000
-let checkpoints_before = 2
+let checkpoints_before = 2  (* and a loop after this many checkpoints inside it *)
 
 type loop = {
   mutable seen : int;
@@ -134,7 +134,7 @@ let watch (w : world) (ver : version) =
       ver.rv <- rv;
       match loaded () with Some j -> j.promote w ver | None -> ()
     in
-    let calls = ref 0 in
+    let calls = ref (if !mode = always || ver.ret == TI || ver.ret == TF || Option.is_some !jit then 0 else -15 * calls_before) in
     let due () =
       incr calls;
       if !calls >= (if !mode = always then 1 else calls_before) && free w then (promote (); true) else false
