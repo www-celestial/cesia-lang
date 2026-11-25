@@ -116,9 +116,8 @@ defn Main()
   two = text.Split("<h2>Two</h2>", text.Split("<h2>Table</h2>", page?)[1])[2]
   order = [text.Find(w, two) for w in ["<pre class=\"output\">first</pre>", "id=\"play7-1\"", "<pre class=\"output\">then</pre>", "<pre class=\"value\">9</pre>", "<div class=\"graph\"><svg"]]
   io.Print("two: $(list.All([value.IsSome(k) for k in order]) and value.Equal(order, list.Sort(order)))")
-  (* The page of before, to the byte, with code = true as without it; with code = false, its titles, what its cells printed and showed, its graphs, and
-     none of their code. *)
-  io.Print("page: $(text.ByteLength(page?)) bytes, $(fingerprint(page?)), the same with code = true: $(cells.Html("page.ce", code = true)? == page?)")
+  (* The page of before, to the byte; with code = false, its titles, what its cells printed and showed, its graphs, and none of their code. *)
+  io.Print("page: $(text.ByteLength(page?)) bytes, $(fingerprint(page?))")
   bare = cells.Html("page.ce", code = false)?
   io.Print("without code: $(text.Contains("<h2>Sum</h2>", bare)) $(text.Contains("total 30", bare)) $(text.Contains("<div class=\"graph\"><svg", bare)) $(text.Contains("<td class=\"n\">9.0</td>", bare)), $(value.Len(text.Split("<section>", bare)) - 1) sections")
   io.Print("no code: $(not text.Contains("<pre><code", bare)) $(not text.Contains("total(xs)", bare)) $(not text.Contains("plot.Line(", bare)) $(not text.Contains("defn", bare))")

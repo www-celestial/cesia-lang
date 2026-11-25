@@ -4,6 +4,7 @@
 use std/cells
 use std/fiber
 use std/io
+use std/math
 use std/result
 use std/sys
 use std/text
@@ -15,6 +16,15 @@ defn shown(r)
     result.Ok(x) -> "Ok: output $(x.Output), value $(x.Value), error $(x.Error)"
     result.Err(e) -> "Err: $(e.Message)"
   end
+end
+
+defn fingerprint(words)
+  (** A number for a text, a polynomial of its bytes modulo a prime: two pages that differ in one byte give two numbers. *)
+  h = 0
+  for v in text.Bytes(words)
+    h = math.Mod(h * 257 + v + 1, 1000000007)
+  end
+  h
 end
 
 defn Main()
@@ -48,7 +58,9 @@ defn Main()
       io.Print(line)
     end
   end
-  (* Without code, the page keeps each slider, the titles and what the cells printed, and no line of the cells' code. *)
+  (* The page of before, to the byte, the same with code = true. Without code, the page keeps each slider, the titles and what the cells printed, and no
+     line of the cells' code. *)
+  io.Print("page: $(text.ByteLength(page)) bytes, $(fingerprint(page)), the same with code = true: $(cells.Html("knobs.ce", code = true)? == page)")
   bare = cells.Html("knobs.ce", code = false)?
   io.Print("without code: $(text.Contains("<h2>Parameters</h2>", bare)) $(text.Contains("n is 3", bare)) $(value.Len([l for l in text.Lines(bare) if text.Contains("class=\"slider\"", l)])) sliders, no code: $(not text.Contains("cells.Slider(", bare)) $(not text.Contains("<pre><code", bare)) $(not text.Contains("rate(2)", bare))")
   result.Ok(missing)
