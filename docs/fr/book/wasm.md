@@ -9,7 +9,7 @@ programme et les quelques fonctions du runtime (le code de soutien qui accompagn
 aucun interpréteur.
 
 C'est une première tranche : les nombres, les textes, les listes, les maps, les fonctions et les closures, `if`, `match`
-et les boucles, les résultats et `?`, et les erreurs. Ce qu'elle ne compile pas encore est une erreur au build, à sa
+et les boucles, les résultats, `?` et `!`, et les erreurs. Ce qu'elle ne compile pas encore est une erreur au build, à sa
 place : voir [Ce qu'il compile](#ce-quil-compile).
 
 ## La commande
@@ -176,7 +176,7 @@ la même place, avec les mêmes appels nommés.
 | les maps écrites en littéraux, leurs champs, `m["key"]`, `m.Name = v` | les types déclarés sur les paramètres et les résultats |
 | les fonctions, les closures, les fonctions comme valeurs, la récursion | `dict.Put`, `dict.Dict` et la plus grande part de la bibliothèque standard |
 | `if`, `match` et ses patterns, `for`, `while`, `return` | |
-| `result.Ok`, `result.Err`, `?`, `bug.Panic` et les erreurs | |
+| `result.Ok`, `result.Err`, `?`, `!`, `bug.Panic` et les erreurs | |
 
 Une map est faite ici pour quelques clés, comme un enregistrement de champs : ses clés sont rangées à la suite, qu'une
 nouvelle clé recopie et qu'une lecture parcourt depuis la première. Une map qui grandit clé par clé jusqu'à des milliers,

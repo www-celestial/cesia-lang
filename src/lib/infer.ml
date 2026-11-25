@@ -294,9 +294,6 @@ and ty env (e : expr) : ty =
       ignore (ty env a);
       env.rett <- join env.rett TA;
       TA
-    | Bang a ->
-      ignore (ty env a);
-      TA
     | Return r ->
       let t = match r.rvalue with Some v -> ty env v | None -> TA in
       env.rett <- join env.rett t;

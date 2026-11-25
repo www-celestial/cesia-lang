@@ -1,0 +1,17 @@
+use std/io
+use std/result
+
+(* x! compiled: the value of an Ok, after a call, before a field, an index or a call, twice, in arithmetic; != stays the
+   comparison not-equal, and a space after ! unwraps before ==. *)
+ok(x) = result.Ok(x)
+person(x) = result.Ok({Name: "n$(x)", Items: [x, x + 1]})
+adder(x) = result.Ok(y -> x + y)
+defn total(n)
+  t = 0
+  for i in 1..n
+    t = t + ok(i)!
+  end
+  t
+end
+io.Print(ok(5)!, person(1)!.Name, person(1)!.Items[2], [ok(1), ok(2)][2]!, adder(1)!(2), ok(ok(4))!!)
+io.Print(ok(2)! * ok(3)! + 1, total(1000), ok(1)!=ok(2), ok(1)! == 1, ok(1)! != 2)

@@ -1,0 +1,12 @@
+use std/io
+use std/result
+
+(* x! on an Err whose error is a struct with a Message: its Message, as result.Unwrap gives it. *)
+struct Failure
+  Message
+  Code
+end
+
+f(x) = if x > 0 result.Ok(x) else result.Err(Failure("below zero", 3)) end
+io.Print(f(2)!)
+io.Print(f(-1)!)

@@ -1108,8 +1108,8 @@ and ca c (e : expr) : ctx -> t =
   | Match { subject; arms } -> match_expr c e subject arms (ce c)
   | Struct_lit { sname; sfields } -> struct_lit c sname sfields
   | End_index -> end_index c
-  | Question a -> question c e a
-  | Bang a -> bang c e a
+  | Question a -> question c e a false
+  | Bang a -> question c e a true
   | Return { rvalue; tail } ->
     let v = match rvalue with Some v -> if tail then ctail c v else ce c v | None -> fun _ -> Missing in
     if tail then v
@@ -1443,30 +1443,19 @@ and nd_cell c ixs : (ctx -> t -> int) * int array ref =
          k),
     outside )
 
-(* e?: the value of an Ok, or an early return of the Err. *)
-and question c e a =
+(* e?: the value of an Ok, or an early return of the Err. e! (bang): the same Ok, with no call, and anything else stops the
+   fiber at the !, as result.Unwrap(e) would. *)
+and question c e a bang =
   let v = ce c a and s = site c e.pos in
   let ok = Value.shape_of c.w ~sname:"Ok" [| "Value" |] in
   let err = Value.shape_of c.w ~sname:"Err" [| "Error" |] in
   fun ctx ->
     match v ctx with
     | Struct r when r.shape == ok -> Value.share (Trie.vget r.fields 0)
-    | Struct r as x when r.shape == err -> raise_notrace (Return_value x)
+    | Struct r as x when r.shape == err && not bang -> raise_notrace (Return_value x)
     | x ->
       ctx.site <- s;
-      Runtime.fail ctx Type (Messages.sign_value "?" (Value.describe x))
-
-(* e!: the value of an Ok, with no call, and anything else stops the fiber at the !, as result.Unwrap(e) would. *)
-and bang c e a =
-  let v = ce c a and s = site c e.pos in
-  let ok = Value.shape_of c.w ~sname:"Ok" [| "Value" |] in
-  let err = Value.shape_of c.w ~sname:"Err" [| "Error" |] in
-  fun ctx ->
-    match v ctx with
-    | Struct r when r.shape == ok -> Value.share (Trie.vget r.fields 0)
-    | x ->
-      ctx.site <- s;
-      bang_failed ctx err x
+      if bang then bang_failed ctx err x else Runtime.fail ctx Type (Messages.sign_value "?" (Value.describe x))
 
 and struct_lit c sname fields =
   let names = Array.map fst fields in

@@ -6,7 +6,7 @@ that every current browser runs, near the speed of machine code, inside the page
 `cesia build` compiles the program [ahead of time](glossary.md#ahead-of-time-compilation): the page holds your program
 and the few functions of the runtime it uses, and no interpreter.
 
-This is a first slice: numbers, texts, lists, maps, functions and closures, `if`, `match` and loops, results and `?`,
+This is a first slice: numbers, texts, lists, maps, functions and closures, `if`, `match` and loops, results, `?` and `!`,
 and errors. What it doesn't compile yet is an error at the build, at its place: see
 [What it compiles](#what-it-compiles).
 
@@ -170,7 +170,7 @@ place, with the same calls named.
 | maps written as literals, their fields, `m["key"]`, `m.Name = v` | types declared on parameters and results |
 | functions, closures, functions as values, recursion | `dict.Put`, `dict.Dict` and most of the standard library |
 | `if`, `match` and its patterns, `for`, `while`, `return` | |
-| `result.Ok`, `result.Err`, `?`, `bug.Panic` and errors | |
+| `result.Ok`, `result.Err`, `?`, `!`, `bug.Panic` and errors | |
 
 A map is made here for a few keys, as a record of fields: its keys sit in a row, which a new key copies and a read
 searches from the first. A map grown key by key to many thousands, as a dictionary of counts, is slow for now: the
