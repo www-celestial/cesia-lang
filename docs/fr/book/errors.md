@@ -96,8 +96,8 @@ age("31")! + 1 -->
 age("old")!
 ```
 
-`x!` est la forme courte de [result.Unwrap]`(x)`, qui fait la même chose par un appel, et reste la façon de la passer
-comme fonction, par exemple à [list.Map]. Rust l'écrit `.unwrap()`, et Swift `!` après une valeur qui peut être `nil` :
+`x!` est la forme courte de [result.Unwrap]`(x)`, qui fait la même chose par un appel, et reste la façon de passer
+cette opération comme fonction, par exemple à [list.Map]. Rust l'écrit `.unwrap()`, et Swift `!` après une valeur qui peut être `nil` :
 
 ```cesia
 age("31")! --> result.Unwrap(age("31"))
@@ -112,9 +112,9 @@ Les trois façons de regarder dans un résultat, côte à côte :
 | `match x` | la branche `result.Ok(v)` | la branche `result.Err(e)` | partout |
 
 `!` reste collé à sa valeur comme `?`, sans espace avant lui, et s'enchaîne de la même façon : `f(x)!.Name`, `rows[1]!`.
-`a!=b` reste la comparaison « différent de », lue comme un seul signe `!=` ; `a! == b` fait l'unwrap de `a`, puis compare. Après le
-type de ce que donne une fonction, comme dans `Int!` ([Types](types.md)), `!` dit que la fonction peut échouer ; après une
-valeur, il dit que cette valeur ne doit pas avoir échoué.
+`a!=b` reste la comparaison « différent de », lue comme un seul signe `!=` ; `a! == b` fait l'unwrap de `a`, puis
+compare. Après le type de ce que donne une fonction, comme dans `Int!` ([Types](types.md)), `!` dit que la fonction peut
+échouer ; après une valeur, il dit que cette valeur ne doit pas avoir échoué.
 
 `?` et `!` marchent aussi au bout d'une étape de [then] : `x then f()?` est `f(x)?`, et `x then f()!` est `f(x)!`.
 
