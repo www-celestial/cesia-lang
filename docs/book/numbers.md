@@ -596,12 +596,12 @@ machine code that calls the function on each element.
 | [num.ReplaceNan] | 3.4 | 3.5 | 44.3 | 5.6 | 4.0 |
 | [math.LogSumExp] | 8.9 | 8.8 | | 24.5 | 12.0 |
 
-On one core, Cesia takes 1.04 to 1.21 times numpy's time for the functions of the C library, which both call, and as long for
-[math.Cbrt], its own and correctly rounded; on four, it is ahead. [math.LogSumExp] is three times as fast as scipy's,
-which makes the array of the differences, then of their exponentials, before it sums them. numpy wins three: its
-`isnan` writes a byte for each element, where Cesia's array of booleans holds a word of 8 bytes; its `clip` takes the
-SIMD instructions of the processor; and `np.sin(np.radians(x))` skips the exact reduction of [math.SinDegrees], whose
-`fmod` and `round` take 10 of its 24 ns, at the price of `0.0` for the sine of 180 degrees. A loop that calls
+On one core, Cesia takes 1.04 to 1.21 times numpy's time for the functions of the C library, which both call, and as
+long for [math.Cbrt], its own and correctly rounded; on four, it is ahead. [math.LogSumExp] is three times as fast as
+scipy's, which makes the array of the differences, then of their exponentials, before it sums them. numpy wins three:
+its `isnan` writes a byte for each element, where Cesia's array of booleans holds a word of 8 bytes; its `clip` takes
+the SIMD instructions of the processor; and `np.sin(np.radians(x))` skips the exact reduction of [math.SinDegrees],
+whose `fmod` and `round` take 10 of its 24 ns, at the price of `0.0` for the sine of 180 degrees. A loop that calls
 [math.Cbrt], [math.Clamp], [num.ReplaceNan], [math.Step], [math.Epsilon] or [math.LogSumExp] stays in the interpreter,
 as machine code calls no function written in OCaml; give it the array in one call.
 
