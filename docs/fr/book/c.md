@@ -26,9 +26,9 @@ résultat. Il donne une fonction de Cesia :
 ```cesia allow=ffi=m
 use std/c
 use std/result
-m = result.Unwrap(c.Open("m", version = 6))
-cos = result.Unwrap(c.Fn("cos", ["f64"], "f64", m))
-pow = result.Unwrap(c.Fn("pow", ["f64", "f64"], "f64", m))
+m = c.Open("m", version = 6)!
+cos = c.Fn("cos", ["f64"], "f64", m)!
+pow = c.Fn("pow", ["f64", "f64"], "f64", m)!
 cos(0.0) -->
 pow(2.0, 10.0) -->
 ```
@@ -104,8 +104,8 @@ C l'appellera :
 
 ```cesia norun
 use std/result
-lib = result.Unwrap(c.Open("mylib"))
-applyTwice = result.Unwrap(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
+lib = c.Open("mylib")!
+applyTwice = c.Fn("apply_twice", ["callback", "i64"], "i64", lib)!
 triple = c.Callback(x -> x * 3, ["i64"], "i64")
 applyTwice(triple, 2)
 ```
@@ -127,8 +127,8 @@ ou `f64`.
 ```cesia norun
 use std/c
 use std/result
-libc = result.Unwrap(c.Open("c", version = 6))
-snprintf = result.Unwrap(c.Variadic("snprintf", ["ptr", "u64", "text"], ["i32"], "i32", libc))
+libc = c.Open("c", version = 6)!
+snprintf = c.Variadic("snprintf", ["ptr", "u64", "text"], ["i32"], "i32", libc)!
 ```
 
 ## Comment un appel atteint C
@@ -172,8 +172,8 @@ appel sur un thread à lui, pendant que sa fiber attend et que les autres tourne
 ```cesia norun
 use std/c
 use std/result
-sodium = result.Unwrap(c.Open("sodium", version = 26))
-verify = result.Unwrap(c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", sodium, slow = true))
+sodium = c.Open("sodium", version = 26)!
+verify = c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", sodium, slow = true)!
 ```
 
 Il tourne à la fois autant d'appels lents que `CESIA_CORES` en donne, la moitié des cœurs de la machine par défaut ; les
@@ -236,7 +236,7 @@ defn main()
   result.Ok(missing)
 end
 
-result.Unwrap(main())
+main()!
 ```
 
 ### Le lancer

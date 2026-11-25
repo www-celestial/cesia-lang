@@ -122,7 +122,7 @@ use std/sys
 use std/frame
 use std/io
 use std/result
-df = frame.FromCsv(result.Unwrap(sys.Read("sales.csv")))
+df = frame.FromCsv(sys.Read("sales.csv")!)
 frame.RowCount(df) -->
 frame.Columns(df) -->
 io.Print(frame.Show(frame.Head(3, df)))

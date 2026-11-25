@@ -1,0 +1,6 @@
+bang-value.ce:4:13: ! needs an Ok or an Err, not an array.
+  4 | f() = [1, 2]!
+    |             ^
+  Return a result from the function you call.
+  in f (bang-value.ce:4)
+exit 1

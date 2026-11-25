@@ -1,0 +1,88 @@
+(* x! unwraps a result: the value of an Ok, and an Err is a bug, which stops the fiber, as result.Unwrap(x) does. It never
+   returns, so it also goes at the top of a file, where ? can't. *)
+use std/fiber
+use std/list
+use std/result
+use std/value
+
+ok(x) = result.Ok(x)
+err(e) = result.Err(e)
+adder(x) = result.Ok(y -> x + y)
+person(x) = result.Ok({Name: "n$(x)", Items: [x, x + 1], Add: y -> result.Ok(x + y)})
+addTo(a, b) = if b > 100 result.Err("too big") else result.Ok(a + b) end
+find(n, rows) = result.Ok([r for r in rows if r.Id <= n])
+
+(* What a fiber that runs f ends with: an Ok of its value, or an Err of the kind and message of what stopped it. *)
+ran(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(e -> [e.Kind, e.Message])
+
+(* At the top of a file. *)
+top = ok(3)!
+rows = [{Id: 1, Name: "a"}, {Id: 2, Name: "b"}, {Id: 3, Name: "c"}]
+names = rows then find(2)! then list.Map(it.Name)
+total = 1 then addTo(2)! then addTo(it, 3)! then addTo(10, it)!
+
+isTop() = top == 3
+isOk() = ok(5)! == 5
+isSameAsUnwrap() = value.Equal(ok([1, 2])!, result.Unwrap(ok([1, 2])))
+isField() = person(1)!.Name == "n1"
+isIndexAfter() = person(1)!.Items[2] == 2
+isIndexBefore() = [ok(1), ok(2)][2]! == 2
+isCallAfter() = adder(1)!(2) == 3
+isMethodChain() = person(1)!.Add(2)! == 3
+isTwice() = ok(ok(4))!! == 4
+isInArithmetic() = ok(2)! * ok(3)! + 1 == 7
+
+(* != is still not-equal: the lexer reads != first. With a space, ! unwraps and == compares. *)
+isNotEqual() = ok(1)!=ok(2)
+isNotEqualSame() = not (ok(1)!=ok(1))
+isUnwrapThenEqual() = ok(1)! == 1
+isUnwrapThenNotEqual() = ok(1)! != 2
+
+isErr() = ran(() -> err("no")!) == result.Err(["user", "! needs an Ok, not an Err: no"])
+isErrMessage() = ran(() -> err({Message: "disk full", Kind: "io"})!) == result.Err(["user", "! needs an Ok, not an Err: disk full"])
+isErrValue() = ran(() -> err([1, 2])!) == result.Err(["user", "! needs an Ok, not an Err: [1, 2]"])
+isNotResult() = ran(() -> 5!) == result.Err(["type", "! needs an Ok or an Err, not the number 5."])
+isNotMissing() = ran(() -> missing!) == result.Err(["type", "! needs an Ok or an Err, not missing."])
+
+(* An Err stops its own fiber only: the others go on. *)
+defn fibers()
+  bad = fiber.Spawn(() -> err("no")!)
+  good = fiber.Spawn(() -> ok(7)! * 2)
+  [fiber.Wait(good), result.IsErr(fiber.Wait(bad))]
+end
+isOwnFiber() = value.Equal(fibers(), [result.Ok(14), true])
+
+(* In a function, after the code before it ran. *)
+defn steps(r)
+  seen = [1]
+  v = r!
+  list.Append(v, seen)
+end
+isInFunction() = value.Equal(steps(ok(2)), [1, 2])
+
+(* A statement of its own: it says the result is an Ok, or stops there. *)
+defn written(r)
+  r!
+  "written"
+end
+isStatement() = written(ok(missing)) == "written"
+isStatementErr() = ran(() -> written(err("disk full"))) == result.Err(["user", "! needs an Ok, not an Err: disk full"])
+
+(* x then f(a)? is f(a, x)?, and x then f(a)! is f(a, x)!: the ? or ! at the end comes after the pipe. *)
+defn chain(x)
+  a = x then addTo(1)? then addTo(it, 2)? then addTo(3, it)?
+  result.Ok(a * 2)
+end
+defn twice(n)
+  a = n then addTo(1, it)?
+  result.Ok(a * 2)
+end
+isThenQuestion() = chain(1) == result.Ok(14)
+isThenQuestionErr() = chain(99) == result.Err("too big")
+isThenQuestionIt() = twice(5) == result.Ok(12)
+isThenQuestionItErr() = twice(500) == result.Err("too big")
+isThenBang() = (1 then addTo(2)!) == 3
+isThenBangIt() = (1 then addTo(it, 10)!) == 11
+isThenBangName() = (4 then ok!) == 4
+isThenChainTop() = value.Equal(names, ["a", "b"]) and total == 16
+isThenBangErr() = ran(() -> 500 then addTo(1)!) == result.Err(["user", "! needs an Ok, not an Err: too big"])

@@ -241,6 +241,7 @@ module Out = struct
     | Interface i -> byte o 33; iface o i
     | Question a -> byte o 34; expr o a
     | Hook h -> byte o 35; str o (Bytes.to_string h.live)
+    | Bang a -> byte o 36; expr o a
 
   and index o = function All -> byte o 0 | Ix e -> byte o 1; expr o e
 
@@ -481,6 +482,7 @@ module In = struct
     | 33 -> Interface (iface d)
     | 34 -> Question (expr d)
     | 35 -> Hook { live = Bytes.of_string (str d) }
+    | 36 -> Bang (expr d)
     | _ -> raise Bad
 
   and index d = match byte d with 0 -> All | 1 -> Ix (expr d) | _ -> raise Bad

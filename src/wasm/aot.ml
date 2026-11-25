@@ -240,6 +240,7 @@ let rec scan ?(written = Hashtbl.create 1) seen leaves (e : expr) =
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> go a; go b
   | Neg a | Not a | Field (a, _) -> go a
   | Question a -> leaves := true; go a
+  | Bang a -> go a
   | Call c -> go c.callee; Array.iter (fun (a : arg) -> go a.value) c.args
   | Assign (n, v) -> set n; go v
   | If (c, y, n) -> go c; block y; block n
@@ -311,7 +312,8 @@ and natural fc (e : expr) : kind * ins list =
     (match fc.ends with
      | l :: _ -> I, [ Lget l; Cast (false, T rt.list); call rt "cells"; i64_extend_u ]
      | [] -> unsupported fc e.pos "end")
-  | Question a -> V, question fc e a
+  | Question a -> V, question fc e a false
+  | Bang a -> V, question fc e a true
   | Match { subject; arms } -> k, match_expr fc e subject arms k
   | Return r -> V, return fc e r
   | Assign _ | While _ | For _ | Set _ | Break | Fn_def _ | Destructure _ | Use _ | Interface _ | Hook _ ->
@@ -672,17 +674,34 @@ and struct_lit fc e sname fields =
   | None -> [ I32 1; keys rt names ] @ vals @ [ I32 n; I32 0; struct_new rt.map ]
   | Some s -> [ I32 1; shape rt s names ] @ vals @ [ struct_new rt.recd ]
 
-(* e?: the value of an Ok, or the function returns the Err. *)
-and question fc e a =
+(* e?: the value of an Ok, or the function returns the Err. e! (bang): the same Ok, and an Err stops the program at the !,
+   as result.Unwrap does; any other value gets the type error of its sign. *)
+and question fc e a bang =
   let rt = fc.st.rt in
   let x = Rt.local fc.fb Rt.v in
   let is name = [ Lget x; Test (false, T rt.recd);
                   If (Bval I32, [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 0; text rt name; call rt "bytes_eq" ], [ I32 0 ]) ] in
   let ret_kind = kind_of fc.ver.ret in
+  let err = if bang then bang_failed fc e x else leave_with fc ([ Lget x ] @ convert fc ~from:V ~into:ret_kind) in
   stored fc a @ [ Lset x ]
-  @ is "Ok" @ [ If (Bnone, [], is "Err" @ [ If (Bnone, leave_with fc ([ Lget x ] @ convert fc ~from:V ~into:ret_kind),
-                                                Rt.fail rt (Messages.question_value a1) [ [ Lget x; call rt "describe" ] ] (site fc e.pos)) ]) ]
+  @ is "Ok" @ [ If (Bnone, [], is "Err" @ [ If (Bnone, err, Rt.fail rt (Messages.sign_value (if bang then "!" else "?") a1)
+                                                            [ [ Lget x; call rt "describe" ] ] (site fc e.pos)) ]) ]
   @ [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; I32 0; array_get rt.vals; call rt "share" ]
+
+(* What e! stops with at the Err x: the Message of its error, a map's or a record's, or else the error, as a text, as
+   result.Unwrap gives it. *)
+and bang_failed fc e x =
+  let rt = fc.st.rt in
+  let m = Rt.local fc.fb Rt.v and k = Rt.local fc.fb I32 in
+  let message ty find vals =
+    [ Lget m; Cast (false, T ty) ] @ find @ [ Lset k; Lget k; I32 0; i32_ge_s;
+      If (Bnone, [ Lget m; Cast (false, T ty) ] @ vals @ [ Lget k; array_get rt.vals; Lset m ], []) ] in
+  [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; I32 0; array_get rt.vals; Lset m;
+    Lget m; Test (false, T rt.map);
+    If (Bnone, message rt.map [ text rt "Message"; call rt "map_find" ] [ struct_get rt.map m_vals ],
+        [ Lget m; Test (false, T rt.recd);
+          If (Bnone, message rt.recd [ struct_get rt.recd r_shape; struct_get rt.shape 1; text rt "Message"; call rt "find_name" ] [ struct_get rt.recd r_fields ], []) ]) ]
+  @ Rt.fail rt (Messages.bang_err a1) [ [ Lget m; call rt "text_of" ] ] (site fc e.pos)
 
 (* The way out of a function: its depth back. *)
 and leave fc = if fc.pname = "" && fc.fn.cell_of <> [||] then [] else [ Gget (depth fc.st.rt); I32 1; i32_sub; Gset (depth fc.st.rt) ]

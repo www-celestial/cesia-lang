@@ -1,0 +1,5 @@
+2
+bang-record.ce:12:15: ! needs an Ok, not an Err: below zero
+  12 | io.Print(f(-1)!)
+     |               ^
+exit 1

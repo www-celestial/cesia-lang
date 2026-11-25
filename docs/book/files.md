@@ -40,7 +40,7 @@ For a file that comes with your program, where an `Err` would be a bug, [result.
 
 ```cesia allow=read
 use std/value
-value.Len(text.Lines(result.Unwrap(sys.Read("todo.txt")))) -->
+value.Len(text.Lines(sys.Read("todo.txt")!)) -->
 ```
 
 ## Writing
@@ -51,7 +51,7 @@ value.Len(text.Lines(result.Unwrap(sys.Read("todo.txt")))) -->
 ```cesia allow=read,write
 sys.Write("done.txt", "buy bread\n") -->
 sys.Append("done.txt", "call Bo\n") -->
-text.Lines(result.Unwrap(sys.Read("done.txt"))) -->
+text.Lines(sys.Read("done.txt")!) -->
 ```
 
 A text of several lines is written as it is: end each line with `\n`, or join them with [text.Join].
@@ -103,10 +103,10 @@ an `Err`, and stays as it was, so no one can put a link at the name of the new f
 through.
 
 ```cesia allow=read,write
-old = result.Unwrap(sys.Stat("todo.txt"))
+old = sys.Stat("todo.txt")!
 sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group, new = true) -->
 sys.Rename("todo.txt.new", "todo.txt") -->
-result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
+sys.Stat("todo.txt")!.Mode == old.Mode -->
 ```
 
 ## Folders
@@ -186,7 +186,7 @@ its group (0 on Windows, where a file has no such numbers).
 
 ```cesia allow=read
 sys.Exists("todo.txt") -->
-info = result.Unwrap(sys.Stat("todo.txt"))
+info = sys.Stat("todo.txt")!
 info.Size -->
 info.IsDir -->
 ```
@@ -231,7 +231,7 @@ in order. A symbolic link is listed, never followed, so a link can't make it loo
 use std/list
 sys.Write("archive/2026/june.txt", "sold 3\n") -->
 sys.Walk("archive") -->
-list.Filter(p -> path.Ext(p) == ".txt", result.Unwrap(sys.Walk("."))) -->
+list.Filter(p -> path.Ext(p) == ".txt", sys.Walk(".")!) -->
 ```
 
 Together they rename a whole tree. This one gives every photo of a folder the extension `.jpg`, in lower case:
@@ -266,7 +266,7 @@ use std/text
 use std/value
 
 for file in sys.Args
-  n = value.Len(text.Lines(result.Unwrap(sys.Read(file))))
+  n = value.Len(text.Lines(sys.Read(file)!))
   io.Print(file, n)
 end
 ```
@@ -280,7 +280,7 @@ a flag that the defaults don't name is an `Err` that says which flags there are:
 ```cesia
 use std/flags
 args = ["-i", "--max", "2", "bread", "todo.txt"]
-a = result.Unwrap(flags.Parse({i: false, max: 0}, args))
+a = flags.Parse({i: false, max: 0}, args)!
 a.Flags -->
 a.Words -->
 flags.Parse({i: false, max: 0}, ["--min", "2"]) -->
@@ -310,7 +310,7 @@ use std/result
 use std/text
 use std/value
 
-input = result.Unwrap(sys.ReadInput())
+input = sys.ReadInput()!
 n = value.Len(text.Lines(input))
 io.Print(n, "lines")
 if n == 0
@@ -344,7 +344,7 @@ an argument would run the `touch`, a second command that nobody wrote.
 ```cesia norun
 use std/io
 use std/result
-r = result.Unwrap(sys.Run("git", args = ["log", "--oneline", "-3"]))
+r = sys.Run("git", args = ["log", "--oneline", "-3"])!
 if r.Code == 0
   io.Print(r.Out)
 else

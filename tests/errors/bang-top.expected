@@ -1,0 +1,5 @@
+2
+bang-top.ce:7:21: ! needs an Ok, not an Err: no
+  7 | m = result.Err("no")!
+    |                     ^
+exit 1

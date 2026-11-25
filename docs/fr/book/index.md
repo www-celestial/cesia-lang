@@ -35,7 +35,7 @@ construction : le livre ne peut donc pas s'écarter du langage.
 6. [Fonctions](functions.md) : vos propres fonctions, et celles qui prennent des fonctions.
 7. [Maps](maps.md) : des valeurs sous des noms, compter, des dictionnaires imbriqués.
 8. [Structs](structs.md) : des formes déclarées une fois, les valeurs par défaut, les méthodes, `From` et `Fields`.
-9. [Erreurs](errors.md) : `Ok` et `Err`, `?`, les étapes sur des résultats, et les bugs.
+9. [Erreurs](errors.md) : `Ok` et `Err`, `?` et `!`, les étapes sur des résultats, et les bugs.
 10. [Types](types.md) : les types sur les champs, les paramètres et les résultats, `?` pour une valeur absente, les
     interfaces.
 11. [Packages](packages.md) : `use`, les dossiers comme packages, `cesia.toml`, les tâches, le code d'autres projets.

@@ -1,0 +1,17 @@
+use std/io
+use std/result
+
+(* A value that is no result, met by ! after many turns of machine code: the type error of the interpreter. *)
+defn late(rs, n)
+  total = 0
+  for i in 1..n
+    r = rs[1]
+    if i == n
+      r = rs[2]
+    end
+    total = total + r!
+  end
+  total
+end
+
+io.Print(late([result.Ok(1), 7], 100000))

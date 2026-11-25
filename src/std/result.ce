@@ -1,5 +1,5 @@
 (** Results: an Ok of a value, or an Err of an error, which a function returns rather than raising it. ? takes the value of an
-    Ok, or returns the Err. *)
+    Ok, or returns the Err; ! takes it, or stops the fiber, as Unwrap does. *)
 use std/value
 use std/bug
 
@@ -51,10 +51,12 @@ errorText(e) = match e
   else -> value.Text(e)
 end
 
-(** The value of an Ok. An Err is a bug here, and stops the fiber.
+(** The value of an Ok. An Err is a bug here, and stops the fiber. x! is the same, with no call: Unwrap(x) is its plain
+    form, and a function to pass.
 
       Unwrap(Ok(1)) --> 1
-      Unwrap(Err("no")) --> error *)
+      Unwrap(Err("no")) --> error
+      Ok(1)! --> 1 *)
 Unwrap(r) = match r
   Ok(v) -> v
   Err(e) -> bug.Panic("result.Unwrap needs an Ok, not an Err: $(errorText(e))")

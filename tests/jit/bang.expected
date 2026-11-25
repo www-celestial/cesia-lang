@@ -1,0 +1,31 @@
+bang units: 4
+off:
+10000100000.0 15000150000.0
+100000
+100003
+bang.ce:31:22: ! needs an Ok, not an Err: late
+  31 |     total = total + r!
+     |                      ^
+  in late (bang.ce:31)
+always:
+10000100000.0 15000150000.0
+100000
+100003
+bang.ce:31:22: ! needs an Ok, not an Err: late
+  31 |     total = total + r!
+     |                      ^
+  in late (bang.ce:31)
+bang-value units: 1
+off:
+bang-value.ce:12:22: ! needs an Ok or an Err, not the number 7.
+  12 |     total = total + r!
+     |                      ^
+  Return a result from the function you call.
+  in late (bang-value.ce:12)
+always:
+bang-value.ce:12:22: ! needs an Ok or an Err, not the number 7.
+  12 |     total = total + r!
+     |                      ^
+  Return a result from the function you call.
+  in late (bang-value.ce:12)
+exit 1

@@ -24,7 +24,7 @@ de 0 à 255, et un texte de Cesia les contient tels qu'ils sont : [text.ByteLeng
 use std/crypto
 use std/encode
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 encode.Hex(crypto.Sha256("abc", s))
 ```
 
@@ -50,7 +50,7 @@ différents. Le résultat contient son salt et ses réglages : [crypto.CheckPass
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 stored = crypto.HashPassword("correct horse", s)
 crypto.CheckPassword("correct horse", stored, s)    (* true *)
 crypto.CheckPassword("wrong", stored, s)            (* false *)
@@ -83,7 +83,7 @@ et le garde devant le résultat : il n'y a rien à gérer.
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 key = crypto.SecretKey(s)
 box = crypto.Seal("meet at noon", key, s)
 crypto.Unseal(box, key, s)            (* Ok("meet at noon") *)
@@ -106,7 +106,7 @@ message n'a pas été modifié. [crypto.SignPair] fait une paire de clés Ed2551
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 pair = crypto.SignPair(s)
 sig = crypto.Sign("release 1.0", pair.secret, s)
 crypto.Verify(sig, "release 1.0", pair.public, s)     (* true *)

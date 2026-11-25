@@ -9,6 +9,7 @@ crlf.ce
 fmt: 1
 use std/io
 use std/list
+use std/result
 
 defn twice(x)
   (** Two times x, written out of the style:
@@ -31,7 +32,7 @@ defn twice(x)
   t = "a text that
    keeps its spaces   
       and its lines"
-  y
+  result.Ok(y)!
 end
 
 struct Point

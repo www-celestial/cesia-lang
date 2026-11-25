@@ -12,7 +12,7 @@ use std/text
 
 (** The size in bytes of a key of Seal and of a secret key of BoxPair.
 
-      s = result.Unwrap(Open())
+      s = Open()!
       text.ByteLength(SecretKey(s)) --> 32 *)
 SecretKeySize = 32
 (** The size in bytes of the nonce kept in front of a sealed or boxed message.
@@ -52,7 +52,7 @@ ints() = ["ptr", "ptr", "u64"]
 defn Open()
   (** Loads libsodium: an Ok of the api that the other functions take as their last argument s, or an Err.
 
-        s = result.Unwrap(Open())
+        s = Open()!
         text.ByteLength(Random(8, s)) --> 8 *)
   lib = c.Open("sodium", version = 26)?
   init = c.Fn("sodium_init", [], "i32", lib)?

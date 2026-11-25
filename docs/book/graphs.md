@@ -61,7 +61,7 @@ its SVG text, [plot.Save] writes that text to a file, and [plot.Scene] gives the
 Cemacs draws, as [Scenes](#scenes-for-a-back-end) shows. Here are the labels of the ticks of the time axis above:
 
 ```cesia
-scene = result.Unwrap(plot.Scene(waves, 640, 400))
+scene = plot.Scene(waves, 640, 400)!
 [item.Text for item in scene.Items if item.Role == "xlabel"] -->
 ```
 
@@ -102,7 +102,7 @@ point, so [plot.Points] gives an `Err` that names [plot.Density], which counts a
 
 ```cesia
 noisy = plot.Points([1, 2, 3, 4], [2.0, math.Nan, 3.5, 1.0], shape = "diamond")
-result.Unwrap(plot.Scene(noisy, 640, 400)).Dropped -->
+plot.Scene(noisy, 640, 400)!.Dropped -->
 ```
 
 ### Bars and histograms
@@ -255,7 +255,7 @@ hour = [7, 8, 9, 10, 11]
 height = [5.0, 14.0, 21.0, 26.0, 28.0]
 morning = plot.Of([plot.Line(hour, height), plot.Points(hour, height, size = 4), plot.Text(hour, height, ["$h h" for h in hour])], title = "A height each hour, each point named")
 plot.Save(morning, "morning.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(morning, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+[x.Text for x in plot.Scene(morning, 640, 400)!.Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
 The texts are a list comprehension, `["$h h" for h in hour]`, the short form of [list.Map]`(h -> "$h h", hour)`.
@@ -267,7 +267,7 @@ inside the plot. The range of its axis grows to hold it, as for the data; the ot
 ```cesia allow=read,write
 noon = plot.Of([plot.Line([0, 90, 180, 270, 360], [0, 30, 60, 30, 0]), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed")], title = "A path, the south and the horizon")
 plot.Save(noon, "noon.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(noon, 640, 400)).Items if x.Kind == "text" and x.Role == "data"] -->
+[x.Text for x in plot.Scene(noon, 640, 400)!.Items if x.Kind == "text" and x.Role == "data"] -->
 ```
 
 ### A note, and names at the ends
@@ -280,7 +280,7 @@ are kept, so that the colons of the lines can stand one under the other:
 ```cesia allow=read,write
 place = plot.Of([plot.Line(hour, height)], note = "name: essai\n  lat: 40.76\n  lon: -73.984", title = "A height each hour, with a note")
 plot.Save(place, "place.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(place, 640, 400)).Items if x.Role == "info" and x.Kind == "text"] -->
+[x.Text for x in plot.Scene(place, 640, 400)!.Items if x.Role == "info" and x.Kind == "text"] -->
 ```
 
 `legend = "ends"` names each line at its end, in place of the box of the legend: its label right of its last point
@@ -292,7 +292,7 @@ are named at their last point too; bars and histograms have no end, and with `"e
 ```cesia allow=read,write
 three = plot.Of([plot.Line(hour, height * k, label = "×$k") for k in [1, 2, 3]], legend = "ends", title = "Three lines named at their ends")
 plot.Save(three, "three.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(three, 640, 400)).Items if x.Role == "legend"] -->
+[x.Text for x in plot.Scene(three, 640, 400)!.Items if x.Role == "legend"] -->
 ```
 
 ### Ticks of your own
@@ -307,7 +307,7 @@ options nothing changes.
 use std/list
 compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"], title = "Ticks of your own: N, E, S, W")
 plot.Save(compass, "compass.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(compass, 640, 400)).Items if x.Role == "xlabel"] -->
+[x.Text for x in plot.Scene(compass, 640, 400)!.Items if x.Role == "xlabel"] -->
 ```
 
 [list.Range]`(0, 360, step = 90)` is `[0, 90, 180, 270, 360]`; `0..360`, its short form without a step, would be every
@@ -325,7 +325,7 @@ degrees unless `xticks` gives them, written outside the rim with a degree sign, 
 ```cesia allow=read,write
 dome = plot.Of([plot.Line([60, 120, 180, 240, 300], [0, 40, 60, 40, 0])], polar = true, ylim = [90, 0], title = "A path in a circle, 90 at the center")
 plot.Save(dome, "dome.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(dome, 500, 500)).Items if x.Role == "ylabel"] -->
+[x.Text for x in plot.Scene(dome, 500, 500)!.Items if x.Role == "ylabel"] -->
 ```
 
 A polar graph is square, its disc in the middle of the room that the texts leave. It draws [plot.Line], [plot.Points],
@@ -343,7 +343,7 @@ of 500 pixels is 500 by 313, and a polar graph stays square. [plot.Scene] gives 
 missing:
 
 ```cesia
-[result.Unwrap(plot.Scene(dome, 900, missing)).Width, result.Unwrap(plot.Scene(waves, 500, missing)).Height] -->
+[plot.Scene(dome, 900, missing)!.Width, plot.Scene(waves, 500, missing)!.Height] -->
 ```
 
 ## A sun path from simple formulas
@@ -395,7 +395,7 @@ dial = plot.Of(list.Concat([plot.Line(east(days[k]).Az, east(days[k]).El, label 
   polar = true, ylim = [90, 0], xticks = list.Range(0, 350, step = 10), yticks = list.Range(0, 90, step = 10),
   legend = "ends", note = where, size = [760, 560], title = "Sun path")
 plot.Save(dial, "sundial.svg") -->
-[x.Text for x in result.Unwrap(plot.Scene(dial, 760, 560)).Items if x.Role == "legend"] -->
+[x.Text for x in plot.Scene(dial, 760, 560)!.Items if x.Role == "legend"] -->
 ```
 
 The page draws a picture made on its server; here the chart is a value, drawn the same by [plot.Save] and by Cemacs, in
@@ -425,7 +425,7 @@ An animation is a graph: [plot.Svg] and [plot.Save] write it whole, and [plot.Sc
 from 1, with two fields more in the scene, `Frames`, their number, and `Fps`:
 
 ```cesia
-one = result.Unwrap(plot.Scene(wave, 640, 400, frame = 30))
+one = plot.Scene(wave, 640, 400, frame = 30)!
 [one.Frames, one.Fps, [item.Text for item in one.Items if item.Role == "title"]] -->
 ```
 
@@ -520,8 +520,8 @@ vertical axis: 0 looks from the side of $-y$, toward $+y$, and the azimuth grows
 $-30$ from below. Without one a graph takes MATLAB's own, `[-37.5, 30]`:
 
 ```cesia
-result.Unwrap(plot.Scene(ripple, 640, 400)).View -->
-result.Unwrap(plot.Scene(ripple, 640, 400, view = [0, 90])).View -->
+plot.Scene(ripple, 640, 400)!.View -->
+plot.Scene(ripple, 640, 400, view = [0, 90])!.View -->
 ```
 
 [plot.Scene] takes a `view` too, which turns the graph without changing it: Cemacs turns a graph so, and the code keeps
@@ -590,7 +590,7 @@ $k$ points, $k$ the least that fits, x, y and z each the mean of its block, NaNs
 
 ```cesia
 big = matrix.Ones(1000, 300)
-[item.Text for item in result.Unwrap(plot.Scene(plot.Surface(big), 640, 400)).Items if item.Role == "note"] -->
+[item.Text for item in plot.Scene(plot.Surface(big), 640, 400)!.Items if item.Role == "note"] -->
 ```
 
 matplotlib keeps 50 points a direction by default, "downsampled (by slicing)": one row in $k$, which can step over a
@@ -606,7 +606,7 @@ of this version. Here the Lorenz system, solved by [std/ode], as [Numerical meth
 ```cesia allow=read,write
 use std/ode
 lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (28.0 - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
-ys = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])).At(num.Linspace(0.0, 50.0, 5000))
+ys = ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])!.At(num.Linspace(0.0, 50.0, 5000))
 plot.Save(plot.Of([plot.Line3(ys[:, 1], ys[:, 2], ys[:, 3])], x = "x", y = "y", z = "z"), "lorenz.svg") -->
 ```
 
@@ -770,7 +770,7 @@ the screen, those that M4 keeps of a long line, at most 100,000, their places in
 
 ```cesia
 path3 = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2, 3], [3, 4, 2])])
-marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
+marked = plot.Scene(path3, 640, 400, mark = [2, 3])!
 [x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
 [[p.Kind, p.At] for p in marked.Points] -->
 ```
@@ -788,7 +788,7 @@ in place of its own, as the options of [plot.Of] do, without changing the graph:
 with the wheel and the mouse; a polar graph takes `ylim` alone, `[center, rim]`.
 
 ```cesia
-zoomed = result.Unwrap(plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true))
+zoomed = plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true)!
 [zoomed.Axes.X.Low, zoomed.Axes.X.High, zoomed.Axes.X.Scale] -->
 [[p.Layer, p.At, p.Values.Y] for p in zoomed.Points] -->
 ```

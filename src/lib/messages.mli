@@ -400,7 +400,9 @@ val map_of_struct : string -> string -> t
 
 val pattern_mismatch : string -> string -> t
 val question_file : t
-val question_space : t
+
+(** [sign_space sign]: a [?] or a [!] after a value, with a space before it. *)
+val sign_space : string -> t
 val hole_twice : t
 val hole_alone : t
 val block_line : t
@@ -410,7 +412,12 @@ val do_block : string
 
 (** A type error about the function of a do block, with the hint that says where the block goes, unless it has one. *)
 val block_hint : t -> t
-val question_value : string -> t
+
+(** [sign_value sign a]: a [?] or a [!] after a value that is no result, named by [Value.describe]. *)
+val sign_value : string -> string -> t
+
+(** [bang_err text]: a [!] after an Err, the text of the error as [result.Unwrap] shows it. *)
+val bang_err : string -> t
 val need_task : string -> string -> t
 val empty_text : string -> t
 val need_array : string -> string -> t

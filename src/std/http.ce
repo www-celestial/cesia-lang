@@ -800,7 +800,7 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
       net.Port, takes the place of port and host.
 
-        l = result.Unwrap(net.Listen(0))
+        l = net.Listen(0)!
         fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
         Fetch("http://localhost:$(net.Port(l))/").Value.Body --> "hi" *)
   serve(Handler(a), port, host, timeout, maxBody, wrap, listener)

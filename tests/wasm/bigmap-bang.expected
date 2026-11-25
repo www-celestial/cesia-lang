@@ -1,0 +1,5 @@
+before
+bigmap-bang.ce:12:11: ! needs an Ok, not an Err: twelve keys and a message
+  12 | io.Print(r!)
+     |           ^
+exit 1

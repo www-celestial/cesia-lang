@@ -26,7 +26,7 @@ deep in your code. The examples read three files: `order.json`, `user.json` and 
 use std/sys
 use std/json
 use std/result
-order = result.Unwrap(sys.Read("order.json")) then json.Parse() then result.Unwrap()
+order = sys.Read("order.json")! then json.Parse()!
 order.customer -->
 order.items[2].product -->
 order.note -->
@@ -90,7 +90,7 @@ struct User
   Age Int
   Admin Bool = false
 end
-result.Unwrap(sys.Read("user.json")) then json.Parse() then result.AndThen(User.From) -->
+sys.Read("user.json")! then json.Parse() then result.AndThen(User.From) -->
 json.Parse("{\"Name\": \"Bo\", \"Age\": \"twenty\"}") then result.AndThen(User.From) -->
 json.Parse("{\"name\": \"Bo\", \"age\": 20}") then result.AndThen(User.From) -->
 json.Parse("{\"Name\": \"Bo\", \"name\": \"Ana\", \"Age\": 20}") then result.AndThen(User.From) -->
@@ -117,7 +117,7 @@ Cyril,,45
 
 ```cesia allow=read
 use std/csv
-source = result.Unwrap(sys.Read("people.csv"))
+source = sys.Read("people.csv")!
 csv.Parse(source) -->
 people = csv.Records(source)
 people[1].city -->
@@ -176,7 +176,7 @@ match checked
   result.Ok(all) -> sys.Write("people.json", json.Text(all))
   result.Err(e) -> io.Print("refused:", e)
 end
-io.Print(result.Unwrap(sys.Read("people.json")))
+io.Print(sys.Read("people.json")!)
 ```
 
 ## Bytes as text: hexadecimal, Base64 and URLs

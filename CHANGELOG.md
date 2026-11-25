@@ -8,6 +8,21 @@
   on a line of its own: a value that starts with a minus sign right after the condition was read as part of it, so that
   `if x < 0 -1 else 0 end` meant `if x < 0 - 1 (nothing) else 0 end`, and gave `missing` where -1 was meant, with no
   error. Cesia's own code held three such mistakes, fixed below; an `if` left empty on purpose is written with `not`.
+- `x!` unwraps a result: the value of an Ok, and an Err is a bug that stops the fiber at the `!`, with the text of its
+  error, as `result.Unwrap(x)` does, which stays its plain form. It never leaves the function, so it goes at the top of
+  a file too, where `?` can't: `db = sql.Open("sqlite::memory:")!`. It follows its value with no space, as `?` does, and
+  chains: `f(x)!.Name`, `xs[1]!`, `g()!(2)`; `a!=b` is still not-equal, `a! == b` unwraps then compares. A value that
+  is no result is the type error of `?`. It makes no call, and machine code reads the Ok as a field: a loop of 10
+  million unwraps and adds takes 223 ms in the interpreter and 32 ms as machine code, against 746 ms with
+  `result.Unwrap`, which stays interpreted; with arithmetic around it, 787 and 234 ms against 1432 ms (medians of 21
+  runs). `cesia check` gives `f(x)!` and `f(x)?` the type before the `!` of f's result, `Int` for `Int!`, and says when
+  it doesn't fit. `cesia build --target wasm` compiles it, with the same output and the same errors as `cesia run`. The
+  book and the examples of std/ write `x!` where they wrote `result.Unwrap(x)`, 198 places, and the chapter Errors tells
+  it beside `?` and `match`, in English and in French.
+- `x then f(a)?` is `f(a, x)?`, and `x then f(a)!` is `f(a, x)!`: a `?` or a `!` that ends the right side of `then`
+  comes after the pipe, with `it` too, `x then f(it, a)?`. It called `f(a)` without the piped value, and failed with
+  « f needs the argument b »; and `x then f(a, it)?` made the function `it -> f(a, it)?`, whose `?` left that hidden
+  function and not the one that held it, so that its Err went on as a value.
 
 ### Files
 

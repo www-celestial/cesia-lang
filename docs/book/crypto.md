@@ -21,7 +21,7 @@ A key, a hash or a message encrypted is bytes, of any value from 0 to 255, and a
 use std/crypto
 use std/encode
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 encode.Hex(crypto.Sha256("abc", s))
 ```
 
@@ -45,7 +45,7 @@ settings, so [crypto.CheckPassword] needs nothing else:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 stored = crypto.HashPassword("correct horse", s)
 crypto.CheckPassword("correct horse", stored, s)    (* true *)
 crypto.CheckPassword("wrong", stored, s)            (* false *)
@@ -75,7 +75,7 @@ so there is nothing to manage:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 key = crypto.SecretKey(s)
 box = crypto.Seal("meet at noon", key, s)
 crypto.Unseal(box, key, s)            (* Ok("meet at noon") *)
@@ -97,7 +97,7 @@ signature, and [crypto.Verify] checks it:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 pair = crypto.SignPair(s)
 sig = crypto.Sign("release 1.0", pair.secret, s)
 crypto.Verify(sig, "release 1.0", pair.public, s)     (* true *)

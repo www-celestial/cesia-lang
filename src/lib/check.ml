@@ -87,6 +87,18 @@ let rec found w (e : expr) =
         | None, Some { tname; tpkg = None; topt = false; tb = Unresolved; _ } when List.mem tname kinds -> Some (Kind tname)
         | _ -> None)
      | _ -> None)
+  (* f(x)? and f(x)! give the value of the Ok, whose type f's says before its !: Int! is an Ok of an Int. *)
+  | Question { e = Call c; _ } | Bang { e = Call c; _ } ->
+    (match target w c.callee with
+     | Some (_, _, Fun { proto; _ }) ->
+       (match proto.func.ret with
+        | Some { tbang = true; tname; tpkg = None; topt = false; tb = Unresolved; _ } when List.mem tname kinds -> Some (Kind tname)
+        | Some { tbang = true; topt = false; tb = Cell { m; k; _ }; _ } when m < Array.length w.modules && k < Array.length w.modules.(m).cells ->
+          (match w.modules.(m).cells.(k) with
+           | Fun { proto = s; _ } when Resolve.struct_fields s.func <> None -> Some (Built (m, k, s.func.fname))
+           | _ -> None)
+        | _ -> None)
+     | _ -> None)
   | _ -> None
 
 let shown_found = function
@@ -130,7 +142,9 @@ let arguments w add (e : expr) (c : call) =
             | Some (v : expr), Some t ->
               (match found w v with
                | Some x when not (fits w t x) ->
-                 add v.pos false (Messages.wrong_type f.fname f.params.(k).pname (type_shown t) (shown_found x))
+                 (* f(x)! is shown at f, as f(x) is. *)
+                 let at = match v.e with Question a | Bang a -> a.pos | _ -> v.pos in
+                 add at false (Messages.wrong_type f.fname f.params.(k).pname (type_shown t) (shown_found x))
                | _ -> ())
             | _ -> ())
          slots)

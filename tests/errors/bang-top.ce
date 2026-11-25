@@ -1,0 +1,8 @@
+use std/io
+use std/result
+
+(* At the top of a file, where ? can't go. *)
+n = result.Ok(2)!
+io.Print(n)
+m = result.Err("no")!
+io.Print(m)

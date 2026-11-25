@@ -1,0 +1,12 @@
+use std/io
+use std/result
+
+(* x! on an Err whose error is a map of more than 8 keys, its Message the last: found by the map's table. *)
+e = {}
+for k in 1..12
+  e["k$k"] = k
+end
+e.Message = "twelve keys and a message"
+r = result.Err(e)
+io.Print("before")
+io.Print(r!)

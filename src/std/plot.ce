@@ -73,7 +73,7 @@ defn Points(x, y, label = missing, color = missing, size = 6, shape = missing)
       circles, squares, triangles and crosses in turn; with a color, circles. A point with a NaN or an infinity is left
       out, and Scene counts it in Dropped. At most 200,000 points: plot.Density counts more, per cell.
 
-        result.Unwrap(Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)).Dropped --> 1 *)
+        Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)!.Dropped --> 1 *)
   one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape})
 end
 
@@ -161,7 +161,7 @@ defn Surface(z, x = missing, y = missing, colors = "viridis")
       blocks of k by k, x, y and z, k the least that fits, and a note under the graph says so. A graph holds one Surface,
       without other layers; Of gives it the titles of its axes, its limits and its view.
 
-        result.Unwrap(Scene(Surface([1, 2; 3, 5]), 640, 400)).View --> [-37.5, 30.0]
+        Scene(Surface([1, 2; 3, 5]), 640, 400)!.View --> [-37.5, 30.0]
         Svg(Surface([1, 2; 3, 1.0 / 0.0])) --> result.Err({Kind: "plot", Message: "plot.Surface: z[2, 2] is inf; give finite values, or NaN for a hole."}) *)
   l = {Fn: "Surface", Values: z, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing}
   one(dict.Put("Ready", surfaceOf(l, "plot.Surface"), l))
@@ -172,7 +172,7 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
       color, width and dash. A NaN or an infinity cuts it, and so does a point past xlim, ylim or zlim: a gap. At most
       1,000,000 points. Several Line3 share a graph, drawn in their order, the later on top, but never with a Surface.
 
-        result.Unwrap(Scene(Line3([1, 2, 3], [1, 4, 9], [0, 1, 0]), 640, 400)).View --> [-37.5, 30.0] *)
+        Scene(Line3([1, 2, 3], [1, 4, 9], [0, 1, 0]), 640, 400)!.View --> [-37.5, 30.0] *)
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
@@ -225,9 +225,9 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
       points by straight segments, as matplotlib's polar axes do, cut at the rim.
 
         Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true
-        result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
+        Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)!.View --> [30.0, 60.0]
         Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true
-        [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"]
+        [x.Text for x in Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)!.Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"]
         Svg(Of([Line([90, 180, 270], [10, 60, 10])], polar = true, ylim = [90, 0])) then result.IsOk() --> true
         Svg(Of([Line([1, 2], [1, 4])], light = [1, -1, 2])) --> result.Err({Kind: "plot", Message: "plot.Line: light is for a 3D graph, of plot.Surface, plot.Line3 or plot.Mesh."}) *)
   ls = []
@@ -268,7 +268,7 @@ defn Frames(graphs, fps = 30)
       script. An SVG keeps at most 8 MB of frames: past that, it keeps every k-th frame, at fps / k a second so that it
       lasts as long, and a note under the graph says so.
 
-        result.Unwrap(Scene(Frames([Line([1, 2], [1, 2]), Line([1, 2], [2, 1])], fps = 10), 640, 400, frame = 2)).Frames --> 2
+        Scene(Frames([Line([1, 2], [1, 2]), Line([1, 2], [2, 1])], fps = 10), 640, 400, frame = 2)!.Frames --> 2
         Svg(Frames([Line([1, 2], [1, 2]), Points([1, 2], [2, 1])])) --> result.Err({Kind: "plot", Message: "plot.Frames: frame 2 differs from frame 1 in the kind of layer 1, plot.Points and not plot.Line; a frame changes only its data and its title."}) *)
   Graph([], frames = {Graphs: graphs, Fps: fps, Shared: sharedOf(graphs, fps)})
 end
@@ -281,9 +281,9 @@ defn Svg(g)
       that say what it draws, or for a grid the titles of its graphs one after the other; a graph of two dimensions
       without a title has none.
 
-        text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
-        text.Contains("<title>Two waves</title>", result.Unwrap(Svg(Of([Line([1, 2], [3, 4])], title = "Two waves")))) --> true
-        text.Contains("<title>a; b</title>", result.Unwrap(Svg(Grid([Of([Line([1, 2], [3, 4])], title = "a"), Line([1, 2], [3, 4]), Of([Line([1, 2], [3, 4])], title = "b")])))) --> true
+        text.StartsWith("<svg", Svg(Line([1, 2], [3, 4]))!) --> true
+        text.Contains("<title>Two waves</title>", Svg(Of([Line([1, 2], [3, 4])], title = "Two waves"))!) --> true
+        text.Contains("<title>a; b</title>", Svg(Grid([Of([Line([1, 2], [3, 4])], title = "a"), Line([1, 2], [3, 4]), Of([Line([1, 2], [3, 4])], title = "b")]))!) --> true
         Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
   size = sizeOf(g, "plot.Svg")?
   if not value.IsMissing(g.frames)
@@ -354,12 +354,12 @@ defn Scene(g, width, height, frame = 1, view = missing, mark = missing, xlim = m
       for y; for a polar graph, Center, [x, y] in pixels, and Y alone, its From and To the distances from the center of
       the values at the center and on the rim.
 
-        value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true
-        result.Unwrap(Scene(Line([1, 2, 3], [3, 4, 2]), 640, 400, mark = [2, 3])).Points[1].At --> [1, 2, 3]
-        result.Unwrap(Scene(Of([Line([1, 2, 3], [3, 4, 2]), Points([1, 2], [5, 6])]), 640, 400, points = true)).Points[2].Values --> {X: [1, 2], Y: [5, 6]}
-        result.Unwrap(Scene(Line([1, 2, 3], [3, 4, 2]), 640, 400, xlim = [0, 10], points = true)).Axes.X.High --> 10.0
-        [result.Unwrap(Scene(Line([1, 2], [3, 4]), 320, missing)).Height, result.Unwrap(Scene(Of([Line([0, 90], [1, 2])], polar = true), 900, missing)).Width] --> [200, 500]
-        result.Unwrap(Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])).View --> [0.0, 90.0] *)
+        value.Len(Scene(Line([1, 2], [3, 4]), 640, 400)!.Items) > 0 --> true
+        Scene(Line([1, 2, 3], [3, 4, 2]), 640, 400, mark = [2, 3])!.Points[1].At --> [1, 2, 3]
+        Scene(Of([Line([1, 2, 3], [3, 4, 2]), Points([1, 2], [5, 6])]), 640, 400, points = true)!.Points[2].Values --> {X: [1, 2], Y: [5, 6]}
+        Scene(Line([1, 2, 3], [3, 4, 2]), 640, 400, xlim = [0, 10], points = true)!.Axes.X.High --> 10.0
+        [Scene(Line([1, 2], [3, 4]), 320, missing)!.Height, Scene(Of([Line([0, 90], [1, 2])], polar = true), 900, missing)!.Width] --> [200, 500]
+        Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])!.View --> [0.0, 90.0] *)
   size = fitted(g, width, height)?
   if not (value.IsMissing(mark) or value.IsArray(mark) and value.Len(mark) == 2 and value.IsInt(mark[1]) and value.IsInt(mark[2]) and mark[1] >= 1 and mark[1] <= mark[2])
     return fail("plot.Scene: mark is $(brief(mark)); give [i, n], the point i of the layers of n points, i from 1 to n.")

@@ -163,7 +163,7 @@ let method_two a b name found =
     "A field or a method of the value itself would win over theirs."
 let wrong_type fname name want found = plain (Printf.sprintf "%s: %s must be %s, found %s." fname name want found)
 let wrong_result fname = wrong_type fname "the result"
-let result_plain name = hinted (Printf.sprintf "%s gives a result, used here as a plain value." name) "An Err would pass for a value: add ?, match it, or Unwrap it."
+let result_plain name = hinted (Printf.sprintf "%s gives a result, used here as a plain value." name) "An Err would pass for a value: add ? or !, or match it."
 let result_dropped name = hinted (Printf.sprintf "%s gives a result, which is dropped here." name) "Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose."
 let missing_bang fname t = plain (Printf.sprintf "%s can give an Err, which %s doesn't say: write %s!." fname t t)
 let use_broken upath at = plain (Printf.sprintf "Package %s doesn't load: %s." upath at)
@@ -173,8 +173,8 @@ let destructure_array want got = plain (Printf.sprintf "This pattern takes %d el
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
 let destructure_value a = plain (Printf.sprintf "This pattern needs an array, not %s." a)
 let pattern_mismatch name a = plain (Printf.sprintf "This pattern needs %s, not %s." name a)
-let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result."
-let question_space = plain "? must follow its value, with no space."
+let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write ! in place of ? where an Err would be a bug, or match on the result."
+let sign_space sign = plain (Printf.sprintf "%s must follow its value, with no space." sign)
 let hole_twice = hinted "A call has one _ at most: its do block takes that place." "Write the other arguments in full."
 let hole_alone =
   hinted "_ stands for the do block of its call, and this call has none."
@@ -188,8 +188,9 @@ let block_hint (m : t) =
   if m.hint = None && found 0 then
     { m with hint = Some "A do block takes the place of the _ of its call, or else comes first: write _ where it goes, as in http.Get(\"/\", _) do r." }
   else m
-let question_value a =
-  hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
+let sign_value sign a =
+  hinted (Printf.sprintf "%s needs an Ok or an Err, not %s." sign a) "Return a result from the function you call."
+let bang_err text = plain ("! needs an Ok, not an Err: " ^ text)
 let need_task name a = plain (Printf.sprintf "%s needs a task, not %s." name a)
 let empty_text name = plain (Printf.sprintf "%s needs a text that isn't empty." name)
 let need_array name a = plain (Printf.sprintf "%s needs an array, not %s." name a)
