@@ -56,6 +56,18 @@
 
 ### Science
 
+- `std/math` has the rest of the functions of one number of numpy, R and MATLAB: `Log10`, `Log2`, `Log1p`, `Expm1`,
+  `Cbrt`, `Sinh`, `Cosh`, `Tanh`, `Asinh`, `Acosh`, `Atanh`, `Hypot`, `SinDegrees`, `CosDegrees`, `TanDegrees`,
+  `Radians`, `Degrees`, `IsNan`, `IsInf`, `IsFinite`, `Clamp`, `Step`, `LogSumExp`, `Epsilon` and `NextAfter`, and
+  the constants `E`, `MaxFloat`, `MinFloat`, `MaxInt` and `MinInt`; `num.ReplaceNan` fills the NaN and missing values
+  of an array. Each works on a number and on an array, element by element, and gives the bits of numpy where numpy
+  calls the C library too. `math.Cbrt` is correctly rounded, where the C library's cube root is up to 3 ulps away
+  (`np.cbrt(27.0)` is `3.0000000000000004`, `math.Cbrt(27)` is `3.0`), and as fast; the degrees are reduced exactly,
+  so that `math.SinDegrees(180)` is `0.0`. Machine code calls the C library for `Log10` to `Atanh` and `Hypot` itself.
+  The book's chapter Numbers cleans a weather station's log with them, beside Python, R and MATLAB, and gives the
+  precision of each against mpmath, numpy, R and Octave.
+- `std/constants` holds the 355 physical constants of CODATA 2022 by their names in NIST's table: `constants.Value`,
+  `Unit`, `Uncertainty` and `Find`, the bits of `scipy.constants`.
 - Graphs are black on white, their texts in JetBrains Mono, the font of the code in Cemacs, which draws them as
   `plot.Save` writes them: the layers without a color are black, lines told apart by their dash, solid, dashed, dotted
   and dash-dot in turn, points by their shape, circle, square, triangle and cross, bars by their grey, the ink at 100,
