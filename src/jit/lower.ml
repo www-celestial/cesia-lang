@@ -200,6 +200,31 @@ let assigned ?(sets = true) ?cold acc e =
     e;
   !acc
 
+(* The natives the JIT makes itself, by name, as [call_expr] and [cond] take them. *)
+let known_natives =
+  [ "Div"; "Mod"; "Hypot"; "SinDegrees"; "CosDegrees"; "TanDegrees"; "Abs"; "Len"; "Sum"; "Max"; "Min"; "Kind"; "IsInt";
+    "IsFloat"; "IsNumber"; "IsText"; "IsArray"; "IsDict"; "IsFunction"; "IsBool"; "IsMissing"; "Float"; "Sqrt"; "Exp"; "Log";
+    "Sin"; "Cos"; "Tan"; "Asin"; "Acos"; "Atan"; "Log10"; "Log2"; "Log1p"; "Expm1"; "Sinh"; "Cosh"; "Tanh"; "Asinh";
+    "Acosh"; "Atanh" ]
+
+(* Does a version's body hold what a version as a whole never lowers: a call of a native the JIT doesn't make, a text
+   made of parts, a match, a ?, an in, a comprehension or a function literal. Looked at before its lowering, which would
+   lower the versions it calls first, to find it later. *)
+let hopeless (w : world) (b : block) =
+  let found = ref false in
+  let rec go (e : expr) =
+    if not !found then
+      match e.e with
+      | Interp _ | In_op _ | Question _ | Match _ | Comp _ | Lambda _ -> found := true
+      | Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args; _ } ->
+        (match w.modules.(m).cells.(k) with
+         | Native { nname; _ } when not (List.mem nname known_natives) -> found := true
+         | _ -> Array.iter (fun (a : arg) -> go a.value) args)
+      | _ -> walk (fun (x : expr) -> if x == e then true else (go x; false)) e
+  in
+  Array.iter go b;
+  !found
+
 (* The deepest nest of loops in [b]: 0 without a loop, 1 when every loop in it is innermost. *)
 let rec nest (b : block) =
   let d = ref 0 in
@@ -2846,7 +2871,7 @@ let numeric ?cold (loop : expr) i kept cells =
 let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) unit index (ver : version) =
   let f = Cache.ready ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
-  if (not region) && ver.ret == TBot then raise No;
+  if (not region) && (ver.ret == TBot || hopeless w (Lazy.force f.body)) then raise No;
   (* A whole function in native code skips the checks of its parameters' and result's types. *)
   if (not region) && Compile.checks ver then raise No;
   let kinds = Vec.create () in
@@ -3051,14 +3076,25 @@ let unit (w : world) (ver : version) = lower_unit w ver None
    them, else no. *)
 let dry_most = 16
 
+(* The versions a dry lowering refused, the last [dry_most_kept] of a world: each call of one is the interpreter's at once,
+   not lowered again with all it calls. A refusal is kept, not a success, which a unit then checks by lowering. *)
+let dry_refused : (world option * version list) ref = ref (None, [])
+let dry_most_kept = 256
+
 let () =
   dry :=
     fun w v ->
-      let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create () } in
-      Vec.add_last u.versions v;
-      Vec.add_last u.versions v;
-      let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in
-      try go 1 with No | Unseen | Respec _ | Cold _ -> false
+      (match fst !dry_refused with Some x when x == w -> () | _ -> dry_refused := (Some w, []));
+      if List.memq v (snd !dry_refused) then false
+      else begin
+        let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create () } in
+        Vec.add_last u.versions v;
+        Vec.add_last u.versions v;
+        let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in
+        let ok = try go 1 with No | Unseen | Respec _ | Cold _ -> false in
+        if not ok then dry_refused := (Some w, v :: List.filteri (fun i _ -> i < dry_most_kept - 1) (snd !dry_refused));
+        ok
+      end
 
 (* A loop of a version, alone: it is entered at its start, its counter and bound already in their slots, or after the
    step of an iteration, and it ends at [Done] with every variable back in its slot. The first two hidden slots are its
