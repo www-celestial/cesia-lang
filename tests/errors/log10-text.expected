@@ -1,0 +1,4 @@
+log10-text.ce:5:14: Log10 needs numbers, not the text "12".
+  5 | io.Print(math.Log10([1000.0, "12"]))
+    |              ^
+exit 1

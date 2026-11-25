@@ -1,0 +1,4 @@
+clamp-bounds.ce:5:14: Clamp needs two numbers lo <= hi, not the number 100 and the number 0.
+  5 | io.Print(math.Clamp(100, 0, [12.5, 104.2]))
+    |              ^
+exit 1

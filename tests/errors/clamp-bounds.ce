@@ -1,0 +1,5 @@
+use std/io
+use std/math
+
+(* The bounds of a humidity read in the wrong order. *)
+io.Print(math.Clamp(100, 0, [12.5, 104.2]))
