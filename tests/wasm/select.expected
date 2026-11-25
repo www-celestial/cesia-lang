@@ -1,0 +1,6 @@
+Ok({Channel: <channel 1>, Value: "job 1"})
+Err({Kind: "timeout", Message: "Nothing came on the channels before the timeout."})
+late
+timeout
+closed
+exit 0

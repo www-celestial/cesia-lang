@@ -1850,3 +1850,45 @@ let () =
 let export_all rt names = List.iter (fun n -> if not (List.exists (fun (e, _) -> e = n) (Vec.to_list rt.m.exports)) then Wasm.export rt.m n (need rt ("x_" ^ n))) names
 let for_js rt = export_all rt [ "kind"; "num"; "size"; "bytes"; "count"; "item"; "text"; "fill"; "number"; "boolean"; "list"; "put"; "listed"; "post"; "shut" ]
 let for_fibers rt = export_all rt [ "text"; "fill"; "ended"; "timeout" ]
+
+(* fiber.Select: the first channel of the list with a value, or closed and empty, in the order of the list; else the
+   fiber waits on all of them, with one timer for the whole wait, and looks again when woken. *)
+let () =
+  def "select" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let l = local fb (nn rt.list) and n = local fb I32 and i = local fb I32 and j = local fb I32 and ch = local fb (nn rt.chan) in
+      let x = local fb v and secs = local fb F64 and f = local fb (nn rt.fib) and timer = local fb I32 and t = local fb (nn rt.tok) in
+      let again = local fb I32 and code = local fb I32 and h = local fb v in
+      let nth k = [ Lget l; Lget k; call rt "elem" ] in
+      let untimer = [ Lget timer; I32 0; i32_ge_s; If (Bnone, [ Lget timer; host rt "untimer" ], []) ] in
+      let leave = upto j n (nth j @ [ Cast (false, T rt.chan); struct_get rt.chan c_receivers; Lget t; call rt "q_drop" ]) in
+      (* The first ready: Ok({Channel, Value}) or Err({Kind: "closed", Message, Channel}); the others with a value wake
+         their next receiver. *)
+      let first =
+        upto i n (nth i @ [ Lset h; Lget h; Cast (false, T rt.chan); Lset ch; Lget ch; call rt "next"; Lset x;
+                            Gget (got rt); Lget ch; struct_get rt.chan c_closed; i32_or;
+                            If (Bnone, untimer
+                                       @ upto j n ([ Lget j; Lget i; i32_ne ] @ nth j @ [ Cast (false, T rt.chan); call rt "has_value"; i32_and;
+                                                   If (Bnone, nth j @ [ Cast (false, T rt.chan); call rt "wake_receiver" ], []) ])
+                                       @ [ Gget (got rt);
+                                           If (Bval v, ok_of rt [ I32 1; keys rt [| "Channel"; "Value" |]; Lget h; Lget x; array_new_fixed rt.vals 2; I32 2; I32 0; struct_new rt.map ],
+                                               err_of rt [ I32 1; keys rt [| "Kind"; "Message"; "Channel" |]; text rt "closed"; text rt Messages.channel_closed.text; Lget h;
+                                                           array_new_fixed rt.vals 3; I32 3; I32 0; struct_new rt.map ]); ret ], []) ])
+      in
+      [ Lget 0; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_channels a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 0; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n ]
+      @ upto i n (nth i @ [ text rt "Select"; Lget 2; call rt "as_chan"; drop ])
+      @ [ Lget 1; Lget 2; call rt "seconds"; Lset secs; I32 (-1); Lset timer ]
+      @ first
+      @ [ Lget secs; F64 0.; f64_eq; If (Bnone, failure rt "timeout" Messages.select_timeout @ [ ret ], []);
+          call rt "cur"; Lset f; Lget f; I32 0; struct_set rt.fib fb_late;
+          Lget secs; F64 0.; f64_gt; If (Bnone, [ Lget f; Lget secs; host rt "timer"; Lset timer ], []);
+          Loop (Bnone, [ call rt "begin_park"; Lset t ]
+                       @ upto j n (let q = nth j @ [ Cast (false, T rt.chan); struct_get rt.chan c_receivers; Lget t ] in
+                                   [ Lget again; If (Bnone, q @ [ call rt "q_front" ], q @ [ call rt "q_push" ]) ])
+                       @ [ I32 0; Lget 2; call rt "park"; Lset code ]
+                       @ leave
+                       @ [ Lget code; I32 2; i32_eq; If (Bnone, untimer @ [ host rt "unwind" ], []) ]
+                       @ first
+                       @ [ Lget f; struct_get rt.fib fb_late; If (Bnone, failure rt "timeout" Messages.select_timeout @ [ ret ], []);
+                           I32 1; Lset again; Br 0 ]);
+          unreachable ])

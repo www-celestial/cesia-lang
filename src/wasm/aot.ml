@@ -1680,6 +1680,7 @@ let () =
       give fc k ((match a.(0) with Some x -> stored fc x | None -> [ missing ]) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "chan_send" ]));
   reg "fiber" "Receive" (fun fc a pos k -> give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "receive" ]));
   reg "fiber" "Close" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "close" ]));
+  reg "fiber" "Select" (fun fc a pos k -> give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "select" ]));
   reg "sys" "Sleep" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "sleep" ]));
   reg "sys" "Now" (fun fc _ _ k -> give fc k [ call fc.st.rt "now" ])
 
