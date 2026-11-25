@@ -134,10 +134,10 @@ let watch (w : world) (ver : version) =
       ver.rv <- rv;
       match loaded () with Some j -> j.promote w ver | None -> ()
     in
-    let calls = ref (if !mode = always || ver.ret == TI || ver.ret == TF || Option.is_some !jit then 0 else -15 * calls_before) in
+    let calls = ref 0 and soon () = !mode = always || ver.ret == TI || ver.ret == TF || Option.is_some !jit in
     let due () =
       incr calls;
-      if !calls >= (if !mode = always then 1 else calls_before) && free w then (promote (); true) else false
+      if (!calls >= calls_before || !mode = always) && (soon () || !calls >= 16 * calls_before) && free w then (promote (); true) else false
     in
     ver.ri <- (fun ctx -> if due () then ver.ri ctx else ri ctx);
     ver.rf <- (fun ctx -> if due () then ver.rf ctx else rf ctx);
