@@ -1,0 +1,11 @@
+in pieces: Ok("HTTP/1.1 200 OK: read 3000000 of 3000000, no piece over 1 MB: true")
+told to go on: Ok("100 first, HTTP/1.1 200 OK: read 3000000 of 3000000, no piece over 1 MB: true")
+refused before its body: Ok("no 100, then: HTTP/1.1 401 Unauthorized")
+small, whole: Ok("HTTP/1.1 200 OK: whole 5")
+too large for the route: Ok("HTTP/1.1 413 Content Too Large: Content Too Large")
+two lengths: Ok("HTTP/1.1 400 Bad Request: Bad Request")
+a route without stream: Ok("HTTP/1.1 200 OK: plain 90000")
+Fetch in pieces: read 200000 of 200000, no piece over 1 MB: true
+peer refused: Err({Kind: "http", Message: "refused 127.0.0.1"})
+peer passed: whole 1
+exit 0

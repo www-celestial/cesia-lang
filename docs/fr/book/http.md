@@ -388,6 +388,44 @@ demande, comme une base de données les donne (`bench/export.ce`) : le pic de la
 pour le corps entier, de 32 MB par morceaux de 1 000 lignes, surtout ce que le ramasse-miettes (le collector) n'avait
 pas encore repris des pages d'avant.
 
+### Un corps qui arrive en morceaux
+
+Le corps d'une requête est lu en entier avant que son handler tourne, `maxBody` octets au plus : un fichier envoyé au
+serveur n'y tient pas. Une route à qui l'on donne `stream`, le plus d'octets que son corps peut tenir, reçoit en morceaux
+un corps trop grand pour une seule lecture, à mesure que le handler les lit : `r.Body` vaut `""`, `r.Size` donne sa
+longueur, et `r.Read()` donne un `Ok` du morceau suivant, `""` une fois tout lu, ou un `Err` quand le client cesse
+d'envoyer.
+
+```cesia norun
+use std/result
+use std/text
+defn upload(r)
+  (* stores a scan as it comes; a small one came whole, in r.Body *)
+  n = 0
+  piece = r.Read()?
+  while piece != ""
+    n += text.ByteLength(piece)   (* write it where it goes: a part of a file of the database *)
+    piece = r.Read()?
+  end
+  http.Plain("$n bytes")
+end
+app = http.App() then http.Route("POST", "/scans", upload, stream = 10485760)
+```
+
+- Le corps n'est lu que quand le handler le demande, un morceau à la fois (ce qu'apporte une lecture du socket, 64 Kio
+  au plus) : le serveur ne le tient jamais en entier, quelle que soit sa taille.
+- Un corps plus grand que `stream` reçoit un `413` avant que le handler tourne ; une tête à deux lignes `Content-Length`
+  un `400`, comme toute requête.
+- Un client qui a envoyé `Expect: 100-continue`, comme curl pour un grand corps, n'est invité à continuer qu'au premier
+  `Read` : un handler qui refuse d'abord la requête (un `401`, un type qu'il ne prend pas) répond avant que le client ait
+  envoyé son corps.
+- Le handler a le `timeout` de la requête, plus une seconde par tranche de 64 Kio du corps, et chaque morceau doit
+  arriver dans les `timeout` secondes qui suivent le précédent : un client qui envoie un octet par minute est fermé, un
+  client sur une ligne lente ne l'est pas.
+- La connexion se ferme après la réponse.
+- Un corps arrivé en entier, assez petit pour une seule lecture, est dans `r.Body`, et `r.Read` manque : un handler qui
+  prend les deux cherche `Read` avec `dict.Has("Read", r)`.
+
 ## Le reste de std/http
 
 | Pour | Utilisez |
@@ -765,6 +803,20 @@ peut pas être atteint. Un `404` est une réponse, pas une erreur : regardez `St
 http.Fetch("http://127.0.0.1:1/") -->
 ```
 
+Un programme qui interroge une adresse qu'on lui a donnée, comme un serveur qui rappelle l'adresse d'un partenaire, ne
+doit pas atteindre sa propre machine ou son réseau pour le compte de qui la lui a donnée (*server-side request forgery*,
+SSRF : la falsification de requêtes côté serveur) : `peer`, une fonction de l'adresse que la connexion a atteinte, telle
+que [net.Peer] la donne, tourne une fois la connexion ouverte et avant qu'aucun octet parte, ceux de TLS compris ; un
+`Err` qu'elle donne ferme la connexion, et `Fetch` donne cet `Err`. Un hôte donné par son nom est ainsi vérifié à
+l'adresse même où il a été trouvé : une seconde recherche du nom, à laquelle un serveur de noms pourrait répondre
+autrement (*DNS rebinding*, le changement d'adresse entre deux recherches), n'a jamais lieu.
+
+```cesia norun
+use std/result
+mine(address) = if address == "127.0.0.1" or address == "::1" result.Err({Kind: "http", Message: "This address is of this machine."}) else result.Ok(missing) end
+http.Fetch("http://localhost:8080/", peer = mine)   (* Err: This address is of this machine. *)
+```
+
 ### https
 
 Pour `https`, [std/tls] donne au client son chiffrement, par OpenSSL. Il lui faut la permission de le charger, et celle
@@ -784,6 +836,10 @@ io.Print(page!.Status)
 ```bash
 cesia run --allow net=example.com,ffi=ssl,ffi=crypto page.ce
 ```
+
+Le certificat du serveur doit être signé par une autorité à laquelle le système fait confiance, et nommer l'hôte ;
+`ca`, le chemin d'un fichier PEM d'autorités, fait confiance à celles-là à la place, comme celle d'une entreprise :
+`tls.Client(api, ca = "/etc/ssl/company.pem")`.
 
 Un serveur sert `https` de la même façon : `wrap = tls.Server(certificate, key, api)?` donné à [http.Serve], avec les
 chemins de son certificat et de sa clé, venus d'une *certificate authority* (une autorité de certification, qui garantit
