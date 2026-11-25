@@ -65,7 +65,7 @@ fi
 # or later runs WebAssembly's GC.
 wasm=""
 if [ -z "$mode" ]; then
-  if command -v node > /dev/null && node -e 'process.exit(+process.versions.node.split(".")[0] < 22)'; then
+  if command -v node > /dev/null && node -e 'process.exit(+process.versions.node.split(".")[0] < 22 ? 1 : 0)'; then
     tools/wasm-test.sh tests/wasm tests/jit tests/errors tests/programs tests/lang > "$logs/wasm.log" 2>&1 &
     wasm=$!
     jobs+=($wasm)
