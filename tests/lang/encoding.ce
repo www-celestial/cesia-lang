@@ -9,6 +9,9 @@ use std/math
 use std/test
 
 isHex() = encode.Hex("é!") == "c3a921"
+(* Hex as it was written in Cesia before its native, two digits a byte; and Unhex, which gives the bytes back. *)
+oldHex(s) = text.Join("", ["$(text.ByteSlice(math.Div(b, 16) + 1, math.Div(b, 16) + 1, "0123456789abcdef"))$(text.ByteSlice(math.Mod(b, 16) + 1, math.Mod(b, 16) + 1, "0123456789abcdef"))" for b in text.Bytes(s)])
+isHexAsBefore() = test.ForAll(bs -> encode.Hex(text.FromBytes(bs)) == oldHex(text.FromBytes(bs)) and result.Unwrap(encode.Unhex(encode.Hex(text.FromBytes(bs)))) == text.FromBytes(bs), gen.List(gen.Int(0, 255), max = 70))
 isUnhex() = result.Unwrap(encode.Unhex("c3A921")) == "é!" and result.IsErr(encode.Unhex("0")) and result.IsErr(encode.Unhex("zz"))
 isBase64() = encode.Base64("hello") == "aGVsbG8=" and encode.Base64("hi") == "aGk=" and encode.Base64("abc") == "YWJj" and encode.Base64("") == ""
 isUnbase64() = result.Unwrap(encode.Unbase64("aGVsbG8=")) == "hello" and result.Unwrap(encode.Unbase64("aGk")) == "hi" and result.IsErr(encode.Unbase64("a")) and result.IsErr(encode.Unbase64("a!bc"))

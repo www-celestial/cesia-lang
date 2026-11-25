@@ -9,6 +9,12 @@ An application binary interface: how compiled code passes arguments and lays out
 call it. C has a stable one on each system and C++ has none, so Cesia reaches C++ through a small C layer: see
 [C and C++](c.md).
 
+## Ahead-of-time compilation
+
+Compiling a program to the code that will run before it runs, once, instead of as it runs, as a JIT does. `cesia build
+--target wasm` compiles ahead of time: the page gets the compiled program and no compiler. See
+[Compiling to WebAssembly](wasm.md).
+
 ## Amortized cost
 
 The average cost of an operation over a long run of them, when most are cheap and a few are dear. [list.Append] on a list
@@ -969,6 +975,8 @@ Changes to a database that happen all together or not at all. SQLite's are ACID:
 
 A tree where each level is chosen by one piece of the key, as a dictionary of words is ordered by their first letter, then
 the second. In a hash trie the pieces come from the key's hash: see [hash array mapped trie](#hash-array-mapped-trie).
+[http.Handler] keeps the routes in one, a level for each part of their paths: see
+[HTTP](http.md#how-a-request-finds-its-route).
 
 ## Type coercion
 
@@ -986,6 +994,12 @@ of a loop when it compiles it: see [How Cesia works](internals.md#bets-guards-an
 The rule that the chance that at least one of several events happens is at most the sum of their chances. It needs no
 assumption about how the events depend on each other, which is why it gives the birthday bound so simply: see
 [Solving a real problem](duplicates.md#4-research).
+
+## Unwrap
+
+Taking the value out of a result where an error can only be a bug: the program stops rather than go on with an error it
+doesn't expect. Cesia writes it `x!`, short for [result.Unwrap]`(x)`; Rust writes `x.unwrap()`, and Swift `x!` for a
+value that may be `nil`: see [Errors](errors.md#when-an-err-is-a-bug).
 
 ## UTF-8
 
@@ -1013,6 +1027,13 @@ Copying the code a project depends on into the project itself, so that it runs o
 
 The time of day as the system keeps it, which the system may set forward or back, as when it corrects itself over the
 network. [sys.Now] reads it: see [Files](files.md#the-clock).
+
+## WebAssembly and WasmGC
+
+WebAssembly is a format of code for a machine that doesn't exist, small and checked before it runs, that browsers and
+Node compile to the code of the real processor: near native speed, inside the sandbox of the page. WasmGC adds structs,
+arrays and references whose memory the browser's own garbage collector manages. Cesia's values in a page are WasmGC
+objects: see [Compiling to WebAssembly](wasm.md#how-it-works).
 
 ## WebSocket
 

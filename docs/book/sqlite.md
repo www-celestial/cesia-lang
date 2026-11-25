@@ -11,7 +11,7 @@ needs the `read` and `write` permissions of its folder; a database in memory nee
 ```cesia
 use std/sql
 use std/result
-db = result.Unwrap(sql.Open("sqlite::memory:"))
+db = sql.Open("sqlite::memory:")!
 ```
 
 [sql.Script] runs several statements, for a schema:
@@ -72,7 +72,7 @@ sql.Exec("select 1; drop table notes", [], db) -->
 `CreatedAt`. NULL is `missing`, and a column declared `boolean` is a Bool:
 
 ```cesia
-rows = result.Unwrap(sql.Query("select * from notes", [], db))
+rows = sql.Query("select * from notes", [], db)!
 rows -->
 rows[1].CreatedAt -->
 ```

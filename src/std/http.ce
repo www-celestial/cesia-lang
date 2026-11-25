@@ -112,7 +112,9 @@ end
 defn render(response, headOnly = false, closing = false, streamed = "")
   (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out; with
       closing, a header tells the client that the server closes the connection after it. A streamed body has no length:
-      streamed is "chunked" for its chunks, or "closed" for one that ends when the connection does. *)
+      streamed is "chunked" for its chunks, or "closed" for one that ends when the connection does. Every response has a
+      Date, as RFC 9110 asks of a server with a clock (section 6.6.1), unless it has its own: dateLine, a native of this
+      package, makes its line again only when the second changes. *)
   status = response.Status
   bug.Assert(value.IsInt(status), "This response has a status that isn't an integer.")
   body = value.Text(response.Body)
@@ -130,7 +132,18 @@ defn render(response, headOnly = false, closing = false, streamed = "")
     "content-length: $(text.ByteLength(body))$crlf"
   end
   shown = if headOnly or streamed != "" "" else body end
-  "HTTP/1.1 $status $(Reason(status))$crlf$lengthLine$custom$ending$crlf$shown"
+  dated = if value.Len(extra) > 0 and ownDate(extra) "" else dateLine() end
+  "HTTP/1.1 $status $(Reason(status))$crlf$dated$lengthLine$custom$ending$crlf$shown"
+end
+
+defn ownDate(headers)
+  (** Does a response have its own Date header? A name is read in either case, as HTTP reads it. *)
+  for h in headers
+    if value.IsText(h.Name) and sameBytes(h.Name, "date")
+      return true
+    end
+  end
+  false
 end
 
 (** The text of a response with just a status and its reason, after which the server closes the connection. *)
@@ -741,27 +754,28 @@ defn settled(reply)
   end
 end
 
-defn dispatch(a, request)
+defn dispatch(routes, find, request)
+  (** The response of the first route added that takes the request's path and method, as each route tried in its order
+      would give it: a 405 when only routes of other methods take the path, a 404 when none does. find, which router, a
+      native of this package, made once from the routes, walks the tree of their parts: its cost doesn't grow with them. *)
   path = segments(request.Path)
-  allowed = false
-  for r in a.Routes
-    params = matchPath(r.Parts, path)
-    if not value.IsMissing(params)
-      if r.Method == "*" or r.Method == request.Method or (r.Method == "GET" and request.Method == "HEAD")
-        return settled(r.Handler(enrich(request, params)))
-      end
-      allowed = true
-    end
+  k = find(path, request.Method)
+  if k > 0
+    r = routes[k]
+    settled(r.Handler(enrich(request, matchPath(r.Parts, path))))
+  else if k == 0
+    NotFound()
+  else
+    Plain("Method Not Allowed", status = 405)
   end
-  if allowed Plain("Method Not Allowed", status = 405) else NotFound() end
 end
 
-defn chain(a, k)
+defn chain(find, a, k)
   (** Built once: a request only goes through it. *)
   if k == 0
-    r -> dispatch(a, r)
+    r -> dispatch(a.Routes, find, r)
   else
-    next = chain(a, k - 1)
+    next = chain(find, a, k - 1)
     f = a.Middleware[k]
     r -> f(next, r)
   end
@@ -774,7 +788,7 @@ end
       search({Method: "GET", Path: "/search", Query: "q=cake", Headers: [], Body: ""}).Body --> "cake"
       broken = Handler(App() then Get("/", r -> result.Err("down")))
       broken({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 500 *)
-Handler(a) = chain(a, value.Len(a.Middleware))
+Handler(a) = chain(router([r.Method for r in a.Routes], [r.Parts for r in a.Routes]), a, value.Len(a.Middleware))
 
 defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
   (** Serves an application until a stop signal, TERM, INT or HUP: then it accepts no more, lets the requests in progress
@@ -786,7 +800,7 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
       net.Port, takes the place of port and host.
 
-        l = result.Unwrap(net.Listen(0))
+        l = net.Listen(0)!
         fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
         Fetch("http://localhost:$(net.Port(l))/").Value.Body --> "hi" *)
   serve(Handler(a), port, host, timeout, maxBody, wrap, listener)

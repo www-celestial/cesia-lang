@@ -100,9 +100,9 @@ value cesia_jit_load(value text, value names, value level) {
   MIR_gen_init(mir);
   MIR_gen_set_optimize_level(mir, opt);
   /* The functions of libm that the IR names, as OCaml calls them, so that results are the same to the bit. */
-  static const char *libm[] = { "sqrt", "exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "fabs", "pow" };
-  void *fs[] = { sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs, pow };
-  for (int k = 0; k < 11; k++) MIR_load_external(mir, libm[k], fs[k]);
+#define LIBM(f) MIR_load_external(mir, #f, f);
+  LIBM(sqrt) LIBM(exp) LIBM(log) LIBM(sin) LIBM(cos) LIBM(tan) LIBM(asin) LIBM(acos) LIBM(atan) LIBM(fabs) LIBM(pow) LIBM(log10)
+  LIBM(log2) LIBM(log1p) LIBM(expm1) LIBM(sinh) LIBM(cosh) LIBM(tanh) LIBM(asinh) LIBM(acosh) LIBM(atanh) LIBM(hypot) LIBM(fmod) LIBM(round)
   MIR_load_external(mir, "caml_modify", caml_modify);
   MIR_scan_string(mir, src);
   MIR_module_t m = DLIST_TAIL(MIR_module_t, *MIR_get_module_list(mir));

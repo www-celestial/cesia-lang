@@ -215,6 +215,24 @@ the inside out:
 numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() --> list.Sum(list.Map(x -> x * 10, list.Filter(math.IsOdd, numbers)))
 ```
 
+A step can end with `?` or `!`, which then come after the pipe: `x then f(a)?` is `f(a, x)?`, which gives an `Err` back
+from the function at once, and `x then f(a)!` is `f(a, x)!`, where an `Err` is a bug
+([Errors](errors.md#when-an-err-is-a-bug)). `it` alone is the place of the value of [then], as `_` alone is the place of a
+[do block](#do-blocks): one sign each, so `_` is no second way to write a step.
+
+```cesia
+use std/result
+halved(n) = if math.Mod(n, 2) == 0 result.Ok(math.Div(n, 2)) else result.Err("odd: $n") end
+defn quarter(n)
+  q = n then halved()? then halved()?
+  result.Ok(q)
+end
+quarter(12) -->
+quarter(6) -->
+12 then halved()! then halved()! -->
+12 then halved()! --> halved(12)!
+```
+
 ## do blocks
 
 A function of several lines given to a call reads better after the call than inside its parentheses, where its `end` meets

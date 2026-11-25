@@ -1,0 +1,19 @@
+use std/io
+use std/math
+
+(* 1,000 points, maps {X, V}, each moved 2,000 times and written back into its list; then the sum of their X. *)
+defn run(n, steps)
+  ps = [{X: i, V: math.Mod(i, 7) - 3} for i in 1..n]
+  for s in 1..steps
+    for i in 1..n
+      p = ps[i]
+      ps[i] = {X: p.X + p.V, V: p.V}
+    end
+  end
+  total = 0
+  for i in 1..n
+    total = total + ps[i].X
+  end
+  total
+end
+io.Print(run(1000, 2000))

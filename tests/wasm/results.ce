@@ -1,0 +1,21 @@
+use std/io
+use std/result
+use std/math
+
+defn half(x)
+  if math.Mod(x, 2) == 0
+    result.Ok(x / 2)
+  else
+    result.Err("odd: $x")
+  end
+end
+defn quarter(x)
+  h = half(x)?
+  half(h)
+end
+io.Print(half(4), half(3), quarter(8), quarter(6), quarter(5))
+describe(r) = match r
+  result.Ok(v) -> "ok $v"
+  result.Err(e) -> "error $e"
+end
+io.Print(describe(half(10)), describe(half(1)), result.MapOk(x -> x + 1, half(2)), result.Unwrap(half(2)))

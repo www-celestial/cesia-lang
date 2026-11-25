@@ -86,6 +86,17 @@ est sans danger. Finit avec le code 1 quand il y a une erreur ; des warnings (de
 | `--json` | un objet JSON par ligne, et rien d'autre : `file`, `line`, `column`, `end` (la colonne après l'étendue signalée), `severity` (`"error"` ou `"warning"`), `message`, `hint` |
 | `--stdin file.ce` | le texte de ce fichier vient de l'entrée au lieu du disque, comme un éditeur envoie un buffer (le texte qu'il garde en mémoire) pas encore enregistré |
 
+## cesia build
+
+```bash
+cesia build --target wasm file.ce
+```
+
+Compile un programme vers WebAssembly : `file.wasm`, le module, et `file.js`, son loader (le script qui le charge et le
+lance), à côté de `file.ce` ; `node file.js` le lance, et une page le lance avec `<script type="module" src="file.js">`.
+Ce que cette première tranche ne compile pas est une erreur à sa place, avec l'exit code 1 ; un `file.js` que
+`cesia build` n'a pas écrit reste, et le build s'arrête avec le code 2. Voir [Compiler vers WebAssembly](wasm.md).
+
 ## cesia fmt
 
 ```bash

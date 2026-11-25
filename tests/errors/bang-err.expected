@@ -1,0 +1,5 @@
+bang-err.ce:5:8: ! needs an Ok, not an Err: no such file
+  5 |   v = r!
+    |        ^
+  in first (bang-err.ce:5)
+exit 1

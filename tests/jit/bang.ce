@@ -1,0 +1,39 @@
+use std/io
+use std/result
+
+(* ! in a loop of machine code: the value of the Ok read as a field is, an Int, a Float or a map; anything else fails the
+   guard, and the interpreter does the statement again, to stop at the ! as it does. *)
+defn scaled(r, n)
+  total = 0.0
+  for i in 1..n
+    total = total + r! * i
+  end
+  total
+end
+
+defn named(r, n)
+  k = 0
+  for i in 1..n
+    if r!.N > 0
+      k = k + 1
+    end
+  end
+  k
+end
+
+defn late(rs, n)
+  total = 0
+  for i in 1..n
+    r = rs[1]
+    if i > n - 3
+      r = rs[2]
+    end
+    total = total + r!
+  end
+  total
+end
+
+io.Print(scaled(result.Ok(2.0), 100000), scaled(result.Ok(3), 100000))
+io.Print(named(result.Ok({N: 1}), 100000))
+io.Print(late([result.Ok(1), result.Ok(2)], 100000))
+io.Print(late([result.Ok(1), result.Err({Message: "late", Kind: "io"})], 100000))

@@ -1,0 +1,32 @@
+use std/io
+use std/math
+
+(* Integers keep Cesia's 63 bits in WebAssembly: past 31 bits, past 53, up to the last. *)
+io.Print(1073741823 + 1, 1700000000000 + 1, 4611686018427387903 - 1)
+io.Print(-4611686018427387903 - 1, 2147483647 * 2147483647, -2147483648 * 2147483648)
+io.Print(math.Div(-7, 2), math.Mod(-7, 2), math.Div(7, -2), math.Mod(7, -2))
+(* By a positive constant, inline: rounded down for negatives too. *)
+lo = -4611686018427387903 - 1
+io.Print([math.Mod(v, 4) for v in -9..9], [math.Div(v, 4) for v in -9..9], math.Mod(lo, 1000), math.Div(lo, 7), math.Mod(lo + 1, 1))
+io.Print(2 ^ 61 - 1 + 2 ^ 61, 2 ^ 10, 2 ^ -1, 2.0 ^ 0.5)
+io.Print(7 / 2, 1 / 3, -1 / 3.0, 1.0 / 0, -1.0 / 0)
+(* Floats as Cesia writes them: the first of 15, 16 and 17 digits that reads back. *)
+io.Print(0.1 + 0.2, 1e20, 1e21, 1.5e-7, 0.0001, 123456789012345680.0, 1e15, 1e16, 100.0, -0.0, 5e-324)
+io.Print(math.Sqrt(2), math.Floor(2.5), math.Ceil(-2.5), math.Abs(-3), math.Abs(-2.5), math.Nan, math.Inf, math.Pi)
+(* An integer against a float, exactly: 2^53 + 1 is no float. *)
+big = 9007199254740993
+io.Print(big == 9007199254740992.0, big > 9007199254740992.0, 3 == 3.0, 3 < 3.5, 2.5 <= 2, math.Nan == math.Nan)
+io.Print(true + true, false * 3, missing + 1, 1 < missing)
+total = 0
+for i in 1..100000
+  total = total + i * i
+end
+io.Print(total)
+x = 0.0
+for i in 1..1000
+  x = x + 1 / i
+end
+io.Print(x)
+(* The opposite of a value of any type: true is 1, an array cell by cell, missing stays; and a power by it. *)
+v = {A: 2.0, N: 3, T: true, L: [1, 2.5, [3]], M: missing}
+io.Print(-v.N, -v.A, -v.T, -v.L, -v.M, v.A ^ -v.N)

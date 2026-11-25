@@ -1,10 +1,11 @@
 # Cryptography
 
 In this chapter you keep secrets: you store a password so that nobody can read it back, check that a message wasn't
-changed, encrypt it for one key or for one person, and sign it. [std/crypto] does all of it through libsodium, a library
-that experts wrote and checked; nothing of it is written by hand in Cesia, since a primitive of cryptography written by
-anyone else is the first place an attack looks. It needs `--allow ffi=sodium`, and the libsodium of a release, which
-Cesia brings with it.
+changed, encrypt it for one key or for one person, and sign it. [std/crypto] does it through libsodium, a library that
+experts wrote and checked, and its BLAKE2b with the one of OCaml's runtime; nothing of it is written by hand in Cesia
+but the comparison of two secrets, ten lines, since a primitive of cryptography written by anyone else is the first
+place an attack looks. It needs `--allow ffi=sodium`, and the libsodium of a release, which Cesia brings with it:
+[What runs where](#what-runs-where) says which call runs in which.
 
 The examples of this chapter don't run when the book is built, since its pages may only call the C maths library; the
 same examples run in the reference of each function, under `cesia test`.
@@ -20,7 +21,7 @@ A key, a hash or a message encrypted is bytes, of any value from 0 to 255, and a
 use std/crypto
 use std/encode
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 encode.Hex(crypto.Sha256("abc", s))
 ```
 
@@ -44,7 +45,7 @@ settings, so [crypto.CheckPassword] needs nothing else:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 stored = crypto.HashPassword("correct horse", s)
 crypto.CheckPassword("correct horse", stored, s)    (* true *)
 crypto.CheckPassword("wrong", stored, s)            (* false *)
@@ -58,7 +59,9 @@ see [C and C++](c.md#a-call-that-takes-long).
 
 `==` stops at the first byte that differs, so the time it takes tells an attacker how many bytes were right, one guess
 at a time: a *timing attack*. [crypto.IsSame] compares two texts in a time that depends only on their length: use it for
-every secret, a token, an HMAC, a hash.
+every secret, a token, an HMAC, a hash. It reads every byte of both and gathers their differences with an `or`, with no
+branch on them, as eqaf, the comparison of MirageOS, does in OCaml; two texts of different lengths differ at once, since
+a length is no secret. Its answers are those of libsodium's `sodium_memcmp`, which `tests/crypto/crypto.ce` checks.
 
 ## Encrypting with a key
 
@@ -72,7 +75,7 @@ so there is nothing to manage:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 key = crypto.SecretKey(s)
 box = crypto.Seal("meet at noon", key, s)
 crypto.Unseal(box, key, s)            (* Ok("meet at noon") *)
@@ -94,7 +97,7 @@ signature, and [crypto.Verify] checks it:
 ```cesia norun
 use std/crypto
 use std/result
-s = result.Unwrap(crypto.Open())
+s = crypto.Open()!
 pair = crypto.SignPair(s)
 sig = crypto.Sign("release 1.0", pair.secret, s)
 crypto.Verify(sig, "release 1.0", pair.public, s)     (* true *)
@@ -110,6 +113,30 @@ only: its numbers come from a seed, and anyone who learns the seed can make them
 [crypto.SecretKeySize], 32; [crypto.NonceSize], 24; [crypto.MacSize], 16; [crypto.PublicKeySize], 32;
 [crypto.SignPublicSize], 32; [crypto.SignSecretSize], 64; [crypto.SignatureSize], 64; [crypto.PasswordSize], the room a
 result of [crypto.HashPassword] may take, 128.
+
+## What runs where
+
+[crypto.Blake2b] runs in OCaml's runtime, whose BLAKE2b is the reference code of RFC 7693: the same bytes as libsodium's
+at every size from 16 to 64 and every length of text from 0 to 260, which `tests/crypto/crypto.ce` checks with the
+vector of the RFC, the BLAKE2b-512 of `"abc"`. [crypto.IsSame] runs in Cesia itself, as [encode.Hex] does, which gives a
+hash its printable form. All the rest runs in libsodium: [crypto.Sha256], [crypto.Sha512] and [crypto.HmacSha256], as
+OCaml has no SHA-2 of its own and one written here would be a primitive written by hand; [crypto.Random], from the
+system's generator; the encryption of [crypto.Seal] and [crypto.BoxSeal], the signatures of [crypto.Sign], and the
+Argon2 of [crypto.HashPassword].
+
+What it changes, measured on 2026-11-25 on the machine of [Speed](speed.md#beside-the-giants), in microseconds, the
+medians of 5 runs alternated with the version before, which called libsodium's BLAKE2b and `sodium_memcmp` through
+[std/c] and wrote the hex in Cesia, and beside Python 3.14.10's `hashlib.blake2b` and `hmac.compare_digest`:
+
+| Call | Before | Now | Python |
+|---|---:|---:|---:|
+| [crypto.Blake2b] of a secret of 64 bytes, 32 out | 3.56 | 0.47 | 0.67 |
+| the same, then [encode.Hex] | 19.2 | 0.87 | 0.62 |
+| [crypto.IsSame] of 32 bytes | 3.38 | 0.16 | 0.12 |
+| the check of a session: the hash of its secret, in hex, compared with the one kept | 23.5 | 1.18 | 0.84 |
+| the same check behind a route of [std/http], the secret read from a cookie | 30.8 | 4.7 | |
+
+Python is still faster where it calls its C at once, by 0.1 to 0.3 µs: Cesia's calls go through the interpreter.
 
 ## Further reading
 

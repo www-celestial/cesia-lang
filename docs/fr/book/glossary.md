@@ -9,6 +9,12 @@ Une application binary interface : la façon dont le code compilé passe ses arg
 pour que du code compilé à part puisse l'appeler. Le C en a une stable sur chaque système et le C++ n'en a aucune : Cesia
 atteint donc le C++ à travers une petite couche C. Voir [C et C++](c.md).
 
+## Ahead-of-time compilation
+
+Compiler un programme vers le code qui tournera avant qu'il tourne, une fois, au lieu de pendant qu'il tourne, comme le
+fait un JIT. `cesia build --target wasm` compile ahead of time : la page reçoit le programme compilé et aucun compilateur.
+Voir [Compiler vers WebAssembly](wasm.md).
+
 ## Amortized cost
 
 Le coût moyen d'une opération sur une longue suite d'opérations, quand la plupart sont bon marché et quelques-unes chères.
@@ -1050,7 +1056,8 @@ et les défait tous sur un `Err` ou une panic : voir [SQLite](sqlite.md#transact
 
 Un arbre où chaque niveau est choisi par un morceau de la clé, comme un dictionnaire de mots est rangé par leur première
 lettre, puis la deuxième. Dans un hash trie, les morceaux viennent du hash de la clé : voir
-[hash array mapped trie](#hash-array-mapped-trie).
+[hash array mapped trie](#hash-array-mapped-trie). [http.Handler] range les routes dans un trie, un niveau pour chaque
+partie de leurs chemins : voir [HTTP](http.md#comment-une-requête-trouve-sa-route).
 
 ## Type coercion
 
@@ -1068,6 +1075,12 @@ les lit dans la frame d'une boucle quand il la compile : voir [Comment Cesia fon
 La règle qui dit que la probabilité qu'au moins un de plusieurs événements arrive est au plus la somme de leurs
 probabilités. Elle ne suppose rien sur la façon dont les événements dépendent les uns des autres, et c'est pourquoi elle
 donne si simplement la birthday bound : voir [Résoudre un vrai problème](duplicates.md#4-la-recherche).
+
+## Unwrap
+
+« Déballer » : sortir la valeur d'un résultat là où une erreur ne peut être qu'un bug, et le programme s'arrête plutôt que
+de continuer avec une erreur qu'il n'attend pas. Cesia l'écrit `x!`, forme courte de [result.Unwrap]`(x)` ; Rust écrit
+`x.unwrap()`, et Swift `x!` pour une valeur qui peut être `nil` : voir [Erreurs](errors.md#quand-un-err-est-un-bug).
 
 ## UTF-8
 
@@ -1096,6 +1109,14 @@ ainsi `std/` et `deps/`, refaits à partir de `cesia.lock` par `cesia pkg instal
 
 L'heure du jour telle que le système la tient, que le système peut avancer ou reculer, comme quand il se corrige par le
 réseau. [sys.Now] la lit : voir [Fichiers](files.md#lhorloge).
+
+## WebAssembly and WasmGC
+
+WebAssembly est un format de code pour une machine qui n'existe pas, petit et vérifié avant de tourner, que les
+navigateurs et Node compilent vers le code du vrai processeur : près de la vitesse native, dans la sandbox de la page.
+WasmGC y ajoute des structs, des tableaux et des références dont la mémoire est gérée par le garbage collector du
+navigateur lui-même. Les valeurs de Cesia dans une page sont des objets de WasmGC : voir
+[Compiler vers WebAssembly](wasm.md#comment-ça-marche).
 
 ## WebSocket
 

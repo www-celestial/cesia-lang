@@ -41,3 +41,37 @@ IsEven(x) = Mod(x, 2) == 0
 
       IsOdd(2) --> false *)
 IsOdd(x) = Mod(x, 2) != 0
+(** Is x NaN, the float that is not a number? Element by element for an array; 0.0 / 0.0 and math.Inf - math.Inf are
+    NaN, and NaN is the only value not equal to itself. numpy.isnan, R is.nan, MATLAB isnan; missing is no NaN: ask
+    value.IsMissing, as R's is.na and pandas' isna also do.
+
+      IsNan(0.0 / 0.0) --> true
+      IsNan([21.5, Nan, 19.0]) --> [false, true, false] *)
+IsNan(x) = x != x
+(** Is x an infinity, Inf or -Inf? Element by element for an array: what an overflow gives, as math.Exp(1000).
+    numpy.isinf, R is.infinite, MATLAB isinf; numpy.isposinf(x) is x == Inf, and numpy.isneginf(x) is x == -Inf.
+
+      IsInf(Exp(1000)) --> true
+      IsInf([1e308 * 10, -1e308 * 10, 1e308]) --> [true, true, false] *)
+IsInf(x) = Abs(x) == 1.0 / 0.0
+(** Is x a finite number, neither an infinity nor NaN? Element by element for an array. numpy.isfinite, R is.finite,
+    MATLAB isfinite. As in R, missing is none of the three: IsNan, IsInf and IsFinite give false for it.
+
+      IsFinite([1.5, 0.0 / 0.0, 1e308 * 10]) --> [true, false, false]
+      IsFinite(missing) --> false *)
+IsFinite(x) = x - x == 0
+(** An angle in degrees in radians: x * (pi / 180), with pi / 180 rounded once, so that each element has the bits of
+    numpy.radians and numpy.deg2rad, R's x * pi / 180 and MATLAB's deg2rad. The latitude of Paris for math.Cos, the
+    width of a degree of longitude there in kilometers:
+
+      Radians(180) --> Pi
+      111.32 * Cos(Radians(48.8566)) --> 73.24253324592031 *)
+Radians(x) = x * 0.017453292519943295
+(** An angle in radians in degrees: x * (180 / pi), the bits of numpy.degrees, numpy.rad2deg and MATLAB's rad2deg. The
+    angle of a ramp that rises 1 m over 12 m, from math.Atan, and the arc sine and arc tangent in degrees of MATLAB's asind
+    and atand:
+
+      Degrees(Pi) --> 180.0
+      Degrees(Atan(1 / 12)) --> 4.763641690726177
+      Degrees(Asin(0.5)) --> 30.000000000000004 *)
+Degrees(x) = x * 57.29577951308232

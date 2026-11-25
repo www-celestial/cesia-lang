@@ -3,6 +3,7 @@ use std/net
 use std/sys
 use std/fiber
 use std/io
+use std/list
 use std/result
 use std/text
 
@@ -12,11 +13,13 @@ handle(request) = match sys.Read("page.html")
 end
 
 crlf = "$(text.Char(13))$(text.Char(10))"
+(* The Date, which changes with the clock, is checked by tests/net/http-date.ce. *)
+undated(line) = if text.StartsWith("date: ", line) "date: (now)" else line end
 
 defn client()
   c = net.Connect("127.0.0.1", 18096)?
   net.Write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
-  net.Read(c) then result.MapOk(r -> text.Split(crlf, r))
+  net.Read(c) then result.MapOk(r -> list.Map(undated, text.Split(crlf, r)))
 end
 
 fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18096))

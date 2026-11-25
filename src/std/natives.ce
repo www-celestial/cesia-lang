@@ -402,6 +402,166 @@ use std/test
 
       math.Atan2(0, 1) --> 0.0 *)
 
+(** math.Log10(x)
+    The logarithm in base 10, as a float, element by element for an array: the C library's log10, as numpy.log10, R's
+    log10 and MATLAB's log10. A sound 1000 times the power of the threshold of hearing is 30 decibels, and the pH of a
+    solution of 3.2e-4 mol/L of hydrogen ions is 3.49:
+
+      10 * math.Log10(1000) --> 30.0
+      -math.Log10(3.2e-4) --> 3.494850021680094
+      math.Log10([1, 10, 100]) --> [0.0, 1.0, 2.0] *)
+
+(** math.Log2(x)
+    The logarithm in base 2, as a float, element by element for an array, exact at each power of 2: the C library's
+    log2, as numpy.log2, R's log2 and MATLAB's log2. The bits that number 1000 labels, and the octaves from the A of
+    440 Hz up to 48 kHz:
+
+      math.Ceil(math.Log2(1000)) --> 10.0
+      math.Log2(48000 / 440) --> 6.769387071858584 *)
+
+(** math.Log1p(x)
+    log(1 + x), as a float, element by element for an array, without the digits that 1 + x loses when x is small: the
+    C library's log1p, as numpy.log1p, R's log1p and MATLAB's log1p. The continuous rate of 3% a year, and of a rate of
+    1e-12, where math.Log(1 + 1e-12) is wrong from its fifth digit:
+
+      math.Log1p(0.03) --> 0.0295588022415444
+      math.Log1p(1e-12) --> 9.999999999995e-13
+      math.Log(1 + 1e-12) --> 1.000088900581841e-12 *)
+
+(** math.Expm1(x)
+    exp(x) - 1, as a float, element by element for an array, without the digits lost near 0: the C library's expm1, as
+    numpy.expm1, R's expm1 and MATLAB's expm1. What 1 earns in a year at a continuous 2%, and at 1e-12:
+
+      math.Expm1(0.02) --> 0.02020134002675581
+      math.Expm1(1e-12) --> 1.0000000000005e-12 *)
+
+(** math.Cbrt(x)
+    The cube root, as a float, element by element for an array, negative for a negative x: correctly rounded, the float
+    nearest to the real root, so that a perfect cube gives its root exactly. numpy.cbrt calls the C library's cbrt,
+    which glibc 2.44 leaves up to 3 ulps away: np.cbrt(27.0) is 3.0000000000000004; MATLAB's nthroot(x, 3) corrects
+    x^(1/3) by a step of Newton, and R writes sign(x) * abs(x)^(1/3). The side of a cube of 1 liter, 1000 cm3, and the
+    radius in meters of a sphere of 1 m3:
+
+      math.Cbrt(1000) --> 10.0
+      math.Cbrt(27) --> 3.0
+      math.Cbrt(3 / (4 * math.Pi)) --> 0.6203504908994
+      math.Cbrt(-8) --> -2.0 *)
+
+(** math.Sinh(x)
+    The hyperbolic sine, (e^x - e^-x) / 2, as a float, element by element for an array: the C library's sinh, as
+    numpy.sinh, R's sinh and MATLAB's sinh. A cable hung between two poles 100 m apart, of catenary y = a cosh(x / a)
+    with a = 80 m, is 2 a sinh(50 / a) long:
+
+      2 * 80 * math.Sinh(50 / 80) --> 106.63876231305858 *)
+
+(** math.Cosh(x)
+    The hyperbolic cosine, (e^x + e^-x) / 2, as a float, element by element for an array: the C library's cosh, as
+    numpy.cosh, R's cosh and MATLAB's cosh. The sag in meters of the cable of math.Sinh, a (cosh(50 / a) - 1):
+
+      80 * (math.Cosh(50 / 80) - 1) --> 16.140295438048504 *)
+
+(** math.Tanh(x)
+    The hyperbolic tangent, as a float from -1 to 1, element by element for an array: the C library's tanh, as
+    numpy.tanh, R's tanh and MATLAB's tanh. A parachutist of terminal speed 55 m/s falls at 55 tanh(g t / 55) after
+    t = 3 s:
+
+      55 * math.Tanh(9.81 * 3 / 55) --> 26.909464018847224 *)
+
+(** math.Asinh(x)
+    The inverse of math.Sinh, as a float, element by element for an array: the C library's asinh, as numpy.arcsinh, R's
+    asinh and MATLAB's asinh, which keeps its digits far out where log(x + sqrt(x^2 + 1)) overflows:
+
+      math.Asinh(1) --> 0.881373587019543
+      math.Asinh(-1e300) --> -691.4686750787737 *)
+
+(** math.Acosh(x)
+    The inverse of math.Cosh, from x = 1 up, as a float, element by element for an array; NaN below 1: the C library's
+    acosh, as numpy.arccosh, R's acosh and MATLAB's acosh. The rapidity of a particle whose Lorentz factor is 2:
+
+      math.Acosh(2) --> 1.3169578969248168 *)
+
+(** math.Atanh(x)
+    The inverse of math.Tanh, for x from -1 to 1, as a float, element by element for an array: the C library's atanh,
+    as numpy.arctanh, R's atanh and MATLAB's atanh. Fisher's z of a correlation of 0.6, (1/2) log((1 + r) / (1 - r)):
+
+      math.Atanh(0.6) --> 0.6931471805599453 *)
+
+(** math.SinDegrees(x)
+    The sine of an angle in degrees, element by element for an array: the angle reduced exactly to -45..45 first, so
+    that it is 0 at each multiple of 180, 1 or -1 at 90 and 270 and 1/2 at 30, where math.Sin(math.Radians(30)) is
+    0.49999999999999994. MATLAB's sind; numpy.sin(numpy.radians(x)) and R's sinpi(x / 180) are the others' ways. A sinpi
+    of R, C23 or MATLAB is math.SinDegrees(180 * x). The height that a ramp of 4 m at 30 degrees reaches:
+
+      4 * math.SinDegrees(30) --> 2.0
+      math.SinDegrees(180) --> 0.0 *)
+
+(** math.CosDegrees(x)
+    The cosine of an angle in degrees, element by element for an array, reduced as math.SinDegrees: 0 at 90 where
+    math.Cos(math.Radians(90)) is 6.123233995736766e-17. MATLAB's cosd, R's cospi(x / 180). The width in km of a degree
+    of longitude at the latitude of 60 degrees:
+
+      111.32 * math.CosDegrees(60) --> 55.66
+      math.CosDegrees(90) --> 0.0 *)
+
+(** math.TanDegrees(x)
+    The tangent of an angle in degrees, element by element for an array, reduced as math.SinDegrees: 1 at 45 and an
+    infinity at 90. MATLAB's tand, R's tanpi(x / 180). The height of a tree seen at 35 degrees from 20 m away:
+
+      20 * math.TanDegrees(35) --> 14.004150764194193
+      math.TanDegrees(45) --> 1.0 *)
+
+(** math.Epsilon(x)
+    The gap from |x| to the next float above it: the precision of a float near x, element by element for an array, NaN
+    for an infinity or NaN. MATLAB's eps(x); numpy.spacing(abs(x)); math.Epsilon(1.0) is the machine epsilon, numpy's
+    finfo(float).eps, R's .Machine$double.eps and MATLAB's eps. A float near the distance from the Earth to the Sun in
+    meters can't tell 30 micrometers:
+
+      math.Epsilon(1.0) --> 2.220446049250313e-16
+      math.Epsilon(1.496e11) --> 3.0517578125e-5 *)
+
+(** math.NextAfter(x, toward)
+    The float next to x in the direction of toward; toward itself when they are equal, NaN if either is NaN. Element by
+    element for arrays: numpy.nextafter, MATLAB's and C's nextafter.
+
+      math.NextAfter(1.0, 2.0) - 1.0 --> 2.220446049250313e-16
+      math.NextAfter(0.0, 1.0) --> 4.94065645841247e-324 *)
+
+(** math.Hypot(x, y)
+    sqrt(x^2 + y^2), the length of the side of a right triangle, without the overflow or underflow of the squares:
+    element by element for arrays, an array with a number too. The C library's hypot, as numpy.hypot, MATLAB's hypot and
+    R's Mod(complex(real = x, imaginary = y)). From Paris to Lyon, 188 km east and 342.8 km south on a flat map:
+
+      math.Hypot(188.0, -342.8) --> 390.96782476311273
+      math.Hypot(1e300, 1e300) --> 1.4142135623730952e300
+      math.Hypot([3, 5], [4, 12]) --> [5.0, 13.0] *)
+
+(** math.Clamp(lo, hi, x)
+    x kept from lo to hi: lo below it, hi above, element by element for an array; a NaN stays NaN, an integer within
+    the bounds an integer. numpy.clip(x, lo, hi), R's pmin(pmax(x, lo), hi), MATLAB's min(max(x, lo), hi). lo above hi,
+    or a bound that is no number, is an error. Readings of a humidity sensor kept in 0..100 %:
+
+      math.Clamp(0, 100, [12.5, 104.2, -3.0]) --> [12.5, 100.0, 0.0]
+      math.Clamp(0, 100, 150) --> 100 *)
+
+(** math.Step(x, zero = 0.5)
+    Heaviside's step: 0 below 0, 1 above, zero at 0 itself, as a float, element by element for an array; NaN stays NaN.
+    numpy.heaviside(x, zero), MATLAB's heaviside, whose value at 0 is the default 0.5. A switch that closes at t = 0:
+
+      math.Step([-1.0, 0.0, 2.0]) --> [0.0, 0.5, 1.0]
+      math.Step(0, 1) --> 1.0 *)
+
+(** math.LogSumExp(xs)
+    log(sum(exp(xs))) of the elements of an array, which overflows written so: the largest, m, plus log1p of the sum of
+    exp(x - m) of the others, after Blanchard, Higham and Higham (Accurately computing the log-sum-exp and softmax
+    functions, IMA J. Numer. Anal. 41, 2021); -math.Inf for an empty array, NaN with a NaN. With two arguments,
+    math.LogSumExp(a, b) is log(exp(a) + exp(b)), element by element for arrays. scipy.special.logsumexp, and
+    numpy.logaddexp for two; numpy.logaddexp2(a, b) is math.LogSumExp(a * math.Log(2), b * math.Log(2)) / math.Log(2).
+    The log-likelihood of scores 1000 and 1001, where the sum of exponentials is already an infinity:
+
+      math.LogSumExp([1000.0, 1001.0]) --> 1001.3132616875182
+      math.Log(list.Sum(math.Exp([1000.0, 1001.0]))) --> math.Inf
+      math.LogSumExp(-1000, -1001) --> -999.6867383124818 *)
+
 (** math.Floor(x)
     The largest whole number not above x. An integer stays an integer.
 
@@ -438,6 +598,47 @@ use std/test
 
       math.Inf > 1.0e308 --> true
       -math.Inf < -1.0e308 --> true *)
+
+(** math.E
+    Euler's number e, the base of math.Exp and math.Log, to the last bit of a float: numpy.e, R's exp(1), MATLAB's exp(1).
+    1 € at 100% a year, compounded continuously:
+
+      math.E --> 2.718281828459045
+      math.Log(math.E) --> 1.0 *)
+
+(** math.MaxFloat
+    The largest finite float, (2 - 2^-52) 2^1023: numpy's finfo(float).max, R's .Machine$double.xmax, MATLAB's realmax.
+    Past it, a product overflows to math.Inf:
+
+      math.MaxFloat --> 1.7976931348623157e308
+      math.MaxFloat * 2 --> math.Inf *)
+
+(** math.MinFloat
+    The smallest positive normal float, 2^-1022: numpy's finfo(float).tiny, R's .Machine$double.xmin, MATLAB's realmin,
+    C's DBL_MIN. Below it, floats are subnormal, with fewer digits, down to 4.94065645841247e-324; the most negative
+    float is -math.MaxFloat.
+
+      math.MinFloat --> 2.2250738585072014e-308 *)
+
+(** math.MaxInt
+    The largest integer, 2^62 - 1: Cesia's integers have 63 bits, and an operation past them is an error rather than a
+    wrap. MATLAB's intmax and numpy's iinfo are for their own widths, R's .Machine$integer.max for 32 bits.
+
+      math.MaxInt --> 4611686018427387903 *)
+
+(** math.MinInt
+    The smallest integer, -2^62, which shows as -4611686018427387904 but can't be written so: the literal past the minus
+    is one more than math.MaxInt.
+
+      math.MinInt == -math.MaxInt - 1 --> true *)
+
+(** num.ReplaceNan(by, xs)
+    xs with each NaN and each missing made by, element by element; a number alone too. numpy.nan_to_num(xs, nan = by),
+    pandas' fillna(by), MATLAB's fillmissing(xs, "constant", by), R's replace(xs, is.na(xs), by). numpy.nan_to_num also
+    turns the infinities into the largest floats: math.Clamp(-math.MaxFloat, math.MaxFloat, xs) does that. The hourly
+    log of a rain gauge in mm, a lost hour counted as no rain:
+
+      num.ReplaceNan(0.0, [1.2, math.Nan, 0.4, missing]) --> [1.2, 0.0, 0.4, 0.0] *)
 
 (** math.Near(a, b, rel = 1e-9, abs = 0.0)
     Are two numbers within a tolerance: |a - b| <= max(rel * max(|a|, |b|), abs)? Arrays, maps and structs of the same shape
@@ -1074,7 +1275,7 @@ use std/test
       sys.Read(file) --> result.Ok("two")
       sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing)
       sys.Write(file, "three", mode = 416) --> result.Ok(missing)
-      old = result.Unwrap(sys.Stat(file))
+      old = sys.Stat(file)!
       sys.Write("$(file).new", "four", mode = old.Mode, group = old.Group) --> result.Ok(missing)
       sys.Rename("$(file).new", file) --> result.Ok(missing)
       sys.Stat(file)?.Mode --> 416

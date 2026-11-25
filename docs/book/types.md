@@ -140,6 +140,14 @@ end
 third(-1)
 ```
 
+`!` after a type and `!` after a value go together: `Float!` says that `half` may fail, and `half(3)!` says that this call
+must not have, and gives the `Float` inside the `Ok` ([Errors](errors.md#when-an-err-is-a-bug)). `cesia check` knows it:
+`half(3)!` is a `Float`, so giving it to a parameter typed `Text` is an error.
+
+```cesia
+half(3)! -->
+```
+
 ## Data from outside
 
 `From`, from the chapter [Structs](structs.md), checks the types too. The `Err` names the field and what it found, so a JSON
@@ -219,7 +227,7 @@ cesia check
 src/main.ce:7:22: warning: sys.Read gives a result, used here as a plain value.
   7 |   io.Print(value.Len(sys.Read(path)))
     |                      ^^^^^^^^
-  An Err would pass for a value: add ?, match it, or Unwrap it.
+  An Err would pass for a value: add ? or !, or match it.
 check: 0 errors, 1 warning, in 3 files.
 ```
 
@@ -227,7 +235,7 @@ An error is what would surely stop the program; a warning is what may be a mista
 warnings are about results:
 
 - a result used as a plain value, as above: `value.Len` of an `Err` counts its fields, so a missing file has a length of 1.
-  `?`, `match`, [result.Unwrap] or keeping it in a variable raise no warning, and neither do [io.Print], which shows it, and
+  `?`, `!`, `match`, [result.Unwrap] or keeping it in a variable raise no warning, and neither do [io.Print], which shows it, and
   [fiber.Send], which passes it on;
 - a result dropped: `sys.Write(path, text)` alone loses its `Err`. `_ = sys.Write(path, text)` drops it on purpose;
 - a typed function that can give an `Err` without `!`: `defn size(path) Int` that holds a `?` gets the advice to write `Int!`.

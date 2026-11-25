@@ -1,0 +1,3 @@
+Ok(2.0) Err("odd: 3") Ok(2.0) Err("odd: 3.0") Err("odd: 5")
+ok 5.0 error odd: 1 Ok(2.0) 1.0
+exit 0

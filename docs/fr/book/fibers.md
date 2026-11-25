@@ -218,7 +218,7 @@ start = sys.Now()
 fiber.Spawn() do
   for k in 1..3
     sys.Sleep(0.1)
-    result.Unwrap(fiber.Receive(tray))
+    fiber.Receive(tray)!
   end
 end
 for k in 1..3

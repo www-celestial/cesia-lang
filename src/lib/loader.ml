@@ -404,6 +404,10 @@ let resolve_files ?report ?log ?outer w ~lookup ~first ~old parsed =
 (* cesia check reads packages as use does, but runs none. *)
 let checking = ref false
 
+(* cesia build, set by its plugin; what sees each file prepared while [checking], in the order of a run. *)
+let builder : (string list -> int) option ref = ref None
+let prepared_file : (int * int * Ast.func * Ast.layout -> unit) ref = ref ignore
+
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
    [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. With [report],
    a check: each error goes there and the loading goes on, but a file that doesn't parse leaves the package unread. *)
@@ -533,7 +537,7 @@ and run_package ctx ~hooks ?natives ~key read =
   Hashtbl.replace w.loaded key (-1);
   match
     let prepared = prepare_files ~hooks ?natives ~key ctx ~sources:(read ()) ~lookup:(lookup w) in
-    if not !checking then List.iter (run_prepared ctx) prepared;
+    List.iter (if !checking then !prepared_file else run_prepared ctx) prepared;
     prepared
   with
   | prepared ->

@@ -965,9 +965,13 @@ type n'importe quoi, et elles tournent dans l'interpréteur, qui met alors chaqu
 Une native, une fonction de `std/` écrite en OCaml, comme `math.Abs` ou `text.ByteLength`, est déjà du code machine,
 mais le code machine ne l'appelle jamais : le code natif ne rappelle jamais OCaml, pour que rien ne collecte pendant une
 exécution, et une boucle avec une instruction qui en appelle une reste dans l'interpréteur. Le JIT en fait certaines
-lui-même, sur place : celles de libm, comme `math.Sqrt`, et `math.Abs`, `math.Div`, `math.Mod`, `list.Max` et
-`list.Min` de deux nombres, `value.Len`, `random.Float`, et quelques-unes sur de petits arrays de floats. L'appel des
-autres par l'interpréteur prenait 28 à 36 ns. Un *sampling profiler* (un outil qui arrête le programme à intervalles
+lui-même, sur place : celles de libm, comme `math.Sqrt`, `math.Log10` à `math.Atanh` et `math.Hypot`, les angles en
+degrés, `math.SinDegrees`, `math.CosDegrees` et `math.TanDegrees`, réduits par `fmod` et `round` de libm comme
+l'interpréteur les réduit, et `math.Abs`, `math.Div`, `math.Mod`, `list.Max` et `list.Min` de deux nombres,
+`value.Len`, `random.Float`, et quelques-unes sur de petits arrays de floats. `math.Cbrt` est la racine cubique propre à
+Cesia, correctly rounded (le float le plus proche de la vraie racine), et pas une fonction de libm : une boucle qui
+l'appelle reste dans l'interpréteur, et un array la prend en un seul appel. L'appel des autres par l'interpréteur
+prenait 28 à 36 ns. Un *sampling profiler* (un outil qui arrête le programme à intervalles
 réguliers et note où il en est), ici `gdb` qui arrête le processus toutes les 10 ms et lit sa pile, 300 fois, sur
 3 × 10^8 appels de `math.Abs(i)`, a dit où :
 

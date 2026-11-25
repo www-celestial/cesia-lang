@@ -1,0 +1,5 @@
+use std/io
+
+(* ! takes the values ? takes: an Ok or an Err. *)
+f() = [1, 2]!
+io.Print(f())

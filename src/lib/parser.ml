@@ -242,9 +242,13 @@ and following p =
   while p.toks.(!k).t == NL do incr k done;
   p.toks.(!k).t
 
+(* A ? or a ! that ends the right side comes after the pipe: x then f(a)? is f(a, x)?, and leaves the function that holds
+   it, never the function it -> f(a, it) that a use of it would make of the whole side. *)
 and apply_then p pos value (rhs : expr) =
   let arg v = { aname = None; value = v } in
   match rhs.e with
+  | Question inner -> node p rhs.pos (Question (apply_then p pos value inner))
+  | Bang inner -> node p rhs.pos (Bang (apply_then p pos value inner))
   | Call call when not (mentions_it call.callee) ->
     let is_it (a : arg) = is_it_alone a.value in
     if Array.exists is_it call.args then begin
@@ -554,7 +558,7 @@ and power p =
 
 and postfix p = postfix_after p (primary p)
 
-(* The calls, indexes, ? and fields after e, as a loop with no closure: postfix runs for every operand of the code. *)
+(* The calls, indexes, ?, ! and fields after e, as a loop with no closure: postfix runs for every operand of the code. *)
 and postfix_after p e =
   let t = cur p in
   match t.t with
@@ -570,10 +574,15 @@ and postfix_after p e =
     let ixs, uses_end = index_args p in
     postfix_after p (node p t.pos (Index (e, ixs, uses_end)))
   | QUESTION ->
-    if t.sp then error p t.pos Messages.question_space;
+    if t.sp then error p t.pos (Messages.sign_space "?");
     if not p.in_function then error p t.pos Messages.question_file;
     advance p;
     postfix_after p (node p t.pos (Question e))
+  (* != is one token, read by the lexer first: a!=b is not-equal, and a! == b unwraps. *)
+  | BANG ->
+    if t.sp then error p t.pos (Messages.sign_space "!");
+    advance p;
+    postfix_after p (node p t.pos (Bang e))
   | DOT ->
     advance p;
     let n = word p "a field name" in

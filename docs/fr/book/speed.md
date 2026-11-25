@@ -490,5 +490,5 @@ Chacun avec son lien dans [Références](references.md#le-jit) et [Valeurs et ma
 
 ## La suite
 
-Vos programmes tournent vite sans que vous ayez rien à écrire. Le chapitre suivant, [C et C++](c.md), appelle les
-bibliothèques du système depuis Cesia.
+Vos programmes tournent vite sans que vous ayez rien à écrire. Le chapitre suivant, [Compiler vers WebAssembly](wasm.md),
+les lance dans une page web.

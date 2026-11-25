@@ -26,7 +26,7 @@ deep in your code. The examples read three files: `order.json`, `user.json` and 
 use std/sys
 use std/json
 use std/result
-order = result.Unwrap(sys.Read("order.json")) then json.Parse() then result.Unwrap()
+order = sys.Read("order.json")! then json.Parse()!
 order.customer -->
 order.items[2].product -->
 order.note -->
@@ -90,7 +90,7 @@ struct User
   Age Int
   Admin Bool = false
 end
-result.Unwrap(sys.Read("user.json")) then json.Parse() then result.AndThen(User.From) -->
+sys.Read("user.json")! then json.Parse() then result.AndThen(User.From) -->
 json.Parse("{\"Name\": \"Bo\", \"Age\": \"twenty\"}") then result.AndThen(User.From) -->
 json.Parse("{\"name\": \"Bo\", \"age\": 20}") then result.AndThen(User.From) -->
 json.Parse("{\"Name\": \"Bo\", \"name\": \"Ana\", \"Age\": 20}") then result.AndThen(User.From) -->
@@ -102,6 +102,34 @@ json.Parse("{\"Name\": \"Bo\", \"Agee\": 20}") then result.AndThen(User.From) --
 A key is the name of a field, or that name as JSON and SQL often write it: `name` gives `Name`, and `created_at` gives
 `CreatedAt`, the rule that the chapter [SQLite](sqlite.md) uses for columns. Two keys for one field are refused, and so is a
 key that names no field: each message names the key. A field with a default, as `Admin`, may be left out.
+
+### Shapes: bounds and messages for each field
+
+`From` checks types. What a visitor sends needs bounds too: a name of at most 120 bytes, a quantity from 1 to 1,000,000,
+an e-mail address, a list of at most 50 lines. [std/check] says it with a *shape*, a map that describes a value, and
+[check.Read] gives an `Ok` of the value made clean, or an `Err` of a map from each wrong field, by its path, to a message
+that a form can show beside it:
+
+```cesia
+use std/check
+Line = check.Record({Label: check.Text(1, 200), Qty: check.Int(1, 1000000), Price: check.Money(2)})
+Order = check.Record({Email: check.Email(), Due: check.Date(), Lines: check.List(Line, 1, 50)})
+check.Read(Order, {Email: " Bo@Example.com", Due: "2026-12-01", Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]}) --> result.Ok({Email: "bo@example.com", Due: 1796083200, Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]})
+check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, Price: 1}]}) then result.IsErr() --> true
+```
+
+- Every text is valid UTF-8 without control characters, trimmed, bounded in bytes; every number has its range (an `Int`
+  from -(2^30 - 1) to 2^30 - 1 unless it says otherwise, which a page in WebAssembly holds too); every list its most items.
+- A day is a `check.Date()`, `"2026-12-01"`, and an instant a `check.Time()`, `"2026-12-01T08:30:00Z"` or with an offset:
+  both are read as seconds since 1970, as Cepheus keeps them, and written back as text by `check.Out`.
+- A field the shape doesn't declare is dropped by `Read`: a sender who adds `Admin: true` adds nothing. An optional field
+  that he leaves out is there, as its default or `missing`, so that `x.Note` never fails.
+- `check.Read(shape, query, texts = true)` reads values written as texts, as a query string or the environment gives
+  them: `"42"` for an `Int`, `""` for an absent field.
+- [check.Out] gives a value back to the outside by its shape: the declared fields only, dates as text, never a
+  `check.Secret()`; [check.Masked] writes each secret `(secret)`, for a log; [check.Schema] gives the JSON Schema of a
+  shape, as OpenAPI describes a body.
+- It is pure Cesia: the page checks a form as one types with the same shape that the server checks again.
 
 ## Reading CSV
 
@@ -117,7 +145,7 @@ Cyril,,45
 
 ```cesia allow=read
 use std/csv
-source = result.Unwrap(sys.Read("people.csv"))
+source = sys.Read("people.csv")!
 csv.Parse(source) -->
 people = csv.Records(source)
 people[1].city -->
@@ -176,7 +204,7 @@ match checked
   result.Ok(all) -> sys.Write("people.json", json.Text(all))
   result.Err(e) -> io.Print("refused:", e)
 end
-io.Print(result.Unwrap(sys.Read("people.json")))
+io.Print(sys.Read("people.json")!)
 ```
 
 ## Bytes as text: hexadecimal, Base64 and URLs

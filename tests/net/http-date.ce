@@ -1,0 +1,54 @@
+(** Every response has a Date, RFC 9110 section 6.6.1, in the IMF-fixdate form, the time of the server's clock in GMT: a
+    response of a handler, a 404, a 400 that Serve makes itself; one that a handler gave its own Date, in any case, keeps it
+    alone. *)
+use std/date
+use std/fiber
+use std/http
+use std/io
+use std/list
+use std/math
+use std/net
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+crlf = "\r\n"
+app = http.App() then http.Get("/", r -> http.Plain("hi")) then http.Get("/own", r -> http.WithHeader("DATE", "Sun, 06 Nov 1994 08:49:37 GMT", http.Plain("old")))
+l = result.Unwrap(net.Listen(0))
+fiber.Spawn(() -> http.Serve(app, listener = l))
+
+defn ask(raw)
+  (** The header lines of the response to a raw request, each its name in small letters, then its value. *)
+  c = result.Unwrap(net.Connect("127.0.0.1", net.Port(l)))
+  result.Unwrap(net.Write(c, raw))
+  got = result.Unwrap(net.Read(c))
+  net.Close(c)
+  head = text.Split("$crlf$crlf", got)[1]
+  text.Split(crlf, head)[2..end]
+end
+
+dates(lines) = list.Filter(l -> text.StartsWith("date:", text.Lower(l)), lines)
+imf = "^date: (Mon|Tue|Wed|Thu|Fri|Sat|Sun), [0-9]{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$"
+months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+defn near(line)
+  (** Is the date of a line within two seconds of this clock, and its day of the week the one of its date? *)
+  parts = text.Split(" ", line)
+  clock = text.Split(":", parts[6])
+  d = {Year: text.Number(parts[5]), Month: list.IndexOf(parts[4], months), Day: text.Number(parts[3]), Hour: text.Number(clock[1]), Minute: text.Number(clock[2]), Second: text.Number(clock[3]), Offset: 0}
+  math.Abs(date.ToUnix(d) - sys.Now()) < 2 and parts[2] == "$(days[date.Weekday(d)]),"
+end
+
+defn shown(lines)
+  ds = dates(lines)
+  [value.Len(ds), list.All([regex.Test(imf, d) and near(d) for d in ds])]
+end
+
+io.Print("handler", shown(ask("GET / HTTP/1.1$(crlf)Host: a$crlf$crlf")))
+io.Print("404", shown(ask("GET /nowhere HTTP/1.1$(crlf)Host: a$crlf$crlf")))
+io.Print("400", shown(ask("GET / HTTP/1.9$crlf$crlf")))
+io.Print("own", dates(ask("GET /own HTTP/1.1$(crlf)Host: a$crlf$crlf")))

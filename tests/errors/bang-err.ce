@@ -1,0 +1,8 @@
+use std/result
+
+(* ! on an Err stops the program as a bug, at the ! itself, with the text of the error; the trace names the function. *)
+defn first(r)
+  v = r!
+  v + 1
+end
+first(result.Err({Message: "no such file", Kind: "io"}))

@@ -79,3 +79,9 @@ val call_caught : ctx -> t -> t array -> (t, exn) result
 (** [run_tool w name args] runs the tool [src/tools/NAME.ce] that the binary holds, with these arguments: its [Main()] gives
     [Ok], or an [Err] whose text goes to the errors, and then the code is 1. A tool sees no project's [std/]. *)
 val run_tool : world -> string -> string list -> int
+
+(** cesia build, set by its plugin cesia_wasm.cmxs: its arguments to the exit code. While [checking], a package is
+    prepared but not run, as cesia check reads it, and [prepared_file] sees each of its files in the order of a run. *)
+val builder : (string list -> int) option ref
+val checking : bool ref
+val prepared_file : (int * int * Ast.func * Ast.layout -> unit) ref

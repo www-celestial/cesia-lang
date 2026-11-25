@@ -115,6 +115,7 @@ val two_dims : string -> int -> t
 val shape : int array -> int array -> t
 val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
+val clamp_bounds : string -> string -> t
 
 (** The private method len of a struct, which value.Len calls, gave something else than an integer. *)
 val len_result : string -> string -> t
@@ -250,8 +251,10 @@ val test_summary : int -> int -> int option -> string
 val snapshot_new : int -> string
 val snapshot_changed : int -> string
 
-(** cesia test without its plugin, and why. *)
-val no_test_plugin : string -> string
+(** cesia test or build without its plugin, and why: [no_plugin "test" "cesia_testing.cmxs" reason]. *)
+val no_plugin : string -> string -> string -> string
+val wasm_unsupported : string -> t
+val wasm_overwrite : string -> string
 
 (** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]
     the ? that gave its Err. *)
@@ -397,7 +400,9 @@ val map_of_struct : string -> string -> t
 
 val pattern_mismatch : string -> string -> t
 val question_file : t
-val question_space : t
+
+(** [sign_space sign]: a [?] or a [!] after a value, with a space before it. *)
+val sign_space : string -> t
 val hole_twice : t
 val hole_alone : t
 val block_line : t
@@ -407,7 +412,12 @@ val do_block : string
 
 (** A type error about the function of a do block, with the hint that says where the block goes, unless it has one. *)
 val block_hint : t -> t
-val question_value : string -> t
+
+(** [sign_value sign a]: a [?] or a [!] after a value that is no result, named by [Value.describe]. *)
+val sign_value : string -> string -> t
+
+(** [bang_err text]: a [!] after an Err, the text of the error as [result.Unwrap] shows it. *)
+val bang_err : string -> t
 val need_task : string -> string -> t
 val empty_text : string -> t
 val need_array : string -> string -> t
@@ -483,6 +493,9 @@ val workers_watch : string
 val workers_windows : string
 val bad_char : string -> t
 val need_size : string -> string -> t
+
+(** A BLAKE2b of std/crypto asked for a size of hash out of 16 to 64 bytes. *)
+val blake2b_size : t
 val deadlock : t
 (** A CSV separator that isn't one byte. *)
 val csv_separator : string -> t

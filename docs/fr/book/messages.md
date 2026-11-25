@@ -38,6 +38,7 @@ n'a encore tourné. `cesia check` les montre aussi, avec leur ligne et leur colo
 | `return can only be used inside a function.` | Au premier niveau d'un fichier, hors des fonctions, le programme finit à sa dernière ligne : sys.Exit le termine plus tôt. |
 | `A name can't hold a _: "…".` | `Join the words with capitals: …, or … when it is public.` |
 | `? must follow its value, with no space.` | Écrivez `x?`, le `?` collé à sa valeur. |
+| `! must follow its value, with no space.` | Écrivez `x!`, le `!` collé à sa valeur. |
 | `Two ; in a row: an array written in the code has rows and columns only.` | `An array of more dimensions comes from matrix.Reshape: [1 3; 2 4;;; 5 7; 6 8] is matrix.Reshape([2, 2, 2], 1..8).` |
 | `A struct can only be defined at the top of a file.` | Déplacez la struct (une valeur à champs nommés, déclarée une fois) au premier niveau du fichier. |
 | `Only fields can be written inside a struct.` | `One per line: a name, its type if it has one, and = with a default. The struct ends with end.` |
@@ -162,8 +163,10 @@ ligne, ou c'est la fiber (une fonction qui tourne à côté des autres) qui s'ar
 | `This pattern needs a struct, not ….` | La valeur n'est pas une struct : passez-la d'abord par un match. |
 | `This pattern needs an array, not ….` | La valeur n'est pas un array : passez-la d'abord par un match. |
 | `This pattern needs …, not ….` | La valeur n'a pas la forme du pattern : utilisez match, avec un else. |
-| `? can only be used inside a function, which it leaves with the Err.` | `At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result.` |
+| `? can only be used inside a function, which it leaves with the Err.` | `At the top of a file, write ! in place of ? where an Err would be a bug, or match on the result.` |
 | `? needs an Ok or an Err, not ….` | `Return a result from the function you call.` |
+| `! needs an Ok or an Err, not ….` | `Return a result from the function you call.` |
+| `! needs an Ok, not an Err: ….` | Le résultat était un Err là où il ne devait pas y en avoir : traitez-le avec ? ou match s'il peut arriver. |
 | `Assertion failed.` | La condition de bug.Assert était fausse. |
 | `date.Local can't place … seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.` | Donnez un temps à moins d'environ 31 millions d'années de 1970. |
 | `random.Int needs a low that is at most its high, and a range that fits in 63 bits: … to ….` | Donnez à random.Int un low au plus égal à son high. |
@@ -204,7 +207,7 @@ code (le nombre qu'une commande rend à celui qui l'a lancée).
 
 | Message | Hint, ou ce qu'il faut faire |
 |---|---|
-| `… gives a result, used here as a plain value.` | `An Err would pass for a value: add ?, match it, or Unwrap it.` |
+| `… gives a result, used here as a plain value.` | `An Err would pass for a value: add ? or !, or match it.` |
 | `… gives a result, which is dropped here.` | `Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose.` |
 | `… can give an Err, which … doesn't say: write …!.` | Écrivez le `!` après le type de résultat que nomme le message. |
 
@@ -458,6 +461,9 @@ interne.
 | `--workers needs Linux or macOS: on Windows, a program serves on one core` |  |
 | `cesia: nothing is documented under …` |  |
 | `cesia: … is in std/…: cesia doc ….….` |  |
+| `cesia: cesia build needs its plugin, cesia_wasm.cmxs, beside the binary: …` |  |
+| `cesia: … is no loader that cesia build wrote: move it away, or build a file of another name` |  |
+| `… isn't compiled to WebAssembly yet.` | `cesia run runs it; cesia build --target wasm compiles part of Cesia for now.` |
 | `Internal error: …` |  |
 
 ## cesia.toml, cesia do et cesia new

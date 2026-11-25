@@ -1,0 +1,21 @@
+use std/io
+use std/math
+
+(* math.Floor, Ceil, Round and Abs on floats, typed, and on values of any type: integers stay, a half of Round goes away
+   from zero, true is 1, missing stays, an array goes cell by cell. *)
+for x in [2.5, -2.5, 0.49999999999999994, -0.4, 1e300, -0.0]
+  io.Print(math.Floor(x), math.Ceil(x), math.Round(x), math.Abs(x))
+end
+all(x) = [math.Floor(x), math.Ceil(x), math.Round(x), math.Abs(x)]
+io.Print(all(7), all(-7), all(-3.5), all(true), all(false), all(missing))
+io.Print(all([1.5, -2.5, 3]), all([[0.5], [-0.5]]))
+cents(x) = math.Round(x * 100) / 100
+io.Print(cents(1234.5678), cents(-0.005), cents(10))
+defn typed()
+  for i in -3..3
+    y = i * 0.5
+    io.Print(math.Floor(y), math.Ceil(y), math.Round(y), math.Abs(y), math.Round(y * 0.999999999999))
+  end
+end
+typed()
+io.Print(all(-4611686018427387903 - 1))

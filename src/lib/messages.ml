@@ -124,6 +124,7 @@ let need_number name a =
   let text = Printf.sprintf "%s needs numbers, not %s." name a in
   if a = "function <anonymous>" then hinted text "\"it\" belongs to the nearest call. Write x -> ... to use it further out."
   else plain text
+let clamp_bounds lo hi = plain (Printf.sprintf "Clamp needs two numbers lo <= hi, not %s and %s." lo hi)
 let it_assign = plain "\"it\" is a reserved name and can't be assigned."
 let no_field name = plain (Printf.sprintf "This struct has no field \"%s\"." name)
 let named_field sname name = plain (Printf.sprintf "%s has no field \"%s\"." sname name)
@@ -162,7 +163,7 @@ let method_two a b name found =
     "A field or a method of the value itself would win over theirs."
 let wrong_type fname name want found = plain (Printf.sprintf "%s: %s must be %s, found %s." fname name want found)
 let wrong_result fname = wrong_type fname "the result"
-let result_plain name = hinted (Printf.sprintf "%s gives a result, used here as a plain value." name) "An Err would pass for a value: add ?, match it, or Unwrap it."
+let result_plain name = hinted (Printf.sprintf "%s gives a result, used here as a plain value." name) "An Err would pass for a value: add ? or !, or match it."
 let result_dropped name = hinted (Printf.sprintf "%s gives a result, which is dropped here." name) "Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose."
 let missing_bang fname t = plain (Printf.sprintf "%s can give an Err, which %s doesn't say: write %s!." fname t t)
 let use_broken upath at = plain (Printf.sprintf "Package %s doesn't load: %s." upath at)
@@ -172,8 +173,8 @@ let destructure_array want got = plain (Printf.sprintf "This pattern takes %d el
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
 let destructure_value a = plain (Printf.sprintf "This pattern needs an array, not %s." a)
 let pattern_mismatch name a = plain (Printf.sprintf "This pattern needs %s, not %s." name a)
-let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result."
-let question_space = plain "? must follow its value, with no space."
+let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write ! in place of ? where an Err would be a bug, or match on the result."
+let sign_space sign = plain (Printf.sprintf "%s must follow its value, with no space." sign)
 let hole_twice = hinted "A call has one _ at most: its do block takes that place." "Write the other arguments in full."
 let hole_alone =
   hinted "_ stands for the do block of its call, and this call has none."
@@ -187,8 +188,9 @@ let block_hint (m : t) =
   if m.hint = None && found 0 then
     { m with hint = Some "A do block takes the place of the _ of its call, or else comes first: write _ where it goes, as in http.Get(\"/\", _) do r." }
   else m
-let question_value a =
-  hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
+let sign_value sign a =
+  hinted (Printf.sprintf "%s needs an Ok or an Err, not %s." sign a) "Return a result from the function you call."
+let bang_err text = plain ("! needs an Ok, not an Err: " ^ text)
 let need_task name a = plain (Printf.sprintf "%s needs a task, not %s." name a)
 let empty_text name = plain (Printf.sprintf "%s needs a text that isn't empty." name)
 let need_array name a = plain (Printf.sprintf "%s needs an array, not %s." name a)
@@ -265,6 +267,7 @@ let workers_watch = "--workers and --watch don't go together: --watch reloads on
 let workers_windows = "--workers needs Linux or macOS: on Windows, a program serves on one core"
 let bad_char a = plain (Printf.sprintf "Char needs a code point, not %s." a)
 let need_size name a = plain (Printf.sprintf "%s needs a number of bytes within the text, not %s." name a)
+let blake2b_size = plain "blake2b needs a size from 16 to 64."
 let deadlock = plain "All fibers are waiting and nothing can wake them."
 let index_count n = plain (Printf.sprintf "This array has %d dimensions: use %d indexes, or one." n n)
 let range_too_long = plain "This range has too many elements."
@@ -286,6 +289,7 @@ let usage =
   \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia fmt [--check] [path...]\n\
+  \       cesia build --target wasm file.ce\n\
   \       cesia lsp\n\
   \       cesia do [task [args...]]\n\
   \       cesia new name\n\
@@ -437,7 +441,9 @@ let test_summary passed failed seed =
   Printf.sprintf "%d passed, %d failed%s" passed failed (match seed with Some s -> Printf.sprintf ", seed %d" s | None -> "")
 let snapshot_new k = Printf.sprintf "new snapshot %d: review it, then cesia test --update" k
 let snapshot_changed k = Printf.sprintf "snapshot %d changed: cesia test --update keeps the new text" k
-let no_test_plugin reason = "cesia test needs its plugin, cesia_testing.cmxs, beside the binary: " ^ reason
+let no_plugin cmd plugin reason = Printf.sprintf "cesia %s needs its plugin, %s, beside the binary: %s" cmd plugin reason
+let wasm_unsupported what = hinted (what ^ " isn't compiled to WebAssembly yet.") "cesia run runs it; cesia build --target wasm compiles part of Cesia for now."
+let wasm_overwrite path = path ^ " is no loader that cesia build wrote: move it away, or build a file of another name"
 let test_part i n = Printf.sprintf ", part %d of %d" i n
 let test_question line = Printf.sprintf " at the ? of line %d" line
 let test_last_bits a b = Printf.sprintf "the same float but for its last bits: math.Near(%s, %s)?" a b

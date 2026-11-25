@@ -46,6 +46,7 @@ let rec text (e : expr) =
   | Struct_lit { sfields; _ } -> 12, "{" ^ all (fun (n, v) -> n ^ ": " ^ show v) sfields ^ "}"
   | End_index -> 12, "end"
   | Question a -> 11, at 11 a ^ "?"
+  | Bang a -> 11, at 11 a ^ "!"
   | _ -> 12, "..."
 
 let show e = snd (text e)
@@ -94,7 +95,7 @@ let rewrite (fn : func) =
     | For _ -> ()
     | _ when is_alias e || for_all e -> ()
     | Field (a, _) when is_alias a -> ()
-    | Var _ | Field _ | Index _ | Call _ | Question _ -> under test prop owner (wrap (add test prop owner e Shown) e)
+    | Var _ | Field _ | Index _ | Call _ | Question _ | Bang _ -> under test prop owner (wrap (add test prop owner e Shown) e)
     | _ -> Resolve.children (inside test prop owner) e
   (* The insides of a value already noted. A name before a dot stays as it is: Rect.Square is a static method of Rect. *)
   and under test prop owner (e : expr) =
@@ -107,7 +108,7 @@ let rewrite (fn : func) =
     | Call { callee; args; _ } ->
       (match callee.e with Field (a, _) -> before a | _ -> ());
       Array.iter (fun (a : arg) -> deeper a.value) args
-    | Question a -> under test prop owner a
+    | Question a | Bang a -> under test prop owner a
     | _ -> Resolve.children deeper e
   (* A side of a comparison: noted even as a literal, for the hints, which is then never shown. *)
   and side test prop owner (e : expr) =

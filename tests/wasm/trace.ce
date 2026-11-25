@@ -1,0 +1,14 @@
+use std/io
+
+defn ratio(xs, i)
+  xs[i] / 2
+end
+defn walk(xs)
+  total = 0
+  for i in 1..4
+    total = total + ratio(xs, i)
+  end
+  total
+end
+io.Print("before")
+io.Print(walk([1, 2, 3]))

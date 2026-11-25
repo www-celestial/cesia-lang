@@ -35,7 +35,7 @@ let rec loops (e : expr) =
   | For _ | While _ -> true
   | If (c, y, n) -> loops c || blk y || blk n
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> loops a || loops b
-  | Neg a | Not a | Question a | Field (a, _) | Assign (_, a) | Destructure (_, a) | Return { rvalue = Some a; _ } -> loops a
+  | Neg a | Not a | Question a | Bang a | Field (a, _) | Assign (_, a) | Destructure (_, a) | Return { rvalue = Some a; _ } -> loops a
   | Call c -> loops c.callee || Array.exists (fun (a : arg) -> loops a.value) c.args
   | Index (a, ixs, _) -> loops a || Array.exists (function Ix x -> loops x | All -> false) ixs
   | Set { value; _ } -> loops value

@@ -1,0 +1,46 @@
+use std/fiber
+use std/list
+use std/math
+use std/num
+use std/result
+use std/value
+
+(* The functions of one number of std/math, at their edges: zeros of both signs, infinities, NaN, subnormals, the
+   largest float, and empty arrays. The values are those of mpmath at 300 bits, rounded to the nearest float, and of
+   numpy, R and MATLAB where they decide a convention. *)
+inf = 1 / 0.0
+nan = 0.0 / 0.0
+fails(f) = result.IsErr(fiber.Wait(fiber.Spawn(f)))
+negZero(x) = x == 0 and 1 / x < 0
+eq(a, b) = value.Equal(a, b)
+
+isLogs() = math.Log10(0) == -inf and math.IsNan(math.Log10(-1)) and math.Log10(inf) == inf and math.Log10(1e-320) == -320.000004834948 and math.Log2(5e-324) == -1074.0 and math.Log2(0.5) == -1.0
+isLog1p() = math.Log1p(-1) == -inf and math.IsNan(math.Log1p(-2)) and negZero(math.Log1p(-0.0)) and math.Log1p(1e-300) == 1e-300 and math.Log1p(-0.5) == -0.6931471805599453
+isExpm1() = math.Expm1(-inf) == -1.0 and math.Expm1(710) == inf and negZero(math.Expm1(-0.0)) and math.Expm1(1e-300) == 1e-300 and math.Expm1(-1e-5) == -9.999950000166666e-6
+isCbrtExact() = list.All([math.Cbrt(k * k * k) == k for k in 1..2000]) and math.Cbrt(-27) == -3.0 and math.Cbrt(0.001) == 0.1 and math.Cbrt(1e-300) == 1e-100
+isCbrtRounded() = math.Cbrt(2) == 1.2599210498948732 and math.Cbrt(0.1) == 0.4641588833612779 and math.Cbrt(3) == 1.4422495703074083
+isCbrtEdges() = negZero(math.Cbrt(-0.0)) and math.Cbrt(inf) == inf and math.Cbrt(-inf) == -inf and math.IsNan(math.Cbrt(nan)) and math.Cbrt(5e-324) == 1.7031839360032603e-108 and math.Cbrt(math.MaxFloat) == 5.643803094122362e102
+isCbrtArray() = eq(math.Cbrt([8.0, -64.0]), [2.0, -4.0]) and value.IsMissing(math.Cbrt([1, missing])[2])
+isHyperbolic() = negZero(math.Sinh(-0.0)) and math.Sinh(710) == 1.1169973830808555e308 and math.Sinh(711) == inf and math.Cosh(0) == 1.0 and math.Cosh(-inf) == inf and math.Tanh(inf) == 1.0 and negZero(math.Tanh(-0.0)) and math.Tanh(0.5) == 0.46211715726000974
+isInverses() = negZero(math.Asinh(-0.0)) and math.IsNan(math.Acosh(0.5)) and math.Acosh(1) == 0.0 and math.Atanh(1) == inf and math.Atanh(-1) == -inf and math.IsNan(math.Atanh(2)) and math.Atanh(0.6) == 0.6931471805599453
+isDegreesExact() = eq(math.SinDegrees([0, 30, 90, 150, 180, 270, 360]), [0.0, 0.5, 1.0, 0.5, 0.0, -1.0, 0.0]) and eq(math.CosDegrees([0, 60, 90, 120, 180, 270]), [1.0, 0.5, 0.0, -0.5, -1.0, 0.0]) and eq(math.TanDegrees([0, 45, 135, -45]), [0.0, 1.0, -1.0, -1.0])
+isDegreesSigns() = negZero(math.SinDegrees(-0.0)) and negZero(math.SinDegrees(-180)) and negZero(math.TanDegrees(180)) and math.TanDegrees(90) == inf and math.TanDegrees(-90) == -inf
+isDegreesFar() = math.SinDegrees(1e20) == math.SinDegrees(280.0) and math.SinDegrees(-1e20) == -math.SinDegrees(280.0) and math.IsNan(math.SinDegrees(inf)) and math.IsNan(math.CosDegrees(nan))
+isRadians() = math.Radians(180) == math.Pi and negZero(math.Radians(-0.0)) and math.Degrees(math.Pi / 2) == 90.0 and eq(math.Radians([0, 90]), [0.0, math.Pi / 2])
+isTests() = eq(math.IsNan([1.0, nan, inf]), [false, true, false]) and eq(math.IsInf([1.0, nan, -inf]), [false, false, true]) and eq(math.IsFinite([1.0, nan, -inf, 3]), [true, false, false, true])
+isTestsOfMissing() = not math.IsNan(missing) and not math.IsInf(missing) and not math.IsFinite(missing) and not math.IsNan(1)
+isEpsilon() = math.Epsilon(0) == 5e-324 and math.Epsilon(-1.0) == math.Epsilon(1.0) and math.Epsilon(math.MaxFloat) == 1.99584030953472e292 and math.IsNan(math.Epsilon(inf)) and math.IsNan(math.Epsilon(nan)) and math.Epsilon(math.MinFloat) == 5e-324
+isNextAfter() = math.NextAfter(math.MaxFloat, inf) == inf and math.NextAfter(0.0, -1.0) == -5e-324 and math.NextAfter(-0.0, 1.0) == 5e-324 and math.NextAfter(1, 1) == 1.0 and math.IsNan(math.NextAfter(nan, 1.0)) and eq(math.NextAfter([1.0, 2.0], 0.0), [0.9999999999999999, 1.9999999999999998])
+isHypot() = math.Hypot(inf, nan) == inf and math.IsNan(math.Hypot(nan, 1)) and math.Hypot(1e-320, 1e-320) == 1.414e-320 and math.Hypot(-3, -4) == 5.0 and math.Hypot(math.MaxFloat, math.MaxFloat) == inf and eq(math.Hypot([3.0, 6.0], 4), [5.0, 7.211102550927978]) and value.IsMissing(math.Hypot(missing, 1))
+isClamp() = eq(math.Clamp(0, 1, [-0.5, 0.5, 1.5]), [0.0, 0.5, 1.0]) and math.IsNan(math.Clamp(0, 1, [nan])[1]) and math.IsNan(math.Clamp(0, 1, nan))
+isClampKeepsKinds() = math.Clamp(0, 10, 12) == 10 and value.IsInt(math.Clamp(0, 10, 5)) and eq(math.Clamp(0, 10, [1, 20]), [1, 10]) and value.IsMissing(math.Clamp(0, 1, missing)) and math.Clamp(0.0, 0.0, 3) == 0.0
+isClampErrors() = fails(() -> math.Clamp(1, 0, 3)) and fails(() -> math.Clamp(nan, 1, 3)) and fails(() -> math.Clamp(0, 1, "a"))
+isStep() = eq(math.Step([-inf, -1, 0, 2, inf]), [0.0, 0.0, 0.5, 1.0, 1.0]) and math.Step(-0.0) == 0.5 and math.Step(0, 1) == 1.0 and math.Step(0, zero = 0) == 0.0 and math.IsNan(math.Step(nan))
+isLogSumExp() = math.LogSumExp([1.0, 2.0, 3.0]) == 3.40760596444438 and math.LogSumExp([1000.0, 1001.0]) == 1001.3132616875182 and math.LogSumExp([0.0, -40.0]) == 4.248354255291589e-18 and math.LogSumExp([1, 2, 3]) == 3.40760596444438
+isLogSumExpEdges() = math.LogSumExp([]) == -inf and math.LogSumExp([inf, 1.0]) == inf and math.LogSumExp([-inf, -inf]) == -inf and math.IsNan(math.LogSumExp([nan, 1.0])) and value.IsMissing(math.LogSumExp([1.0, missing]))
+isLogAddExp() = math.LogSumExp(1, 2) == 2.313261687518223 and math.LogSumExp(inf, inf) == inf and math.LogSumExp(-inf, -inf) == -inf and math.LogSumExp(inf, -inf) == inf and math.IsNan(math.LogSumExp(nan, 1)) and eq(math.LogSumExp([1.0, 2.0], 3), [3.1269280110429727, 3.313261687518223])
+isLogSumExpErrors() = fails(() -> math.LogSumExp("a")) and fails(() -> math.LogSumExp(["a"])) and fails(() -> math.LogSumExp(1, "a"))
+isReplaceNan() = eq(num.ReplaceNan(0.0, [1.0, nan, missing, inf]), [1.0, 0.0, 0.0, inf]) and num.ReplaceNan(-1, nan) == -1 and num.ReplaceNan(0, missing) == 0 and eq(num.ReplaceNan(0.0, []), []) and fails(() -> num.ReplaceNan("a", [1.0]))
+isConstants() = math.Log(math.E) == 1.0 and math.MaxFloat * 2 == inf and math.MinFloat / 2 > 0 and math.MaxInt + 0 == 4611686018427387903 and fails(() -> math.MaxInt + 1) and math.MinInt == -math.MaxInt - 1
+isNumbersOrArrays() = math.Log10(100) == 2.0 and eq(math.Log10([100, 1000]), [2.0, 3.0]) and eq(math.Sinh([0]), [0.0]) and eq(math.Log2([]), [])
+isWrongArgument() = fails(() -> math.Log10("a")) and fails(() -> math.Cbrt("8")) and fails(() -> math.Hypot("3", 4)) and fails(() -> math.SinDegrees([1, "x"]))

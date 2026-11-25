@@ -19,5 +19,14 @@ types.ce:27:15: Name: p must be a Point, found missing.
 types.ce:28:15: Half: x must be a Float, found a Text.
   28 | io.Print(Half(Name(Point(1, 2))))
      |               ^^^^
-check: 7 errors, 0 warnings, in 1 file.
+types.ce:34:15: Name: p must be a Point, found an Int.
+  34 | io.Print(Name(Measure(2)!))
+     |               ^^^^^^^
+types.ce:35:15: Half: x must be a Float, found a Point.
+  35 | io.Print(Half(Origin()!))
+     |               ^^^^^^
+types.ce:36:33: Name: p must be a Point, found an Int.
+  36 | Twice(x) Text! = result.Ok(Name(Measure(x)?))
+     |                                 ^^^^^^^
+check: 10 errors, 0 warnings, in 1 file.
 exit 1
