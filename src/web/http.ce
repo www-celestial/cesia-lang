@@ -1,0 +1,50 @@
+(** std/http in a program compiled to WebAssembly: Fetch by the fetch of the page or of Node, by js.Call, in place of the
+    one over std/net. cesia build --target wasm takes it for std/http's Fetch, with the same arguments and result. In a
+    page the browser makes the connection: a URL may be a path of the page's own origin, as "/auth/me"; the page's
+    cookies of that origin go with it, and its Set-Cookie headers stay the browser's (no page reads them); TLS is the
+    browser's, so secure is not needed; the browser follows a redirection itself. peer can't be honored: the
+    browser doesn't tell the address it reached, so a Fetch with peer is refused. *)
+use std/fiber
+use std/js
+use std/list
+use std/result
+use std/text
+use std/value
+
+failed(message) = result.Err({Kind: "http", Message: message})   (* An Err of the kind "http". *)
+
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing)
+  (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached, when
+      it gave no answer in timeout seconds (of the kind "timeout"), or when its body is longer than maxBody. *)
+  if not value.IsMissing(peer)
+    return failed("A page can't check the address it reached: the browser doesn't tell it. Fetch with peer runs on a server.")
+  end
+  if not (value.IsText(url) and (text.StartsWith("/", url) or text.StartsWith("http://", url) or text.StartsWith("https://", url)))
+    return failed("This URL is not http://, https:// or a path of the page's origin: $url")
+  end
+  flat = []
+  for h in headers
+    flat = list.Append(h.Value, list.Append(h.Name, flat))
+  end
+  reply = fiber.Channel(size = 1)
+  js.Call("cesia:fetch", "Fetch", [url, method, body, flat, reply])
+  got = fiber.Receive(reply, timeout = if value.IsMissing(timeout) missing else timeout end)
+  if result.IsErr(got)
+    return if got.Error.Kind == "timeout" result.Err({Kind: "timeout", Message: "$url gave no answer in $timeout seconds."}) else failed("$url: no answer.") end
+  end
+  a = got.Value
+  if a[1] == 0
+    return result.Err({Kind: "io", Message: "$url: $(a[2])"})
+  end
+  n = value.Len(a)
+  out = []
+  k = 2
+  while k < n
+    out = list.Append({Name: a[k], Value: a[k + 1]}, out)
+    k += 2
+  end
+  if not value.IsMissing(maxBody) and text.ByteLength(a[n]) > maxBody
+    return failed("$url answered more than $maxBody bytes.")
+  end
+  result.Ok({Status: a[1], Headers: out, Body: a[n]})
+end

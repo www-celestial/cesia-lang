@@ -1,0 +1,19 @@
+(* std/check in a page: a shape read, its errors, Out and Masked, and the pieces of std/text and std/date that the page
+   versions of src/web give (FromBytes, IsUtf8, ByteFindAny, PadLeft, PadRight, Local), the same as cesia run. *)
+use std/check
+use std/date
+use std/io
+use std/json
+use std/text
+s = check.Record({Email: check.Email(), Name: check.Text(1, 20), N: check.Int(0, 9), T: check.Time(), D: check.Date(), M: check.Money(2), O: check.OneOf(["a", "b"]), L: check.List(check.Id(), 0, 3), U: check.Url(), B: check.Bool(), S: check.Secret()})
+x = {Email: " Ada@X.com ", Name: " Ada ", N: 3, T: "2026-11-13T00:00:00+01:00", D: "2026-11-13", M: 12.5, O: "a", L: [70000], U: "https://x.y", B: true, S: "secretsecret"}
+io.Print(json.Text(check.Read(s, x)))
+io.Print(json.Text(check.Read(s, {})))
+io.Print(json.Text(check.Read(s, {Email: "a@b", Name: text.FromBytes([65, 7]), N: 10, T: "x", D: "2026-02-30", M: 1.005, O: "c", L: [0], U: "ftp://x", B: "x", S: ""})))
+io.Print(json.Text(check.Read(check.Record({N: check.Int(1, 9, optional = true, default = 1), B: check.Bool()}), {N: "3", B: "on"}, texts = true)))
+io.Print(json.Text(check.Out(s, check.Read(s, x).Value)))
+io.Print(json.Text(check.Masked(s, x)))
+io.Print(text.IsUtf8(text.FromBytes([0xC3, 0xA9])), text.IsUtf8(text.FromBytes([0xC0, 0x80])), text.IsUtf8(text.FromBytes([0xED, 0xA0, 0x80])), text.IsUtf8(text.FromBytes([0xF4, 0x90, 0x80, 0x80])), text.IsUtf8("héllo €𝄞"))
+io.Print(text.ByteFindAny("\"\\$", 1, "ab\\c"), text.ByteFindAny(" \t", 4, "let  x"), text.ByteFindAny("xyz", 1, "abc"))
+io.Print(text.PadLeft(3, "0", "7"), text.PadRight(3, ".", "7"), text.PadLeft(5, "ab", "x"), text.PadLeft(2, "0", "123"))
+io.Print(date.ToUnix(date.Local(1793534400)), date.Format(date.Utc(date.Local(1793534400))))

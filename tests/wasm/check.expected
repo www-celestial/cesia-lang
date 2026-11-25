@@ -1,0 +1,11 @@
+{"Value":{"Email":"ada@x.com","Name":"Ada","N":3,"T":1794524400,"D":1794528000,"M":12.5,"O":"a","L":[70000],"U":"https://x.y","B":true,"S":"secretsecret"}}
+{"Error":{"Email":"Required.","Name":"Required.","N":"Required.","T":"Required.","D":"Required.","M":"Required.","O":"Required.","L":"Required.","U":"Required.","B":"Required.","S":"Required."}}
+{"Error":{"Email":"An e-mail address, as ada@example.com.","Name":"Text without control characters.","N":"A whole number from 0 to 9.","T":"An instant, as 2026-11-25T18:30:00Z.","D":"A date, as 2026-11-25.","M":"An amount from 0 to 1000000000, with at most 2 decimals.","O":"One of: a, b.","L.1":"An id.","U":"An address that starts with https:// or http://.","B":"true or false.","S":"Text of 1 to 4096 bytes."}}
+{"Value":{"N":3,"B":true}}
+{"Email":"ada@x.com","Name":"Ada","N":3,"T":"2026-11-12T23:00:00Z","D":"2026-11-13","M":12.5,"O":"a","L":[70000],"U":"https://x.y","B":true}
+{"Email":" Ada@X.com ","Name":" Ada ","N":3,"T":"2026-11-13T00:00:00+01:00","D":"2026-11-13","M":12.5,"O":"a","L":[70000],"U":"https://x.y","B":true,"S":"(secret)"}
+true false false false true
+3 4 missing
+007 7.. ababababx 123
+1793534400 2026-11-01T12:00:00Z
+exit 0

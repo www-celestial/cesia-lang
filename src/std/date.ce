@@ -181,7 +181,7 @@ defn Parse(s)
     return bad(s)
   end
   n = list.Map(whole, list.Concat(day, clock))
-  if list.Any(list.Map(value.IsMissing, n))
+  if list.Any([value.IsMissing(v) for v in n])
     return bad(s)
   end
   y = if before 0 - n[1] else n[1] end

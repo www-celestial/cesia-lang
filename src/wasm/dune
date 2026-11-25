@@ -50,6 +50,15 @@
     (echo "  \"std/regex\", {page|")
     (cat ../web/regex.ce)
     (echo "|page};\n")
+    (echo "  \"std/text\", {page|")
+    (cat ../web/text.ce)
+    (echo "|page};\n")
+    (echo "  \"std/http\", {page|")
+    (cat ../web/http.ce)
+    (echo "|page};\n")
+    (echo "  \"std/date\", {page|")
+    (cat ../web/date.ce)
+    (echo "|page};\n")
     (echo "]\n")))))
 
 ; Loaded at its first use, not at start-up: its size costs no start-up, so its code inlines as much as it gains from.

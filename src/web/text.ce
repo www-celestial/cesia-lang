@@ -1,0 +1,77 @@
+(** std/text in a program compiled to WebAssembly: the natives that src/web/rtstd.ml doesn't hold, in Cesia, which
+    cesia build --target wasm takes for those of std/text of the same names. Each gives what the interpreter's gives;
+    std/check reads a text through them in a page. *)
+use std/text
+use std/value
+
+(** The text made of an array of bytes (integers from 0 to 255). *)
+FromBytes(xs) = text.FromNumbers("u8", xs)
+
+(** The bytes of a text, as integers from 0 to 255. *)
+Bytes(s) = text.Numbers("u8", s)
+
+defn PadLeft(n, filler, s)
+  (** The text, filled at the left with the filler up to n characters: the filler whole, as many times as characters
+      are missing. *)
+  lack = n - value.Len(s)
+  if lack <= 0 or filler == "" s else "$(text.Repeat(lack, filler))$s" end
+end
+
+defn PadRight(n, filler, s)
+  (** The text, filled at the right with the filler up to n characters. *)
+  lack = n - value.Len(s)
+  if lack <= 0 or filler == "" s else "$s$(text.Repeat(lack, filler))" end
+end
+
+defn IsUtf8(s)
+  (** Is the text valid UTF-8, as RFC 3629 defines it: no byte that can't begin or continue a character, no character
+      cut short, no overlong form, no surrogate (U+D800 to U+DFFF), nothing past U+10FFFF. *)
+  n = text.ByteLength(s)
+  k = 1
+  while k <= n
+    b = text.Byte(k, s)
+    if b < 128
+      k += 1
+    else
+      more = if b >= 194 and b <= 223 1 else if b >= 224 and b <= 239 2 else if b >= 240 and b <= 244 3 else 0 end
+      if more == 0 or k + more > n
+        return false
+      end
+      c = text.Byte(k + 1, s)
+      (* the second byte's range is narrower after E0 (no overlong), ED (no surrogate), F0 (no overlong) and F4 (no
+         code point past U+10FFFF) *)
+      lo = if b == 224 160 else if b == 240 144 else 128 end
+      hi = if b == 237 159 else if b == 244 143 else 191 end
+      if c < lo or c > hi
+        return false
+      end
+      for j in 2..more
+        c = text.Byte(k + j, s)
+        if c < 128 or c > 191
+          return false
+        end
+      end
+      k += more + 1
+    end
+  end
+  true
+end
+
+defn ByteFindAny(bytes, from, s)
+  (** The byte position, from 1, of the first byte of s at or after byte from that is one of the bytes of bytes; missing
+      when there is none, or when from is past the end. The page's version has no not = true: a word of Cesia can't
+      name a parameter of Cesia. *)
+  set = {}
+  for k in 1..text.ByteLength(bytes)
+    set[text.Byte(k, bytes)] = true
+  end
+  n = text.ByteLength(s)
+  k = if from < 1 1 else from end
+  while k <= n
+    if text.Byte(k, s) in set
+      return k
+    end
+    k += 1
+  end
+  missing
+end

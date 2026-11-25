@@ -214,6 +214,26 @@ const own = {
     Close (id) { const ws = sockets.get(id); if (ws && ws.readyState < 2) ws.close(1000) },
   },
   'cesia:regex': { Test: (pattern, s) => new RegExp(decoder.decode(pattern), 'u').test(decoder.decode(s)) },
+  // The clock of the page or of Node, in its time zone, for std/date's Local.
+  'cesia:date': {
+    Clock (s) { const d = new Date(s * 1000); return [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()] },
+  },
+  // The fetch of the page or of Node, for std/http's Fetch: the answer as [status, name, value, ..., body], or [0, why].
+  'cesia:fetch': {
+    Fetch (address, method, body, headers, reply) {
+      const h = new Headers()
+      for (let k = 0; k + 1 < headers.length; k += 2) h.append(decoder.decode(headers[k]), decoder.decode(headers[k + 1]))
+      const m = decoder.decode(method)
+      const ask = { method: m, headers: h, credentials: 'same-origin' }
+      if (m !== 'GET' && m !== 'HEAD') ask.body = body
+      fetch(node ? decoder.decode(address) : new URL(decoder.decode(address), location.href), ask).then(async r => {
+        const out = [r.status]
+        r.headers.forEach((v, k) => out.push(k, v))
+        out.push(new Uint8Array(await r.arrayBuffer()))
+        reply.send(out)
+      }, e => reply.send([0, String(e && e.message || e)])).finally(() => reply.close())
+    },
+  },
 }
 
 const rt = {

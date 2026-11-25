@@ -1,0 +1,6 @@
+(** std/date in a program compiled to WebAssembly: the clock of this machine that date.Local reads is the page's, the
+    time zone of the browser (or of Node), by JavaScript's Date, summer time included. *)
+use std/js
+
+(* The year, month, day, hour, minute and second of an instant on the local clock. *)
+localClock(seconds) = js.Call("cesia:date", "Clock", [seconds])
