@@ -80,13 +80,6 @@ let chunk_size = 1 lsl 14
 
 let unsupported fc (pos : Pos.t) what = raise (Unsupported (fc.path, pos, what))
 
-(* SURVEY (temporary): with CESIA_WASM_SURVEY set, every place that stops the build, then exit 2. *)
-let survey = Sys.getenv_opt "CESIA_WASM_SURVEY" <> None
-let surveyed : (string, unit) Hashtbl.t = Hashtbl.create 64
-let note (file, (pos : Pos.t), what) =
-  let k = Printf.sprintf "%s:%d: %s" file (Pos.line pos) what in
-  if not (Hashtbl.mem surveyed k) then (Hashtbl.replace surveyed k (); prerr_endline ("SURVEY " ^ k))
-
 (* The cell of a file's variable that stays out of the locals; in a loop's chunk, a variable it was not given is a bug of
    the compiler. *)
 let cell_index fc i = if fc.locs.(i) = -3 then failwith "aot: a variable read in a loop it wasn't given" else fc.fn.cell_of.(i)
@@ -483,9 +476,6 @@ and spec_num fc v =
   end
 
 let rec expr fc (e : expr) (want : kind) : ins list =
-  if survey then (try expr0 fc e want with Unsupported (f, p, w) -> note (f, p, w); [ unreachable ]) else expr0 fc e want
-
-and expr0 fc (e : expr) (want : kind) : ins list =
   let k, code = natural fc e in
   code @ convert fc ~from:k ~into:want
 
@@ -553,9 +543,6 @@ and block_value fc (b : block) k =
 
 (* A statement: its code leaves nothing. *)
 and stmt fc (e : expr) : ins list =
-  if survey then (try stmt0 fc e with Unsupported (f, p, w) -> note (f, p, w); [ unreachable ]) else stmt0 fc e
-
-and stmt0 fc (e : expr) : ins list =
   let rt = fc.st.rt in
   match e.e with
   | Use _ | Interface _ -> []
@@ -1411,9 +1398,8 @@ let compile_version st (v : version) name ~hoisted ~main =
   let rt = st.rt in
   let f = Cache.ready v.owner.func in
   let path = fst (Vec.get st.w.files v.owner.file) in
-  let chk ((a, b, c) as x) = if survey then note x else raise (Unsupported (a, b, c)) in
-  if f.ret <> None then chk (path, f.fpos, "a declared result type");
-  Array.iter (fun (p : param) -> if p.ptype <> None then chk (path, f.fpos, "a declared parameter type")) f.params;
+  if f.ret <> None then raise (Unsupported (path, f.fpos, "a declared result type"));
+  Array.iter (fun (p : param) -> if p.ptype <> None then raise (Unsupported (path, f.fpos, "a declared parameter type"))) f.params;
   ready st.w v;
   let ps, rs = signature st v in
   (* A file's level gives nothing that anything reads. *)
@@ -1799,9 +1785,8 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
   List.iter
     (fun (file, _, (fn : Ast.func), (l : layout)) ->
        let path = fst (Vec.get w.files file) in
-       let chk ((a, b, c) as x) = if survey then note x else raise (Unsupported (a, b, c)) in
-       if l.methods <> [] then chk (path, fn.fpos, "a method");
-       if l.interfaces <> [] then chk (path, fn.fpos, "an interface"))
+       if l.methods <> [] then raise (Unsupported (path, fn.fpos, "a method"));
+       if l.interfaces <> [] then raise (Unsupported (path, fn.fpos, "an interface")))
     prepared;
   let mains =
     List.filter_map
@@ -1852,5 +1837,4 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
     Buffer.add_string sites (Vec.get st.sites i)
   done;
   Buffer.add_string sites "]}";
-  if survey && Hashtbl.length surveyed > 0 then exit 2;
   Wasm.write rt.m, List.rev st.scripts, Buffer.contents sites
