@@ -5,6 +5,7 @@ use std/net
 use std/list
 use std/result
 use std/text
+use std/value
 
 chunk = 65536
 
@@ -20,6 +21,7 @@ defn Open()
     UseChain: c.Fn("SSL_CTX_use_certificate_chain_file", ["ptr", "text"], "i32", ssl)?,
     UseKey: c.Fn("SSL_CTX_use_PrivateKey_file", ["ptr", "text", "i32"], "i32", ssl)?,
     DefaultPaths: c.Fn("SSL_CTX_set_default_verify_paths", ["ptr"], "i32", ssl)?,
+    LoadCa: c.Fn("SSL_CTX_load_verify_locations", ["ptr", "text", "ptr"], "i32", ssl)?,
     SetVerify: c.Fn("SSL_CTX_set_verify", ["ptr", "i32", "ptr"], "void", ssl)?,
     SslNew: c.Fn("SSL_new", ["ptr"], "ptr", ssl)?,
     SslFree: c.Fn("SSL_free", ["ptr"], "void", ssl)?,
@@ -179,12 +181,18 @@ defn accept(api, ctx, socket)
   shaken(t)
 end
 
-defn Client(api, verify = true)
-  (** For http.Fetch: secure = tls.Client(api). With verify = false, any certificate passes: only for tests. The chapter
+defn Client(api, verify = true, ca = missing)
+  (** For http.Fetch: secure = tls.Client(api). The server's certificate must be signed by an authority the system
+      trusts, or, with ca, the path of a PEM file of authorities, by one of those instead, as a company's own; and it
+      must name the host. With verify = false, any certificate passes: only for tests. The chapter
       [HTTP](https://www-celestial.github.io/cesia-lang/http.html#https) uses it. *)
   ctx = api.CtxNew(api.ClientMethod())
   if verify
-    api.DefaultPaths(ctx)
+    if value.IsMissing(ca)
+      api.DefaultPaths(ctx)
+    else if api.LoadCa(ctx, ca, missing) != 1
+      return (socket, host) -> failed("Can't read the authorities $ca.")
+    end
     api.SetVerify(ctx, 1, missing)
   end
   (socket, host) -> connect(api, ctx, socket, host, verify)

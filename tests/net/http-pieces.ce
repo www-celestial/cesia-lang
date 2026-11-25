@@ -1,0 +1,81 @@
+(** Bodies in pieces: a route with stream reads a body larger than maxBody as it comes, a piece at a time, never whole;
+    a client that asks Expect: 100-continue is told to go on only when the handler reads, so a request refused first
+    never sends its body; a body larger than the route takes is a 413 before the handler; a second Content-Length is a
+    400; a body that came whole is in Body; a route without stream answers 413 past maxBody as before. And Fetch with
+    peer: the address it reached is checked before any byte goes. *)
+use std/dict
+use std/fiber
+use std/http
+use std/io
+use std/list
+use std/net
+use std/result
+use std/sys
+use std/text
+
+defn counted(r)
+  if not dict.Has("Read", r)
+    return http.Plain("whole $(text.ByteLength(r.Body))")
+  end
+  n = 0
+  most = 0
+  while true
+    p = r.Read()
+    if result.IsErr(p)
+      return http.Plain(p.Error.Message, status = 400)
+    end
+    if p.Value == ""
+      break
+    end
+    n += text.ByteLength(p.Value)
+    most = list.Max([most, text.ByteLength(p.Value)])
+  end
+  http.Plain("read $n of $(r.Size), no piece over 1 MB: $(most <= 1048576)")
+end
+
+app = http.App() then http.Route("POST", "/up", counted, stream = 5000000) then http.Post("/plain", r -> http.Plain("plain $(text.ByteLength(r.Body))")) then http.Route("POST", "/no", r -> http.Plain("no", status = 401), stream = 5000000)
+l = net.Listen(0)!
+port = net.Port(l)
+fiber.Spawn(() -> http.Serve(app, listener = l, maxBody = 100000, timeout = 5))
+
+defn ask(head, body, expect = false)
+  (** Sends a request by hand: the status line of its answer, with what came before it when expect asks for 100-continue. *)
+  c = net.Connect("127.0.0.1", port)?
+  net.Write(c, "$(head)Connection: close\r\n$(if expect "Expect: 100-continue\r\n" else "" end)\r\n")?
+  first = ""
+  if expect
+    first = net.Read(c)?
+    if not text.Contains("100 Continue", first)
+      net.Close(c)
+      return result.Ok("no 100, then: $(text.Split("\r\n", first)[1])")
+    end
+    first = "100 first, "
+  end
+  _ = net.Write(c, body)
+  out = ""
+  while true
+    m = net.Read(c)
+    if result.IsErr(m) or m.Value == ""
+      break
+    end
+    out = "$out$(m.Value)"
+  end
+  net.Close(c)
+  lines = text.Split("\r\n", out)
+  result.Ok("$first$(lines[1]): $(lines[value.Len(lines)])")
+end
+use std/value
+post(path, size) = "POST $path HTTP/1.1\r\nHost: x\r\nContent-Length: $size\r\n"
+big = text.Repeat(3000000, "x")
+io.Print("in pieces: $(ask(post("/up", 3000000), big))")
+io.Print("told to go on: $(ask(post("/up", 3000000), big, expect = true))")
+io.Print("refused before its body: $(ask(post("/no", 3000000), big, expect = true))")
+io.Print("small, whole: $(ask(post("/up", 5), "hello"))")
+io.Print("too large for the route: $(ask(post("/up", 6000000), "z"))")
+io.Print("two lengths: $(ask("$(post("/up", 3000000))Content-Length: 4\r\n", "abcd"))")
+io.Print("a route without stream: $(ask(post("/plain", 90000), text.Repeat(90000, "y")))")
+fetched = http.Fetch("http://localhost:$port/up", method = "POST", body = text.Repeat(200000, "q"))
+io.Print("Fetch in pieces: $(fetched.Value.Body)")
+io.Print("peer refused: $(http.Fetch("http://localhost:$port/up", method = "POST", body = "q", peer = a -> result.Err({Kind: "http", Message: "refused $a"})))")
+io.Print("peer passed: $(http.Fetch("http://localhost:$port/up", method = "POST", body = "q", peer = a -> result.Ok(missing)).Value.Body)")
+sys.Exit(0)

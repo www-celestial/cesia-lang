@@ -31,6 +31,19 @@
   a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
   log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.
 
+### Servers
+
+- `http.Route` takes `stream`, the most bytes the body of its requests may hold: a body too large for one read, or than
+  `maxBody`, comes to its handler in pieces as it reads them, `r.Read()` giving each and `r.Size` the length, so that an
+  upload of a file is never whole in memory; a body larger than `stream` is a `413` before the handler, a client that
+  sent `Expect: 100-continue` is told to go on at the first read only, and the connection closes after the response.
+  Each piece has the request's timeout, and the whole a second more for each 64 KiB. A route without it, and every
+  program that served before, reads as before (`tests/net/http-pieces.ce`).
+- `http.Fetch` takes `peer`, a function of the address the connection reached, run before any byte goes, TLS's too: an
+  `Err` it gives closes the connection and is Fetch's. A program that asks an address it was given checks the very
+  address a name was found at, with no second lookup (against server-side request forgery and DNS rebinding).
+- `tls.Client` takes `ca`, the path of a PEM file of the authorities to trust instead of the system's, as a company's own.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
