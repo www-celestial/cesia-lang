@@ -9,6 +9,13 @@
   `if x < 0 -1 else 0 end` meant `if x < 0 - 1 (nothing) else 0 end`, and gave `missing` where -1 was meant, with no
   error. Cesia's own code held three such mistakes, fixed below; an `if` left empty on purpose is written with `not`.
 
+### Shapes
+
+- `std/check`: shapes of what comes from outside, `check.Text(1, 200)`, `Int`, `Float`, `Money(2)`, `Bool`, `Date`, `Email`,
+  `Id`, `Url`, `OneOf`, `List`, `Record`, `Secret`, with `optional` and `default`. `check.Read` gives the value made clean or
+  a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
+  log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another

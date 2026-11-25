@@ -103,6 +103,31 @@ A key is the name of a field, or that name as JSON and SQL often write it: `name
 `CreatedAt`, the rule that the chapter [SQLite](sqlite.md) uses for columns. Two keys for one field are refused, and so is a
 key that names no field: each message names the key. A field with a default, as `Admin`, may be left out.
 
+### Shapes: bounds and messages for each field
+
+`From` checks types. What a visitor sends needs bounds too: a name of at most 120 bytes, a quantity from 1 to 1,000,000,
+an e-mail address, a list of at most 50 lines. [std/check] says it with a *shape*, a map that describes a value, and
+[check.Read] gives an `Ok` of the value made clean, or an `Err` of a map from each wrong field, by its path, to a message
+that a form can show beside it:
+
+```cesia
+use std/check
+Line = check.Record({Label: check.Text(1, 200), Qty: check.Int(1, 1000000), Price: check.Money(2)})
+Order = check.Record({Email: check.Email(), Due: check.Date(), Lines: check.List(Line, 1, 50)})
+check.Read(Order, {Email: " Bo@Example.com", Due: "2026-12-01", Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]}) --> result.Ok({Email: "bo@example.com", Due: 1796083200, Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]})
+check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, Price: 1}]}) then result.IsErr() --> true
+```
+
+- Every text is valid UTF-8 without control characters, trimmed, bounded in bytes; every number has its range (an `Int`
+  from -(2^30 - 1) to 2^30 - 1 unless it says otherwise, which a page in WebAssembly holds too); every list its most items.
+- A field the shape doesn't declare is dropped by `Read`: a sender who adds `Admin: true` adds nothing.
+- `check.Read(shape, query, texts = true)` reads values written as texts, as a query string or the environment gives
+  them: `"42"` for an `Int`, `""` for an absent field.
+- [check.Out] gives a value back to the outside by its shape: the declared fields only, dates as text, never a
+  `check.Secret()`; [check.Masked] writes each secret `(secret)`, for a log; [check.Schema] gives the JSON Schema of a
+  shape, as OpenAPI describes a body.
+- It is pure Cesia: the page checks a form as one types with the same shape that the server checks again.
+
 ## Reading CSV
 
 [std/csv] reads CSV as spreadsheets write it: a field with a comma or a line end sits between quotes. [csv.Parse] gives each

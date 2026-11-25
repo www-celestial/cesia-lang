@@ -1,0 +1,77 @@
+(** std/check against what a sender may try: control characters, broken UTF-8, numbers past their bounds, NaN, fields
+    it adds, lists without end; and the paths of the wrong fields, Out, Masked and Schema. *)
+use std/check
+use std/dict
+use std/list
+use std/result
+use std/text
+use std/value
+
+Line = check.Record({Label: check.Text(1, 200), Qty: check.Int(1, 1000000), Price: check.Money(2, 0, 1000000000)})
+NewInvoice = check.Record({Client: check.Id(), Due: check.Date(), Lines: check.List(Line, 1, 50), Note: check.Text(0, 500, optional = true)})
+
+defn isInvoiceRead()
+  (** A good invoice comes out clean: the date in seconds, the note absent, no field added. *)
+  got = check.Read(NewInvoice, {Client: 70000, Due: "2026-12-01", Lines: [{Label: " Pose ", Qty: 2, Price: 900}], Admin: true})
+  got == result.Ok({Client: 70000, Due: 1796083200, Lines: [{Label: "Pose", Qty: 2, Price: 900}]})
+end
+
+defn isEveryWrongFieldNamed()
+  (** Each wrong field has its message, under its path from the top. *)
+  got = check.Read(NewInvoice, {Client: 0, Due: "2026-13-01", Lines: [{Label: "a", Qty: 1, Price: 1}, {Label: "", Qty: 0, Price: 1.234}]})
+  w = got.Error
+  result.IsErr(got) and value.Equal(list.Sort(dict.Keys(w)), ["Client", "Due", "Lines.2.Label", "Lines.2.Price", "Lines.2.Qty"])
+end
+
+defn isControlRefused()
+  (** A NUL, an escape, a line end in a one-line text, and bytes that are not UTF-8 never pass; a line end passes with lines. *)
+  t = check.Text(0, 100)
+  bad = ["a$(text.Char(0))b", "a$(text.Char(27))[2J", "a\nb", text.FromBytes([97, 255, 98]), "a$(text.Char(127))"]
+  list.All([result.IsErr(check.Read(t, s)) for s in bad]) and check.Read(check.Text(0, 100, lines = true), "a\nb") == result.Ok("a\nb")
+end
+
+defn isBoundKept()
+  (** Bytes are counted, not characters; numbers stay in their range; NaN, infinities and texts for numbers are refused. *)
+  e = text.Repeat(3, "é")
+  inf = 1e308 * 10
+  result.IsErr(check.Read(check.Text(0, 5), e)) and result.IsOk(check.Read(check.Text(0, 6), e)) and
+    list.All([result.IsErr(check.Read(check.Float(), x)) for x in [inf, -inf, inf - inf, "1"]]) and
+    result.IsErr(check.Read(check.Int(), 1073741824)) and result.IsErr(check.Read(check.Int(), 1.5))
+end
+
+defn isListBounded()
+  (** A list past its most items is refused whole, before any item is read. *)
+  result.IsErr(check.Read(check.List(check.Int(), 0, 3), [1, 2, 3, 4])) and result.IsErr(check.Read(check.List(check.Int()), "1,2"))
+end
+
+defn isTextsRead()
+  (** A query gives texts: numbers, booleans, ids and an empty field (absent) are read from them. *)
+  q = check.Record({Page: check.Int(1, 100, optional = true, default = 1), Paid: check.Bool(optional = true), Client: check.Id(optional = true)})
+  check.Read(q, {Page: "", Paid: "true", Client: "70001"}, texts = true) == result.Ok({Page: 1, Paid: true, Client: 70001}) and
+    result.IsErr(check.Read(q, {Client: "7e3"}, texts = true)) and result.IsErr(check.Read(q, {Page: "2"}))
+end
+
+defn isOutFiltered()
+  (** Out gives the declared fields only, dates as text, and no secret. *)
+  s = check.Record({Id: check.Id(), Due: check.Date(), Key: check.Secret()})
+  check.Out(s, {Id: 7, Due: 1796083200, Key: "k", Office: 3}) == {Id: 7, Due: "2026-12-01"}
+end
+
+defn isMaskedForLogs()
+  (** A secret in a list of records is masked too. *)
+  s = check.List(check.Record({Login: check.Text(), Password: check.Secret()}))
+  value.Equal(check.Masked(s, [{Login: "a", Password: "p"}]), [{Login: "a", Password: "(secret)"}])
+end
+
+defn isSchemaOfRecord()
+  (** The schema of a record lists its required fields. *)
+  s = check.Schema(NewInvoice)
+  s.type == "object" and value.Equal(list.Sort(s.required), ["Client", "Due", "Lines"]) and s.properties.Lines.items.properties.Qty.maximum == 1000000
+end
+
+defn isEmailAndUrl()
+  (** Two @, spaces, a domain without a dot are no e-mail; javascript: is no address of the web. *)
+  list.All([result.IsErr(check.Read(check.Email(), m)) for m in ["a@b@c.d", "a b@c.d", "a@c", "@c.d", "a@.d"]]) and
+    result.IsErr(check.Read(check.Url(), "javascript:alert(1)")) and result.IsErr(check.Read(check.Url(), "https://")) and
+    check.Read(check.Url(), "https://a.example/x") == result.Ok("https://a.example/x")
+end
