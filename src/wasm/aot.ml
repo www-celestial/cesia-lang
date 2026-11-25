@@ -173,7 +173,8 @@ let ver_name st (v : version) =
   | Some n -> n
   | None ->
     st.counter <- st.counter + 1;
-    let n = Printf.sprintf "f%d:%s" st.counter v.owner.pname in
+    (* Its name says its file too, which CESIA_WASM_NAMES writes in the module, for the sizes of each file. *)
+    let n = Printf.sprintf "f%d:%s@%s" st.counter v.owner.pname (fst (Vec.get st.w.files v.owner.file)) in
     st.vers <- (v, n) :: st.vers;
     st.todo <- v :: st.todo;
     n
@@ -858,7 +859,7 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   let ps = state @ List.map (fun i -> vt_of fc.kinds.(i)) live in
   let rs = ps @ (if !leaves then [ vt_of rk ] else []) @ [ I32 ] in
   st.counter <- st.counter + 1;
-  let wf = Wasm.func rt.m (Printf.sprintf "loop%d:%s" st.counter fc.pname) ps rs in
+  let wf = Wasm.func rt.m (Printf.sprintf "loop%d:%s@%s" st.counter fc.pname fc.path) ps rs in
   let fb = { Rt.f = wf; n = 0; rev = []; tmp = -1 } in
   let ns = List.length state in
   let locs = Array.map (fun l -> if l = -1 then -1 else -3) fc.locs in
@@ -1334,7 +1335,14 @@ and static_call fc e (call : call) (proto : proto) =
   match Infer.bind_args f call.args with
   | Error m -> V, Rt.fail rt m [] (site fc e.pos)
   | Ok slots ->
-    let sg = Array.map (function None -> TBot | Some (a : expr) -> fc.ver.tn.(a.id)) slots in
+    (* An argument left out whose default is no number is a value either way: the version that takes one given takes it
+       too, and tests for it, so that no version is made for the defaults alone. *)
+    let absent k =
+      match f.params.(k).default with
+      | Some { e = Lmissing | Lbool _ | Ltext _ | Interp _ | Array_lit _ | Struct_lit _ | Lambda _; _ } -> TA
+      | _ -> TBot
+    in
+    let sg = Array.mapi (fun k -> function None -> absent k | Some (a : expr) -> fc.ver.tn.(a.id)) slots in
     let v = Infer.version_for w proto sg in
     ready w v;
     let self = v == fc.ver && call.self_tail && fc.tail >= 0 in
