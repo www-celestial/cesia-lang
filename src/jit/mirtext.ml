@@ -44,11 +44,25 @@ let args_of ~nested (fn : Ir.func) =
   (if nested then "p:cx, i64:b, i64:fuel" else "p:cx, i64:b, i64:entry, i64:fuel")
   ^ String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) fn.params))
 
+(* The constants a function's code names, by their number in the unit's table. *)
+let used_consts (fn : Ir.func) =
+  let acc = ref [] in
+  let add c = if not (List.mem c !acc) then acc := c :: !acc in
+  Array.iter
+    (fun (bk : Ir.block) ->
+       List.iter
+         (function
+           | Ir.Record (_, _, c, _) | Vals (_, _, c, _, _) | Into (_, _, _, c, _, _, _, _) | Draw (_, c) -> add c
+           | _ -> ())
+         bk.ins)
+    fn.blocks;
+  List.rev !acc
+
 (* Each function is written twice: [f], the outermost frame, which the interpreter enters and which can leave and come
    back at a resume point; and [g], a nested frame, which only another native frame calls: no resume point, no slot
    written, a frame of 2 slots 2 above its caller's base. [points], [ticks] and [entries]: as [text]'s, the first only
    of [f]. *)
-let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
+let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (fn : Ir.func) =
   let pr fmt = Printf.bprintf b fmt in
   let name = if nested then "g" ^ String.sub fn.name 1 (String.length fn.name - 1) else fn.name in
   (* MIR's labels belong to the module: each function gets its own. *)
@@ -351,9 +365,10 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
         if back < 0 then unwind
         else begin
           let g = again () in
+          let room = stub (fun s -> Printf.bprintf s "  mov %s, %d\n  jmp %s\n" (cx Ir.io_code) Ir.room_code g) in
           stub (fun s ->
-              Printf.bprintf s "  mov x0, %s\n  beq %s, x0, %d\n  beq %s, x0, %d\n  jmp %s\n" (cx Ir.io_status) g Ir.stack_out g
-                Ir.frames_out unwind)
+              Printf.bprintf s "  mov x0, %s\n  beq %s, x0, %d\n  beq %s, x0, %d\n  beq %s, x0, %d\n  jmp %s\n" (cx Ir.io_status) g
+                Ir.stack_out g Ir.frames_out room Ir.room_out unwind)
         end
       in
       pr "  mov x0, %s\n  bgt %s, nb, x0\n" (cx Ir.io_lim) slow;
@@ -455,7 +470,12 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
     | Reserve (need, p) when !need > 0 ->
       let gc =
         stub (fun s ->
-            Printf.bprintf s "  mov %s, %d\n  mov xp, %d\n  mov xs, %d\n  jmp %s\n" (cx Ir.io_a) !need p Ir.gc (leave_block ()))
+            if nested then begin
+              (* No way to leave for the collector: the run stops, and the call goes back to the interpreter. *)
+              Printf.bprintf s "  mov %s, %d\n  mov %s, %d\n" (cx Ir.io_a) !need (cx Ir.io_b) index;
+              stop s Ir.room_out
+            end
+            else Printf.bprintf s "  mov %s, %d\n  mov xp, %d\n  mov xs, %d\n  jmp %s\n" (cx Ir.io_a) !need p Ir.gc (leave_block ()))
       in
       pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
@@ -597,6 +617,12 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
       give v;
       pr "  ret fuel\n"
     | Bail k -> pr "  jmp %s\n" (bail_to k)
+    | Not_bool (v, site) ->
+      (* The value to the outermost frame's slot, found from the base in the context, then the error. *)
+      let v = in_reg Kval v in
+      pr "  mov xa, %s\n  lsh xa, xa, 3\n  mov x0, %s\n  add x0, x0, xa\n  add x0, x0, %d\n  call pmod, caml_modify, x0, %s\n"
+        (cx Ir.io_base) (cx 2) (8 * (moved_at - 1)) v;
+      pr "  jmp %s\n" (error Ir.err_cond site (Ir.Int 0) None)
     | Room (r, yes, no) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n  blt %s, fuel, 1\n  jmp %s\n" (cx Ir.io_lim) (bl no) r (bl no) (bl yes)
     | Fuel_ge (v, yes, no) ->
       pr "  mov x0, %s\n  rsh x0, x0, 1\n" (operand v);
@@ -665,10 +691,13 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
   in
   let lr = Printf.sprintf "%s%s_R" prefix name and lg = Printf.sprintf "%s%s_G" prefix name in
   if nested then begin
-    (* A nested frame finds the outermost one's base in the context. *)
-    if fn.moved <> [||] then begin
+    (* A nested frame finds the outermost one's base in the context, and there the constants it reads, of the unit's
+       one table. *)
+    let used = used_consts fn in
+    if fn.moved <> [||] || used <> [] then begin
       pr "  mov xa, %s\n  lsh xa, xa, 3\n  mov x1, %s\n  add x1, x1, xa\n" (cx Ir.io_base) (cx 2);
-      moved "x1"
+      moved "x1";
+      List.iter (fun j -> pr "  mov x0, i64:%d(x1)\n  mov c%d, i64:0(x0)\n" (8 * (consts_at + j)) j) used
     end;
     pr "  jmp %s\n" (bl 0)
   end
@@ -791,27 +820,30 @@ let emit (fns : Ir.func array) =
     fns;
   let nested = List.filter (fun k -> called.(k)) (List.init (Array.length fns) Fun.id) in
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));
-  let moved_at = Ir.moved_at fns.(0) in
+  let moved_at = Ir.moved_at fns.(0) and consts_at = fns.(0).frame in
   let points = Array.make (Array.length fns.(0).resumes) (-1) and ticks = Vec.create () and entries = Hashtbl.create 8 in
-  func b ~prefix ~nested:false ~moved_at ~points ~ticks ~entries fns.(0);
-  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at ~points ~ticks ~entries fns.(k)) nested;
+  func b ~prefix ~nested:false ~index:0 ~moved_at ~consts_at ~points ~ticks ~entries fns.(0);
+  List.iter (fun k -> func b ~prefix ~nested:true ~index:k ~moved_at ~consts_at ~points ~ticks ~entries fns.(k)) nested;
   let f0 = fns.(0) in
-  pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:x0, %s:res%s\n" prefix (ty f0.result)
+  pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:vp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
   pr "  mov b, %s\n  mov entry, %s\n  mov fuel, %s\n  mov ip, %s\n  lsh x0, b, 3\n  add ip, ip, x0\n  mov fp, %s\n  add fp, fp, x0\n"
     (cx Ir.io_base) (cx Ir.io_entry) (cx Ir.io_fuel) (cx 0) (cx 1);
+  pr "  mov vp, %s\n  add vp, vp, x0\n" (cx 2);
   Array.iter
     (fun (v : Ir.var) ->
        match v.kind with
        | Kint -> pr "  mov r%d, i64:%d(ip)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
        | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot)
-       | Kval -> invalid_arg "Mirtext: a value as a parameter")
+       | Kval -> pr "  mov r%d, i64:%d(vp)\n" v.reg (8 * v.slot))
     f0.params;
   pr "  call P%s0, %sf0, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n  %s res, %s\n" prefix prefix
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix
     (if f0.result = Kfloat then "dmov" else "mov") (result_cell f0.result);
   (match f0.result with
-   | Kint | Kval -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
+   | Kint -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
+   (* A value: in the value slot after the constants, through the write barrier, where [Engine] takes it. *)
+   | Kval -> pr "  add x0, vp, %d\n  call pmod, caml_modify, x0, res\n" (8 * (f0.frame + Array.length f0.consts))
    | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));
   pr "  mov %s, fuel\n  ret 0\n%sX:\n  mov x0, %s\n  ret x0\n  endfunc\n  endmodule\n" (cx Ir.io_fuel) prefix (cx Ir.io_status);
   { text = Buffer.contents b; entry = prefix ^ "e"; points; ticks = Vec.to_array ticks; entries }

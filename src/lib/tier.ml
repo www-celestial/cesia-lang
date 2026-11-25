@@ -126,7 +126,7 @@ let free (w : world) = (not w.hooks) || (w.debug.mode == Running && not w.debug.
    ([Compile.run_main]), and such code keeps them in registers, written to the frame only at a checkpoint, so the cells
    would get the numbers of the last one. Its loops get regions, which write them back when they end. *)
 let watch (w : world) (ver : version) =
-  if on () && (ver.ret == TI || ver.ret == TF) && ver.owner.func.export_of = [||] then begin
+  if on () && ver.ret != TBot && ver.owner.func.export_of = [||] then begin
     let ri = ver.ri and rf = ver.rf and rv = ver.rv in
     let promote () =
       ver.ri <- ri;
