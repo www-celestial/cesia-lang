@@ -1,0 +1,87 @@
+use std/io
+use std/math
+
+(* A test that loops, giving a Bool: a native loop calls it, native to native. *)
+defn isPrime(n)
+  if n < 2
+    return false
+  end
+  d = 2
+  while d * d <= n
+    if math.Mod(n, d) == 0
+      return false
+    end
+    d = d + 1
+  end
+  true
+end
+
+defn primes(n)
+  c = 0
+  for k in 1..n
+    if isPrime(k)
+      c = c + 1
+    end
+  end
+  c
+end
+
+(* A parameter given back: the caller's value and the result are two names of one value, so a write through one copies
+   it first, as in the interpreter. *)
+same(p) = p
+defn alias(n)
+  q = missing
+  p = missing
+  for k in 1..n
+    p = {X: 1.0 * k}
+    q = same(p)
+  end
+  q.X = 5.0
+  "$(p.X) $(q.X)"
+end
+
+(* A value or missing, by a test of numbers: the first k whose square passes n. *)
+defn firstOver(n)
+  for k in 1..n
+    if k * k > n
+      return k
+    end
+  end
+  missing
+end
+
+defn over(n)
+  total = 0
+  for i in 1..n
+    x = firstOver(i)
+    if x != missing
+      total = total + 1
+    end
+  end
+  total
+end
+
+(* Recursion that gives a Bool, and a test of it. *)
+defn even(n)
+  if n == 0
+    return true
+  end
+  not even(n - 1)
+end
+
+defn evens(n)
+  c = 0
+  for i in 1..n
+    if even(math.Mod(i, 30))
+      c = c + 1
+    end
+  end
+  c
+end
+
+io.Print(primes(20000))
+io.Print(alias(3000))
+io.Print(over(3000))
+io.Print(evens(3000))
+io.Print(firstOver(10))
+io.Print(firstOver(0))

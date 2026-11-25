@@ -1,0 +1,49 @@
+use std/io
+use std/math
+
+(* A loop calls versions that make values in its nested frames: a search that gives a boxed integer, a recursion of
+   Bools, and late a tree of maps past the young heap. A map made after a call, whose nested frames took the room the
+   loop's turn checked, checks room again right after that call. *)
+defn find(n, most)
+  for k in 1..most
+    if k * k > n
+      return k + n
+    end
+  end
+  missing
+end
+
+defn odd(n)
+  if n == 0
+    return false
+  end
+  not odd(n - 1)
+end
+
+defn tree(n)
+  if n == 0
+    return {L: missing, R: missing}
+  end
+  {L: tree(n - 1), R: tree(n - 1)}
+end
+
+defn run(turns)
+  c = 0
+  total = 0
+  t = missing
+  for i in 1..turns
+    x = find(math.Mod(i, 4040), 73)
+    if x != missing
+      total = total + x
+    end
+    if odd(math.Mod(i, 25))
+      c = c + 2
+    end
+    if i == 15492
+      t = tree(16)
+    end
+  end
+  io.Print(c, total, t == missing)
+end
+
+run(27099)
