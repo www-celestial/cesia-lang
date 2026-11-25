@@ -1,0 +1,65 @@
+use std/io
+use std/list
+
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+io.Print(fib(25))
+
+defn scaled(x, by = 2)
+  x * by
+end
+io.Print(scaled(3), scaled(3, 10), scaled(by = 5, x = 2))
+
+defn adder(k)
+  x -> x + k
+end
+add5 = adder(5)
+io.Print(add5(1), list.Map(adder(1), [1, 2, 3]), list.Reduce((a, b) -> a + b, 0, [1, 2, 3, 4]))
+
+defn counter()
+  n = 0
+  step() = n + 1
+  n = 10
+  step
+end
+io.Print(counter()())
+
+(* A tail call to itself takes no depth: a loop. *)
+defn count(n, acc)
+  if n == 0
+    acc
+  else
+    count(n - 1, acc + 1)
+  end
+end
+io.Print(count(100000, 0))
+
+defn firstOver(xs, limit)
+  for x in xs
+    if x > limit
+      return x
+    end
+  end
+  missing
+end
+io.Print(firstOver([1, 5, 9], 4), firstOver([1], 4))
+k = 0
+while true
+  k = k + 1
+  if k * k > 50
+    break
+  end
+end
+io.Print(k, "text $(k * 2) and $k", f -> 1)
+sign(x) = match x
+  0 -> "zero"
+  [a, b] -> "pair $(a + b)"
+  n if n < 0 -> "negative"
+  else -> "positive"
+end
+io.Print(sign(0), sign(-3), sign(4), sign([1, 2]))

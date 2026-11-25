@@ -756,8 +756,13 @@ let () =
             If (Bnone, [ Lget n; array_new_default rt.f64s; Lset f; Lget f; I32 0; Lget s; Cast (false, T rt.f64s); I32 0; Lget n; array_copy rt.f64s rt.f64s; Lget f; Lset s; Br 1 ], []);
             Lget s; Test (false, T rt.i64s);
             If (Bnone, [ Lget n; array_new_default rt.i64s; Lset i; Lget i; I32 0; Lget s; Cast (false, T rt.i64s); I32 0; Lget n; array_copy rt.i64s rt.i64s; Lget i; Lset s; Br 1 ], []);
-            Lget n; array_new_default rt.vals; Lset w; Lget w; I32 0; Lget s; Cast (false, T rt.vals); I32 0; Lget n; array_copy rt.vals rt.vals; Lget w; Lset s ]);
+            Lget n; array_new_default rt.vals; Lset w; Lget w; I32 0; Lget s; Cast (false, T rt.vals); I32 0; Lget n; array_copy rt.vals rt.vals;
+            Lget w; Lget n; call rt "share_all"; Lget w; Lset s ]);
         I32 1; Lget 0; struct_get rt.list l_rows; Lget 0; struct_get rt.list l_cols; Lget s; I32 1; struct_new rt.list ]);
+  (* The cells of a copy: each one held twice now. *)
+  def "share_all" (fun rt -> [ nn rt.vals; I32 ], [], fun fb ->
+      let i = local fb I32 in
+      upto i 1 [ Lget 0; Lget i; array_get rt.vals; call rt "share"; drop ]);
   (* The store as values, for a cell of another kind: Arrays.store_elt. *)
   def "to_vals" (fun rt -> [ nn rt.list ], [ nn rt.vals ], fun fb ->
       let n = local fb I32 and i = local fb I32 and w = local fb (nn rt.vals) in
@@ -954,6 +959,7 @@ let () =
                      Lget mp; struct_get rt.map m_owned; i32_eqz;
                      If (Bnone, [ Lget mp; struct_get rt.map m_vals; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
                                   Lget w; I32 0; Lget mp; struct_get rt.map m_vals; I32 0; Lget n; array_copy rt.vals rt.vals;
+                                  Lget w; Lget n; call rt "share_all";
                                   I32 1; Lget mp; struct_get rt.map m_keys; Lget w; struct_new rt.map; Lset mp ], []);
                      Lget mp; struct_get rt.map m_keys; struct_get rt.keys 0; Lget 1; call rt "find_name"; Lset k;
                      Lget k; I32 0; i32_ge_s;
@@ -976,6 +982,7 @@ let () =
                      Lget rc; struct_get rt.recd r_owned; i32_eqz;
                      If (Bnone, [ Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
                                   Lget w; I32 0; Lget rc; struct_get rt.recd r_fields; I32 0; Lget n; array_copy rt.vals rt.vals;
+                                  Lget w; Lget n; call rt "share_all";
                                   I32 1; Lget rc; struct_get rt.recd r_shape; Lget w; struct_new rt.recd; Lset rc ], []);
                      Lget rc; struct_get rt.recd r_fields; Lget k; Lget 2; array_set rt.vals; Lget rc; ret ], []) ]
       @ fail rt (Messages.field_of a1 "\003" |> fun m -> { m with text = replace m.text [ "\003", a2 ] }) [ [ Lget 0; call rt "describe" ]; [ Lget 1 ] ] [ Lget 3 ])
@@ -1105,3 +1112,88 @@ let () =
       @ [ I32 1; Lget n; Lget m; i32_add; Lget w; call rt "list_of" ]);
   (* bug.Panic(x): an error of the program, its message the text of x. *)
   def "panic" (fun rt -> [ v; I32 ], [ v ], fun _ -> fail rt (Messages.plain a1) [ [ Lget 0; call rt "text_of" ] ] [ Lget 1 ])
+
+(* list.Take, list.Skip and list.Reverse: the cells picked, a list of their kind ([Lists.picked_list]). *)
+let () =
+  def "count_arg" (fun rt -> [ v; I32; nn rt.bytes ], [ I32 ], fun fb ->
+      let n = local fb I64 in
+      [ Lget 0; Lget 1; call rt "whole"; Lset n; Lget n; i64 0; i64_lt_s;
+        If (Bnone, fail rt (Messages.need_count "\003" a2 |> fun m -> { m with text = replace m.text [ "\003", a1 ] }) [ [ Lget 2 ]; [ Lget 0; call rt "describe" ] ] [ Lget 1 ], []);
+        Lget n; i64 (1 lsl 30); i64_gt_s; If (Bval I32, [ I32 (1 lsl 30) ], [ Lget n; i32_wrap ]) ]);
+  (* [n] cells from [from], by [step] (1 or -1). *)
+  def "pick" (fun rt -> [ nn rt.list; I32; I32; I32 ], [ v ], fun fb ->
+      let i = local fb I32 and w = local fb (nn rt.vals) in
+      [ Lget 2; array_new_default rt.vals; Lset w ]
+      @ upto i 2 [ Lget w; Lget i; Lget 0; Lget 1; Lget i; Lget 3; i32_mul; i32_add; call rt "elem"; call rt "share"; array_set rt.vals ]
+      @ [ Lget 2; If (Bval I32, [ I32 1 ], [ I32 0 ]); Lget 2; Lget w; call rt "list_of" ]);
+  let listed rt name x site = [ Lget x; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_array name a1) [ [ Lget x; call rt "describe" ] ] [ Lget site ]) ] in
+  def "take" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let k = local fb I32 and n = local fb I32 and l = local fb (nn rt.list) in
+      listed rt "Take" 1 2
+      @ [ Lget 1; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n;
+          Lget 0; Lget 2; text rt "Take"; call rt "count_arg"; Lset k; Lget k; Lget n; i32_gt_u; If (Bnone, [ Lget n; Lset k ], []);
+          Lget l; I32 0; Lget k; I32 1; call rt "pick" ]);
+  def "skip" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let k = local fb I32 and n = local fb I32 and l = local fb (nn rt.list) in
+      listed rt "Skip" 1 2
+      @ [ Lget 1; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n;
+          Lget 0; Lget 2; text rt "Skip"; call rt "count_arg"; Lset k; Lget k; Lget n; i32_gt_u; If (Bnone, [ Lget n; Lset k ], []);
+          Lget l; Lget k; Lget n; Lget k; i32_sub; I32 1; call rt "pick" ]);
+  def "reverse" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let n = local fb I32 and l = local fb (nn rt.list) in
+      listed rt "Reverse" 0 1
+      @ [ Lget 0; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n;
+          Lget l; Lget n; I32 1; i32_sub; Lget n; I32 (-1); call rt "pick" ])
+
+(* value.Size and matrix.Reshape, of one or two dimensions. *)
+let () =
+  def "size" (fun rt -> [ v ], [ v ], fun fb ->
+      let l = local fb (nl rt.list) in
+      [ Lget 0; Test (false, T rt.list);
+        If (Bnone, [ Lget 0; Cast (false, T rt.list); Lset l; I32 1; I32 1; I32 2;
+                     Lget l; struct_get rt.list l_rows; ref_i31; Lget l; struct_get rt.list l_cols; ref_i31; array_new_fixed rt.vals 2;
+                     I32 1; struct_new rt.list; ret ], []);
+        I32 1; I32 1; I32 2; I32 1; ref_i31; I32 1; ref_i31; array_new_fixed rt.vals 2; I32 1; struct_new rt.list ]);
+  def "reshape" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let s = local fb (nl rt.list) and x = local fb (nl rt.list) and r = local fb I32 and c = local fb I32 and y = local fb (nn rt.list) in
+      let reshape_msg =
+        let m = Messages.reshape_size 1000001 [| 1000002 |] in
+        { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] }
+      in
+      [ Lget 0; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.reshape_shape a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 0; Cast (false, T rt.list); Lset s;
+        Lget s; as_non_null; call rt "cells"; i32_eqz; If (Bnone, fail rt (Messages.reshape_shape a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ], []);
+        Lget 1; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.index_value a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 1; Cast (false, T rt.list); Lset x;
+        Lget s; as_non_null; call rt "cells"; I32 1; i32_eq;
+        If (Bnone, [ I32 1; Lset r; Lget s; as_non_null; I32 0; call rt "elem"; Lget 2; call rt "whole"; i32_wrap; Lset c ],
+            [ Lget s; as_non_null; I32 0; call rt "elem"; Lget 2; call rt "whole"; i32_wrap; Lset r;
+              Lget s; as_non_null; I32 1; call rt "elem"; Lget 2; call rt "whole"; i32_wrap; Lset c;
+              Lget s; as_non_null; call rt "cells"; I32 2; i32_gt_u; If (Bnone, [ unreachable ], []) ]);
+        Lget r; i64_extend_u; Lget c; i64_extend_u; i64_mul; Lget x; as_non_null; call rt "cells"; i64_extend_u; i64_ne;
+        If (Bnone, fail rt reshape_msg [ [ Lget x; as_non_null; call rt "cells"; i64_extend_u; call rt "itoa" ];
+                                         [ Lget s; as_non_null; call rt "cells"; I32 1; i32_eq;
+                                           If (Bval (nn rt.bytes), [ Lget c; i64_extend_u; call rt "itoa" ],
+                                               [ Lget s; as_non_null; I32 0; call rt "elem"; call rt "text_of" ]) ] ] [ Lget 2 ], []);
+        Lget x; as_non_null; call rt "copy_list"; Lset y;
+        Lget y; Lget r; struct_set rt.list l_rows; Lget y; Lget c; struct_set rt.list l_cols; Lget y ])
+
+(* A container made owned on the way down a path that a write goes through: a copy when another holds it, its cells then
+   held twice. *)
+let () =
+  def "own" (fun rt -> [ v ], [ v ], fun fb ->
+      let mp = local fb (nl rt.map) and rc = local fb (nl rt.recd) and n = local fb I32 and w = local fb (nn rt.vals) in
+      [ Lget 0; Test (false, T rt.list);
+        If (Bnone, [ Lget 0; Cast (false, T rt.list); struct_get rt.list l_owned; If (Bnone, [ Lget 0; ret ], []);
+                     Lget 0; Cast (false, T rt.list); call rt "copy_list"; ret ], []);
+        Lget 0; Test (false, T rt.map);
+        If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp; Lget mp; struct_get rt.map m_owned; If (Bnone, [ Lget 0; ret ], []);
+                     Lget mp; struct_get rt.map m_vals; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
+                     Lget w; I32 0; Lget mp; struct_get rt.map m_vals; I32 0; Lget n; array_copy rt.vals rt.vals; Lget w; Lget n; call rt "share_all";
+                     I32 1; Lget mp; struct_get rt.map m_keys; Lget w; struct_new rt.map; ret ], []);
+        Lget 0; Test (false, T rt.recd);
+        If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc; Lget rc; struct_get rt.recd r_owned; If (Bnone, [ Lget 0; ret ], []);
+                     Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
+                     Lget w; I32 0; Lget rc; struct_get rt.recd r_fields; I32 0; Lget n; array_copy rt.vals rt.vals; Lget w; Lget n; call rt "share_all";
+                     I32 1; Lget rc; struct_get rt.recd r_shape; Lget w; struct_new rt.recd; ret ], []);
+        Lget 0 ])

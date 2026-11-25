@@ -669,8 +669,9 @@ and set_path fc e root path value =
   in
   let x = Rt.local fc.fb Rt.v in
   (* The indexes and the value first, as the interpreter evaluates them, then the reads down the path. *)
-  get @ [ Lset cs.(0) ]
-  @ List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ [ Lset cs.(j) ] else []) @ read_step j st) steps)
+  let own = if n > 1 then [ call rt "own" ] else [] in
+  get @ own @ [ Lset cs.(0) ]
+  @ List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ own @ [ Lset cs.(j) ] else []) @ read_step j st) steps)
   @ stored fc value @ [ Lset x ]
   @ (let rec back j v = if j < 0 then v else back (j - 1) (set_step j (List.nth steps j) v) in
      back (n - 1) [ Lget x ])
@@ -950,6 +951,21 @@ let () =
   reg "list" "Concat" (fun fc args pos k ->
       arity fc pos args 2;
       expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "concat" ] @ convert fc ~from:V ~into:k);
+  List.iter
+    (fun (name, f) ->
+       reg "list" name (fun fc args pos k ->
+           arity fc pos args 2;
+           expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt f ] @ convert fc ~from:V ~into:k))
+    [ "Take", "take"; "Skip", "skip" ];
+  reg "list" "Reverse" (fun fc args pos k ->
+      arity fc pos args 1;
+      expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "reverse" ] @ convert fc ~from:V ~into:k);
+  reg "value" "Size" (fun fc args pos k ->
+      arity fc pos args 1;
+      expr fc args.(0) V @ [ call fc.st.rt "size" ] @ convert fc ~from:V ~into:k);
+  reg "matrix" "Reshape" (fun fc args pos k ->
+      arity fc pos args 2;
+      expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "reshape" ] @ convert fc ~from:V ~into:k);
   reg "bug" "Panic" (fun fc args pos k ->
       arity fc pos args 1;
       expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "panic" ] @ convert fc ~from:V ~into:k);

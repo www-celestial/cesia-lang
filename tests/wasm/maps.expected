@@ -1,0 +1,8 @@
+{X: 1, V: 2.5} {X: 10, V: 2.5, Z: "new"} 11 2.5
+[{X: 3, V: 2}, {X: 6, V: 4}, {X: 9, V: 6}] [3, 6, 9]
+{A: {B: [1, 20]}} true false
+1 2
+{a: 5, b: 2}
+Point(X = 1, Y = 2) 1 true
+Point(X = 1, Y = 2) Point(X = 1, Y = 5)
+exit 0
