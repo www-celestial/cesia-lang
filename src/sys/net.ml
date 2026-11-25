@@ -608,7 +608,7 @@ let rec grow node route meth parts k =
     if part = "*" then node.rest <- (route, meth) :: node.rest
     else
       let child =
-        if part.[0] = ':' then (match node.param with Some c -> c | None -> let c = leaf () in node.param <- Some c; c)
+        if part <> "" && part.[0] = ':' then (match node.param with Some c -> c | None -> let c = leaf () in node.param <- Some c; c)
         else match Parts.find_opt node.fixed part with Some c -> c | None -> let c = leaf () in Parts.add node.fixed part c; c
       in
       grow child route meth parts (k + 1)

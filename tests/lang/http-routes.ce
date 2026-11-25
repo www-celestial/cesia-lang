@@ -104,3 +104,12 @@ defn isManyRoutesFound()
   many = app([["GET", "/r$i/:id"] for i in 1..500])
   value.Equal(newAnswer(many, "GET", "/r1/7"), [200, "1 {\"id\":\"7\"}"]) and value.Equal(newAnswer(many, "GET", "/r500/7"), [200, "500 {\"id\":\"7\"}"]) and newAnswer(many, "GET", "/r501/7")[1] == 404
 end
+
+defn isEmptyPartTakesNothing()
+  (** A part "", which only an application made by hand can hold, takes no path, as in the walk of the list, and the
+      routes after it are still found. *)
+  made = r -> http.Plain("made")
+  hand = {Routes: [{Method: "GET", Parts: ["a", ""], Handler: made}, {Method: "GET", Parts: [""], Handler: made}, {Method: "GET", Parts: ["a"], Handler: r -> http.Plain("a")}], Middleware: []}
+  handle = http.Handler(hand)
+  value.Equal(newAnswer(handle, "GET", "/a"), [200, "a"]) and value.Equal(newAnswer(handle, "GET", "/a/"), [200, "a"]) and newAnswer(handle, "GET", "/")[1] == 404
+end
