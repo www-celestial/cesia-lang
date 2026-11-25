@@ -597,5 +597,16 @@ let unbase64 ctx (a : t array) =
   if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
   end
 
+(* The hexadecimal text of the bytes of a text, in lower case, in one pass: the hash of a session is shown so for each
+   request, and a comprehension of two digits a byte took 20 µs for 32 bytes. *)
+let hex ctx (a : t array) =
+  let s = text_arg ctx "Hex" a.(0) in
+  Runtime.pay_bytes ctx (String.length s);
+  let digits = "0123456789abcdef" in
+  Text (String.init (2 * String.length s) (fun i ->
+      let b = Char.code s.[i / 2] in
+      digits.[if i land 1 = 0 then b lsr 4 else b land 15]))
+
 let packages =
-  [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ] ]
+  [ "math", math_natives; "list", list_natives; "text", text_natives;
+    "encode", [ "unbase64", nat "unbase64" 1 1 unbase64; "hex", nat "hex" 1 1 hex ] ]

@@ -483,6 +483,9 @@ val workers_watch : string
 val workers_windows : string
 val bad_char : string -> t
 val need_size : string -> string -> t
+
+(** A BLAKE2b of std/crypto asked for a size of hash out of 16 to 64 bytes. *)
+val blake2b_size : t
 val deadlock : t
 (** A CSV separator that isn't one byte. *)
 val csv_separator : string -> t
