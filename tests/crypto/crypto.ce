@@ -1,3 +1,5 @@
+use std/c
+use std/bug
 use std/crypto
 use std/encode
 use std/fiber
@@ -41,7 +43,43 @@ defn main()
   io.Print(fails(() -> crypto.BoxSeal("m", "a", "b", s)))
   io.Print(crypto.Verify("x", "m", "y", s))
   io.Print(crypto.CheckPassword("p", text.Repeat(200, "x"), s))
+
+  (* BLAKE2b and IsSame are OCaml's own: the same bytes and answers as libsodium's, around the blocks of 128 bytes, at
+     every size. RFC 7693, appendix A, gives the BLAKE2b-512 of "abc" above. *)
+  inputs = [crypto.Random(n, s) for n in 0..260]
+  io.Print("blake2b-256 and -512 as libsodium", list.All([crypto.Blake2b(x, s) == sodium(x, 32, s) and crypto.Blake2b(x, s, size = 64) == sodium(x, 64, s) for x in inputs]))
+  io.Print("every size as libsodium", list.All([list.All([crypto.Blake2b(inputs[n], s, size = k) == sodium(inputs[n], k, s) for k in 16..64]) for n in [1, 4, 128, 129, 130, 257]]))
+  io.Print(encode.Hex(crypto.Blake2b("", s, size = 64)))
+  x = inputs[200]
+  pairs = [[x, x], ["", ""], [x, "$(text.ByteSlice(1, 198, x))$(text.Char(0))"], ["a$(text.ByteSlice(2, 199, x))", x], [x, text.ByteSlice(1, 198, x)], ["abc", "abd"]]
+  io.Print("IsSame as sodium_memcmp", [crypto.IsSame(p[1], p[2], s) for p in pairs], list.All([crypto.IsSame(p[1], p[2], s) == memcmp(p[1], p[2], s) for p in pairs]))
   result.Ok(missing)
+end
+
+defn sodium(bytes, size, s)
+  (** The BLAKE2b of libsodium, crypto_generichash, as std/crypto called it before. *)
+  out = c.Alloc(size)
+  b = c.Alloc(list.Max(text.ByteLength(bytes), 1))
+  c.Store(bytes, 0, b)
+  bug.Assert(s.Blake2b(out, size, b, text.ByteLength(bytes), missing, 0) == 0, "libsodium refused")
+  hash = c.Load(0, size, out)
+  c.Free(out)
+  c.Free(b)
+  hash
+end
+
+defn memcmp(x, y, s)
+  if text.ByteLength(x) != text.ByteLength(y)
+    return false
+  end
+  a = c.Alloc(list.Max(text.ByteLength(x), 1))
+  b = c.Alloc(list.Max(text.ByteLength(y), 1))
+  c.Store(x, 0, a)
+  c.Store(y, 0, b)
+  same = s.Compare(a, b, text.ByteLength(x)) == 0
+  c.Free(a)
+  c.Free(b)
+  same
 end
 
 defn fails(f)

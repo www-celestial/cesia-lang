@@ -266,6 +266,7 @@ let workers_watch = "--workers and --watch don't go together: --watch reloads on
 let workers_windows = "--workers needs Linux or macOS: on Windows, a program serves on one core"
 let bad_char a = plain (Printf.sprintf "Char needs a code point, not %s." a)
 let need_size name a = plain (Printf.sprintf "%s needs a number of bytes within the text, not %s." name a)
+let blake2b_size = plain "blake2b needs a size from 16 to 64."
 let deadlock = plain "All fibers are waiting and nothing can wake them."
 let index_count n = plain (Printf.sprintf "This array has %d dimensions: use %d indexes, or one." n n)
 let range_too_long = plain "This range has too many elements."

@@ -4,6 +4,7 @@ use std/sys
 use std/fiber
 use std/io
 use std/list
+use std/regex
 use std/result
 use std/text
 
@@ -26,4 +27,6 @@ end
 
 fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18090))
 sys.Sleep(0)
-io.Print(client() then result.MapOk(xs -> list.Map(t -> text.Replace(crlf, "|", t), xs)))
+(* The Date of each response, which changes with the clock, is checked by tests/net/http-date.ce. *)
+undated(t) = regex.Replace("date: [A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9:]{8} GMT", "date: (now)", t)
+io.Print(client() then result.MapOk(xs -> list.Map(t -> undated(text.Replace(crlf, "|", t)), xs)))
