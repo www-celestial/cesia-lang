@@ -16,6 +16,26 @@ isUnhex() = result.Unwrap(encode.Unhex("c3A921")) == "é!" and result.IsErr(enco
 isBase64() = encode.Base64("hello") == "aGVsbG8=" and encode.Base64("hi") == "aGk=" and encode.Base64("abc") == "YWJj" and encode.Base64("") == ""
 isUnbase64() = result.Unwrap(encode.Unbase64("aGVsbG8=")) == "hello" and result.Unwrap(encode.Unbase64("aGk")) == "hi" and result.IsErr(encode.Unbase64("a")) and result.IsErr(encode.Unbase64("a!bc"))
 isBase64RoundTrip() = result.Unwrap(encode.Unbase64(encode.Base64(text.FromBytes([0, 255, 128, 7])))) == text.FromBytes([0, 255, 128, 7])
+(* The vectors of RFC 4648, section 10, and Base64 as it was written before its digits were numbers. *)
+isBase64Rfc() = value.Equal([encode.Base64(x) for x in ["", "f", "fo", "foo", "foob", "fooba", "foobar"]], ["", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"])
+defn oldBase64(s)
+  digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  codes = text.Bytes(s)
+  n = value.Len(codes)
+  parts = []
+  k = 1
+  while k <= n
+    b = if k + 1 <= n codes[k + 1] else 0 end
+    d = if k + 2 <= n codes[k + 2] else 0 end
+    word = codes[k] * 65536 + b * 256 + d
+    at = [math.Div(word, 262144), math.Mod(math.Div(word, 4096), 64), math.Mod(math.Div(word, 64), 64), math.Mod(word, 64)]
+    four = [text.ByteSlice(x + 1, x + 1, digits) for x in at]
+    parts = list.Append("$(four[1])$(four[2])$(if k + 1 <= n four[3] else "=" end)$(if k + 2 <= n four[4] else "=" end)", parts)
+    k += 3
+  end
+  text.Join("", parts)
+end
+isBase64AsBefore() = test.ForAll(bs -> encode.Base64(text.FromBytes(bs)) == oldBase64(text.FromBytes(bs)) and result.Unwrap(encode.Unbase64(encode.Base64(text.FromBytes(bs)))) == text.FromBytes(bs), gen.List(gen.Int(0, 255), max = 70))
 isUrlEncode() = encode.UrlEncode("a b&é") == "a%20b%26%C3%A9"
 isUrlDecode() = encode.UrlDecode("a%20b+c%26%C3%A9") == "a b c&é" and encode.UrlDecode("100%") == "100%"
 isQuery() = value.Equal(encode.ParseQuery("a=1&b=two+words&c=&d"), {"a": "1", "b": "two words", "c": "", "d": ""})

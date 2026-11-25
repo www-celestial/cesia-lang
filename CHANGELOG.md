@@ -247,6 +247,9 @@
 
 ### Speed
 
+- `encode.Base64` makes its digits as numbers and the text by one call of `text.FromBytes`, instead of a text of four
+  pieces for each three bytes: 125 bytes in 24 µs instead of 56, as the cursor of a page of Centauri, which writes one
+  for each page; its output is the same, as RFC 4648's vectors and a property test against the version before check.
 - `cesia build --target wasm` makes faster modules. Each `for` and `while` runs in a function of its own, 16,384 turns a
   call, so that V8 and SpiderMonkey run it in their optimized code from its next call, where a long call stayed in its
   first code; a map literal whose keys and kinds the compiler knows is a struct of WasmGC with typed fields, and a

@@ -7,7 +7,7 @@ use std/text
 use std/value
 
 base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-digit(k, digits) = text.ByteSlice(k + 1, k + 1, digits)
+base64Codes = text.Bytes(base64Digits)   (* The bytes of its digits, read by one call when the package loads. *)
 
 defn Hex(s)
   (** The hexadecimal text of the bytes of a text, in lower case. hex, a native of this package, writes it in one pass.
@@ -53,26 +53,31 @@ defn Unhex(s)
 end
 
 defn Base64(s)
-  (** The Base64 text of the bytes of a text, with padding.
+  (** The Base64 text of the bytes of a text, with padding. Its digits are numbers until one call makes them a text.
 
         Base64("hi") --> "aGk=" *)
   codes = text.Bytes(s)
   n = value.Len(codes)
-  parts = list.Fill("", math.Div(n + 2, 3))
-  k = 1
-  while k <= n
-    a = codes[k]
-    b = if k + 1 <= n codes[k + 1] else 0 end
-    d = if k + 2 <= n codes[k + 2] else 0 end
-    word = a * 65536 + b * 256 + d
-    one = digit(math.Div(word, 262144), base64Digits)
-    two = digit(math.Mod(math.Div(word, 4096), 64), base64Digits)
-    three = if k + 1 <= n digit(math.Mod(math.Div(word, 64), 64), base64Digits) else "=" end
-    four = if k + 2 <= n digit(math.Mod(word, 64), base64Digits) else "=" end
-    parts[math.Div(k + 2, 3)] = "$one$two$three$four"
-    k += 3
+  whole = math.Div(n, 3)
+  left = n - 3 * whole
+  out = list.Fill(61, 4 * whole + (if left > 0 4 else 0 end))
+  for i in 1..whole
+    word = codes[3 * i - 2] * 65536 + codes[3 * i - 1] * 256 + codes[3 * i]
+    out[4 * i - 3] = base64Codes[math.Div(word, 262144) + 1]
+    out[4 * i - 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
+    out[4 * i - 1] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
+    out[4 * i] = base64Codes[math.Mod(word, 64) + 1]
   end
-  text.Join("", parts)
+  if left > 0
+    (* the last one or two bytes; each one missing leaves a = of the Fill *)
+    word = codes[3 * whole + 1] * 65536 + (if left == 2 codes[n] * 256 else 0 end)
+    out[4 * whole + 1] = base64Codes[math.Div(word, 262144) + 1]
+    out[4 * whole + 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
+    if left == 2
+      out[4 * whole + 3] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
+    end
+  end
+  text.FromBytes(out)
 end
 
 defn Unbase64(s)
