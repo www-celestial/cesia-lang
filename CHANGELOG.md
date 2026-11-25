@@ -133,6 +133,9 @@
 - The page of `cells.Html` draws a table as Cemacs does: a thin frame and the rule under its header in ink, lighter
   lines between its rows and columns, its header bold, a number on the right with its decimal point under those of its
   column, a text on the left, every text escaped.
+- `cells.Html(path, allow = [], code = true)`: with `code = false`, the page leaves out the code of every cell, and the
+  cells that show nothing, as Cemacs shows a file of cells as an app after `C-c e t`; without it, the page is the same as
+  before, to the byte.
 - `std/mesh` makes solid parts of triangles: `mesh.Box`, `mesh.Cylinder`, `mesh.Cone` and `mesh.Sphere`, closed, their
   corners counterclockwise from outside, 48 segments around by default; `mesh.Move`, `mesh.Turn` (degrees around an axis,
   the right hand's rule, Rodrigues' formula), `mesh.Scale` (a mirror turns the corners back) and `mesh.Merge`;
