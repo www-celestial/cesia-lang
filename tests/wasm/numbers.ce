@@ -5,6 +5,9 @@ use std/math
 io.Print(1073741823 + 1, 1700000000000 + 1, 4611686018427387903 - 1)
 io.Print(-4611686018427387903 - 1, 2147483647 * 2147483647, -2147483648 * 2147483648)
 io.Print(math.Div(-7, 2), math.Mod(-7, 2), math.Div(7, -2), math.Mod(7, -2))
+(* By a positive constant, inline: rounded down for negatives too. *)
+lo = -4611686018427387903 - 1
+io.Print([math.Mod(v, 4) for v in -9..9], [math.Div(v, 4) for v in -9..9], math.Mod(lo, 1000), math.Div(lo, 7), math.Mod(lo + 1, 1))
 io.Print(2 ^ 61 - 1 + 2 ^ 61, 2 ^ 10, 2 ^ -1, 2.0 ^ 0.5)
 io.Print(7 / 2, 1 / 3, -1 / 3.0, 1.0 / 0, -1.0 / 0)
 (* Floats as Cesia writes them: the first of 15, 16 and 17 digits that reads back. *)
@@ -24,3 +27,6 @@ for i in 1..1000
   x = x + 1 / i
 end
 io.Print(x)
+(* The opposite of a value of any type: true is 1, an array cell by cell, missing stays; and a power by it. *)
+v = {A: 2.0, N: 3, T: true, L: [1, 2.5, [3]], M: missing}
+io.Print(-v.N, -v.A, -v.T, -v.L, -v.M, v.A ^ -v.N)

@@ -349,7 +349,7 @@ and binary fc e op a b =
   match op with
   | Add | Sub | Mul ->
     (match k with
-     | I -> I, expr fc a I @ expr fc b I @ site fc e.pos @ [ call rt (match op with Add -> "add_i" | Sub -> "sub_i" | _ -> "mul_i") ]
+     | I -> I, Rt.checked rt fc.fb (match op with Add -> `Add | Sub -> `Sub | _ -> `Mul) (expr fc a I) (expr fc b I) (site fc e.pos)
      | F -> F, expr fc a F @ expr fc b F @ [ (match op with Add -> f64_add | Sub -> f64_sub | _ -> f64_mul) ]
      | V -> V, [ I32 (arith_op op) ] @ expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "arith" ])
   | Div ->
@@ -750,7 +750,7 @@ and dyn_call st n =
   let name = "call" ^ string_of_int n in
   if not (Wasm.has_func rt.m name) then begin
     let f = Wasm.func rt.m name (Rt.v :: List.init n (fun _ -> Rt.v) @ [ I32 ]) [ Rt.v ] in
-    let fb = { Rt.f; n = 0; rev = [] } in
+    let fb = { Rt.f; n = 0; rev = []; tmp = -1 } in
     let g = Rt.local fb (Rt.nn rt.fn) in
     let site = n + 1 in
     let most = 8 in
@@ -784,7 +784,7 @@ let compile_version st (v : version) name ~hoisted ~main =
   (* A file's level gives nothing that anything reads. *)
   let rs = if main then [ Rt.v ] else rs in
   let wf = Wasm.func rt.m name ps rs in
-  let fb = { Rt.f = wf; n = 0; rev = [] } in
+  let fb = { Rt.f = wf; n = 0; rev = []; tmp = -1 } in
   let np = Array.length f.params in
   let env = if has_env f then 0 else -1 in
   let base = if env >= 0 then 1 else 0 in
@@ -847,15 +847,30 @@ let () =
   let arity fc pos args n = if Array.length args <> n then unsupported fc pos (Printf.sprintf "this native with %d arguments" (Array.length args)) in
   reg "io" "Print" (fun fc args _ k ->
       let rt = fc.st.rt in
-      List.concat
+      (* Every argument before the line, as the interpreter: an error in one writes nothing of it. A constant, or a
+         variable read while nothing runs after it, is read where it is written; another goes in a local. A text
+         written in the call is a constant, whose bytes go out with no test of its type. *)
+      let args = List.map (fun a -> let k = kind fc a in (match a.e with Ltext _ -> `T | _ -> `K k), expr fc a k) (Array.to_list args) in
+      let pure (t, c) = t = `T || (match c with [ (I64 _ | F64 _ | Rnull _) ] -> true | _ -> false) in
+      let read (t, c) = (match c with [ (Lget _ | Gget _) ] -> true | _ -> false) || pure (t, c) in
+      let rec keep = function
+        | [] -> [], []
+        | a :: rest ->
+          let sets, reads = keep rest in
+          if pure a || (read a && List.for_all read rest) then sets, a :: reads
+          else
+            let t, c = a in
+            let l = Rt.local fc.fb (match t with `K I -> I64 | `K F -> F64 | _ -> Rt.v) in
+            (c @ [ Lset l ]) :: sets, (t, [ Lget l ]) :: reads
+      in
+      let sets, reads = keep args in
+      List.concat sets
+      @ List.concat
         (List.mapi
-           (fun i a ->
+           (fun i (t, c) ->
               (if i > 0 then [ I32 32; call rt "out_byte" ] else [])
-              @ (match kind fc a with
-                  | I -> expr fc a I @ [ call rt "print_i" ]
-                  | F -> expr fc a F @ [ call rt "print_f" ]
-                  | V -> expr fc a V @ [ call rt "print" ]))
-           (Array.to_list args))
+              @ c @ [ call rt (match t with `T -> "out_bytes" | `K I -> "print_i" | `K F -> "print_f" | `K V -> "print") ])
+           reads)
       @ [ I32 10; call rt "out_byte"; missing ] @ convert fc ~from:V ~into:k);
   let int2 name fn =
     reg "math" name (fun fc args pos k ->
@@ -875,7 +890,15 @@ let () =
                 If (Bnone, [ Lget 0; call rt "float_of"; Lset x; Lget x; f64_trunc; Lget x; f64_eq; Lget x; f64_abs; F64 4e18; f64_lt; i32_and;
                              If (Bnone, [ Lget x; i64_trunc_sat; ret ], []) ], []) ]
               @ Rt.fail rt (Messages.want_int name a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
-        whole args.(0) @ whole args.(1) @ site fc pos @ [ call rt fn ] @ convert fc ~from:I ~into:k)
+        match whole args.(1) with
+        | [ I64 c ] when c >= 1L ->
+          (* By a positive constant: inline, rounded down, so that the engine turns it into a product. *)
+          let x = Rt.local fc.fb I64 and r = Rt.local fc.fb I64 in
+          whole args.(0) @ [ Ltee x; I64 c; i64_rem_s; Lset r ]
+          @ (if name = "Mod" then [ Lget r; i64 0; i64_lt_s; If (Bval I64, [ Lget r; I64 c; i64_add ], [ Lget r ]) ]
+             else [ Lget x; I64 c; i64_div_s; Lget r; i64 0; i64_lt_s; i64_extend_u; i64_sub ])
+          @ convert fc ~from:I ~into:k
+        | b -> whole args.(0) @ b @ site fc pos @ [ call rt fn ] @ convert fc ~from:I ~into:k)
   in
   int2 "Div" "div_i";
   int2 "Mod" "mod_i";
@@ -891,7 +914,7 @@ let () =
             Rt.def g (fun rt -> [ Rt.v; I32 ], [ Rt.v ], fun _ ->
                 [ Lget 0; ref_is_null; If (Bnone, [ missing; ret ], []);
                   Lget 0; call rt "kind"; I32 1; i32_le_u; If (Bnone, [ Lget 0; call rt "as_float" ] @ op rt @ [ call rt "box_f"; ret ], []) ]
-                @ Rt.fail rt (Messages.need_number name a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
+                @ Rt.need_number rt name 0 1);
           expr fc args.(0) V @ site fc pos @ [ call rt g ] @ convert fc ~from:V ~into:k)
   in
   math1 "Sqrt" (fun _ -> [ f64_sqrt ]);
@@ -905,17 +928,18 @@ let () =
       | I ->
         let x = Rt.local fc.fb I64 in
         expr fc args.(0) I @ [ Lset x; Lget x; i64 0; i64_lt_s; If (Bval I64, [ Lget x ] @ site fc pos @ [ call rt "neg_i" ], [ Lget x ]) ] @ convert fc ~from:I ~into:k
-      | V -> unsupported fc pos "math.Abs of a value of no known type");
+      | V -> expr fc args.(0) V @ site fc pos @ [ call rt "abs_v" ] @ convert fc ~from:V ~into:k);
   let rounding name op =
     reg "math" name (fun fc args pos k ->
         arity fc pos args 1;
         match kind fc args.(0) with
-        | F -> expr fc args.(0) F @ op @ convert fc ~from:F ~into:k
+        | F -> expr fc args.(0) F @ op fc.fb @ convert fc ~from:F ~into:k
         | I -> expr fc args.(0) I @ convert fc ~from:I ~into:k
-        | V -> unsupported fc pos ("math." ^ name ^ " of a value of no known type"))
+        | V -> expr fc args.(0) V @ site fc pos @ [ call fc.st.rt (String.lowercase_ascii name ^ "_v") ] @ convert fc ~from:V ~into:k)
   in
-  rounding "Floor" [ f64_floor ];
-  rounding "Ceil" [ f64_ceil ];
+  rounding "Floor" (fun _ -> [ f64_floor ]);
+  rounding "Ceil" (fun _ -> [ f64_ceil ]);
+  rounding "Round" Rt.round_f;
   reg "value" "Len" (fun fc args pos k ->
       arity fc pos args 1;
       expr fc args.(0) V @ [ call fc.st.rt "len" ] @ convert fc ~from:I ~into:k);

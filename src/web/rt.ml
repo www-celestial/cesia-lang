@@ -147,6 +147,7 @@ let f64_ceil = Op 0x9b
 let f64_floor = Op 0x9c
 let f64_trunc = Op 0x9d
 let f64_sqrt = Op 0x9f
+let f64_copysign = Op 0xa6
 let f64_add = Op 0xa0
 let f64_sub = Op 0xa1
 let f64_mul = Op 0xa2
@@ -182,7 +183,7 @@ let i64 n = I64 (Int64.of_int n)
 let upto i n body = [ I32 0; Lset i; Block (Bnone, [ Loop (Bnone, [ Lget i; Lget n; i32_ge_u; Br_if 1 ] @ body @ [ Lget i; I32 1; i32_add; Lset i; Br 0 ]) ]) ]
 
 (* A function being written: its locals. *)
-type fb = { f : Wasm.func; mutable n : int; mutable rev : vt list }
+type fb = { f : Wasm.func; mutable n : int; mutable rev : vt list; mutable tmp : int }
 
 let local fb t =
   let i = List.length fb.f.params + fb.n in
@@ -201,7 +202,7 @@ let need rt name =
     | Some d ->
       let ps, rs, body = d rt in
       let f = Wasm.func rt.m name ps rs in
-      let fb = { f; n = 0; rev = [] } in
+      let fb = { f; n = 0; rev = []; tmp = -1 } in
       f.body <- body fb;
       f.locals <- List.rev fb.rev
     | None -> failwith ("no runtime function " ^ name)
@@ -530,6 +531,8 @@ let a2 = "\002"
 (* Integers, checked as the interpreter checks them. *)
 let () =
   let ovf rt op site = fail rt (Messages.overflow a1 op a2) [ [ Lget 0; call rt "itoa" ]; [ Lget 1; call rt "itoa" ] ] [ Lget site ] in
+  def "add_fail" (fun rt -> [ I64; I64; I32 ], [], fun _ -> ovf rt "+" 2);
+  def "sub_fail" (fun rt -> [ I64; I64; I32 ], [], fun _ -> ovf rt "-" 2);
   def "add_i" (fun rt -> [ I64; I64; I32 ], [ I64 ], fun fb ->
       let r = local fb I64 in
       [ Lget 0; Lget 1; i64_add; Lset r ] @ fits63 r @ [ If (Bnone, [ Lget r; ret ], []) ] @ ovf rt "+" 2);
@@ -538,7 +541,8 @@ let () =
       [ Lget 0; Lget 1; i64_sub; Lset r ] @ fits63 r @ [ If (Bnone, [ Lget r; ret ], []) ] @ ovf rt "-" 2);
   def "mul_i" (fun rt -> [ I64; I64; I32 ], [ I64 ], fun fb ->
       let r = local fb I64 in
-      let small x = [ Lget x; i64 (1 lsl 31); i64_add; i64 (1 lsl 32); i64_lt_u ] in
+      (* Both within 2^31 - 1 of zero: below 2^62 in size, it fits; -2^31 squared is 2^62, one too many. *)
+      let small x = [ Lget x; i64 ((1 lsl 31) - 1); i64_add; i64 ((1 lsl 32) - 1); i64_lt_u ] in
       small 0 @ small 1 @ [ i32_and; If (Bnone, [ Lget 0; Lget 1; i64_mul; ret ], []);
                             Lget 0; i64_eqz; Lget 1; i64_eqz; i32_or; If (Bnone, [ i64 0; ret ], []);
                             Lget 0; Lget 1; i64_mul; Lset r ]
@@ -647,12 +651,16 @@ let () =
         Lget n; array_new_default rt.vals; Lset out ]
       @ upto i n ([ Lget out; Lget i; Lget 0 ] @ cell la 1 @ cell lb 2 @ [ Lget 3; call rt "binop"; array_set rt.vals ])
       @ [ Lget shape; struct_get rt.list l_rows; Lget shape; struct_get rt.list l_cols; Lget out; call rt "list_of" ]);
-  def "neg" (fun rt -> [ v; I32 ], [ v ], fun _ ->
-      [ Lget 0; call rt "kind";
-        Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Br_table ([ 0; 1; 2; 3 ], 3) ]);
-                                                        Lget 0; call rt "as_int"; Lget 1; call rt "neg_i"; call rt "box_i"; ret ]);
-                                        Lget 0; call rt "float_of"; f64_neg; call rt "box_f"; ret ]);
-                        missing; ret ]) ]
+  (* -x: by its kind; an array cell by cell. *)
+  def "neg" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let l = local fb (nl rt.list) and i = local fb I32 and n = local fb I32 and out = local fb (nn rt.vals) in
+      [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Lget 0; call rt "kind"; Br_table ([ 0; 1; 2; 3 ], 4) ]);
+                                                                        Lget 0; call rt "as_int"; Lget 1; call rt "neg_i"; call rt "box_i"; ret ]);
+                                                        Lget 0; call rt "float_of"; f64_neg; call rt "box_f"; ret ]);
+                                        missing; ret ]);
+                        Lget 0; Cast (false, T rt.list); Lset l; Lget l; as_non_null; call rt "cells"; Lset n; Lget n; array_new_default rt.vals; Lset out ]
+                      @ upto i n [ Lget out; Lget i; Lget l; as_non_null; Lget i; call rt "elem"; Lget 1; call rt "neg"; array_set rt.vals ]
+                      @ [ Lget l; struct_get rt.list l_rows; Lget l; struct_get rt.list l_cols; Lget out; call rt "list_of"; ret ]) ]
       @ fail rt (Messages.negate a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ])
 
 
@@ -1197,3 +1205,59 @@ let () =
                      Lget w; I32 0; Lget rc; struct_get rt.recd r_fields; I32 0; Lget n; array_copy rt.vals rt.vals; Lget w; Lget n; call rt "share_all";
                      I32 1; Lget rc; struct_get rt.recd r_shape; Lget w; struct_new rt.recd; ret ], []);
         Lget 0 ])
+
+(* Checked integer arithmetic inline, its error out of line. An operand that is a constant, or a local read while
+   nothing runs after it, is read again; another goes in a local. The sum or difference goes in the function's scratch
+   local: it lives only in the check. *)
+let checked rt fb op x y site =
+  let pure e = match e with [ (I64 _ | Lget _) ] -> true | _ -> false in
+  let keep again e = if again then [], e else let l = local fb I64 in e @ [ Lset l ], [ Lget l ] in
+  let sx, a = keep (match x with [ I64 _ ] -> true | _ -> pure x && pure y) x in
+  let sy, b = keep (pure y) y in
+  sx @ sy
+  @ (match op with
+      | `Add | `Sub ->
+        if fb.tmp < 0 then fb.tmp <- local fb I64;
+        let r = fb.tmp in
+        a @ b @ [ (if op = `Add then i64_add else i64_sub); Lset r ] @ fits63 r
+        @ [ If (Bnone, [], a @ b @ site @ [ call rt (if op = `Add then "add_fail" else "sub_fail"); unreachable ]); Lget r ]
+      | `Mul ->
+        let small v = v @ [ i64 ((1 lsl 31) - 1); i64_add; i64 ((1 lsl 32) - 1); i64_lt_u ] in
+        small a @ small b @ [ i32_and; If (Bval I64, a @ b @ [ i64_mul ], a @ b @ site @ [ call rt "mul_i" ]) ])
+
+(* Messages.need_number of the value in the local x, with its hint when x is a function with no name, as the
+   interpreter gives it. *)
+let need_number rt name x site =
+  let anon = "function <anonymous>" in
+  [ Lget x; call rt "describe"; text rt anon; call rt "equal"; If (Bnone, fail rt (Messages.need_number name anon) [] [ Lget site ], []) ]
+  @ fail rt (Messages.need_number name a1) [ [ Lget x; call rt "describe" ] ] [ Lget site ]
+
+(* math.Round of the f64 on the stack, as OCaml's Float.round: a half goes away from zero. x - trunc x is exact. *)
+let round_f fb =
+  let x = local fb F64 and t = local fb F64 in
+  [ Lset x; Lget x; f64_trunc; Lset t; Lget x; Lget t; f64_sub; f64_abs; F64 0.5; f64_ge;
+    If (Bval F64, [ Lget t; F64 1.0; Lget x; f64_copysign; f64_add ], [ Lget t ]) ]
+
+(* math.Floor, Ceil, Round and Abs of a value of any type, as Native's rounding and abs_value: an integer as it is (Abs
+   checked), a float rounded, true 1, false 0, missing missing, an array cell by cell, else an error. *)
+let () =
+  List.iter
+    (fun (name, key) ->
+       def key (fun rt -> [ v; I32 ], [ v ], fun fb ->
+           let l = local fb (nl rt.list) and i = local fb I32 and n = local fb I32 and out = local fb (nn rt.vals) in
+           let float = match name with
+             | "Floor" -> [ f64_floor ] | "Ceil" -> [ f64_ceil ] | "Abs" -> [ f64_abs ] | _ -> round_f fb in
+           let int = if name = "Abs" then [ Lget 0; call rt "as_int"; Lget 1; call rt "abs_i"; call rt "box_i"; ret ] else [ Lget 0; ret ] in
+           [ Lget 0; Test (false, T rt.boxf); If (Bnone, [ Lget 0; call rt "float_of" ] @ float @ [ call rt "box_f"; ret ], []);
+             Lget 0; call rt "is_int"; If (Bnone, int, []);
+             Lget 0; ref_is_null; If (Bnone, [ missing; ret ], []);
+             Lget 0; g_true rt; ref_eq; If (Bnone, [ I32 1; ref_i31; ret ], []);
+             Lget 0; g_false rt; ref_eq; If (Bnone, [ I32 0; ref_i31; ret ], []);
+             Lget 0; Test (false, T rt.list);
+             If (Bnone, [ Lget 0; Cast (false, T rt.list); Lset l; Lget l; as_non_null; call rt "cells"; Lset n; Lget n; array_new_default rt.vals; Lset out ]
+                        @ upto i n [ Lget out; Lget i; Lget l; as_non_null; Lget i; call rt "elem"; Lget 1; call rt key; array_set rt.vals ]
+                        @ [ Lget l; struct_get rt.list l_rows; Lget l; struct_get rt.list l_cols; Lget out; call rt "list_of"; ret ], []) ]
+           @ need_number rt name 0 1))
+    [ "Floor", "floor_v"; "Ceil", "ceil_v"; "Round", "round_v"; "Abs", "abs_v" ];
+  def "abs_i" (fun rt -> [ I64; I32 ], [ I64 ], fun _ ->
+      [ Lget 0; i64 0; i64_lt_s; If (Bval I64, [ Lget 0; Lget 1; call rt "neg_i" ], [ Lget 0 ]) ])

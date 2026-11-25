@@ -1,0 +1,7 @@
+-4611686014132420609 -4294967294 -4611686018427387903 4611686014132420609
+squares.ce:8:64: The integer result of -2147483648 * -2147483648 doesn't fit in 63 bits.
+  8 |     io.Print(m * 2147483647, m + m, m - 4611686016279904256, m * m)
+    |                                                                ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in squares (squares.ce:8)
+exit 1
