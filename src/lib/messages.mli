@@ -510,6 +510,10 @@ val engine_names : string -> string list -> string list -> t
 
 (** A function of Cesia_v1 called where it can't be: what was wrong. *)
 val engine_misuse : string -> t
+
+(** An error of the system that a native let out, as a panic: the system's words. *)
+val stray : string -> t
+
 val native_raised : string -> string -> t
 val native_needs : string -> string -> string -> t
 val sql_plugin : string -> t

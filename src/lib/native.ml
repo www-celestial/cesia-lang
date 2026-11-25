@@ -1,13 +1,16 @@
 open Types
 
 (* A direct call doesn't share its arguments, so that measuring a variable leaves it owned. A native returning one of
-   its inputs therefore creates the second reference here. *)
+   its inputs therefore creates the second reference here: only an owned list, struct or map has one to create, so a
+   number, a text or one already shared never looks through the arguments, a sixth of the call of math.Abs. *)
 let any (_ : ty array) = TA
 
 let nat ?perm ?(params = [||]) ?(ret = any) ?(result = false) nname min_args max_args run =
   let run ctx (a : t array) =
-    let r = run ctx a in
-    if Array.memq r a then Value.share r else r
+    match run ctx a with
+    | (Array { a_owned = true; _ } | Struct { r_owned = true; _ } | Dict { d_owned = true; _ }) as r when Array.memq r a ->
+      Value.share r
+    | r -> r
   in
   Native { nname; perm; params; min_args; max_args; ret_ty = ret; run; f1 = None; i2 = None; gives_result = result }
 

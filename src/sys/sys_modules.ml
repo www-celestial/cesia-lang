@@ -118,6 +118,12 @@ let cpp_natives =
 
 let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w =
   Runtime.real_path := Fs.real_path;
+  Runtime.stray :=
+    (function
+      | Unix.Unix_error (e, call, "") -> Some (call ^ ": " ^ Fs.reason e)
+      | Unix.Unix_error (e, call, arg) -> Some (call ^ " " ^ arg ^ ": " ^ Fs.reason e)
+      | Sys_error m -> Some m
+      | _ -> None);
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
   w.timer <- (fun seconds f -> Poll.timer poll (Float.min max_sleep seconds) f);

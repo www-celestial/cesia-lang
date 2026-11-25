@@ -812,6 +812,114 @@ f(total, x)                      in machine code
 └── else                         back to the interpreter, before the statement
 ```
 
+### Calls with defaults and named arguments
+
+A parameter can have a default, as `defn f(x, step = 1)`, and a call can leave it out, `f(i)`, give it, `f(i, 2)`, or
+name it, `f(i, step = 2)`, the names in any order. The interpreter binds such a call once, when it compiles it: each
+argument goes to its parameter, by its place or by its name, and the arguments are made in the order of the
+parameters, whatever the order they are written in, so that the first error is always the same one. A parameter left
+out has the type *none yet* in the version's types: the version is the one for those types, and it makes the default
+in its own frame, after the step of the call, as a Python frame makes its defaults when it starts.
+
+Machine code left every call of a function that has a default, and every call that names an argument, to the
+interpreter, and the loop around such a call stayed interpreted: 10^7 calls of `f(i)` took 321.6 ms, against 27.3 for a
+function without a default. It now binds the call as the interpreter does and calls the same version. Inlined,
+the callee's body made in place, the default is made after the step of its frame, into the parameter's register.
+Called, the caller passes any number in that register, and the callee's own entry makes the default after its step, as
+it already did for a call from the interpreter. A leaf test that reads a default, as `if n < lim` with `lim = 3`, is
+made at the call when the default is a literal, which then costs nothing before the step (the partial inlining of
+[What it makes](#what-it-makes)). A self tail call into another version, as `count(n - 1, acc + 1)` in the frame that
+`count(50)` made with `acc = 0`, is a call, in a frame of its own, as the interpreter's, where it ended the machine code
+of the whole function: the interpreter then ran the outer frame of each `count(50)`.
+
+Measured on 2026-11-25, `release` profile, 21 runs of each alternated with main's binary, from the start of the process
+to its end; the medians and their 95% intervals, in ms:
+
+| Call in a loop, 10^7 times | Before | Now |
+|---|---:|---:|
+| `f(i)`, `step` left to its default | 321.6 (320.6–324.3) | 27.0 (27.0–27.3) |
+| `f(i, 2)` | 284.4 (283.3–285.6) | 27.3 (26.9–27.7) |
+| `f(i, step = 2)` | 283.0 (282.0–285.3) | 27.1 (27.0–27.3) |
+| `f(i, 1)`, a function with no default | 27.3 (27.1–27.8) | 27.4 (27.1–28.8) |
+| `count(50)` 20,000 times, a self tail call into the version that gives `acc` | 16.4 (16.2–16.6) | 10.5 (10.5–10.7) |
+
+V8 made a call with fewer arguments than parameters through an *arguments adaptor frame*, a frame put between the two
+that filled the missing ones with `undefined`, until 2021, when it removed that frame and gained up to 40% on such
+calls (Gomes, 2021). Beside the giants, 10^7 calls of `f(i)`,
+`step` left out, take 26.7 ms, against Python 3.14 1,017, Node 26 59.2, Lua 5.5 280, where `step = step or 1` stands for
+the default, and LuaJIT 2.1 11.4; given, 26.9, against 980, 59.8, 272 and 11.4; named, `f(i, step = 2)`, 27.1, against
+Python 1,142, Node 63.6 with an object for the names, Lua 1,675 with a table, and LuaJIT 11.4 (the whole process,
+medians of 21 runs alternated). LuaJIT wins: it starts in about a millisecond and makes the loop machine code at once,
+where Cesia starts in 4 and loads its JIT at the first hot loop; a turn then costs Cesia 1.7 ns and LuaJIT 1.
+
+What stays interpreted: a default that isn't a number, as a text or a list; a call through a value of a function that
+has defaults; a self tail call that leaves an argument out; and a recursion whose two versions call each other, as
+`fib(n, lim = 2)` calling `fib(n - 2, lim)`, the version for `lim` left out calling the one for `lim` given, which calls
+the first: inference doesn't follow a cycle between versions, so it types them as anything, and they run in the
+interpreter, which then boxes every integer.
+
+### Calls of natives
+
+A native, a function of `std/` written in OCaml, as `math.Abs` or `text.ByteLength`, is machine code already, but
+machine code never calls it: native code never calls back into OCaml, so that nothing collects during a run, and a loop
+with a statement that calls one stays in the interpreter. The JIT makes some of them itself, inline: those of libm, as
+`math.Sqrt`, and `math.Abs`, `math.Div`, `math.Mod`, `list.Max` and `list.Min` of two numbers, `value.Len`,
+`random.Float`, and a few on small arrays of floats.
+The interpreter's call of the others took 28 to 36 ns. A sampling profiler, `gdb` stopping the process every 10 ms and
+reading its stack, 300 times, on 3 × 10^8 calls of `math.Abs(i)`, said where:
+
+```text
+math.Abs(i) in a loop, 31 ns a turn, interpreted    share of the samples
+├── the turn of the loop, its sum and its store     26 %
+├── the result looked for among the arguments       15 %   Array.memq
+├── the argument boxed, an Int made of i            13 %
+├── math.Abs itself, its Int made                   11 %
+├── the wrapper of the native                       10 %
+├── the call's closure, its site written             8 %
+├── calls of closures of unknown arity               8 %   caml_apply2
+└── the result unboxed                               6 %
+```
+
+The look for the result among the arguments is for a native that gives back one of them, as `dict.GetOr` gives back the
+default it was given: the call doesn't share its arguments, so that measuring a variable leaves it owned, and a result
+found among them must be shared before it has a second name, or a write through one would change the other
+([copy-on-write](#value-semantics-and-copy-on-write)). Only an owned list, struct or map has anything to share: a
+number, a text or a value already shared now skips the look, a test of the result's tag. A native of no argument, as
+`sys.Now`, no more makes its empty array through a map of the arguments. And machine code makes `math.Abs` of an integer
+itself, a negative one negated with its overflow checked, so that the smallest integer is the interpreter's error at the
+call; a loop that took it stayed interpreted.
+
+An error of the system that a native lets out, a `Sys_error` of OCaml or an error of Unix, instead of giving an `Err`,
+ended the program with a line that named no place, or with an internal error, and stopped every fiber. It is now a panic
+of the kind io at the native's call, which stops its fiber alone, as any panic: a safety net, since every native of
+`std/` tried gives an `Err` already, the current folder removed included. Installing an OCaml handler of exceptions
+pushes two words on the stack, the handler's address and the previous handler, and removing it pops them
+(Sivaramakrishnan and others, 2021); a handler in the wrapper of every native also kept the context and the native
+across the call, nine instructions more: with it, 10^7 calls of `text.ByteLength` took 274.7 ms instead of 269.8, and of
+`sys.Now` 437.0 instead of 422.9, 0.5 and 1.4 ns a call, and the difference on `text.Slice` was inside the noise of its
+allocations. So no handler is installed at a call: the error goes up, as a panic does, to what catches panics already,
+the run of the program, of each fiber and of each test, which makes it the panic it is, at the site the native's call
+wrote before it ran. It costs nothing until something is raised.
+
+Measured on 2026-11-25, `release` profile, 21 runs of each alternated with main's binary, the whole process; the medians
+and their 95% intervals, in ms:
+
+| Loop of 10^7 calls | Before | Now |
+|---|---:|---:|
+| `math.Abs(i)`, now machine code | 302.1 (300.2–305.4) | 20.2 (20.1–20.6) |
+| `text.ByteLength(s)` | 322.7 (319.5–324.4) | 269.8 (267.8–273.4) |
+| `sys.Now()` | 517.6 (515.7–520.5) | 422.9 (420.9–424.2) |
+| `text.ByteLength(text.Slice(2, 4, s))`, two calls | 1,250.4 (1,247.5–1,262.8) | 1,098.5 (1,097.0–1,106.9) |
+
+CPython 3.11 calls a builtin function written in C, as `len()`, straight from the instruction of the call, which its
+adaptive interpreter specializes for it once it has seen it there, without the general convention of a call: up to 20%
+faster (PEP 659, and the notes of Python 3.11). Beside them, 10^7 calls of the absolute value of an integer take 19.8 ms
+in Cesia, now machine code, against Python 730, Node 83.3, Lua 192 and LuaJIT 11.4; of the length of a text, 268,
+against Python 641, Node 50.6, where the length is a property and no call, Lua 239 and LuaJIT 11.4; of `math.Sqrt`,
+which Cesia's machine code makes, 49.2, against 763, 53.2, 205 and 11.4. Lua's interpreter calls `string.len` in 24 ns a
+turn, against Cesia's 27: its call passes the arguments on its stack, where Cesia's makes an array and boxes them, as a
+native takes them. Node and LuaJIT make such calls machine code; Cesia does so only for the natives its JIT knows.
+
 ### The contract
 
 The same program gives the same output, the same errors at the same lines, and the same limits, in the interpreter and in
@@ -822,7 +930,9 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 
 ### What stays in the interpreter
 
-- the natives, functions of `std/` written in OCaml, as [text.Split]: they are machine code already;
+- a call of a native, a function of `std/` written in OCaml, as [text.Split], but those the JIT makes itself
+  ([Calls of natives](#calls-of-natives)): the native is machine code already, and the loop around the call stays
+  interpreted, or the statement alone in a branch of its ifs;
 - `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
   function that captured variables;
 - in a loop, a statement inside an if that it can't make, as a `return` of a struct or an `io.Print`: that statement
@@ -914,6 +1024,16 @@ thread, which a timer can interrupt anywhere: a fiber is switched only at a wait
 Since a fiber is switched only at those points, code between two of them sees no other fiber: there are no *data races*,
 two threads changing the same memory at once, and no locks to take. Values are not shared anyway: a value sent on a
 channel acts as a copy.
+
+The steps of `--limit steps` belong to the whole program, and each fiber counts its own between two checkpoints. Under
+such a limit, the steps a waiting fiber spent since its last checkpoint are now taken off what is left while it waits,
+and one that runs again, or starts, takes no more fuel than the steps the others left: so the limit is reached at the
+step that goes past it, in whatever fiber, as in the main program alone. Without a limit, nothing of this runs.
+Before, a fiber started with a whole quantum of 10,000 steps, whatever was left, and a main program that waited kept its
+last steps uncounted while the fibers ran: the limit was reached later, at a place that depended on where the
+checkpoints fell, which machine code, whose budget is exact, put elsewhere than the interpreter. A loop that spawned
+fibers of 500 steps under `--limit steps=20000` stopped at the spawn of one, after it ended; it stops inside it, at the
+step past 20,000 (`tests/limits/fiber-short.ce`), in the interpreter and in machine code alike.
 
 ### Waiting on the system
 

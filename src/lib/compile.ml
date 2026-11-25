@@ -3198,6 +3198,10 @@ and call_native_placed s n compiled =
           inner ctx a
     in
     match compiled with
+    | [||] ->
+      fun ctx ->
+        ctx.site <- s;
+        run ctx [||]
     | [| a |] ->
       fun ctx ->
         let x = a ctx in

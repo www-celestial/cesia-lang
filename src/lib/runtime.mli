@@ -46,6 +46,15 @@ val checkpoint : ctx -> int -> int -> unit
 (** Counts the last steps of a fiber that ends; the limit of steps, reached there, names the site that spawned it. *)
 val settle : ctx -> int -> unit
 
+(** Under a limit of steps, takes the steps a fiber about to wait spent since its last checkpoint off what is left, so
+    that the others run within what is truly left. *)
+val pause : ctx -> unit
+
+(** Gives them back to a fiber that runs again, for its checkpoint to count, and cuts its fuel to the steps the others
+    left, or that of a fiber that starts: the limit of steps is then reached at the same step in every fiber,
+    interpreted or machine code. *)
+val resume : ctx -> unit
+
 (** Counts [n] steps of a native, at its site. *)
 val charge : ctx -> int -> unit
 
@@ -98,6 +107,14 @@ val deny : ctx -> perm -> string option -> 'a
 (** Where a path leads, links resolved, or [None] when no place can be told: set by the system, which reads links. A
     folder of read= or write= holds a path only when it holds where the path leads too. *)
 val real_path : (string -> string option) ref
+
+(** The words of an error of the system that a native let out instead of giving an Err, or [None] for another exception:
+    a [Sys_error], and those of the calls of the system that src/sys adds. What catches a panic takes it as one of the
+    kind io, at the site where it was raised: a native's call, which writes its site before it runs. *)
+val stray : (exn -> string option) ref
+
+(** That panic, of such an error raised in [ctx], or [None] for another exception. *)
+val stray_panic : ctx -> exn -> exn option
 
 (** Is the permission granted, for this path if any? [name] and [at] as for {!check_perm}. *)
 val granted : ?name:bool -> ?at:string -> world -> perm -> string option -> bool

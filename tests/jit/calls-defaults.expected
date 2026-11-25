@@ -1,0 +1,88 @@
+off:
+1437060976 6773250.0
+2 45 9
+9000
+calls-defaults.ce:37:25: Div: division by zero.
+  37 | defn divided(i, x = math.Div(12, i))
+     |                         ^
+  in divided (calls-defaults.ce:37)
+  called from shared (calls-defaults.ce:75)
+calls-defaults.ce:15:1: Limit "steps" reached.
+  15 | defn tally(n, lim = 3)
+     | ^
+  in tally (calls-defaults.ce:15)
+  called from run (calls-defaults.ce:57)
+calls-defaults.ce:20:5: Limit "steps" reached.
+  20 |     for i in 1..n
+     |     ^
+  in tally (calls-defaults.ce:20)
+  called from run (calls-defaults.ce:57)
+9000
+calls-defaults.ce:74:3: Limit "steps" reached.
+  74 |   for i in 1..n
+     |   ^
+  in shared (calls-defaults.ce:74)
+calls-defaults.ce:6:1: Limit "depth" reached.
+  6 | defn step(x, by = 1)
+    | ^
+  in step (calls-defaults.ce:6)
+  called from run (calls-defaults.ce:54)
+default:
+1437060976 6773250.0
+2 45 9
+9000
+calls-defaults.ce:37:25: Div: division by zero.
+  37 | defn divided(i, x = math.Div(12, i))
+     |                         ^
+  in divided (calls-defaults.ce:37)
+  called from shared (calls-defaults.ce:75)
+calls-defaults.ce:15:1: Limit "steps" reached.
+  15 | defn tally(n, lim = 3)
+     | ^
+  in tally (calls-defaults.ce:15)
+  called from run (calls-defaults.ce:57)
+calls-defaults.ce:20:5: Limit "steps" reached.
+  20 |     for i in 1..n
+     |     ^
+  in tally (calls-defaults.ce:20)
+  called from run (calls-defaults.ce:57)
+9000
+calls-defaults.ce:74:3: Limit "steps" reached.
+  74 |   for i in 1..n
+     |   ^
+  in shared (calls-defaults.ce:74)
+calls-defaults.ce:6:1: Limit "depth" reached.
+  6 | defn step(x, by = 1)
+    | ^
+  in step (calls-defaults.ce:6)
+  called from run (calls-defaults.ce:54)
+always:
+1437060976 6773250.0
+2 45 9
+9000
+calls-defaults.ce:37:25: Div: division by zero.
+  37 | defn divided(i, x = math.Div(12, i))
+     |                         ^
+  in divided (calls-defaults.ce:37)
+  called from shared (calls-defaults.ce:75)
+calls-defaults.ce:15:1: Limit "steps" reached.
+  15 | defn tally(n, lim = 3)
+     | ^
+  in tally (calls-defaults.ce:15)
+  called from run (calls-defaults.ce:57)
+calls-defaults.ce:20:5: Limit "steps" reached.
+  20 |     for i in 1..n
+     |     ^
+  in tally (calls-defaults.ce:20)
+  called from run (calls-defaults.ce:57)
+9000
+calls-defaults.ce:74:3: Limit "steps" reached.
+  74 |   for i in 1..n
+     |   ^
+  in shared (calls-defaults.ce:74)
+calls-defaults.ce:6:1: Limit "depth" reached.
+  6 | defn step(x, by = 1)
+    | ^
+  in step (calls-defaults.ce:6)
+  called from run (calls-defaults.ce:54)
+exit 0

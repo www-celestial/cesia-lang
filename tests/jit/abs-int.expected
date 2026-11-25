@@ -1,0 +1,22 @@
+off:
+4995852450
+abs-int.ce:23:17: The integer result of -(-4611686018427387904) doesn't fit in 63 bits.
+  23 |     t = t + math.Abs(x)
+     |                 ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in edge (abs-int.ce:23)
+default:
+4995852450
+abs-int.ce:23:17: The integer result of -(-4611686018427387904) doesn't fit in 63 bits.
+  23 |     t = t + math.Abs(x)
+     |                 ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in edge (abs-int.ce:23)
+always:
+4995852450
+abs-int.ce:23:17: The integer result of -(-4611686018427387904) doesn't fit in 63 bits.
+  23 |     t = t + math.Abs(x)
+     |                 ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in edge (abs-int.ce:23)
+exit 1

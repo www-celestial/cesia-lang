@@ -1,0 +1,20 @@
+use std/io
+use std/list
+use std/math
+
+(* Named arguments are made in the order of the parameters, whatever the order they are written in, in native code as
+   in the interpreter: when both fail at the same turn, the error is b's, the parameter before, not c's, written first. *)
+defn order(a, b = 10, c = 20)
+  a * 100 + b * 10 + c
+end
+
+defn clash(n)
+  t = 0
+  for i in 1..n
+    k = 4000 - i
+    t = t + order(c = [1, 2][list.Min(k, 1)], b = math.Div(10, k), a = i)
+  end
+  t
+end
+io.Print(clash(3999))
+io.Print(clash(5000))

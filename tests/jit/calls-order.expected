@@ -1,0 +1,19 @@
+off:
+799804269
+calls-order.ce:15:55: Div: division by zero.
+  15 |     t = t + order(c = [1, 2][list.Min(k, 1)], b = math.Div(10, k), a = i)
+     |                                                       ^
+  in clash (calls-order.ce:15)
+default:
+799804269
+calls-order.ce:15:55: Div: division by zero.
+  15 |     t = t + order(c = [1, 2][list.Min(k, 1)], b = math.Div(10, k), a = i)
+     |                                                       ^
+  in clash (calls-order.ce:15)
+always:
+799804269
+calls-order.ce:15:55: Div: division by zero.
+  15 |     t = t + order(c = [1, 2][list.Min(k, 1)], b = math.Div(10, k), a = i)
+     |                                                       ^
+  in clash (calls-order.ce:15)
+exit 1

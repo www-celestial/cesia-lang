@@ -935,6 +935,7 @@ and inline_args st (e : expr) (v : version) args vout =
          let r = child.regs.(j) in
          if r < 0 then raise No;
          emit child (Move (r, convert child (Vec.get st.kinds r) (x, xk)))
+       | `D -> if child.regs.(j) < 0 then raise No
        | `V (k, (x : vec)) ->
          if (v.tv.(j) != TA && v.tv.(j) != TFA) || not (plain child j) then raise No;
          (* The body reads the caller's slots, or a copy of them when it assigns its parameter. *)
@@ -950,6 +951,17 @@ and inline_args st (e : expr) (v : version) args vout =
     args;
   (* The callee's step, as its frame's entry counts one. *)
   emit child (Ir.Tick (-1, false, entry));
+  (* Then each default of a parameter left out, in their order, in the callee's frame: as the interpreter's prologue
+     (Compile.compile_version). *)
+  Array.iteri
+    (fun j a ->
+       match a, f.params.(j).default with
+       | `D, Some d ->
+         let r = child.regs.(j) in
+         emit child (Move (r, convert child (Vec.get st.kinds r) (expr child d)))
+       | `D, None -> raise No
+       | _ -> ())
+    args;
   tail_block child (Lazy.force f.body);
   st.cur <- cont;
   st.ncalls <- child.ncalls + 1;
@@ -997,8 +1009,6 @@ and args_of (call : call) n =
   Array.map (fun (a : arg) -> a.value) call.args
 
 and call_expr st e (call : call) =
-  (* A self tail call loops in [tail]; anywhere else the interpreter keeps it. *)
-  if call.self_tail then raise No;
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match st.w.modules.(m).cells.(k) with
@@ -1028,6 +1038,19 @@ and call_expr st e (call : call) =
        let a = args_of call 1 in
        (match expr st a.(0) with
         | x, Kfloat -> fresh st Kfloat (fun r -> Math ("fabs", r, x))
+        | x, Kint ->
+          (* As Native.abs_value: a negative integer negated, checked, so that min_int is the interpreter's error, at
+             the call. A loop that took it stayed interpreted, 31 ns a call. *)
+          let r = reg st Kint and neg = block st and join = block st in
+          let base = facts st st.cur in
+          emit st (Move (r, x));
+          close st (Branch (Lt, Kint, x, Int 0, neg, join));
+          carry st base neg;
+          st.cur <- neg;
+          emit st (Neg (r, x, site st e.pos));
+          goto st join;
+          carry st base join;
+          Ir.Reg r, Kint
         | _ -> raise No)
      | Native { nname = "Len"; _ } ->
        let a = args_of call 1 in
@@ -1063,20 +1086,29 @@ and call_expr st e (call : call) =
         | _ -> raise No)
      | Fun _ when made_here st e <> None -> record st e
      | Fun { proto; env = [||] } ->
-       let a = args_of call proto.arity in
-       if Array.exists (fun (p : param) -> p.default <> None) proto.func.params then raise No;
-       let sg = Array.map (ty st) a in
+       (* The arguments go to the parameters they name, as the interpreter's direct call binds them, and a parameter
+          left out has the type TBot: its version makes the default after the call's step, in the callee's frame. *)
+       let slots = match Infer.bind_args proto.func call.args with Ok s -> s | Error _ -> raise No in
+       let sg = Array.map (function None -> TBot | Some a -> (match ty st a with TBot -> TA | t -> t)) slots in
        (* The interpreter's direct call did the same, with the same types, when it compiled this version
           (Compile.prepare_call): this finds that version, it doesn't make one. *)
        let v = Infer.version_for st.w proto sg in
+       (* A self tail call into its own version loops in [tail]; anywhere else the interpreter keeps it. Into another
+          version, it is a call, as the interpreter's. *)
+       if call.self_tail && v == st.ver then raise No;
        if v.state = 0 then Infer.run st.w v;
        if v.state <> 2 then raise No;
-       let numbers = Array.for_all (fun t -> t == TI || t == TF) sg && (v.ret == TI || v.ret == TF) in
+       (* A default of a number only, which the callee's register then holds. *)
+       Array.iteri (fun j t -> if t == TBot && v.tv.(j) != TI && v.tv.(j) != TF then raise No) sg;
+       let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && (v.ret == TI || v.ret == TF) in
        (* Values in or out: only inlined, its body made here. *)
        if not (numbers || (st.inl = [] && inlinable ~any:true v && not (own st v))) then raise No;
-       let vals = Array.map (expr st) a in
+       (* In the order of the parameters, as the interpreter's. *)
+       let vals = Array.map (Option.map (expr st)) slots in
        note st v;
-       if st.inl = [] && inlinable ~any:true v && not (own st v) then inline st e v vals else native_call st e v (Array.map fst vals)
+       if st.inl = [] && inlinable ~any:true v && not (own st v) then
+         inline_args st e v (Array.map (function Some x -> `S x | None -> `D) vals) None
+       else native_call st e v (Array.map (Option.map fst) vals)
      | _ -> raise No)
   | Var { b = Local i; _ } when Vec.get st.kinds (var st i) = Ir.Kval -> call_value st e call (Ir.Reg (var st i))
   | _ -> raise No
@@ -1147,7 +1179,10 @@ and call_value st e (call : call) f =
        st.dyn.ticked <- calm;
        let args = Array.mapi (fun j (x, xk) -> match v.sg.(j), xk with TI, Ir.Kval -> unbox st x Only_int | TF, Ir.Kval -> unbox st x Only_float | _ -> x, xk) vals in
        note st v;
-       let res = if st.inl = [] && inlinable v && not (own st v) then inline st e v args else native_call st e v (Array.map fst args) in
+       let res =
+         if st.inl = [] && inlinable v && not (own st v) then inline st e v args
+         else native_call st e v (Array.map (fun (x, _) -> Some x) args)
+       in
        if st.dyn.bail = None then showed := true;
        emit st (Move (r, if k = Ir.Kval then box st res else fst res));
        close st (Jump join);
@@ -1170,14 +1205,22 @@ and call_value st e (call : call) f =
    parameters that gives one of them or a constant at once, as fib's [n < 2] gives n, that test and that result are made
    here, at the call (partial inlining): half of a tree recursion's calls are leaves, which then cost no call. The call
    is made when the test fails, or when the frame or the fuel of the callee's step is short, which it then handles. *)
-and native_call st e (v : version) args =
+and native_call st e (v : version) given =
   st.ncalls <- st.ncalls + 1;
   let back = back st in
+  (* A parameter the call leaves out gets any number of its kind: the callee makes its default after its step. *)
+  let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
   let call () =
     fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back))
   in
   let f = Cache.ready v.owner.func in
   let np = Array.length f.params in
+  (* The test of the leaf reads a default only when it is a literal, which costs nothing made before the step. *)
+  let literal j =
+    match given.(j), f.params.(j).default with
+    | Some _, _ | None, Some { e = Lint _ | Lfloat _; _ } -> true
+    | _ -> false
+  in
   let rec simple (x : expr) = match x.e with Lint _ | Lfloat _ -> true | Var { b = Local i; _ } -> i < np | _ -> false
   and test (x : expr) =
     match x.e with
@@ -1193,7 +1236,8 @@ and native_call st e (v : version) args =
     | b -> (match b.(0).e with If (c, [| { e = Return { rvalue = Some y; _ }; _ } |], _) -> Some (c, y) | _ -> None)
   in
   match leaf with
-  | Some (c, y) when test c && simple y && Array.length args = np && not f.has_self_tail ->
+  | Some (c, y)
+    when test c && simple y && Array.length args = np && (not f.has_self_tail) && List.for_all literal (List.init np Fun.id) ->
     let k = kind_of v.ret in
     let r = reg st k and quick = block st and burn = block st and slow = block st and cont = block st in
     let base0 = facts st st.cur in
@@ -1203,6 +1247,11 @@ and native_call st e (v : version) args =
       (fun j x ->
          let q = reg st (kind_of v.tv.(j)) in
          child.regs.(j) <- q;
+         let x =
+           match given.(j), f.params.(j).default with
+           | None, Some d -> convert child (kind_of v.tv.(j)) (expr child d)
+           | _ -> x
+         in
          emit st (Move (q, x)))
       args;
     cond child c quick slow;
@@ -1561,6 +1610,7 @@ and vtarget st (p : proto) args =
       match a with
       | `V _ -> t == TFA || t == TA
       | `S (_, k) -> t == TA || (t == TI && (k = Ir.Kint || k = Kval)) || (t == TF && (k = Ir.Kfloat || k = Kval))
+      | `D -> false
     in
     if v.state = 2 && inlinable ~any:true ~most:vbody v && (not (own st v)) && Array.for_all2 fits v.sg args then Some (p, v) else None
   | _ -> None
@@ -2326,15 +2376,16 @@ and tail st (e : expr) =
     assume st c true (fun () -> tail_block st yes);
     st.cur <- n;
     assume st c false (fun () -> tail_block st no)
+  (* As the interpreter's (Compile.prepare_call), it loops in its own version only: one for other types, as a call that
+     gives a parameter the version's frame took by default, is a call, in a frame of its own, below. *)
   | Call ({ self_tail = true; callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; _ } as call)
-    when Array.length call.args = Array.length st.f.params ->
-    (* As the interpreter's (Compile.prepare_call), it loops in its own version only: one for other types, as a call
-       that gives a parameter the version's frame took by default, is a call, in a frame of its own. *)
-    (match st.w.modules.(m).cells.(k) with
-     | Fun { proto; env = [||] } ->
-       let sg = Array.map (fun (a : arg) -> match ty st a.value with TBot -> TA | t -> t) call.args in
-       if Infer.version_for st.w proto sg != st.ver then raise No
-     | _ -> raise No);
+    when Array.length call.args = Array.length st.f.params
+         && (match st.w.modules.(m).cells.(k) with
+             | Fun { proto; env = [||] } ->
+               let sg = Array.map (fun (a : arg) -> match ty st a.value with TBot -> TA | t -> t) call.args in
+               Infer.version_for st.w proto sg == st.ver
+             | _ -> true) ->
+    (match st.w.modules.(m).cells.(k) with Fun { env = [||]; _ } -> () | _ -> raise No);
     let args = Array.map (fun (a : arg) -> if a.aname <> None then raise No else expr st a.value) call.args in
     let ps = Array.mapi (fun j (_ : param) -> var st j) st.f.params in
     (* The arguments first, then the parameters: an argument can read a parameter. *)

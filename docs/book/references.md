@@ -56,6 +56,16 @@ publisher moves it.
 - Marc Feeley, Guy Lapalme. "Using Closures for Code Generation". *Computer Languages* 12(1):47–66, 1987.
   <https://doi.org/10.1016/0096-0551(87)90012-9>. A syntax tree compiled into closures that run it, faster than walking the
   tree: Cesia's interpreter, `src/lib/compile.ml`.
+- Mark Shannon. "PEP 659 – Specializing Adaptive Interpreter". 2021. <https://peps.python.org/pep-0659/>; and "What's
+  New In Python 3.11", <https://docs.python.org/3/whatsnew/3.11.html>. An instruction of CPython rewritten, once it has
+  run, for the kinds it met there: a call of a builtin written in C, as `len()`, then calls it straight, up to 20%
+  faster. Beside the interpreter's call of a native in Cesia, which [How Cesia works](internals.md#calls-of-natives)
+  measures.
+- K. C. Sivaramakrishnan, Stephen Dolan, Leo White, Tom Kelly, Sadiq Jaffer, Anil Madhavapeddy. "Retrofitting Effect
+  Handlers onto OCaml". *PLDI 2021*, ACM. <https://doi.org/10.1145/3453483.3454039>. How OCaml 5 lays out its stacks: a
+  handler of exceptions is installed by pushing the address of its code and the previous handler on the stack, a linked
+  list of frames, and a raise jumps to the last one. Cesia installs none at the call of a native, where it cost a
+  twentieth of `sys.Now`: an error of the system that a native lets out is caught where panics are.
 
 ## The JIT
 
@@ -94,6 +104,10 @@ publisher moves it.
 - Andreas Gal and others. "Trace-based Just-in-Time Type Specialization for Dynamic Languages". *PLDI 2009*, 465–478.
   <https://doi.org/10.1145/1542476.1542528>. The tracing JIT, which compiles one hot path through the program. Cesia
   compiles whole functions and loops instead, with guards, which keeps its speed steady on code full of branches.
+- Victor Gomes. "Faster JavaScript calls". The blog of V8, 15 February 2021. <https://v8.dev/blog/adaptor-frame>. A call
+  of JavaScript with fewer or more arguments than parameters went through an *arguments adaptor frame*, which filled the
+  missing ones with `undefined`; V8 removed it, the callee padding them itself, up to 40% faster on such calls. Cesia's
+  machine code calls a function that has defaults the same way: the callee's own entry makes the defaults left out.
 - Stephen J. Fink, Feng Qian. "Design, Implementation and Evaluation of Adaptive Recompilation with On-Stack
   Replacement". *CGO 2003*, IEEE, 241–252. <https://researchr.org/publication/FinkQ03>. Entering optimized code in the
   middle of a running loop through an entry that rebuilds its state and goes to the loop's head: Cesia's machine code is

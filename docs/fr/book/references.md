@@ -68,6 +68,17 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
 - Marc Feeley, Guy Lapalme. "Using Closures for Code Generation". *Computer Languages* 12(1):47–66, 1987.
   <https://doi.org/10.1016/0096-0551(87)90012-9>. Un syntax tree (le programme sous forme d'arbre) compilé en closures qui
   l'exécutent, plus vite que de parcourir l'arbre : l'interpréteur de Cesia, `src/lib/compile.ml`.
+- Mark Shannon. "PEP 659 – Specializing Adaptive Interpreter". 2021. <https://peps.python.org/pep-0659/> ; et "What's
+  New In Python 3.11", <https://docs.python.org/3/whatsnew/3.11.html>. Une instruction de CPython réécrite, une fois
+  qu'elle a tourné, pour les sortes de valeurs qu'elle y a vues : un appel d'une fonction intégrée écrite en C, comme
+  `len()`, l'appelle alors directement, jusqu'à 20 % plus vite. À côté de l'appel d'une native par l'interpréteur de
+  Cesia, que mesure [Comment Cesia fonctionne](internals.md#les-appels-de-natives).
+- K. C. Sivaramakrishnan, Stephen Dolan, Leo White, Tom Kelly, Sadiq Jaffer, Anil Madhavapeddy. "Retrofitting Effect
+  Handlers onto OCaml". *PLDI 2021*, ACM. <https://doi.org/10.1145/3453483.3454039>. Comment OCaml 5 dispose ses piles :
+  un *handler* d'exceptions (le code qui rattrape une exception) s'installe en poussant sur la pile l'adresse de son
+  code et le handler d'avant, une liste chaînée de frames, et un raise saute au dernier. Cesia n'en installe aucun à
+  l'appel d'une native, où il coûtait un vingtième de `sys.Now` : une erreur du système qu'une native laisse sortir est
+  rattrapée là où le sont les panics.
 
 ## Le JIT
 
@@ -109,6 +120,11 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   <https://doi.org/10.1145/1542476.1542528>. Le tracing JIT, qui compile un seul chemin hot à travers le programme. Cesia
   compile plutôt des fonctions et des boucles entières, avec des guards (les tests que le code machine fait avant de se
   servir d'un pari), ce qui garde sa vitesse régulière sur du code plein de branches.
+- Victor Gomes. "Faster JavaScript calls". Le blog de V8, 15 février 2021. <https://v8.dev/blog/adaptor-frame>. Un appel
+  de JavaScript avec moins ou plus d'arguments que de paramètres passait par un *arguments adaptor frame* (un frame
+  d'adaptation des arguments), qui remplissait ceux qui manquent avec `undefined` ; V8 l'a retiré, la fonction appelée
+  les complétant elle-même, jusqu'à 40 % plus vite sur de tels appels. Le code machine de Cesia appelle de la même façon
+  une fonction qui a des defaults : l'entrée de la fonction appelée fait elle-même les defaults omis.
 - Stephen J. Fink, Feng Qian. "Design, Implementation and Evaluation of Adaptive Recompilation with On-Stack
   Replacement". *CGO 2003*, IEEE, 241–252. <https://researchr.org/publication/FinkQ03>. Entrer dans du code optimisé au
   milieu d'une boucle qui tourne, par une entrée qui reconstruit son état et va à la tête de la boucle : on entre dans le
