@@ -516,6 +516,13 @@ JIT avec des loop regions : il compile les versions hot des fonctions qui donnen
 nombres, des arrays, des maps et des structs, et rend la main à l'interpréteur quand un pari échoue. Voir
 [Vitesse](speed.md) et [Comment Cesia fonctionne](internals.md#le-jit).
 
+## JavaScript Promise Integration
+
+JSPI, une partie de WebAssembly : un appel d'un module attend une promise de JavaScript (une valeur promise, qui viendra
+plus tard), le moteur mettant toute sa pile de côté, ses frames et ses variables locales, jusqu'à ce que la promise soit
+résolue, puis la reprenant là où elle s'était arrêtée. Un programme compilé par `cesia build --target wasm` fait tourner
+ses fibers ainsi, chacune un appel du module qui attend : voir [Compiler vers WebAssembly](wasm.md#fibers).
+
 ## Keep-alive
 
 Une connexion HTTP gardée ouverte après une réponse, pour la requête suivante du même client, ce qui évite d'ouvrir une

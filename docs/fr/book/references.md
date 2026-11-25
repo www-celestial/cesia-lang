@@ -185,6 +185,16 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   proposition qu'il a reprise, <https://github.com/WebAssembly/gc>. Le garbage collection dans WebAssembly (la mémoire
   libérée par le moteur quand plus rien ne la tient) : des structs, des tableaux et des `i31ref` dont le moteur gère la
   mémoire. Les valeurs de Cesia dans une page.
+- WebAssembly Community Group. "JavaScript Promise Integration", une proposition de phase 4.
+  <https://github.com/WebAssembly/js-promise-integration>, et V8, "Introducing the WebAssembly JavaScript Promise
+  Integration API", 2024, <https://v8.dev/blog/jspi>. Un appel d'un module qui attend une promise, sa pile mise de côté :
+  les fibers d'une page. Dans Chrome depuis 137 (<https://developer.chrome.com/release-notes/137>), dans Firefox depuis
+  153 (<https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/153>), dans Safari depuis 27
+  (<https://webkit.org/?p=17967>).
+- Luna Phipps-Costin, Andreas Rossberg, Arjun Guha, Daan Leijen, Daniel Hillerström, KC Sivaramakrishnan, Matija Pretnar,
+  Sam Lindley. "Continuing WebAssembly with Effect Handlers". *Proceedings of the ACM on Programming Languages* 7
+  (OOPSLA2), 460–485, 2023. <https://doi.org/10.1145/3622814>. Le stack switching (le changement de pile), WasmFX : des
+  continuations qui seraient les fibers elles-mêmes, dans aucun navigateur sans flag pour l'instant.
 
 ## Fibers et channels
 

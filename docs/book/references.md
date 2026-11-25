@@ -158,6 +158,16 @@ publisher moves it.
 - WebAssembly Community Group. "Wasm 3.0 Completed", 2025. <https://webassembly.org/news/2025-09-17-wasm-3.0/>, and the
   proposal it took in, <https://github.com/WebAssembly/gc>. Garbage collection in WebAssembly: structs, arrays and
   `i31ref` whose memory the engine manages. Cesia's values in a page.
+- WebAssembly Community Group. "JavaScript Promise Integration", a proposal of phase 4.
+  <https://github.com/WebAssembly/js-promise-integration>, and V8, "Introducing the WebAssembly JavaScript Promise
+  Integration API", 2024, <https://v8.dev/blog/jspi>. A call of a module that waits for a promise, its stack set aside:
+  the fibers of a page. In Chrome since 137 (<https://developer.chrome.com/release-notes/137>), in Firefox since 153
+  (<https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/153>), in Safari since 27
+  (<https://webkit.org/?p=17967>).
+- Luna Phipps-Costin, Andreas Rossberg, Arjun Guha, Daan Leijen, Daniel Hillerström, KC Sivaramakrishnan, Matija Pretnar,
+  Sam Lindley. "Continuing WebAssembly with Effect Handlers". *Proceedings of the ACM on Programming Languages* 7
+  (OOPSLA2), 460–485, 2023. <https://doi.org/10.1145/3622814>. Stack switching, WasmFX: continuations that would be the
+  fibers themselves, in no browser without a flag yet.
 
 ## Fibers and channels
 

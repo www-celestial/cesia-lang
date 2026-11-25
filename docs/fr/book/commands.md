@@ -92,10 +92,11 @@ est sans danger. Finit avec le code 1 quand il y a une erreur ; des warnings (de
 cesia build --target wasm file.ce
 ```
 
-Compile un programme vers WebAssembly : `file.wasm`, le module, et `file.js`, son loader (le script qui le charge et le
-lance), à côté de `file.ce` ; `node file.js` le lance, et une page le lance avec `<script type="module" src="file.js">`.
-Ce que cette première tranche ne compile pas est une erreur à sa place, avec l'exit code 1 ; un `file.js` que
-`cesia build` n'a pas écrit reste, et le build s'arrête avec le code 2. Voir [Compiler vers WebAssembly](wasm.md).
+Compile un programme vers WebAssembly : `file.wasm`, le module, `file.js`, son loader (le script qui le charge et le
+lance), et `file.sites`, les places de ses erreurs, à côté de `file.ce`, avec les modules JavaScript qu'il appelle par
+`js.Call` ; `node file.js` le lance, et une page le lance avec `<script type="module" src="file.js">`. Ce qu'il ne
+compile pas encore est une erreur à sa place, avec l'exit code 1 ; un `file.js` que `cesia build` n'a pas écrit reste,
+et le build s'arrête avec le code 2. Voir [Compiler vers WebAssembly](wasm.md).
 
 ## cesia fmt
 

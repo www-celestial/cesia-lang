@@ -141,7 +141,7 @@ function park (fib, mode) {
     kick()
   })
 }
-const nojspi = () => { throw new Error('Fibers need JavaScript Promise Integration: Chrome 137, Firefox 153, Safari 27, Node 25 or later.') }
+const nojspi = () => { throw new Error('Fibers need JavaScript Promise Integration: Chrome 137, Firefox 153, Safari 27 or Node 26.') }
 
 // Values to JavaScript and back, through the exports of the module and its second page of memory.
 function bytesOf (v) {

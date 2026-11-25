@@ -90,10 +90,11 @@ alone give 0.
 cesia build --target wasm file.ce
 ```
 
-Compiles a program to WebAssembly: `file.wasm`, the module, and `file.js`, its loader, beside `file.ce`; `node file.js`
-runs it, and a page runs it with `<script type="module" src="file.js">`. What this first slice doesn't compile is an error
-at its place, with the exit code 1; a `file.js` that `cesia build` didn't write stays, and the build stops with the code
-2. See [Compiling to WebAssembly](wasm.md).
+Compiles a program to WebAssembly: `file.wasm`, the module, `file.js`, its loader, and `file.sites`, the places of its
+errors, beside `file.ce`, with the JavaScript modules that it calls by `js.Call`; `node file.js` runs it, and a page runs
+it with `<script type="module" src="file.js">`. What it doesn't compile yet is an error at its place, with the exit code
+1; a `file.js` that `cesia build` didn't write stays, and the build stops with the code 2. See
+[Compiling to WebAssembly](wasm.md).
 
 ## cesia fmt
 
