@@ -16,7 +16,12 @@
 const node = typeof process === 'object' && process.versions != null && process.versions.node != null
 const url = new URL('@WASM@', import.meta.url)
 const readFileSync = node ? (await import('node:fs')).readFileSync : null
-const bytes = node ? readFileSync(url) : await (await fetch(url)).arrayBuffer()
+// The module and the JavaScript modules that js.Call names, all asked for at once: a page compiles the module while its
+// bytes arrive, when the server says application/wasm, and the browser loads those modules meanwhile.
+const compiled = node ? WebAssembly.compile(readFileSync(url)) : fetch(url).then(r =>
+  /^application\/wasm/.test(r.headers.get('content-type') || '') ? WebAssembly.compileStreaming(r) : r.arrayBuffer().then(b => WebAssembly.compile(b)))
+const scripts = new Map(@SCRIPTS@.map(s => [s, import(new URL(s, import.meta.url).href)]))
+for (const p of scripts.values()) p.catch(() => {})
 const SCRATCH = 16384, CALLS = 20480, WINDOW = 65536, SLICE = 8
 const KINDS = ['syntax', 'name', 'type', 'index', 'field', 'math', 'permission', 'user', 'io']
 const jspi = typeof WebAssembly.Suspending === 'function'
@@ -268,12 +273,12 @@ const rt = {
   first (fib) { main = current = fib },
 }
 
-module = await WebAssembly.compile(bytes)
+module = await compiled
 const imports = { rt, Math }
 for (const imp of WebAssembly.Module.imports(module)) {
   if (imp.module === 'rt' || imp.module === 'Math') continue
   if (!imports[imp.module]) imports[imp.module] = {}
-  const m = own[imp.module] || await import(new URL(imp.module, import.meta.url).href)
+  const m = own[imp.module] || await (scripts.get(imp.module) || import(new URL(imp.module, import.meta.url).href))
   const f = m[imp.name]
   if (typeof f !== 'function') throw new Error('js.Call: ' + imp.module + ' has no function ' + imp.name + '.')
   imports[imp.module][imp.name] = args => encode(f(...decode(args)))
