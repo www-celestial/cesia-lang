@@ -574,6 +574,37 @@ sine of 180 degrees is 1.2e-16 there, in place of 0, an error of an infinity of 
 and errs by 1 ulp at most elsewhere, where the radians are rounded once. [math.Log10] is the weak one of the C library,
 2 ulps near 1, as everywhere.
 
+### What they cost
+
+On a million floats, in nanoseconds per element, medians of 5 runs alternated with numpy 2.5 and R 4.6 (Intel Core
+i7-4720HQ, 4 cores, load average 2.1 to 2.6): Cesia's call on the array, on all cores and on one, and a loop of
+machine code that calls the function on each element.
+
+| Function | Cesia, 4 cores | Cesia, 1 core | loop | numpy | R |
+|---|---|---|---|---|---|
+| [math.Log10] | 5.7 | 11.3 | 12.4 | 9.7 | 17.0 |
+| [math.Log1p] | 6.0 | 11.8 | 12.5 | 9.8 | 16.0 |
+| [math.Expm1] | 6.5 | 13.8 | 15.3 | 12.1 | 17.0 |
+| [math.Cbrt] | 6.1 | 21.3 | 55.6 | 20.4 | 35.0 |
+| [math.Tanh] | 6.3 | 18.4 | 19.0 | 16.3 | 20.0 |
+| [math.Asinh] | 6.9 | 24.6 | 26.2 | 23.6 | 26.0 |
+| [math.SinDegrees] | 7.0 | 23.7 | 29.1 | 14.1 | 23.0 |
+| [math.Radians] | 1.9 | 1.7 | 3.9 | 1.8 | 6.0 |
+| [math.Hypot] | 3.2 | 9.2 | 12.6 | 8.8 | 29.0 |
+| [math.Clamp] | 2.1 | 1.9 | 76.6 | 1.5 | 7.0 |
+| [math.IsNan] | 3.1 | 6.0 | 3.5 | 0.6 | 2.0 |
+| [num.ReplaceNan] | 3.4 | 3.5 | 44.3 | 5.6 | 4.0 |
+| [math.LogSumExp] | 8.9 | 8.8 | | 24.5 | 12.0 |
+
+On one core, Cesia takes 1.04 to 1.21 times numpy's time for the functions of the C library, which both call, and as long for
+[math.Cbrt], its own and correctly rounded; on four, it is ahead. [math.LogSumExp] is three times as fast as scipy's,
+which makes the array of the differences, then of their exponentials, before it sums them. numpy wins three: its
+`isnan` writes a byte for each element, where Cesia's array of booleans holds a word of 8 bytes; its `clip` takes the
+SIMD instructions of the processor; and `np.sin(np.radians(x))` skips the exact reduction of [math.SinDegrees], whose
+`fmod` and `round` take 10 of its 24 ns, at the price of `0.0` for the sine of 180 degrees. A loop that calls
+[math.Cbrt], [math.Clamp], [num.ReplaceNan], [math.Step], [math.Epsilon] or [math.LogSumExp] stays in the interpreter,
+as machine code calls no function written in OCaml; give it the array in one call.
+
 ## Arrays and statistics: std/num
 
 [std/num] is numerical computing in the spirit of numpy: an array is a list or a matrix of floats, and the operators of
