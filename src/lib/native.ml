@@ -1161,8 +1161,8 @@ let packages =
       math1 "Epsilon" Kernels.spacing Kernels.Spacing;
       "Hypot", nat ~ret:(function [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "Hypot" 2 2 (fun ctx a -> Arith.hypot ctx a.(0) a.(1));
       "Clamp", nat ~params:[| "lo"; "hi"; "x" |] ~ret:(function [| _; _; TFA |] -> TFA | _ -> TA) "Clamp" 3 3 clamp;
-      "Step", nat ~params:[| "x"; "zero" |] ~ret:(function [| TFA |] | [| TFA; _ |] -> TFA | _ -> TA) "Step" 1 2 step;
-      "NextAfter", nat "NextAfter" 2 2 (fun ctx a ->
+      "Step", nat ~params:[| "x"; "zero" |] ~ret:(function [| TFA |] | [| TFA; _ |] -> TFA | [| TI | TF |] | [| (TI | TF); _ |] -> TF | _ -> TA) "Step" 1 2 step;
+      "NextAfter", nat ~ret:(function [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "NextAfter" 2 2 (fun ctx a ->
           Arith.broadcast ctx (fun ctx x toward ->
               match x, toward with
               | Missing, _ | _, Missing -> Missing
