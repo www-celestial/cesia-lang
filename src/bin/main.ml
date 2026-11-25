@@ -334,8 +334,8 @@ let test args =
   let t =
     match load_plugin "testing" "cesia_testing.cmxs", !Testing.runner with
     | Ok (), Some t -> t
-    | Error m, _ -> bad_option (Messages.no_test_plugin m)
-    | Ok (), None -> bad_option (Messages.no_test_plugin "it gave no runner")
+    | Error m, _ -> bad_option (Messages.no_plugin "test" "cesia_testing.cmxs" m)
+    | Ok (), None -> bad_option (Messages.no_plugin "test" "cesia_testing.cmxs" "it gave no runner")
   in
   let found = if !worker || only <> None then [] else try t.units path with Sys_error m -> bad_option m in
   (* A folder of skip runs only when the path given is in it. *)
@@ -410,21 +410,11 @@ let engine_suffix () =
   let fp = if Arch.fp then "+fp" else "" and flambda = if Arch.flambda then "+flambda" else "" in
   Printf.sprintf "1-ocaml%s%s%s-%s-%s" Arch.ocaml fp flambda system (if Arch.name = "amd64" then "x86_64" else Arch.name)
 
-(* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it, by the plugin cesia_wasm.cmxs, which
-   programs never pay for. *)
-let build = function
-  | [ "--target"; "wasm"; file ] ->
-    let b =
-      match load_plugin "wasm" "cesia_wasm.cmxs", !Loader.builder with
-      | Ok (), Some b -> b
-      | Error m, _ -> bad_option (Messages.no_wasm_plugin m)
-      | Ok (), None -> bad_option (Messages.no_wasm_plugin "it gave no compiler")
-    in
-    if not (Sys.file_exists file) then bad_option (Messages.cant_read file);
-    let w = Runtime.create_world (with_default_memory Runtime.default_options) in
-    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
-    exit (Loader.guarded w (fun ctx -> Loader.init w; b ctx file; 0))
-  | _ -> usage ()
+(* cesia build: all of it in the plugin cesia_wasm.cmxs, which programs never pay for. *)
+let build args =
+  match load_plugin "wasm" "cesia_wasm.cmxs", !Loader.builder with
+  | Ok (), Some b -> exit (b args)
+  | r, _ -> bad_option (Messages.no_plugin "build" "cesia_wasm.cmxs" (match r with Error m -> m | Ok () -> "it gave no compiler"))
 
 (* The plugin of Cesia_v1, once, its code open to the engines: it loads them. *)
 let interface = lazy (load_plugin ~global:true "native" "cesia_native.cmxs")

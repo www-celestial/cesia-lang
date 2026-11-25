@@ -80,11 +80,8 @@ val call_caught : ctx -> t -> t array -> (t, exn) result
     [Ok], or an [Err] whose text goes to the errors, and then the code is 1. A tool sees no project's [std/]. *)
 val run_tool : world -> string -> string list -> int
 
-(** While true, a package is prepared but not run, as cesia check reads it; [prepared_file] sees each of its files, in
-    the order the interpreter would run them. *)
+(** cesia build, set by its plugin cesia_wasm.cmxs: its arguments to the exit code. While [checking], a package is
+    prepared but not run, as cesia check reads it, and [prepared_file] sees each of its files in the order of a run. *)
+val builder : (string list -> int) option ref
 val checking : bool ref
-
 val prepared_file : (int * int * Ast.func * Ast.layout -> unit) ref
-
-(** cesia build --target wasm: set by the plugin cesia_wasm.cmxs, it compiles a file and the packages it uses. *)
-val builder : (ctx -> string -> unit) option ref

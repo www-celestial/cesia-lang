@@ -6,7 +6,7 @@
  (name cesia_wasm)
  (flags
   (:standard -open Cesia))
- (libraries cesia))
+ (libraries cesia cesia_sys))
 
 (copy_files#
  (files ../web/*.ml))

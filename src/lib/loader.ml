@@ -404,9 +404,8 @@ let resolve_files ?report ?log ?outer w ~lookup ~first ~old parsed =
 (* cesia check reads packages as use does, but runs none. *)
 let checking = ref false
 
-(* cesia build: the compiler, set by the plugin cesia_wasm.cmxs, and what sees each file of a package prepared while
-   [checking], in the order the interpreter would run them. *)
-let builder : (ctx -> string -> unit) option ref = ref None
+(* cesia build, set by its plugin; what sees each file prepared while [checking], in the order of a run. *)
+let builder : (string list -> int) option ref = ref None
 let prepared_file : (int * int * Ast.func * Ast.layout -> unit) ref = ref ignore
 
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as

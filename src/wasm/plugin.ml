@@ -1,4 +1,6 @@
-(* The plugin's entry: loaded by the binary for cesia build, it gives the binary the compiler. *)
+(* The plugin's entry: loaded by the binary for cesia build, which gives it its arguments. *)
+
+let stop text = prerr_endline ("cesia: " ^ text); exit 2
 
 (* Loads a program as cesia run does, but runs none of it: each file of the packages it uses is seen as it would run,
    then the file itself. *)
@@ -29,8 +31,7 @@ let build (ctx : Types.ctx) path =
   let first s = match String.index_opt s '\n' with Some i -> String.sub s 0 i | None -> s in
   let js_path = base ^ ".js" in
   if Sys.file_exists js_path && first (In_channel.with_open_bin js_path In_channel.input_all) <> first glue then begin
-    prerr_endline ("cesia: " ^ Messages.wasm_overwrite js_path);
-    exit 2
+    stop (Messages.wasm_overwrite js_path)
   end;
   Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
   let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
@@ -38,4 +39,14 @@ let build (ctx : Types.ctx) path =
   let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
   Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js)
 
-let () = Loader.builder := Some build
+(* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it; the exit code. *)
+let main = function
+  | [ "--target"; "wasm"; file ] ->
+    if not (Sys.file_exists file) then stop (Messages.cant_read file);
+    let o = Runtime.default_options in
+    let w = Runtime.create_world { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory (Cesia_sys.Sys_modules.ram ()) } } in
+    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+    Loader.guarded w (fun ctx -> Loader.init w; build ctx file; 0)
+  | _ -> prerr_endline Messages.usage; 2
+
+let () = Loader.builder := Some main
