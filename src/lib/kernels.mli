@@ -1,7 +1,7 @@
 (** Loops over [F] and [I] storage, with no boxed value. *)
 
-(** [Pow] is OCaml's [**], the C library's pow, as [Arith.pow] on one cell: the same bits. *)
-type op = Add | Sub | Mul | Div | Pow
+(** [Pow] is OCaml's [**], the C library's pow, as [Arith.pow] on one cell: the same bits; [Hypot], the C library's hypot. *)
+type op = Add | Sub | Mul | Div | Pow | Hypot
 
 val both : op -> floatarray -> floatarray -> floatarray
 val right : op -> floatarray -> float -> floatarray
@@ -23,11 +23,39 @@ type test = Lt | Le | Eq | Ne
 val mask_ints : test -> int array * int -> int array * int -> Types.t array -> unit
 val mask_floats : test -> floatarray * int -> floatarray * int -> Types.t array -> unit
 (** The functions of one float that [map] applies to each cell. *)
-type fn = Neg | Abs | Sqrt | Exp | Log | Sin | Cos | Tan | Asin | Acos | Atan
+type fn = Neg | Abs | Sqrt | Exp | Log | Sin | Cos | Tan | Asin | Acos | Atan | Log10 | Log2 | Log1p | Expm1 | Cbrt | Sinh
+  | Cosh | Tanh | Asinh | Acosh | Atanh | Sind | Cosd | Tand | Spacing
 
-(** [map fn x]: [fn] of each cell of [x], in a new array: OCaml's [Float.neg], [Float.abs] and the C library's sqrt, exp,
-    log, sin, cos, tan, asin, acos and atan, as on one float. *)
+(** The sine, cosine and tangent of an angle in degrees, reduced exactly to [-45, 45] first: 0 and 1 exact at the multiples
+    of 90, 1/2 at 30, 1 for the tangent at 45; a zero has the sign of C23's sinpi, cospi and tanpi. *)
+val sind : float -> float
+val cosd : float -> float
+val tand : float -> float
+
+(** The distance from |x| to the next float above it, MATLAB's eps(x); NaN for an infinity. *)
+val spacing : float -> float
+
+(** The cube root, correctly rounded: the nearest float to the real root, where the C library's is up to 3 ulps away. *)
+val cbrt : float -> float
+
+(** [map fn x]: [fn] of each cell of [x], in a new array: OCaml's [Float.neg], [Float.abs], the C library's sqrt, exp,
+    log, sin, cos, tan, asin, acos, atan, log10, log2, log1p, expm1, sinh, cosh, tanh, asinh, acosh and atanh, as on
+    one float, and [cbrt], [sind], [cosd], [tand] and [spacing]. *)
 val map : fn -> floatarray -> floatarray
+
+(** log(exp x + exp y), numpy's logaddexp, without overflow. *)
+val log_add_exp : float -> float -> float
+
+(** log(sum(exp x)) of the cells, without overflow, small terms kept beside the largest: -inf for none. *)
+val log_sum_exp : floatarray -> float
+
+(** What [one] does to a float: keep it in [lo, hi], a NaN kept; NaN made [by]; the step of Heaviside, [zero] at 0. *)
+type pick = Clamp of float * float | Nan of float | Step of float
+
+val one : pick -> float -> float
+
+(** [one] of each cell, in a new array. *)
+val pick : pick -> floatarray -> floatarray
 val sum : floatarray -> float
 
 (** [dot x y]: the sum of the products of [x] and [y], of one length, in the order of [sum], so that it gives the bits

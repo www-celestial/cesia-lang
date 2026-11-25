@@ -198,7 +198,9 @@ let rec nest (b : block) =
   !d
 
 let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "cos"; "Tan", "tan"; "Asin", "asin";
-             "Acos", "acos"; "Atan", "atan" ]
+             "Acos", "acos"; "Atan", "atan"; "Log10", "log10"; "Log2", "log2"; "Log1p", "log1p"; "Expm1", "expm1";
+             "Sinh", "sinh"; "Cosh", "cosh"; "Tanh", "tanh"; "Asinh", "asinh"; "Acosh", "acosh";
+             "Atanh", "atanh" ]
 
 let reg st k = Vec.push st.kinds k
 let block st = Vec.push st.blocks { Ir.ins = []; term = Return (Int 0) }
@@ -1020,6 +1022,11 @@ and call_expr st e (call : call) =
        (* The floor modulo by a positive constant d is in 0..d - 1. *)
        proves st r (match name, y with "Mod", (Ir.Int d, _) when d > 0 -> Some (0, d - 1) | _ -> None);
        r
+     | Native { nname = "Hypot"; _ } ->
+       let a = args_of call 2 in
+       let x = to_float st (expr st a.(0)) in
+       let y = to_float st (expr st a.(1)) in
+       fresh st Kfloat (fun r -> Op (Fhypot, r, x, y, -1))
      | Native { nname; f1 = Some _; _ } when List.mem_assoc nname math ->
        let a = args_of call 1 in
        let x = to_float st (expr st a.(0)) in

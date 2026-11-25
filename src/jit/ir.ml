@@ -22,8 +22,8 @@ type cmp = Eq | Ne | Lt | Le | Gt | Ge
 let flip = function Lt -> Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
 
 (** [Add], [Sub], [Mul], [Div], [Mod] on integers, checked as the interpreter checks them; [Div] and [Mod] as Cesia's
-    natives of those names. The others on floats; [Fpow] is C's [pow], as OCaml's [**]. *)
-type op = Add | Sub | Mul | Div | Mod | Fadd | Fsub | Fmul | Fdiv | Fpow
+    natives of those names. The others on floats; [Fpow] is C's [pow], as OCaml's [**], [Fhypot] C's [hypot]. *)
+type op = Add | Sub | Mul | Div | Mod | Fadd | Fsub | Fmul | Fdiv | Fpow | Fhypot
 
 type ins =
   | Move of int * value
@@ -34,7 +34,7 @@ type ins =
   | Neg of int * value * int
   | Fneg of int * value
   | Float_of of int * value
-  | Math of string * int * value  (** a function of C's libm: sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs *)
+  | Math of string * int * value  (** a function of one float of C's libm, by its name: sqrt, exp, log, sin, ..., fabs *)
   | Draw of int * int
       (** [Draw (r, c)]: a float from 0 included to 1 excluded, one step of std/random's generator, whose state is the
           cell of the array of floats of the constant [c] ([Rand.cell]): random.Float's step, the same bits. The state

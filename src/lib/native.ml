@@ -218,6 +218,61 @@ let math1 name f kernel =
   Native { nname = name; perm = None; params = [||]; min_args = 1; max_args = 1; ret_ty = float_of_number;
            run = (fun ctx a -> go ctx a.(0)); f1 = Some f; i2 = None; gives_result = false }
 
+(* math.Clamp, math.Step and num.ReplaceNan: [one] of a number, a float array in one loop, another array cell by cell;
+   [missing] for missing. *)
+let picked ?(missing = Missing) name p one ctx v =
+  let rec go ctx v =
+    match v with
+    | Int _ | Float _ -> one v
+    | Missing -> missing
+    | Array ({ store = F _; _ } as x) ->
+      Runtime.build ctx (x.rows * x.cols);
+      (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.pick p d)) | _ -> v)
+    | Array _ -> elementwise ctx name go v
+    | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
+  in
+  go ctx v
+
+let float_arg ctx name v =
+  match v with Int i -> float_of_int i | Float x -> x | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
+
+(* A bound that x passes is given back as it is: an integer stays one. *)
+let clamp ctx (a : t array) =
+  let lo = float_arg ctx "Clamp" a.(0) and hi = float_arg ctx "Clamp" a.(1) in
+  if not (lo <= hi) then Runtime.fail ctx Type (Messages.clamp_bounds (Value.describe a.(0)) (Value.describe a.(1)));
+  picked "Clamp" (Kernels.Clamp (lo, hi))
+    (fun v -> if Arith.lt ctx v a.(0) = True then a.(0) else if Arith.gt ctx v a.(1) = True then a.(1) else v) ctx a.(2)
+
+let step ctx (a : t array) =
+  let p = Kernels.Step (if Array.length a > 1 then float_arg ctx "Step" a.(1) else 0.5) in
+  picked "Step" p (fun v -> Float (Kernels.one p (float_arg ctx "Step" v))) ctx a.(0)
+
+let replace_nan ctx (a : t array) =
+  let p = Kernels.Nan (float_arg ctx "ReplaceNan" a.(0)) in
+  picked ~missing:a.(0) "ReplaceNan" p (function Float x when Float.is_nan x -> a.(0) | v -> v) ctx a.(1)
+
+(* math.LogSumExp: of the cells of an array, or of two numbers, element by element for arrays. *)
+let log_sum_exp ctx (a : t array) =
+  if Array.length a = 2 then
+    Arith.broadcast ctx
+      (fun ctx x y ->
+         match x, y with
+         | Missing, _ | _, Missing -> Missing
+         | _ -> Float (Kernels.log_add_exp (float_arg ctx "LogSumExp" x) (float_arg ctx "LogSumExp" y)))
+      a.(0) a.(1)
+  else
+    match a.(0) with
+    | Array ({ store = F _; _ } as x) ->
+      Runtime.pay ctx (x.rows * x.cols);
+      (match (Value.trim x).store with F d -> Float (Kernels.log_sum_exp d) | _ -> Missing)
+    | Array x ->
+      let n = x.rows * x.cols in
+      Runtime.pay ctx n;
+      let cells = Array.init n (Value.elt x) in
+      if Array.mem Missing cells then Missing
+      else Float (Kernels.log_sum_exp (Float.Array.map_from_array (float_arg ctx "LogSumExp") cells))
+    | v -> Runtime.fail ctx Type (Messages.need_array "LogSumExp" (Value.describe v))
+
 (* floor, ceil, round: an integer stays an integer. *)
 let rounding name f =
   let rec go ctx v =
@@ -1097,7 +1152,24 @@ let packages =
       "Abs", nat ~ret:same_number "Abs" 1 1 (fun ctx a -> abs_value ctx a.(0));
       math1 "Sqrt" sqrt Kernels.Sqrt; math1 "Exp" exp Kernels.Exp; math1 "Log" log Kernels.Log; math1 "Sin" sin Kernels.Sin;
       math1 "Cos" cos Kernels.Cos; math1 "Tan" tan Kernels.Tan; math1 "Asin" asin Kernels.Asin;
-      math1 "Acos" acos Kernels.Acos; math1 "Atan" atan Kernels.Atan;
+      math1 "Acos" acos Kernels.Acos; math1 "Atan" atan Kernels.Atan; math1 "Log10" log10 Kernels.Log10;
+      math1 "Log2" Float.log2 Kernels.Log2; math1 "Log1p" log1p Kernels.Log1p; math1 "Expm1" expm1 Kernels.Expm1;
+      math1 "Cbrt" Kernels.cbrt Kernels.Cbrt; math1 "Sinh" sinh Kernels.Sinh; math1 "Cosh" cosh Kernels.Cosh;
+      math1 "Tanh" tanh Kernels.Tanh; math1 "Asinh" Float.asinh Kernels.Asinh; math1 "Acosh" Float.acosh Kernels.Acosh;
+      math1 "Atanh" Float.atanh Kernels.Atanh; math1 "SinDegrees" Kernels.sind Kernels.Sind;
+      math1 "CosDegrees" Kernels.cosd Kernels.Cosd; math1 "TanDegrees" Kernels.tand Kernels.Tand;
+      math1 "Epsilon" Kernels.spacing Kernels.Spacing;
+      "Hypot", nat ~ret:(function [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "Hypot" 2 2 (fun ctx a -> Arith.hypot ctx a.(0) a.(1));
+      "Clamp", nat ~params:[| "lo"; "hi"; "x" |] ~ret:(function [| _; _; TFA |] -> TFA | _ -> TA) "Clamp" 3 3 clamp;
+      "Step", nat ~params:[| "x"; "zero" |] ~ret:(function [| TFA |] | [| TFA; _ |] -> TFA | _ -> TA) "Step" 1 2 step;
+      "NextAfter", nat "NextAfter" 2 2 (fun ctx a ->
+          Arith.broadcast ctx (fun ctx x toward ->
+              match x, toward with
+              | Missing, _ | _, Missing -> Missing
+              | _ ->
+                let x = float_arg ctx "NextAfter" x and t = float_arg ctx "NextAfter" toward in
+                Float (if Float.is_nan x || Float.is_nan t then nan else if t > x then Float.succ x else if t < x then Float.pred x else t))
+            a.(0) a.(1));
       rounding "Floor" floor; rounding "Ceil" ceil; rounding "Round" Float.round;
       "Sign", nat ~ret:same_number "Sign" 1 1 (fun ctx a -> sign ctx a.(0));
       "Atan2", nat "Atan2" 2 2 (fun ctx a ->
@@ -1111,10 +1183,17 @@ let packages =
                   | _ -> Runtime.fail ctx Type (Messages.need_number "Atan2" (Value.describe v))
                 in
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
+      "LogSumExp", nat ~params:[| "a"; "b" |] ~ret:(function [| TFA |] | [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "LogSumExp" 1 2 log_sum_exp;
       "Pi", Float (4. *. atan 1.);
+      "E", Float 2.718281828459045;
       "Nan", Float nan;
-      "Inf", Float infinity ];
-    "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
+      "Inf", Float infinity;
+      "MaxFloat", Float Float.max_float;
+      "MinFloat", Float Float.min_float;
+      "MaxInt", Int max_int;
+      "MinInt", Int min_int ];
+    "num", [ "ReplaceNan", nat ~params:[| "by"; "xs" |] ~ret:(function [| _; TFA |] -> TFA | _ -> TA) "ReplaceNan" 2 2 replace_nan;
+             "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
     "optimize",
     [ "direction", nat ~ret:fa_size "direction" 7 7 lbfgs_direction;
       "dot", nat ~ret:(fun _ -> TF) "dot" 2 2 dot_floats;

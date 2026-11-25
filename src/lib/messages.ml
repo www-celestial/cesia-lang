@@ -124,6 +124,7 @@ let need_number name a =
   let text = Printf.sprintf "%s needs numbers, not %s." name a in
   if a = "function <anonymous>" then hinted text "\"it\" belongs to the nearest call. Write x -> ... to use it further out."
   else plain text
+let clamp_bounds lo hi = plain (Printf.sprintf "Clamp needs two numbers lo <= hi, not %s and %s." lo hi)
 let it_assign = plain "\"it\" is a reserved name and can't be assigned."
 let no_field name = plain (Printf.sprintf "This struct has no field \"%s\"." name)
 let named_field sname name = plain (Printf.sprintf "%s has no field \"%s\"." sname name)
