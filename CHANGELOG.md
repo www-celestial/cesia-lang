@@ -248,6 +248,14 @@
 
 ### Fixes
 
+- A server no longer slows down as it serves. Once the large allocations reserved since the last full checkpoint passed
+  a quarter of the memory limit (with the default limit, a few minutes of a busy server), every reservation after it
+  asked OCaml for the size of its heap, `Gc.quick_stat`, which took a third to a half of a request's time, and only a
+  full checkpoint, which a request's fiber never reaches, started the count again: a plaintext route of `std/http` fell
+  from 29,300 to 14,900 requests a second and stayed there, 30 to 64 µs of CPU a request, with no database at all, and
+  a TechEmpower app on Cepheus the same. The heap is now looked at once each time a quarter is crossed, as was meant:
+  30,100, then 35,500 a second over the same 19 minutes (12 rounds alternated with the binary before and a Go server
+  as the control, load 3.7 to 11.8).
 - An error of the system that a native lets out instead of an Err, a `Sys_error` or an error of Unix, is a panic of the
   kind io at the native's call, which stops its fiber alone, where it ended the program with a line naming no place, or
   with an internal error. No native of `std/` is known to let one out: it is a safety net, and it costs nothing, caught

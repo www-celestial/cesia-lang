@@ -299,12 +299,16 @@ let cells ctx rows cols =
   then limit "memory" ctx.site;
   rows * cols
 
-(* To call before allocating n words. The heap is only looked at every quarter of the limit. *)
+(* To call before allocating n words. The heap is only looked at every quarter of the limit: once each time the words
+   reserved since the last full collection or full checkpoint pass a multiple of it. They go on counting past it, since
+   the heap's count sees them only at the next cycle; a look at each reservation past the first quarter cost a server a
+   Gc.quick_stat each, a third to a half of its time, since its fibers, a request each, never reach a full checkpoint. *)
 let reserve ctx n =
   let w = ctx.w in
   if w.limits.memory_words <> max_int then begin
-    w.big_words <- w.big_words + n;
-    if w.big_words >= w.limits.memory_words / 4 then check_memory ctx n (site_top ctx)
+    let quarter = max 1 (w.limits.memory_words / 4) and before = w.big_words in
+    w.big_words <- before + n;
+    if w.big_words / quarter > before / quarter then check_memory ctx n (site_top ctx)
   end
 
 let pay ctx n = charge ctx ((n / 16) + 1)
