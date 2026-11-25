@@ -240,7 +240,43 @@ let used_types m =
 
 let iteri f v = for i = 0 to Vec.length v - 1 do f i (Vec.get v i) done
 
+(* Only what the exports reach: the functions, imports, globals and data segments that the exported functions name,
+   and those these name, through calls, ref.func, global.get/set, a global's initial value and the instructions that
+   read a segment; the rest is left out of the module. *)
+let prune m =
+  let fs = Hashtbl.create 256 and gs = Hashtbl.create 256 and ds = Hashtbl.create 64 in
+  let bodies = Hashtbl.create 1024 and inits = Hashtbl.create 256 in
+  Vec.iter (fun f -> Hashtbl.replace bodies f.fname f.body) m.funcs;
+  Vec.iter (fun (n, _, _, init) -> Hashtbl.replace inits n init) m.globals;
+  (* No Stack: the binary that loads this plugin doesn't link it. *)
+  let todo = ref [] in
+  let rec ins = function
+    | Call n | Ret_call n | Rfunc n -> if not (Hashtbl.mem fs n) then begin Hashtbl.replace fs n (); todo := n :: !todo end
+    | Gget g | Gset g ->
+      if not (Hashtbl.mem gs g) then begin
+        Hashtbl.replace gs g ();
+        List.iter ins (Option.value ~default:[] (Hashtbl.find_opt inits g))
+      end
+    | Gcd (_, _, d) | Data_drop d | Mem_init d -> Hashtbl.replace ds d ()
+    | Block (_, is) | Loop (_, is) -> List.iter ins is
+    | If (_, y, n) -> List.iter ins y; List.iter ins n
+    | _ -> ()
+  in
+  Vec.iter (fun (_, f) -> ins (Call f)) m.exports;
+  while !todo <> [] do
+    let n = List.hd !todo in
+    todo := List.tl !todo;
+    List.iter ins (Option.value ~default:[] (Hashtbl.find_opt bodies n))
+  done;
+  let keep v p = let w = Vec.create () in Vec.iter (fun x -> if p x then Vec.add_last w x) v; w in
+  { m with
+    imports = keep m.imports (fun (n, _, _, _) -> Hashtbl.mem fs n);
+    funcs = keep m.funcs (fun f -> Hashtbl.mem fs f.fname);
+    globals = keep m.globals (fun (n, _, _, _) -> Hashtbl.mem gs n);
+    datas = keep m.datas (fun (n, _) -> Hashtbl.mem ds n) }
+
 let write m =
+  let m = prune m in
   let used = used_types m in
   let next = ref 0 in
   renumber := Array.map (fun u -> if u then (incr next; !next - 1) else -1) used;
