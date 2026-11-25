@@ -158,6 +158,10 @@ let s64 b (n : int64) =
 let s b n = s64 b (Int64.of_int n)
 let name b s = u b (String.length s); Buffer.add_string b s
 
+(* The new index of each type that the module uses, while it is written; the others are left out. *)
+let renumber = ref [||]
+let tyx i = if Array.length !renumber = 0 then i else (!renumber).(i)
+
 let heap b = function
   | Func -> Buffer.add_char b '\x70'
   | Extern -> Buffer.add_char b '\x6f'
@@ -168,7 +172,7 @@ let heap b = function
   | Array -> Buffer.add_char b '\x6a'
   | Nofunc -> Buffer.add_char b '\x73'
   | None_ -> Buffer.add_char b '\x71'
-  | T i -> s b i
+  | T i -> s b (tyx i)
 
 let vt b (t : vt) =
   match t with
@@ -199,9 +203,48 @@ let section out id f =
 
 exception Unknown of string
 
+(* The immediates of a 0xFB instruction that are types: the first of those that make or touch a struct or an array,
+   both of array.copy. *)
+let type_imm op j = ((op <= 14 || op = 16 || op = 18) && j = 0) || (op = 17 && j <= 1)
+
+(* The types that the imports, functions and globals use, and those these use: the others need not be written. *)
+let used_types m =
+  let used = Array.make (Vec.length m.types) false in
+  let rec mark i =
+    if not used.(i) then begin
+      used.(i) <- true;
+      (match Vec.get m.types i with
+       | Fn (ps, rs) -> List.iter vt_mark ps; List.iter vt_mark rs
+       | St fs -> List.iter field_mark fs
+       | Ar f -> field_mark f);
+      match Hashtbl.find_opt m.supers i with Some (_, ps) -> List.iter mark ps | None -> ()
+    end
+  and heap_mark = function T i -> mark i | _ -> ()
+  and vt_mark = function Ref (_, h) -> heap_mark h | _ -> ()
+  and field_mark (st, _) = match st with S t -> vt_mark t | I8 -> () in
+  let bt_mark = function Btype t -> mark t | Bval v -> vt_mark v | Bnone -> () in
+  let rec ins = function
+    | Block (bt, is) | Loop (bt, is) -> bt_mark bt; List.iter ins is
+    | If (bt, y, n) -> bt_mark bt; List.iter ins y; List.iter ins n
+    | Call_ref t -> mark t
+    | Br_on_cast (_, _, h1, _, h2) -> heap_mark h1; heap_mark h2
+    | Rnull h | Test (_, h) | Cast (_, h) -> heap_mark h
+    | Gc (op, imms) -> List.iteri (fun j t -> if type_imm op j then mark t) imms
+    | Gcd (_, t, _) -> mark t
+    | _ -> ()
+  in
+  Vec.iter (fun (_, _, _, t) -> mark t) m.imports;
+  Vec.iter (fun f -> mark f.ftype; List.iter vt_mark f.locals; List.iter ins f.body) m.funcs;
+  Vec.iter (fun (_, t, _, init) -> vt_mark t; List.iter ins init) m.globals;
+  used
+
 let iteri f v = for i = 0 to Vec.length v - 1 do f i (Vec.get v i) done
 
 let write m =
+  let used = used_types m in
+  let next = ref 0 in
+  renumber := Array.map (fun u -> if u then (incr next; !next - 1) else -1) used;
+  Fun.protect ~finally:(fun () -> renumber := [||]) (fun () ->
   let fidx = Hashtbl.create 256 in
   iteri (fun i (n, _, _, _) -> Hashtbl.replace fidx n i) m.imports;
   let ni = Vec.length m.imports in
@@ -212,7 +255,7 @@ let write m =
   iteri (fun i (n, _) -> Hashtbl.replace didx n i) m.datas;
   let find t n = match Hashtbl.find_opt t n with Some i -> i | None -> raise (Unknown n) in
   let refs = Hashtbl.create 64 in
-  let bt b = function Bnone -> Buffer.add_char b '\x40' | Bval t -> vt b t | Btype i -> s b i in
+  let bt b = function Bnone -> Buffer.add_char b '\x40' | Bval t -> vt b t | Btype i -> s b (tyx i) in
   let rec ins b = function
     | Op o -> Buffer.add_char b (Char.chr o)
     | I32 n -> Buffer.add_char b '\x41'; s64 b (Int64.of_int32 (Int32.of_int n))
@@ -226,7 +269,7 @@ let write m =
     | Call n -> Buffer.add_char b '\x10'; u b (find fidx n)
     | Ret_call n -> Buffer.add_char b '\x12'; u b (find fidx n)
     | Rfunc n -> Hashtbl.replace refs (find fidx n) (); Buffer.add_char b '\xd2'; u b (find fidx n)
-    | Call_ref t -> Buffer.add_char b '\x14'; u b t
+    | Call_ref t -> Buffer.add_char b '\x14'; u b (tyx t)
     | Block (t, is) -> Buffer.add_char b '\x02'; bt b t; List.iter (ins b) is; Buffer.add_char b '\x0b'
     | Loop (t, is) -> Buffer.add_char b '\x03'; bt b t; List.iter (ins b) is; Buffer.add_char b '\x0b'
     | If (t, y, n) ->
@@ -246,8 +289,8 @@ let write m =
       heap b h1;
       heap b h2
     | Rnull h -> Buffer.add_char b '\xd0'; heap b h
-    | Gc (op, imms) -> Buffer.add_char b '\xfb'; u b op; List.iter (u b) imms
-    | Gcd (op, t, d) -> Buffer.add_char b '\xfb'; u b op; u b t; u b (find didx d)
+    | Gc (op, imms) -> Buffer.add_char b '\xfb'; u b op; List.iteri (fun j x -> u b (if type_imm op j then tyx x else x)) imms
+    | Gcd (op, t, d) -> Buffer.add_char b '\xfb'; u b op; u b (tyx t); u b (find didx d)
     | Test (null, h) -> Buffer.add_char b '\xfb'; u b (if null then 21 else 20); heap b h
     | Cast (null, h) -> Buffer.add_char b '\xfb'; u b (if null then 23 else 22); heap b h
     | Fc (op, imms) -> Buffer.add_char b '\xfc'; u b op; List.iter (u b) imms
@@ -287,24 +330,26 @@ let write m =
   let out = Buffer.create 65536 in
   Buffer.add_string out "\x00asm\x01\x00\x00\x00";
   section out 1 (fun b ->
-      if Vec.length m.types > 0 then begin
+      if !next > 0 then begin
         u b 1;
         Buffer.add_char b '\x4e';
-        u b (Vec.length m.types);
+        u b !next;
         iteri
           (fun i c ->
-             (match Hashtbl.find_opt m.supers i with
-              | Some (final, parents) -> Buffer.add_char b (if final then '\x4f' else '\x50'); vec b u parents
-              | None -> ());
-             comp b c)
+             if used.(i) then begin
+               (match Hashtbl.find_opt m.supers i with
+                | Some (final, parents) -> Buffer.add_char b (if final then '\x4f' else '\x50'); vec b u (List.map tyx parents)
+                | None -> ());
+               comp b c
+             end)
           m.types
       end);
   section out 2 (fun b ->
       if Vec.length m.imports > 0 then begin
         u b (Vec.length m.imports);
-        Vec.iter (fun (_, md, fd, t) -> name b md; name b fd; Buffer.add_char b '\x00'; u b t) m.imports
+        Vec.iter (fun (_, md, fd, t) -> name b md; name b fd; Buffer.add_char b '\x00'; u b (tyx t)) m.imports
       end);
-  section out 3 (fun b -> if Vec.length m.funcs > 0 then begin u b (Vec.length m.funcs); Vec.iter (fun f -> u b f.ftype) m.funcs end);
+  section out 3 (fun b -> if Vec.length m.funcs > 0 then begin u b (Vec.length m.funcs); Vec.iter (fun f -> u b (tyx f.ftype)) m.funcs end);
   section out 5 (fun b -> if m.memory > 0 then begin u b 1; Buffer.add_char b '\x00'; u b m.memory end);
   section out 6 (fun b -> if Vec.length m.globals > 0 then Buffer.add_buffer b globals);
   section out 7 (fun b ->
@@ -342,4 +387,4 @@ let write m =
         Buffer.add_char b '\x01';
         u b (Buffer.length sub);
         Buffer.add_buffer b sub);
-  Buffer.contents out
+  Buffer.contents out)

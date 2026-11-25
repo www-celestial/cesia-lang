@@ -214,7 +214,7 @@ let fn_global st (p : proto) =
     let f = Cache.ready p.func in
     let np = Array.length f.params in
     let least = Array.fold_left (fun n (q : param) -> if q.default = None then n + 1 else n) 0 f.params in
-    let name = text rt p.pname in
+    let name = const_text rt p.pname in
     Wasm.global rt.m g (Rt.nn rt.fn) false [ Rfunc entry; I32 np; I32 least; name; Rnull (T rt.vals); struct_new rt.fn ]
   end;
   Gget g
@@ -1604,9 +1604,11 @@ let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   in
   drain ();
   let start = Wasm.func rt.m "main" [] [] in
-  start.body <- rt.inits @ List.concat_map (fun n -> [ Call n; drop ]) mains @ [ call rt "flush" ];
+  let run = List.concat_map (fun n -> [ Call n; drop ]) mains @ [ call rt "flush" ] in
   drain ();
   finish st;
+  (* Last, when every text of the code is known: the start makes them first. *)
+  start.body <- rt.inits @ run;
   Wasm.export rt.m "main" "main";
   let sites = Buffer.create 4096 in
   Buffer.add_char sites '[';

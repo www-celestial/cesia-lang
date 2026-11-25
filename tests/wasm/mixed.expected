@@ -14,6 +14,7 @@
 [true, true, false, true, true, false, true, true] [false, false, true, false, false, true, true, true]
 [false, false, false, false, false, false, true, true] [false, false, false, false, false, false, true, true]
 [true, true, true, true, true, true, false, false] [true, true, true, true, true, true, false, false]
+[true, false] [true, false] [1.5, 2.5] [true, false] [-1.5, -2]
 2147483646 1152921502459363329 1152921504606846976
 mixed.ce:4:20: The integer result of 4611686018427387903 + 1 doesn't fit in 63 bits.
   4 | ops = [(a, b) -> a + b, (a, b) -> a - b, (a, b) -> a * b, (a, b) -> a / b]

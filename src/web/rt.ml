@@ -261,21 +261,31 @@ let depth rt = gl rt "depth" I32 true [ I32 0 ]
 let fuel rt = gl rt "fuel" I64 true [ i64 fuel_period ]
 let missing = Rnull None_
 
-(* A constant text: a global made of its bytes, or made at the start when too long for a constant. *)
-let text rt s =
-  match Hashtbl.find_opt rt.texts s with
+(* A text in a constant, as the keys of a literal: a global made of its bytes, about 3 bytes a byte. *)
+let const_text rt s =
+  let key = "\000" ^ s in
+  match Hashtbl.find_opt rt.texts key with
   | Some g -> Gget g
   | None ->
     let g = "t" ^ string_of_int (Hashtbl.length rt.texts) in
-    Hashtbl.replace rt.texts s g;
+    Hashtbl.replace rt.texts key g;
     let n = String.length s in
-    if n <= 10_000 then
-      Wasm.global rt.m g (nn rt.bytes) false (List.init n (fun i -> I32 (Char.code s.[i])) @ [ array_new_fixed rt.bytes n ])
-    else begin
-      Wasm.global rt.m g (nl rt.bytes) true [ Rnull (T rt.bytes) ];
-      rt.inits <- rt.inits @ [ I32 0; I32 n; Gcd (9, rt.bytes, Wasm.data rt.m s); Gset g ]
-    end;
-    if n <= 10_000 then Gget g else Block (Bval (nn rt.bytes), [ Gget g; as_non_null ])
+    Wasm.global rt.m g (nn rt.bytes) false (List.init n (fun i -> I32 (Char.code s.[i])) @ [ array_new_fixed rt.bytes n ]);
+    Gget g
+
+(* A text in code: from 8 bytes, its bytes in a data segment, a byte each, made at the start into a global that holds an
+   empty text until then; a shorter one a constant. *)
+let text rt s =
+  if String.length s < 8 then const_text rt s
+  else
+    match Hashtbl.find_opt rt.texts s with
+    | Some g -> Gget g
+    | None ->
+      let g = "t" ^ string_of_int (Hashtbl.length rt.texts) in
+      Hashtbl.replace rt.texts s g;
+      Wasm.global rt.m g (nn rt.bytes) true [ array_new_fixed rt.bytes 0 ];
+      rt.inits <- rt.inits @ [ I32 0; I32 (String.length s); Gcd (9, rt.bytes, Wasm.data rt.m s); Gset g ];
+      Gget g
 
 let bool_of rt = [ If (Bval v, [ g_true rt ], [ g_false rt ]) ]
 
@@ -510,12 +520,14 @@ let () =
   (* How a message names a value: Value.describe. *)
   def "describe" (fun rt -> [ v ], [ nn rt.bytes ], fun fb ->
       let x = local fb (nn rt.buf) in
-      let shown pre = [ call rt "buf_new"; Lset x; Lget x; text rt pre; call rt "buf_add"; Lget x; Lget 0; I32 1; call rt "write"; Lget x; call rt "buf_done"; ret ] in
+      (* A number or a text as write gives them, by the writers of each alone: a message needs no printer of arrays. *)
+      let shown pre value = [ call rt "buf_new"; Lset x; Lget x; text rt pre; call rt "buf_add"; Lget x ] @ value @ [ Lget x; call rt "buf_done"; ret ] in
       [ Lget 0; ref_is_null; If (Bnone, [ text rt "missing"; ret ], []);
         Lget 0; g_true rt; ref_eq; If (Bnone, [ text rt "true"; ret ], []);
         Lget 0; g_false rt; ref_eq; If (Bnone, [ text rt "false"; ret ], []);
-        Lget 0; call rt "is_int"; Lget 0; Test (false, T rt.boxf); i32_or; If (Bnone, shown "the number ", []);
-        Lget 0; Test (false, T rt.bytes); If (Bnone, shown "the text ", []);
+        Lget 0; call rt "is_int"; If (Bnone, shown "the number " [ Lget 0; call rt "int_of"; call rt "write_int" ], []);
+        Lget 0; Test (false, T rt.boxf); If (Bnone, shown "the number " [ Lget 0; call rt "float_of"; call rt "write_float" ], []);
+        Lget 0; Test (false, T rt.bytes); If (Bnone, shown "the text " [ Lget 0; Cast (false, T rt.bytes); call rt "write_quoted" ], []);
         Lget 0; Test (false, T rt.list); If (Bnone, [ text rt "an array"; ret ], []);
         Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; If (Bnone, [ text rt "a dictionary"; ret ], []);
         Lget 0; Test (false, T rt.recd); If (Bnone, [ Lget 0; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 2; ret ], []);
@@ -647,7 +659,7 @@ let () =
         [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Block (Bnone, [ Lget 0; Br_table ([ 0; 1; 2; 3 ], 4) ]) ] @ f 0) ] @ f 1) ] @ f 2) ] @ f 3) ] @ f 4
       in
       [ Lget a; call rt "kind"; Lset ka; Lget b; call rt "kind"; Lset kb;
-        Lget ka; I32 3; i32_eq; Lget kb; I32 3; i32_eq; i32_or; If (Bnone, [ Lget 0; Lget a; Lget b; Lget site; call rt "broadcast"; ret ], []);
+        Lget ka; I32 3; i32_eq; Lget kb; I32 3; i32_eq; i32_or; If (Bnone, [ Lget 0; Lget a; Lget b; Lget site; call rt "broadcast:arith"; ret ], []);
         (* Two integers: checked; a division gives a float, a power of a negative exponent too. *)
         Lget ka; Lget kb; i32_or; i32_eqz;
         If (Bnone,
@@ -672,7 +684,7 @@ let () =
       @ per_op (fun k -> bad k) @ [ unreachable ]);
   (* An operation of two operands, one at least an array, cell by cell: a value of an array of the same sizes, or of a
      scalar. *)
-  def "broadcast" (fun rt -> [ I32; v; v; I32 ], [ v ], fun fb ->
+  List.iter (fun (name, cellwise) -> def name (fun rt -> [ I32; v; v; I32 ], [ v ], fun fb ->
       let la = local fb (nl rt.list) and lb = local fb (nl rt.list) and n = local fb I32 and i = local fb I32 and out = local fb (nn rt.vals) in
       let shape = local fb (nl rt.list) in
       let cell l x = [ Lget l; ref_is_null; If (Bval v, [ Lget x ], [ Lget l; as_non_null; Lget i; call rt "elem" ]) ] in
@@ -686,8 +698,11 @@ let () =
             If (Bnone, fail rt shape_msg [ [ Lget la; as_non_null; call rt "sizes" ]; [ Lget lb; as_non_null; call rt "sizes" ] ] [ Lget 3 ], []) ], []);
         Lget shape; struct_get rt.list l_rows; Lget shape; struct_get rt.list l_cols; i32_mul; Lset n;
         Lget n; array_new_default rt.vals; Lset out ]
-      @ upto i n ([ Lget out; Lget i; Lget 0 ] @ cell la 1 @ cell lb 2 @ [ Lget 3; call rt "binop"; array_set rt.vals ])
-      @ [ Lget shape; struct_get rt.list l_rows; Lget shape; struct_get rt.list l_cols; Lget out; call rt "list_of" ]);
+      @ upto i n ([ Lget out; Lget i; Lget 0 ] @ cell la 1 @ cell lb 2 @ cellwise rt @ [ array_set rt.vals ])
+      @ [ Lget shape; struct_get rt.list l_rows; Lget shape; struct_get rt.list l_cols; Lget out; call rt "list_of" ]))
+    (* One for each operation, so that a program that only adds arrays holds no comparison. *)
+    [ "broadcast:arith", (fun rt -> [ Lget 3; call rt "arith" ]); "broadcast:cmp", (fun rt -> [ Lget 3; call rt "cmp" ]);
+      "broadcast:eqv", (fun rt -> [ call rt "eqv" ]) ];
   (* -x: by its kind; an array cell by cell. *)
   def "neg" (fun rt -> [ v; I32 ], [ v ], fun fb ->
       let l = local fb (nl rt.list) and i = local fb I32 and n = local fb I32 and out = local fb (nn rt.vals) in
@@ -732,7 +747,7 @@ let () =
       let isn x = [ Lget x; call rt "is_int"; Lget x; Test (false, T rt.boxf); i32_or ] in
       let bad k = fail rt (Messages.compare_op a1 syms.(k) a2) [ [ Lget a; call rt "describe" ]; [ Lget b; call rt "describe" ] ] [ Lget 3 ] in
       [ Lget a; Test (false, T rt.list); Lget b; Test (false, T rt.list); i32_or;
-        If (Bnone, [ Lget 0; I32 10; i32_add; Lget a; Lget b; Lget 3; call rt "broadcast"; ret ], []);
+        If (Bnone, [ Lget 0; Lget a; Lget b; Lget 3; call rt "broadcast:cmp"; ret ], []);
         Lget a; call rt "is_int";
         If (Bnone, [ Lget b; call rt "is_int";
                      If (Bnone, [ Lget a; call rt "int_of"; Lget b; call rt "int_of"; i64_gt_s; Lget a; call rt "int_of"; Lget b; call rt "int_of"; i64_lt_s; i32_sub ] @ res, []);
@@ -752,14 +767,10 @@ let () =
   (* == and !=: op 0 and 1, Arith.eq: floats as floats, NaN apart; anything else Value.equal; arrays cell by cell. *)
   def "eqv" (fun rt -> [ I32; v; v ], [ v ], fun _ ->
       [ Lget 1; Test (false, T rt.list); Lget 2; Test (false, T rt.list); i32_or;
-        If (Bnone, [ Lget 0; I32 20; i32_add; Lget 1; Lget 2; I32 (-1); call rt "broadcast"; ret ], []);
+        If (Bnone, [ Lget 0; Lget 1; Lget 2; I32 (-1); call rt "broadcast:eqv"; ret ], []);
         Lget 1; Test (false, T rt.boxf); Lget 2; Test (false, T rt.boxf); i32_and;
         If (Bval I32, [ Lget 1; call rt "float_of"; Lget 2; call rt "float_of"; f64_eq ], [ Lget 1; Lget 2; call rt "equal" ]);
         Lget 0; i32_xor ] @ bool_of rt);
-  def "binop" (fun rt -> [ I32; v; v; I32 ], [ v ], fun _ ->
-      [ Lget 0; I32 10; i32_lt_u; If (Bnone, [ Lget 0; Lget 1; Lget 2; Lget 3; call rt "arith"; ret ], []);
-        Lget 0; I32 20; i32_lt_u; If (Bnone, [ Lget 0; I32 10; i32_sub; Lget 1; Lget 2; Lget 3; call rt "cmp"; ret ], []);
-        Lget 0; I32 20; i32_sub; Lget 1; Lget 2; call rt "eqv" ]);
   (* A condition: true or false, else the error. *)
   def "truth" (fun rt -> [ v; I32 ], [ I32 ], fun _ ->
       [ Lget 0; g_true rt; ref_eq; If (Bnone, [ I32 1; ret ], []);
@@ -1145,16 +1156,16 @@ let tick rt = [ Gget (fuel rt); i64 1; i64_sub; Gset (fuel rt); Gget (fuel rt); 
 let shape rt name names =
   let g = "shape:" ^ name ^ ":" ^ String.concat "," (Array.to_list names) in
   if not (Wasm.has_global rt.m g) then begin
-    let texts = Array.to_list (Array.map (fun n -> text rt n) names) in
+    let texts = Array.to_list (Array.map (fun n -> const_text rt n) names) in
     Wasm.global rt.m g (nn rt.shape) false
-      ([ text rt name ] @ texts @ [ array_new_fixed rt.vals (Array.length names); text rt (Messages.article name); struct_new rt.shape ])
+      ([ const_text rt name ] @ texts @ [ array_new_fixed rt.vals (Array.length names); const_text rt (Messages.article name); struct_new rt.shape ])
   end;
   Gget g
 
 let keys rt names =
   let g = "keys:" ^ String.concat "," (Array.to_list names) in
   if not (Wasm.has_global rt.m g) then begin
-    let texts = Array.to_list (Array.map (fun n -> text rt n) names) in
+    let texts = Array.to_list (Array.map (fun n -> const_text rt n) names) in
     Wasm.global rt.m g (nn rt.keys) false (texts @ [ array_new_fixed rt.vals (Array.length names); Rnull (T rt.i64s); I64 0L; struct_new rt.keys ])
   end;
   Gget g

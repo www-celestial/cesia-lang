@@ -26,7 +26,16 @@ let build (ctx : Types.ctx) path =
   in
   let base = Filename.remove_extension path in
   let name = Filename.basename base in
-  let glue = Glue.text in
+  (* The loader as a page fetches it: its first line, which tells it from another .js, then its code without the
+     comments and indents of src/web/glue.js. *)
+  let glue =
+    match String.split_on_char '\n' Glue.text with
+    | first :: rest ->
+      String.concat "\n"
+        (first :: List.filter_map (fun l -> let l = String.trim l in if l = "" || String.starts_with ~prefix:"//" l then None else Some l) rest)
+      ^ "\n"
+    | [] -> Glue.text
+  in
   (* A .js of that name that this build didn't write stays: it may be the program's own. *)
   let first s = match String.index_opt s '\n' with Some i -> String.sub s 0 i | None -> s in
   let js_path = base ^ ".js" in

@@ -13,6 +13,7 @@ end
 for f in tests
   io.Print([f(x, 2) for x in ns], [f(2.0, x) for x in ns])
 end
+io.Print([1, 2.5] < [2, 1], [1, 2] == [1, 3.0], [1, 2] + 0.5, [1, 2] != 2, -[1.5, 2])
 big = 1073741823
 io.Print(ops[1](big, big), ops[3](big, big), ops[3](-1073741824, -1073741824))
 io.Print(ops[1](4611686018427387903, 1))
