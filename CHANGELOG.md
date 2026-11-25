@@ -11,7 +11,7 @@
 
 ### Shapes
 
-- `std/check`: shapes of what comes from outside, `check.Text(1, 200)`, `Int`, `Float`, `Money(2)`, `Bool`, `Date`, `Email`,
+- `std/check`: shapes of what comes from outside, `check.Text(1, 200)`, `Int`, `Float`, `Money(2)`, `Bool`, `Date`, `Time`, `Email`,
   `Id`, `Url`, `OneOf`, `List`, `Record`, `Secret`, with `optional` and `default`. `check.Read` gives the value made clean or
   a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
   log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.

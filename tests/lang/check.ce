@@ -75,3 +75,12 @@ defn isEmailAndUrl()
     result.IsErr(check.Read(check.Url(), "javascript:alert(1)")) and result.IsErr(check.Read(check.Url(), "https://")) and
     check.Read(check.Url(), "https://a.example/x") == result.Ok("https://a.example/x")
 end
+
+defn isTimeRead()
+  (** An instant with its offset comes out in seconds since 1970, and goes back out in UTC; a day alone, a time past
+      its hour, a text too long are refused. *)
+  t = check.Time()
+  ok = check.Read(t, "2026-12-01T09:30:00+01:00") == result.Ok(1796113800) and check.Read(t, "2026-12-01T08:30:00Z") == result.Ok(1796113800)
+  bad = [check.Read(t, x) for x in ["2026-12-01", "2026-12-01T25:00:00Z", text.Repeat(40, "1"), 1796113800]]
+  ok and list.All([result.IsErr(b) for b in bad]) and check.Out(t, 1796113800) == "2026-12-01T08:30:00Z" and check.Schema(t).format == "date-time"
+end

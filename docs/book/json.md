@@ -120,6 +120,8 @@ check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, P
 
 - Every text is valid UTF-8 without control characters, trimmed, bounded in bytes; every number has its range (an `Int`
   from -(2^30 - 1) to 2^30 - 1 unless it says otherwise, which a page in WebAssembly holds too); every list its most items.
+- A day is a `check.Date()`, `"2026-12-01"`, and an instant a `check.Time()`, `"2026-12-01T08:30:00Z"` or with an offset:
+  both are read as seconds since 1970, as Cepheus keeps them, and written back as text by `check.Out`.
 - A field the shape doesn't declare is dropped by `Read`: a sender who adds `Admin: true` adds nothing.
 - `check.Read(shape, query, texts = true)` reads values written as texts, as a query string or the environment gives
   them: `"42"` for an `Int`, `""` for an absent field.

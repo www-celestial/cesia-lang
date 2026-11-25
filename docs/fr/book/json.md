@@ -125,6 +125,8 @@ check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, P
 - Chaque texte est de l'UTF-8 valide sans caractère de contrôle, sans espaces aux bouts, borné en octets ; chaque nombre a
   son intervalle (un `Int` de -(2^30 - 1) à 2^30 - 1 s'il ne dit rien, ce que tient aussi une page en WebAssembly) ;
   chaque liste, son nombre d'éléments au plus.
+- Un jour est un `check.Date()`, `"2026-12-01"`, et un instant un `check.Time()`, `"2026-12-01T08:30:00Z"` ou avec son
+  décalage : les deux sont lus en secondes depuis 1970, comme Cepheus les garde, et réécrits en texte par `check.Out`.
 - Un champ que la forme ne déclare pas est ôté par `Read` : qui ajoute `Admin: true` n'ajoute rien.
 - `check.Read(shape, query, texts = true)` lit des valeurs écrites en texte, comme les donnent une *query string* ou
   l'environnement : `"42"` pour un `Int`, `""` pour un champ absent.

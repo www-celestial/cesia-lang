@@ -56,6 +56,13 @@ Bool(optional = false, default = missing) = shape("bool", optional, default, {})
       Out(Date(), 1796083200) --> "2026-12-01" *)
 Date(optional = false, default = missing) = shape("date", optional, default, {})
 
+(** An instant written as 2026-11-25T18:30:00Z, or with an offset as +01:00, read as its seconds since 1970, as Cepheus
+    keeps an instant (a cepheus.Date); Out writes it back in UTC, to the second.
+
+      Read(Time(), "2026-12-01T09:30:00+01:00") --> result.Ok(1796113800)
+      Out(Time(), 1796113800) --> "2026-12-01T08:30:00Z" *)
+Time(optional = false, default = missing) = shape("time", optional, default, {})
+
 (** An e-mail address of the usual form, at most max bytes, in lower case.
 
       Read(Email(), " Ada@Example.COM ") --> result.Ok("ada@example.com") *)
@@ -174,6 +181,10 @@ defn read(shape, x, texts, path)
     d = if value.IsText(x) and text.ByteLength(x) == 10 date.Parse(x) else result.Err("") end
     return if result.IsOk(d) result.Ok(date.ToUnix(d.Value)) else fail(path, "A date, as 2026-11-25.") end
   end
+  if kind == "time"
+    d = if value.IsText(x) and text.ByteLength(x) >= 19 and text.ByteLength(x) <= 30 and text.Contains("T", x) date.Parse(x) else result.Err("") end
+    return if result.IsOk(d) result.Ok(date.ToUnix(d.Value)) else fail(path, "An instant, as 2026-11-25T18:30:00Z.") end
+  end
   if kind == "email"
     return email(x, shape.Max, path)
   end
@@ -262,6 +273,9 @@ defn Out(shape, x)
   if kind == "date" and value.IsNumber(x)
     return date.FormatDate(date.FromUnix(x))
   end
+  if kind == "time" and value.IsNumber(x)
+    return date.Format(date.FromUnix(x))
+  end
   if kind == "secret" missing else x end
 end
 
@@ -295,6 +309,7 @@ defn Schema(shape)
   else if kind == "money" {type: "number", minimum: shape.Min, maximum: shape.Max, multipleOf: 1 / tens(shape.Scale)}
   else if kind == "bool" {type: "boolean"}
   else if kind == "date" {type: "string", format: "date"}
+  else if kind == "time" {type: "string", format: "date-time"}
   else if kind == "email" {type: "string", format: "email", maxLength: shape.Max}
   else if kind == "id" {type: "integer", minimum: 1}
   else if kind == "url" {type: "string", format: "uri", maxLength: shape.Max}
