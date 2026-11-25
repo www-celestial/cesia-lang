@@ -654,6 +654,9 @@ and operands fc a b =
    and product fit; else by the runtime's arith, which takes every case and its errors. *)
 and quick_arith fc e op a b =
   let rt = fc.st.rt in
+  if kind fc a = V && kind fc b = V then
+    expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt ("arith_" ^ match op with Add -> "add" | Sub -> "sub" | Mul -> "mul" | _ -> "div") ]
+  else
   let (ka, la), (kb, lb), pre = operands fc a b in
   let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
   let generic = [ I32 (match op with Add -> 0 | Sub -> 1 | Mul -> 2 | _ -> 3) ] @ boxed (ka, la) @ boxed (kb, lb) @ site fc e.pos @ [ call rt "arith" ] in
@@ -688,6 +691,10 @@ and quick_arith fc e op a b =
    errors; eqv compares anything). An integer against a float goes to the runtime, which compares them exactly. *)
 and quick_compare fc e op a b ~test =
   let rt = fc.st.rt in
+  if kind fc a = V && kind fc b = V then
+    expr fc a V @ expr fc b V @ site fc e.pos
+    @ [ call rt ((if test then "test_" else "cmp_") ^ match op with Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge" | Eq -> "eq" | _ -> "ne") ]
+  else
   let (ka, la), (kb, lb), pre = operands fc a b in
   let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
   let generic =

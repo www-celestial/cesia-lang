@@ -829,6 +829,49 @@ let () =
         Lget 0; g_false rt; ref_eq; If (Bnone, [ I32 0; ret ], []) ]
       @ fail rt (Messages.condition a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ])
 
+(* The operators of two values that the compiled code calls, a function each, small enough for the engines to inline
+   where it runs hot: +, -, * and / inline when both are floats, both integers of 31 bits, whose sum and product fit, or
+   a float and such an integer, else by arith (arith_add, arith_sub, arith_mul, arith_div); <, <=, >, >=, == and != when
+   both are floats or both integers of 31 bits, else by cmp or eqv, as an i32 (test_lt...) or a value (cmp_lt...). The
+   last parameter is the site. *)
+let () =
+  List.iteri
+    (fun code (name, fop, iop) ->
+       def ("arith_" ^ name) (fun rt -> [ v; v; I32 ], [ v ], fun _ ->
+           let flt l = [ Lget l; Cast (false, T rt.boxf); struct_get rt.boxf 0 ] in
+           let small l = [ Lget l; Cast (false, I31); i31_get_s; i64_extend_s ] in
+           let num l = [ Lget l; Test (false, T rt.boxf); If (Bval F64, flt l, [ Lget l; Cast (false, I31); i31_get_s; f64_of_i32 ]) ] in
+           let is_n l = [ Lget l; Test (false, T rt.boxf); Lget l; Test (false, I31); i32_or ] in
+           let on_ints =
+             match iop with
+             | Some op -> small 0 @ small 1 @ [ op; call rt "box_i" ]
+             | None -> small 0 @ [ f64_of_i64 ] @ small 1 @ [ f64_of_i64; fop; call rt "box_f" ]
+           in
+           [ Lget 0; Test (false, T rt.boxf); Lget 1; Test (false, T rt.boxf); i32_and;
+             If (Bval v, flt 0 @ flt 1 @ [ fop; call rt "box_f" ],
+                 [ Lget 0; Test (false, I31); Lget 1; Test (false, I31); i32_and;
+                   If (Bval v, on_ints,
+                       is_n 0 @ is_n 1 @ [ i32_and; If (Bval v, num 0 @ num 1 @ [ fop; call rt "box_f" ], [ I32 code; Lget 0; Lget 1; Lget 2; call rt "arith" ]) ]) ]) ]))
+    [ "add", f64_add, Some i64_add; "sub", f64_sub, Some i64_sub; "mul", f64_mul, Some i64_mul; "div", f64_div, None ];
+  List.iter
+    (fun (name, code, fop, iop) ->
+       List.iter
+         (fun test ->
+            def ((if test then "test_" else "cmp_") ^ name) (fun rt -> [ v; v; I32 ], [ if test then I32 else v ], fun _ ->
+                let out c = c @ if test then [] else bool_of rt in
+                let generic =
+                  (if code >= 4 then [ I32 (code - 4); Lget 0; Lget 1; call rt "eqv" ] else [ I32 code; Lget 0; Lget 1; Lget 2; call rt "cmp" ])
+                  @ if test then [ Lget 2; call rt "truth" ] else []
+                in
+                let bt = if test then Bval I32 else Bval v in
+                [ Lget 0; Test (false, T rt.boxf); Lget 1; Test (false, T rt.boxf); i32_and;
+                  If (bt, out [ Lget 0; Cast (false, T rt.boxf); struct_get rt.boxf 0; Lget 1; Cast (false, T rt.boxf); struct_get rt.boxf 0; fop ],
+                      [ Lget 0; Test (false, I31); Lget 1; Test (false, I31); i32_and;
+                        If (bt, out [ Lget 0; Cast (false, I31); i31_get_s; Lget 1; Cast (false, I31); i31_get_s; iop ], generic) ]) ]))
+         [ true; false ])
+    [ "lt", 0, f64_lt, i32_lt_s; "le", 1, f64_le, i32_le_s; "gt", 2, f64_gt, i32_gt_s; "ge", 3, f64_ge, i32_ge_s;
+      "eq", 4, f64_eq, i32_eq; "ne", 5, f64_ne, i32_ne ]
+
 (* Lists. *)
 let () =
   (* An array of these cells, as Arrays.of_vals: all floats an F store, all integers an I store, else values. *)
