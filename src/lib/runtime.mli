@@ -46,6 +46,15 @@ val checkpoint : ctx -> int -> int -> unit
 (** Counts the last steps of a fiber that ends; the limit of steps, reached there, names the site that spawned it. *)
 val settle : ctx -> int -> unit
 
+(** Under a limit of steps, takes the steps a fiber about to wait spent since its last checkpoint off what is left, so
+    that the others run within what is truly left. *)
+val pause : ctx -> unit
+
+(** Gives them back to a fiber that runs again, for its checkpoint to count, and cuts its fuel to the steps the others
+    left, or that of a fiber that starts: the limit of steps is then reached at the same step in every fiber,
+    interpreted or machine code. *)
+val resume : ctx -> unit
+
 (** Counts [n] steps of a native, at its site. *)
 val charge : ctx -> int -> unit
 

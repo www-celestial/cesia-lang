@@ -113,6 +113,8 @@ let[@inline never] checkpoint ctx top at =
   let w = ctx.w in
   grow_young ();
   let spent = ctx.refill - ctx.fuel in
+  (* Counted now: a fiber that runs at the full checkpoint below finds them gone from what is left. *)
+  ctx.refill <- ctx.fuel;
   if w.steps_left <> max_int then w.steps_left <- w.steps_left - spent;
   if w.steps_left < 0 then limit "steps" at;
   let d = frames ctx in
@@ -134,6 +136,27 @@ let site_top ctx =
 let charge ctx n =
   ctx.fuel <- ctx.fuel - n;
   if ctx.fuel < 0 then checkpoint ctx (site_top ctx) ctx.site
+
+(* Under a limit of steps, while a fiber waits, the steps it spent since its last checkpoint are off what is left, so
+   that the others run within what is truly left; when it runs again they are back, for its checkpoint to count, and its
+   fuel is cut to what the others left, its steps spent unchanged. Each fiber then runs out of fuel at the step that goes
+   past the limit, as the main program does alone: the limit is reached at the same step whether the interpreter or
+   machine code runs, whose budget is what is left. A new fiber starts as after a wait. Without a limit, nothing. *)
+let pause ctx =
+  let w = ctx.w in
+  if w.steps_left <> max_int then w.steps_left <- w.steps_left - (ctx.refill - ctx.fuel)
+
+let resume ctx =
+  let w = ctx.w in
+  if w.steps_left <> max_int then begin
+    let left = w.steps_left in
+    w.steps_left <- left + (ctx.refill - ctx.fuel);
+    if ctx.fuel > left then begin
+      let cut = ctx.fuel - left in
+      ctx.fuel <- left;
+      ctx.refill <- ctx.refill - cut
+    end
+  end
 
 (* What a fiber spent since its last checkpoint, when it ends, at the site [at] that spawned it. Short fibers would
    otherwise run for free. *)

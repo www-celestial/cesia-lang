@@ -35,6 +35,7 @@ let[@inline] woken (ctx : ctx) n = ctx.parks = n && (ctx.parks <- n + 1; true)
 (* A spawned fiber parks through an effect. The main program isn't a fiber, which keeps its stack and its speed:
    it runs the scheduler itself until it is woken, in FIFO order with the others. *)
 let park (ctx : ctx) register =
+  Runtime.pause ctx;
   if ctx.fiber then perform (Suspend (ctx, register))
   else begin
     let w = ctx.w in
@@ -44,10 +45,12 @@ let park (ctx : ctx) register =
     while not !woke do
       if not (step w) then begin
         w.sched.current <- Some ctx;
+        Runtime.resume ctx;
         Runtime.fail ctx User Messages.deadlock
       end
     done;
-    w.sched.current <- Some ctx
+    w.sched.current <- Some ctx;
+    Runtime.resume ctx
   end
 
 let suspend ctx register = park ctx (fun wake -> register (fun () -> ignore (wake ())))
@@ -76,7 +79,13 @@ let handler =
                 let wake () =
                   woken ctx n
                   && begin
-                    Queue.add (fun () -> s.current <- Some ctx; if ctx.cancelled then discontinue k Cancelled else continue k ()) s.ready;
+                    Queue.add
+                      (fun () ->
+                         s.current <- Some ctx;
+                         (* Its steps back, before it goes on or ends cancelled: no handler at the wait. *)
+                         Runtime.resume ctx;
+                         if ctx.cancelled then discontinue k Cancelled else continue k ())
+                      s.ready;
                     true
                   end
                 in
@@ -87,6 +96,7 @@ let handler =
 (* Runs a fiber until it ends or parks. *)
 let start ctx body =
   ctx.w.sched.current <- Some ctx;
+  Runtime.resume ctx;
   match_with body () handler
 
 (* What [Wait] gives for a panic: the same fields as an error shown to the user. *)

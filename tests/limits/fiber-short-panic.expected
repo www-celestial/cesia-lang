@@ -1,4 +1,4 @@
-fiber-short-panic.ce:13:19: Limit "steps" reached.
-  13 |   fiber.Wait(fiber.Spawn(work))
-     |                   ^
+  7 |   for i in 1..500
+    |   ^
+  in work (fiber-short-panic.ce:7)
 exit 0
