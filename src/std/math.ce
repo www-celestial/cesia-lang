@@ -49,7 +49,7 @@ IsOdd(x) = Mod(x, 2) != 0
       IsNan([21.5, Nan, 19.0]) --> [false, true, false] *)
 IsNan(x) = x != x
 (** Is x an infinity, Inf or -Inf? Element by element for an array: what an overflow gives, as math.Exp(1000).
-    numpy.isinf, R is.infinite, MATLAB isinf.
+    numpy.isinf, R is.infinite, MATLAB isinf; numpy.isposinf(x) is x == Inf, and numpy.isneginf(x) is x == -Inf.
 
       IsInf(Exp(1000)) --> true
       IsInf([1e308 * 10, -1e308 * 10, 1e308]) --> [true, true, false] *)
