@@ -1,0 +1,34 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/value
+
+(* The functions of the C library that machine code calls itself give the bits of the interpreter's array kernels, and
+   math.Hypot those of its own. Each loop is hot, so it runs as machine code. *)
+defn loop1(xs, k)
+  n = value.Len(xs)
+  out = matrix.Zeros(n)
+  for i in 1..n
+    x = xs[i]
+    out[i] = if k == 1 math.Log10(x) else if k == 2 math.Log2(x) else if k == 3 math.Log1p(x) else if k == 4 math.Expm1(x) else if k == 5 math.Sinh(x) else if k == 6 math.Cosh(x) else if k == 7 math.Tanh(x) else if k == 8 math.Asinh(x) else if k == 9 math.Acosh(x + 1.0) else math.Atanh(x / 20000.0) end
+  end
+  out
+end
+
+defn hypots(xs)
+  n = value.Len(xs)
+  out = matrix.Zeros(n)
+  for i in 1..n
+    out[i] = math.Hypot(xs[i], xs[n + 1 - i])
+  end
+  out
+end
+
+xs = [(k * 0.7351) - 300.0 for k in 1..20000]
+pos = math.Abs(xs) + 1e-9
+io.Print(list.All(loop1(pos, 1) == math.Log10(pos)), list.All(loop1(pos, 2) == math.Log2(pos)))
+io.Print(list.All(loop1(pos, 3) == math.Log1p(pos)), list.All(loop1(xs, 4) == math.Expm1(xs)))
+io.Print(list.All(loop1(xs, 5) == math.Sinh(xs)), list.All(loop1(xs, 6) == math.Cosh(xs)), list.All(loop1(xs, 7) == math.Tanh(xs)))
+io.Print(list.All(loop1(xs, 8) == math.Asinh(xs)), list.All(loop1(pos, 9) == math.Acosh(pos + 1.0)), list.All(loop1(xs, 10) == math.Atanh(xs / 20000.0)))
+io.Print(list.All(hypots(xs) == math.Hypot(xs, list.Reverse(xs))))

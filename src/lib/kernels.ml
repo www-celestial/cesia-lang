@@ -156,13 +156,25 @@ let cosd x =
   let r = r -. (90. *. q) in
   (match int_of_float q land 3 with 0 -> cos_r r | 1 -> -.sin_r r | 2 -> -.cos_r r | _ -> sin_r r) +. 0.
 
+(* tan and its inverse of r in degrees, |r| <= 45, one rounding of the C library's tan of r in radians but at 30 and 45. *)
+let[@inline] tan_r r =
+  let a = Float.abs r in
+  if a = 45. then Float.copy_sign 1. r else if a = 30. then Float.copy_sign 0.5773502691896257 r else tan (r *. 0.017453292519943295)
+
+let[@inline] cot_r r =
+  let a = Float.abs r in
+  if a = 45. then Float.copy_sign 1. r else if a = 30. then Float.copy_sign 1.7320508075688772 r else 1. /. tan (r *. 0.017453292519943295)
+
+(* tan (90 q + r) is tan r for an even q, -cot r for an odd one; at a pole, the infinity of C23's tanpi: inf at 90 + 360 k,
+   -inf at 270 + 360 k, and a zero its sign: -0 at an odd multiple of 180 above 0. *)
 let tand x =
   let r = Float.rem x 360. in
   let q = Float.round (r /. 90.) in
   let r = r -. (90. *. q) and p = int_of_float q land 3 in
-  let t = if p land 1 = 0 then sin_r r /. cos_r r else if p = 1 then cos_r r /. (0. -. sin_r r) else -.cos_r r /. (sin_r r +. 0.) in
-  (* A zero has the sign of C23's tanpi: -0 at an odd multiple of 180 above 0. *)
-  if t = 0. then Float.copy_sign 0. (if p = 2 then -.x else x) else t
+  if p land 1 = 1 then (if r = 0. then (if p = 1 then infinity else neg_infinity) else -.cot_r r)
+  else
+    let t = tan_r r in
+    if t = 0. then Float.copy_sign 0. (if p = 2 then -.x else x) else t
 
 let spacing x =
   let a = Float.abs x in
