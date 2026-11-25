@@ -251,6 +251,8 @@ val snapshot_new : int -> string
 val snapshot_changed : int -> string
 
 (** cesia test without its plugin, and why. *)
+val no_wasm_plugin : string -> string
+val wasm_unsupported : string -> t
 val no_test_plugin : string -> string
 
 (** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]

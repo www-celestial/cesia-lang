@@ -410,6 +410,22 @@ let engine_suffix () =
   let fp = if Arch.fp then "+fp" else "" and flambda = if Arch.flambda then "+flambda" else "" in
   Printf.sprintf "1-ocaml%s%s%s-%s-%s" Arch.ocaml fp flambda system (if Arch.name = "amd64" then "x86_64" else Arch.name)
 
+(* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it, by the plugin cesia_wasm.cmxs, which
+   programs never pay for. *)
+let build = function
+  | [ "--target"; "wasm"; file ] ->
+    let b =
+      match load_plugin "wasm" "cesia_wasm.cmxs", !Loader.builder with
+      | Ok (), Some b -> b
+      | Error m, _ -> bad_option (Messages.no_wasm_plugin m)
+      | Ok (), None -> bad_option (Messages.no_wasm_plugin "it gave no compiler")
+    in
+    if not (Sys.file_exists file) then bad_option (Messages.cant_read file);
+    let w = Runtime.create_world (with_default_memory Runtime.default_options) in
+    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+    exit (Loader.guarded w (fun ctx -> Loader.init w; b ctx file; 0))
+  | _ -> usage ()
+
 (* The plugin of Cesia_v1, once, its code open to the engines: it loads them. *)
 let interface = lazy (load_plugin ~global:true "native" "cesia_native.cmxs")
 let load_interface () = Lazy.force interface
@@ -439,6 +455,7 @@ let () =
     | _ :: "run" :: args -> run args
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
+    | _ :: "build" :: args -> build args
     | [ _; "new"; name ] -> create name
     | _ :: (("pkg" | "upgrade" | "check" | "fmt") as name) :: args -> exit (tool name args)
     | [ _; "lsp" ] ->

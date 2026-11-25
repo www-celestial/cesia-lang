@@ -286,6 +286,7 @@ let usage =
   \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia fmt [--check] [path...]\n\
+  \       cesia build --target wasm file.ce\n\
   \       cesia lsp\n\
   \       cesia do [task [args...]]\n\
   \       cesia new name\n\
@@ -437,6 +438,9 @@ let test_summary passed failed seed =
   Printf.sprintf "%d passed, %d failed%s" passed failed (match seed with Some s -> Printf.sprintf ", seed %d" s | None -> "")
 let snapshot_new k = Printf.sprintf "new snapshot %d: review it, then cesia test --update" k
 let snapshot_changed k = Printf.sprintf "snapshot %d changed: cesia test --update keeps the new text" k
+let no_wasm_plugin reason = "cesia build needs its plugin, cesia_wasm.cmxs, beside the binary: " ^ reason
+let wasm_unsupported what =
+  hinted (Printf.sprintf "%s isn't compiled to WebAssembly yet." what) "cesia run runs it; cesia build --target wasm compiles part of Cesia for now."
 let no_test_plugin reason = "cesia test needs its plugin, cesia_testing.cmxs, beside the binary: " ^ reason
 let test_part i n = Printf.sprintf ", part %d of %d" i n
 let test_question line = Printf.sprintf " at the ? of line %d" line
