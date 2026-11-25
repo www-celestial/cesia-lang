@@ -165,6 +165,13 @@
 
 ### Tools
 
+- `cesia build --target wasm file.ce` compiles a program ahead of time to WebAssembly: `file.wasm` and its loader
+  `file.js`, which `node file.js` runs and a page runs as a module script, with the output, the errors, their places and
+  the limits of `cesia run`, byte for byte. A first slice: integers of 63 bits checked, floats, texts, lists, maps,
+  functions and closures, `if`, `match` and loops, results and `?`; what it doesn't compile yet is an error at the
+  build, at its place. Values are objects of WasmGC, the browser's own collector; the compiler is a plugin,
+  `cesia_wasm.cmxs`, that only `cesia build` loads. The book's chapter Compiling to WebAssembly shows a program in a
+  page.
 - `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them

@@ -9,6 +9,12 @@ An application binary interface: how compiled code passes arguments and lays out
 call it. C has a stable one on each system and C++ has none, so Cesia reaches C++ through a small C layer: see
 [C and C++](c.md).
 
+## Ahead-of-time compilation
+
+Compiling a program to the code that will run before it runs, once, instead of as it runs, as a JIT does. `cesia build
+--target wasm` compiles ahead of time: the page gets the compiled program and no compiler. See
+[Compiling to WebAssembly](wasm.md).
+
 ## Amortized cost
 
 The average cost of an operation over a long run of them, when most are cheap and a few are dear. [list.Append] on a list
@@ -1013,6 +1019,13 @@ Copying the code a project depends on into the project itself, so that it runs o
 
 The time of day as the system keeps it, which the system may set forward or back, as when it corrects itself over the
 network. [sys.Now] reads it: see [Files](files.md#the-clock).
+
+## WebAssembly and WasmGC
+
+WebAssembly is a format of code for a machine that doesn't exist, small and checked before it runs, that browsers and
+Node compile to the code of the real processor: near native speed, inside the sandbox of the page. WasmGC adds structs,
+arrays and references whose memory the browser's own garbage collector manages. Cesia's values in a page are WasmGC
+objects: see [Compiling to WebAssembly](wasm.md#how-it-works).
 
 ## WebSocket
 

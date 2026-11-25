@@ -149,6 +149,16 @@ publisher moves it.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. The backend that makes Cesia's
   machine code from the text of its IR, copied into `src/sys/mir/`.
 
+## WebAssembly
+
+- Andreas Haas, Andreas Rossberg, Derek L. Schuff, Ben L. Titzer, Michael Holman, Dan Gohman, Luke Wagner, Alon Zakai,
+  JF Bastien. "Bringing the Web up to Speed with WebAssembly". *PLDI 2017*, ACM, 185–200.
+  <https://doi.org/10.1145/3062341.3062363>. The design of WebAssembly: a typed code, validated before it runs, compiled
+  by the browser. The format that `cesia build --target wasm` writes.
+- WebAssembly Community Group. "Wasm 3.0 Completed", 2025. <https://webassembly.org/news/2025-09-17-wasm-3.0/>, and the
+  proposal it took in, <https://github.com/WebAssembly/gc>. Garbage collection in WebAssembly: structs, arrays and
+  `i31ref` whose memory the engine manages. Cesia's values in a page.
+
 ## Fibers and channels
 
 - C. A. R. Hoare. "Communicating Sequential Processes". *Communications of the ACM* 21(8):666–677, 1978.

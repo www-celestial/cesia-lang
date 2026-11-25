@@ -64,12 +64,14 @@ language.
     sliders, and a page to share.
 28. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
     and LuaJIT, measured: start-up, loops, maps, fibers and a server.
-29. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-30. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
-31. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
-32. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
+29. [Compiling to WebAssembly](wasm.md): `cesia build --target wasm`, a program in a page and in Node with the
+    same output and errors, what it compiles, how, and its speed and size beside JavaScript.
+30. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+31. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
+32. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+33. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
     measure to the proof that it is solved: properties, the birthday bound, and the times beside Python.
-33. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+34. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
     fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:
