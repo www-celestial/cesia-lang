@@ -15,11 +15,12 @@
 // values in it from JavaScript, the one way in. What the function gives comes back the same way, a string as its UTF-8.
 const node = typeof process === 'object' && process.versions != null && process.versions.node != null
 const url = new URL('@WASM@', import.meta.url)
-const bytes = node ? (await import('node:fs')).readFileSync(url) : await (await fetch(url)).arrayBuffer()
+const readFileSync = node ? (await import('node:fs')).readFileSync : null
+const bytes = node ? readFileSync(url) : await (await fetch(url)).arrayBuffer()
 const SCRATCH = 16384, CALLS = 20480, WINDOW = 65536, SLICE = 8
 const KINDS = ['syntax', 'name', 'type', 'index', 'field', 'math', 'permission', 'user', 'io']
 const jspi = typeof WebAssembly.Suspending === 'function'
-let memory, module, x, sites, msg = [], hint = [], lines = ['', '']
+let memory, module, x, table, msg = [], hint = [], lines = ['', '']
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
 class Stop extends Error {}
@@ -53,34 +54,57 @@ function floatText (x) {
   return sign + digits.slice(0, ex + 1) + '.' + digits.slice(ex + 1)
 }
 
+// Site i of the table that the compiler wrote in NAME.sites, read at the first error: its header, its line of code and
+// caret, the function it is in, whether in a library, its file and line. Node reads it at once, a page fetches it, and
+// what needs it waits for it.
+const sitesUrl = new URL(url.href.replace(/\.wasm$/, '.sites'))
+let loading = null
+function later_sites (f) {
+  if (table) return f()
+  if (node) { table = JSON.parse(readFileSync(sitesUrl, 'utf8')); return f() }
+  if (!loading) loading = fetch(sitesUrl).then(r => r.json()).then(t => { table = t })
+  loading.then(f)
+}
+function site (i) {
+  if (i < 0) return ['', '', '', 0, '', 0]
+  const t = table.t, s = table.s, k = 7 * i
+  return [t[s[k]], t[s[k + 1]] + t[s[k + 2]], t[s[k + 3]], s[k + 4], t[s[k + 5]], s[k + 6]]
+}
+
 // An error: written as Cesia writes it, its trace from the call sites in the memory, the current fiber's own; a fiber's
 // task then gets the Err of it, and the fiber stops.
-function fail (site, depth, kind) {
-  const calls = new Int32Array(memory.buffer, CALLS, depth + 2)
-  const at = i => i >= 0 ? sites[i] : ['', '', '', 0, '', 0]
-  const trace = []
-  if (at(site)[2]) trace.push('in ' + at(site)[2])
-  for (let d = depth; d >= 1; d--) if (at(calls[d])[2]) trace.push('called from ' + at(calls[d])[2])
-  // In a library, the line shown is that of the program that called into it.
-  let shown = site
-  for (let d = depth; at(shown)[3] && d >= 1; d--) if (calls[d] >= 0 && !at(calls[d])[3]) shown = calls[d]
-  const t = trace.length <= 20 ? trace : trace.slice(0, 10).concat(['... and ' + (trace.length - 10) + ' more'])
-  const m = new Uint8Array(msg.flat()), h = decoder.decode(new Uint8Array(hint.flat()))
-  const s = at(shown)
-  out(2, encoder.encode(s[0] + decoder.decode(m) + '\n' + s[1] + (hint.length ? '  ' + h + '\n' : '') + t.map(l => '  ' + l + '\n').join('')))
+function fail (here, depth, kind) {
+  const calls = Array.from(new Int32Array(memory.buffer, CALLS, depth + 2)), m = new Uint8Array(msg.flat()), h = decoder.decode(new Uint8Array(hint.flat()))
+  const fib = current, by = hint.length > 0
   msg = []; hint = []
-  if (main !== null && current !== main) x.ended(current, textOf(m), textOf(encoder.encode(KINDS[kind])), textOf(encoder.encode(at(site)[4])), at(site)[5])
+  later_sites(() => report(here, depth, kind, calls, m, h, by, fib))
   throw new Stop()
+}
+function report (here, depth, kind, calls, m, h, by, fib) {
+  const trace = []
+  if (site(here)[2]) trace.push('in ' + site(here)[2])
+  for (let d = depth; d >= 1; d--) if (site(calls[d])[2]) trace.push('called from ' + site(calls[d])[2])
+  // In a library, the line shown is that of the program that called into it.
+  let shown = here
+  for (let d = depth; site(shown)[3] && d >= 1; d--) if (calls[d] >= 0 && !site(calls[d])[3]) shown = calls[d]
+  const t = trace.length <= 20 ? trace : trace.slice(0, 10).concat(['... and ' + (trace.length - 10) + ' more'])
+  const s = site(shown)
+  out(2, encoder.encode(s[0] + decoder.decode(m) + '\n' + s[1] + (by ? '  ' + h + '\n' : '') + t.map(l => '  ' + l + '\n').join('')))
+  if (main !== null && fib !== main) x.ended(fib, textOf(m), textOf(encoder.encode(KINDS[kind])), textOf(encoder.encode(site(here)[4])), site(here)[5])
 }
 
 // The scheduler: what runs next, in order; the fibers parked, each with what resumes it; one fiber runs at a time.
 const ready = [], parked = new Map(), timers = new Map(), spawned = new WeakMap(), handles = new WeakMap()
 let running = false, kicked = false, over = false, current = null, main = null, paused = false, handed = 0, nextTimer = 1
 let sliceStart = performance.now()
+// The event loop given back: a message, which costs microseconds; past a frame's time since the last time, through the
+// browser's next frame first, since Firefox runs no frame between messages (measured: 12 frames a second without it).
 const later = node ? f => setImmediate(f) : (() => {
   const c = new MessageChannel(), fs = []
   c.port1.onmessage = () => fs.shift()()
-  return f => { fs.push(f); c.port2.postMessage(0) }
+  const post = f => { fs.push(f); c.port2.postMessage(0) }
+  let frame = 0
+  return f => { const n = performance.now(); if (n - frame > 16) { frame = n; requestAnimationFrame(() => post(f)) } else post(f) }
 })()
 function kick () { if (!kicked) { kicked = true; queueMicrotask(step) } }
 function step () {
@@ -97,8 +121,7 @@ function start (fib, fn) {
   current = fib
   fiber(fib, fn).then(ran, e => {
     if (e instanceof Cancel) {
-      const s = sites[spawned.get(fib)]
-      x.ended(fib, null, textOf(encoder.encode('cancelled')), textOf(encoder.encode(s[4])), s[5])
+      later_sites(() => { const s = site(spawned.get(fib)); x.ended(fib, null, textOf(encoder.encode('cancelled')), textOf(encoder.encode(s[4])), s[5]) })
     } else if (!(e instanceof Stop)) { over = true; throw e }
     ran()
   })
@@ -240,7 +263,6 @@ const rt = {
 }
 
 module = await WebAssembly.compile(bytes)
-sites = JSON.parse(decoder.decode(WebAssembly.Module.customSections(module, 'cesia.sites')[0]))
 const imports = { rt, Math }
 for (const imp of WebAssembly.Module.imports(module)) {
   if (imp.module === 'rt' || imp.module === 'Math') continue

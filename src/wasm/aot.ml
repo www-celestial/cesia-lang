@@ -35,6 +35,8 @@ type st = {
   rt : Rt.t;
   sites : string Vec.t;
   site_ids : (string, int) Hashtbl.t;
+  site_texts : string Vec.t;  (* the texts that sites name, each once *)
+  text_ids : (string, int) Hashtbl.t;
   mutable vers : (version * string) list;
   mutable todo : version list;
   mutable lambdas : (Ast.func * proto) list;
@@ -105,6 +107,12 @@ let json_text s =
   Buffer.add_char b '"';
   Buffer.contents b
 
+(* A text of the table of sites: its place there, each text once. *)
+let intern st x =
+  match Hashtbl.find_opt st.text_ids x with
+  | Some k -> k
+  | None -> let k = Vec.length st.site_texts in Vec.add_last st.site_texts x; Hashtbl.replace st.text_ids x k; k
+
 let site_at st file pos fname =
   let path, src = Vec.get st.w.files file in
   let key = Printf.sprintf "%d:%d:%s" file pos fname in
@@ -118,10 +126,13 @@ let site_at st file pos fname =
     let place = if fname = "" || String.starts_with ~prefix:"std/page/" path then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
     let lib = String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path in
     let i = Vec.length st.sites in
-    (* Its header and line of code, the function it is in, whether in a library, and its file and line, which a fiber's
-       panic gives its task. *)
+    (* Its header, its line of code and the line of its caret, the function it is in, whether in a library, and its file
+       and line, which a fiber's panic gives its task: each text once in the table, the sites of a line share it. *)
+    let line_end = match String.index_opt excerpt '\n' with Some k -> k + 1 | None -> String.length excerpt in
+    let t x = string_of_int (intern st x) in
     Vec.add_last st.sites
-      (Printf.sprintf "[%s,%s,%s,%d,%s,%d]" (json_text header) (json_text excerpt) (json_text place) (if lib then 1 else 0) (json_text path) (Pos.line pos));
+      (String.concat "," [ t header; t (String.sub excerpt 0 line_end); t (String.sub excerpt line_end (String.length excerpt - line_end)); t place;
+                           (if lib then "1" else "0"); t path; string_of_int (Pos.line pos) ]);
     Hashtbl.replace st.site_ids key i;
     i
 
@@ -1780,7 +1791,7 @@ let finish st =
 (* The program: its files, in the order the interpreter runs them, become the start of the module. *)
 let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let rt = Rt.create () in
-  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
+  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; site_texts = Vec.create (); text_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
              shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = []; pages = Hashtbl.create 4; scripts = [] } in
   List.iter (fun (path, m) -> Hashtbl.replace st.pages path m) pages;
   ignore (need rt "box_f");
@@ -1827,13 +1838,19 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
   start.body <- rt.inits @ run;
   Wasm.export rt.m "main" "main";
   Wasm.export rt.m "flush" (Rt.need rt "flush");
+  (* {"t": the texts, "s": seven numbers a site}: in a file of its own beside the module, which the loader reads at the
+     first error only: a page that runs without one never loads it. *)
   let sites = Buffer.create 4096 in
-  Buffer.add_char sites '[';
+  Buffer.add_string sites "{\"t\":[";
+  for i = 0 to Vec.length st.site_texts - 1 do
+    if i > 0 then Buffer.add_char sites ',';
+    Buffer.add_string sites (json_text (Vec.get st.site_texts i))
+  done;
+  Buffer.add_string sites "],\"s\":[";
   for i = 0 to Vec.length st.sites - 1 do
     if i > 0 then Buffer.add_char sites ',';
     Buffer.add_string sites (Vec.get st.sites i)
   done;
-  Buffer.add_char sites ']';
-  Wasm.custom rt.m "cesia.sites" (Buffer.contents sites);
+  Buffer.add_string sites "]}";
   if survey && Hashtbl.length surveyed > 0 then exit 2;
-  Wasm.write rt.m, List.rev st.scripts
+  Wasm.write rt.m, List.rev st.scripts, Buffer.contents sites

@@ -31,7 +31,7 @@ let build (ctx : Types.ctx) path =
         in
         main, more [])
   in
-  let module_bytes, scripts =
+  let module_bytes, scripts, sites =
     match Aot.build ~pages w (List.rev (main :: !files)) with
     | built -> built
     | exception Aot.Unsupported (file, pos, what) ->
@@ -57,6 +57,7 @@ let build (ctx : Types.ctx) path =
     stop (Messages.wasm_overwrite js_path)
   end;
   Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
+  Out_channel.with_open_bin (base ^ ".sites") (fun oc -> Out_channel.output_string oc sites);
   let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
   let at = find 0 in
   let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
