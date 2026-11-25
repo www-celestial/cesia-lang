@@ -66,7 +66,8 @@ const rt = {
     return b.length
   },
   fail,
-  checkpoint () {}
+  checkpoint () {},
+  rand32 () { return crypto.getRandomValues(new Int32Array(1))[0] }
 }
 
 module = await WebAssembly.compile(bytes)

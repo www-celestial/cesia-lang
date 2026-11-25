@@ -669,7 +669,7 @@ and struct_lit fc e sname fields =
   if List.length (List.sort_uniq String.compare (Array.to_list names)) < n then unsupported fc e.pos "a map with a key twice";
   let vals = List.concat_map (fun (_, v) -> stored fc v) (Array.to_list fields) @ [ array_new_fixed rt.vals n ] in
   match sname with
-  | None -> [ I32 1; keys rt names ] @ vals @ [ struct_new rt.map ]
+  | None -> [ I32 1; keys rt names ] @ vals @ [ I32 n; I32 0; struct_new rt.map ]
   | Some s -> [ I32 1; shape rt s names ] @ vals @ [ struct_new rt.recd ]
 
 (* e?: the value of an Ok, or the function returns the Err. *)
@@ -764,18 +764,21 @@ and pat_test fc (pt : pat) x fail =
   | Pstruct fs ->
     (* A struct's fields or a map's keys, by name. *)
     let names = Rt.local fc.fb (Rt.nl rt.vals) and vals = Rt.local fc.fb (Rt.nl rt.vals) and k = Rt.local fc.fb I32 in
-    [ Block (Bnone, [
+    let mp = Rt.local fc.fb (Rt.nl rt.map) in
+    [ Rnull (T rt.map); Lset mp;
+      Block (Bnone, [
           Lget x; Test (false, T rt.recd);
           If (Bnone, [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 1; Lset names;
                        Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; Lset vals; Br 1 ], []);
           Lget x; Test (false, T rt.map);
-          If (Bnone, [ Lget x; Cast (false, T rt.map); struct_get rt.map m_keys; struct_get rt.keys 0; Lset names;
-                       Lget x; Cast (false, T rt.map); struct_get rt.map m_vals; Lset vals; Br 1 ], []);
+          If (Bnone, [ Lget x; Cast (false, T rt.map); Lset mp; Lget mp; struct_get rt.map m_vals; Lset vals; Br 1 ], []);
           Br (fail + 1) ]) ]
     @ List.concat_map
       (fun (name, q) ->
          let y = Rt.local fc.fb Rt.v in
-         [ Lget names; as_non_null; text rt name; call rt "find_name"; Ltee k; I32 0; i32_lt_s; Br_if fail;
+         [ Lget mp; ref_is_null;
+           If (Bval I32, [ Lget names; as_non_null; text rt name; call rt "find_name" ], [ Lget mp; as_non_null; text rt name; call rt "map_find" ]);
+           Ltee k; I32 0; i32_lt_s; Br_if fail;
            Lget vals; as_non_null; Lget k; array_get rt.vals; Lset y ] @ pat_test fc q y fail)
       (Array.to_list fs)
 

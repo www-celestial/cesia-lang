@@ -1,0 +1,45 @@
+use std/io
+use std/value
+
+(* A map past 8 keys finds them by a table of hashes: the order stays that of insertion, a copy written to leaves the
+   first alone, a key written again keeps its place. *)
+m = {}
+for k in 1..40
+  m["k$k"] = k * k
+end
+io.Print(value.Len(m), m["k1"], m["k9"], m["k40"], m.k20)
+m["k9"] = -9
+io.Print(m["k9"], value.Len(m))
+copy = m
+copy["new"] = 0
+copy["k1"] = 100
+io.Print(value.Len(m), value.Len(copy), m["k1"], copy["k1"], copy["new"])
+small = {}
+for k in 1..12
+  small["s$k"] = k
+end
+io.Print(small)
+other = {}
+for k in 12..1
+  other["s$k"] = k
+end
+for k in 1..12
+  other["s$k"] = k
+end
+io.Print(small == other, value.Equal(small, m))
+lit = {A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8}
+lit.I = 9
+lit.J = 10
+twin = {A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8}
+io.Print(lit, twin, lit.J + twin.H)
+match lit
+  {A: a, J: j} -> io.Print("matched", a, j)
+  _ -> io.Print("no")
+end
+grow = {Start: 0}
+step = grow
+for k in 1..20
+  step["g$k"] = k
+end
+io.Print(value.Len(grow), value.Len(step), step.g20)
+io.Print(m["absent"])
