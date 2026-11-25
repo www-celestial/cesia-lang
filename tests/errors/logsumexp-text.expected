@@ -1,0 +1,4 @@
+logsumexp-text.ce:4:14: LogSumExp needs an array, not the text "scores".
+  4 | io.Print(math.LogSumExp("scores"))
+    |              ^
+exit 1

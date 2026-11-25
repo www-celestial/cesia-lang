@@ -863,8 +863,11 @@ interpreter, which then boxes every integer.
 A native, a function of `std/` written in OCaml, as `math.Abs` or `text.ByteLength`, is machine code already, but
 machine code never calls it: native code never calls back into OCaml, so that nothing collects during a run, and a loop
 with a statement that calls one stays in the interpreter. The JIT makes some of them itself, inline: those of libm, as
-`math.Sqrt`, and `math.Abs`, `math.Div`, `math.Mod`, `list.Max` and `list.Min` of two numbers, `value.Len`,
-`random.Float`, and a few on small arrays of floats.
+`math.Sqrt`, `math.Log10` to `math.Atanh` and `math.Hypot`, the angles in degrees, `math.SinDegrees`,
+`math.CosDegrees` and `math.TanDegrees`, reduced by libm's `fmod` and `round` as the interpreter reduces them, and
+`math.Abs`, `math.Div`, `math.Mod`, `list.Max` and `list.Min` of two numbers, `value.Len`, `random.Float`, and a few on
+small arrays of floats. `math.Cbrt` is Cesia's own, correctly rounded, and no function of libm: a loop that calls it
+stays in the interpreter, and an array takes it in one call.
 The interpreter's call of the others took 28 to 36 ns. A sampling profiler, `gdb` stopping the process every 10 ms and
 reading its stack, 300 times, on 3 × 10^8 calls of `math.Abs(i)`, said where:
 

@@ -394,6 +394,17 @@ comparé. BLAKE2 est sous [Cryptographie](#cryptographie), QuickCheck et le shri
 - V. I. Levenshtein. "Binary codes capable of correcting deletions, insertions, and reversals". *Soviet Physics Doklady*
   10(8):707–710, 1966 ; l'original russe, 1965 : <https://www.mathnet.ru/eng/dan31411>. L'edit distance (le plus petit
   nombre d'insertions, de suppressions et de remplacements qui changent un texte en un autre) de [algo.Levenshtein].
+- Jonathan Richard Shewchuk. "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates".
+  *Discrete & Computational Geometry* 18(3):305–363, 1997. <https://doi.org/10.1007/PL00009321>. La somme exacte de
+  floats dont le signe tranche les rares cas de [math.Cbrt] proches du milieu de deux floats.
+- Pierre Blanchard, Desmond J. Higham, Nicholas J. Higham. "Accurately computing the log-sum-exp and softmax functions".
+  *IMA Journal of Numerical Analysis* 41(4), 2021. Le plus grand terme d'abord, puis `log1p` des autres :
+  [math.LogSumExp].
+- Charles F. F. Karney. "Algorithms for geodesics". *Journal of Geodesy* 87(1):43–55, 2013.
+  <https://doi.org/10.1007/s00190-012-0578-z>. La réduction exacte d'un angle en degrés de [math.SinDegrees],
+  [math.CosDegrees] et [math.TanDegrees].
+- Peter J. Mohr, David B. Newell, Barry N. Taylor, Eite Tiesinga. *CODATA Recommended Values of the Fundamental Physical
+  Constants: 2022*. NIST, 2024. <https://physics.nist.gov/cuu/Constants/>. Les 355 constantes de [std/constants].
 
 ## Bases de données
 

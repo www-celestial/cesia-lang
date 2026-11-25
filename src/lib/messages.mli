@@ -115,6 +115,7 @@ val two_dims : string -> int -> t
 val shape : int array -> int array -> t
 val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
+val clamp_bounds : string -> string -> t
 
 (** The private method len of a struct, which value.Len calls, gave something else than an integer. *)
 val len_result : string -> string -> t

@@ -1,0 +1,5 @@
+use std/io
+use std/math
+
+(* A reading left as text by a careless parse. *)
+io.Print(math.Log10([1000.0, "12"]))

@@ -19,7 +19,9 @@ et [math.Inc] et [math.Dec] ; les arrondis, [math.Round], [math.Floor] et [math.
 racines, les puissances et les logarithmes, [math.Sqrt], [math.Exp] et [math.Log] ; la trigonométrie en radians,
 [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], et [math.Atan2] pour l'angle d'un point ; les
 constantes [math.Pi], [math.Nan] et [math.Inf], `1.0 / 0.0` ; et les tests [math.IsZero], [math.IsPos], [math.IsNeg],
-[math.IsEven] et [math.IsOdd]. Chaque fonction d'un seul nombre marche aussi sur un array, élément par élément.
+[math.IsEven] et [math.IsOdd]. Chaque fonction d'un seul nombre marche aussi sur un array, élément par élément. Les
+sections après les bits ajoutent les autres logarithmes et racines, les fonctions hyperboliques, les angles en degrés,
+le journal d'un capteur nettoyé avec elles, les bords des floats et les constantes physiques de [std/constants].
 
 ```cesia
 use std/math
@@ -125,6 +127,496 @@ disp(bitshift(1, 4))
 disp(bitshift(16, -2))
 disp(floor(-8 / 2))
 ```
+
+### Logarithmes, racines et fonctions hyperboliques
+
+À côté de [math.Log] et [math.Exp], [math.Log10] et [math.Log2] sont les logarithmes en base 10 et 2 ; [math.Log1p] est
+`log(1 + x)` et [math.Expm1] est `exp(x) - 1`, qui gardent leurs chiffres pour un petit `x`, là où `1 + x` les a déjà
+perdus. [math.Cbrt] est la racine cubique de tout nombre, négatif aussi, et [math.Hypot] est `sqrt(x^2 + y^2)`, la
+longueur du grand côté d'un triangle rectangle, sans l'overflow (le dépassement du plus grand float) des carrés.
+[math.Sinh], [math.Cosh] et [math.Tanh] sont les fonctions hyperboliques, et [math.Asinh], [math.Acosh] et [math.Atanh]
+leurs inverses. Chacune marche sur un nombre et sur un array, élément par élément.
+
+```cesia
+math.Log10(1000) -->
+math.Log2(1024) -->
+math.Log1p(1e-12) -->
+math.Log(1 + 1e-12) -->
+math.Expm1(1e-12) -->
+math.Cbrt([27, -8, 1000]) -->
+math.Hypot(3, 4) -->
+math.Hypot(1e200, 1e200) -->
+math.Tanh(0.5) -->
+math.Atanh(0.6) -->
+```
+
+```python
+import numpy as np
+print(np.log10(1000))
+print(np.log2(1024))
+print(np.log1p(1e-12))
+print(np.log(1 + 1e-12))
+print(np.expm1(1e-12))
+print(np.round(np.cbrt([27, -8, 1000]), 12))
+print(np.hypot(3, 4))
+print(np.hypot(1e200, 1e200))
+print(np.tanh(0.5))
+print(np.arctanh(0.6))
+```
+
+```r
+print(log10(1000))
+print(log2(1024))
+print(sprintf("%.16g", log1p(1e-12)))
+print(sprintf("%.16g", log(1 + 1e-12)))
+print(sprintf("%.16g", expm1(1e-12)))
+x <- c(27, -8, 1000)
+print(sign(x) * round(abs(x)^(1/3), 12))
+print(Mod(complex(real = 3, imaginary = 4)))
+print(Mod(complex(real = 1e200, imaginary = 1e200)))
+print(tanh(0.5))
+print(atanh(0.6))
+```
+
+```matlab
+disp(log10(1000))
+disp(log2(1024))
+disp(sprintf('%.16g', log1p(1e-12)))
+disp(sprintf('%.16g', log(1 + 1e-12)))
+disp(sprintf('%.16g', expm1(1e-12)))
+disp(nthroot([27 -8 1000], 3))
+disp(hypot(3, 4))
+disp(hypot(1e200, 1e200))
+disp(tanh(0.5))
+disp(atanh(0.6))
+```
+
+`math.Log(1 + 1e-12)` est faux dès son cinquième chiffre : `1 + 1e-12` est arrondi au float le plus proche avant que le
+logarithme ne le voie. [math.Cbrt] est correctly rounded (arrondie correctement : le float le plus proche de la vraie
+racine), si bien que `math.Cbrt(27)` vaut `3.0` : le `np.cbrt(27.0)` de numpy vaut `3.0000000000000004`, venu de la
+bibliothèque C, et l'onglet Python l'arrondit pour montrer les mêmes nombres.
+
+### Les angles en degrés
+
+[math.Radians] change des degrés en radians, et [math.Degrees] des radians en degrés. [math.SinDegrees],
+[math.CosDegrees] et [math.TanDegrees] prennent eux-mêmes des degrés, et réduisent d'abord l'angle exactement, si bien
+que le sinus de 180 degrés vaut `0.0` et celui de 30 degrés `0.5`, là où le sinus des radians, arrondis, s'écarte un
+peu :
+
+```cesia
+math.SinDegrees([30, 90, 180]) -->
+math.Sin(math.Radians([30, 90, 180])) -->
+math.CosDegrees(90) -->
+math.TanDegrees(45) -->
+math.Degrees(math.Atan(1.0)) -->
+```
+
+```python
+import numpy as np
+print(np.round(np.sin(np.radians([30, 90, 180])), 15))
+print(np.sin(np.radians([30, 90, 180])))
+print(round(np.cos(np.radians(90)), 15))
+print(round(np.tan(np.radians(45)), 15))
+print(np.degrees(np.arctan(1.0)))
+```
+
+```r
+print(sinpi(c(30, 90, 180) / 180))
+print(sprintf("%.17g", sin(c(30, 90, 180) * pi / 180)))
+print(cospi(90 / 180))
+print(tanpi(45 / 180))
+print(atan(1) * 180 / pi)
+```
+
+```matlab
+disp(sind([30 90 180]))
+disp(sprintf('%.17g ', sin(deg2rad([30 90 180]))))
+disp(cosd(90))
+disp(tand(45))
+disp(rad2deg(atan(1)))
+```
+
+Les fonctions arc en degrés sont [math.Degrees] des fonctions arc : le `asind(x)` de MATLAB est
+`math.Degrees(math.Asin(x))`.
+
+### Le journal d'un capteur, nettoyé
+
+Une station météo écrit une ligne toutes les dix minutes : la température en °C, l'humidité en %, d'où vient le vent en
+degrés et sa vitesse en m/s, et la pluie en mm. En voici huit lignes, telles qu'un capteur les donne : une température
+manque, la ligne perdue, et une autre est NaN (not a number, le float qui n'est pas un nombre), `0.0 / 0.0`, une
+division par un compte nul dans le firmware (le logiciel embarqué) de la station ; deux humidités sortent de 0..100, et
+le vent tourne autour du nord.
+
+```cesia
+use std/list
+use std/num
+use std/value
+temp = [12.4, 12.9, missing, 13.8, 0.0 / 0.0, 14.6, 15.1, 15.3]
+humidity = [81.0, 79.5, 78.2, 104.3, 76.0, -2.0, 74.1, 73.0]
+direction = [350.0, 10.0, 20.0, 355.0, 5.0, 15.0, 0.0, 345.0]
+speed = [3.1, 2.8, 4.0, 3.5, 2.2, 3.9, 4.4, 3.0]
+rain = [0.0, 0.0, 0.2, 1.5, 12.0, 0.4, 0.0, 30.0]
+```
+
+**1. Trouver les trous.** [math.IsNan] trouve le NaN, et `value.IsMissing` la valeur missing (absente) : ce n'est pas la
+même chose, un nombre qui a mal tourné et pas de nombre du tout, mais les deux sont des trous. numpy et MATLAB n'ont que
+NaN pour les deux, et R a les deux, `NaN` et `NA`, que `is.na` trouve ensemble ; l'onglet MATLAB de l'étape 2 remplit
+par indices, `fillmissing` étant dans un paquet d'Octave. [math.IsFinite] garde les nombres qui ne sont ni l'un ni
+l'autre, et l'infini d'un capteur cassé partirait avec eux :
+
+```cesia
+holes = [value.IsMissing(x) or math.IsNan(x) for x in temp]
+holes -->
+list.Sum(holes) -->
+good = [x for x in temp if math.IsFinite(x)]
+list.Mean(good) -->
+```
+
+```python
+import numpy as np
+temp = np.array([12.4, 12.9, np.nan, 13.8, np.nan, 14.6, 15.1, 15.3])
+holes = np.isnan(temp)
+print(holes)
+print(holes.sum())
+good = temp[np.isfinite(temp)]
+print(good.mean())
+```
+
+```r
+temp <- c(12.4, 12.9, NA, 13.8, NaN, 14.6, 15.1, 15.3)
+holes <- is.na(temp)
+print(holes)
+print(sum(holes))
+good <- temp[is.finite(temp)]
+print(mean(good))
+```
+
+```matlab
+temp = [12.4 12.9 NaN 13.8 NaN 14.6 15.1 15.3];
+holes = isnan(temp);
+disp(mat2str(holes))
+disp(sum(holes))
+good = temp(isfinite(temp));
+disp(mean(good))
+```
+
+**2. Les remplir.** [num.ReplaceNan] met une valeur à la place de chaque NaN et de chaque valeur missing : ici la
+moyenne des bonnes températures, et pas de pluie pour une mesure que le pluviomètre a perdue,
+`num.ReplaceNan(0.0, rain)`.
+
+```cesia
+filled = num.ReplaceNan(list.Mean(good), temp)
+filled -->
+```
+
+```python
+import numpy as np
+temp = np.array([12.4, 12.9, np.nan, 13.8, np.nan, 14.6, 15.1, 15.3])
+good = temp[np.isfinite(temp)]
+filled = np.nan_to_num(temp, nan=good.mean())
+print(filled)
+```
+
+```r
+temp <- c(12.4, 12.9, NA, 13.8, NaN, 14.6, 15.1, 15.3)
+good <- temp[is.finite(temp)]
+filled <- replace(temp, is.na(temp), mean(good))
+print(filled)
+```
+
+```matlab
+temp = [12.4 12.9 NaN 13.8 NaN 14.6 15.1 15.3];
+good = temp(isfinite(temp));
+filled = temp;
+filled(isnan(filled)) = mean(good);
+disp(filled)
+```
+
+**3. Écrêter ce qui ne peut pas être.** Une humidité va de 0 à 100 % : [math.Clamp] garde chaque mesure dans cet
+intervalle, et une borne qu'elle dépasse devient la borne elle-même.
+
+```cesia
+math.Clamp(0, 100, humidity) -->
+```
+
+```python
+import numpy as np
+humidity = np.array([81.0, 79.5, 78.2, 104.3, 76.0, -2.0, 74.1, 73.0])
+print(np.clip(humidity, 0, 100))
+```
+
+```r
+humidity <- c(81.0, 79.5, 78.2, 104.3, 76.0, -2.0, 74.1, 73.0)
+print(pmin(pmax(humidity, 0), 100))
+```
+
+```matlab
+humidity = [81.0 79.5 78.2 104.3 76.0 -2.0 74.1 73.0];
+disp(mat2str(min(max(humidity, 0), 100)))
+```
+
+**4. Faire la moyenne du vent.** La moyenne des directions vaut 137.5 degrés, sud-est, pour un vent qui souffle du nord
+tout du long : 350 et 10 sont à 20 degrés l'un de l'autre, pas à 340. Le vent moyen est la moyenne de ses vecteurs, est
+et nord, avec [math.SinDegrees] et [math.CosDegrees] ; un vent venu d'une direction souffle vers le côté opposé, d'où
+les signes moins. [math.Atan2] redonne la direction du vecteur moyen, et [math.Hypot] sa vitesse :
+
+```cesia
+list.Mean(direction) -->
+east = -speed * math.SinDegrees(direction)
+north = -speed * math.CosDegrees(direction)
+math.Degrees(math.Atan2(-list.Mean(east), -list.Mean(north))) -->
+math.Hypot(list.Mean(east), list.Mean(north)) -->
+```
+
+```python
+import numpy as np
+direction = np.array([350.0, 10.0, 20.0, 355.0, 5.0, 15.0, 0.0, 345.0])
+speed = np.array([3.1, 2.8, 4.0, 3.5, 2.2, 3.9, 4.4, 3.0])
+print(direction.mean())
+east = -speed * np.sin(np.radians(direction))
+north = -speed * np.cos(np.radians(direction))
+print(np.degrees(np.arctan2(-east.mean(), -north.mean())))
+print(np.hypot(east.mean(), north.mean()))
+```
+
+```r
+direction <- c(350, 10, 20, 355, 5, 15, 0, 345)
+speed <- c(3.1, 2.8, 4.0, 3.5, 2.2, 3.9, 4.4, 3.0)
+print(mean(direction))
+east <- -speed * sinpi(direction / 180)
+north <- -speed * cospi(direction / 180)
+print(atan2(-mean(east), -mean(north)) * 180 / pi)
+print(Mod(complex(real = mean(east), imaginary = mean(north))))
+```
+
+```matlab
+direction = [350 10 20 355 5 15 0 345];
+speed = [3.1 2.8 4.0 3.5 2.2 3.9 4.4 3.0];
+disp(mean(direction))
+east = -speed .* sind(direction);
+north = -speed .* cosd(direction);
+disp(rad2deg(atan2(-mean(east), -mean(north))))
+disp(hypot(mean(east), mean(north)))
+```
+
+Le vent moyen vient de 3.1 degrés, un peu à l'est du nord, à 3.3 m/s : un peu moins que la moyenne des vitesses, car le
+vent n'a pas soufflé d'une seule direction tout du long.
+
+**5. Mettre la pluie sur une échelle log.** La pluie vaut 0 la plupart du temps et 30 mm dans un orage : sur un
+graphique, l'orage cache le reste. Un logarithme les étale, mais `math.Log10(0)` vaut `-math.Inf` ; [math.Log1p],
+`log(1 + x)`, vaut 0 en 0, reste proche de `x` pour une petite pluie, et croît comme le logarithme pour une grande :
+
+```cesia
+math.Log10(rain) -->
+math.Log1p(rain) -->
+```
+
+```python
+import numpy as np
+rain = np.array([0.0, 0.0, 0.2, 1.5, 12.0, 0.4, 0.0, 30.0])
+with np.errstate(divide="ignore"):
+    print(np.log10(rain))
+print(np.log1p(rain))
+```
+
+```r
+rain <- c(0.0, 0.0, 0.2, 1.5, 12.0, 0.4, 0.0, 30.0)
+print(log10(rain))
+print(log1p(rain))
+```
+
+```matlab
+rain = [0.0 0.0 0.2 1.5 12.0 0.4 0.0 30.0];
+disp(log10(rain))
+disp(log1p(rain))
+```
+
+```cesia allow=read,write
+use std/plot
+times = list.Range(0, 70, step = 10)
+rainPlot = plot.Of([plot.Line(times, math.Log1p(rain), label = "log1p(rain)"), plot.Points(times, math.Log1p(rain))],
+  title = "Rain on a log scale: math.Log1p keeps the dry readings at 0", x = "minutes", y = "log(1 + mm)", size = [640, 340])
+plot.Save(rainPlot, "numbers-rain.svg") -->
+```
+
+**6. Un interrupteur.** Le chauffage du boîtier de la station s'allume sous 14 °C : [math.Step] vaut 0 sous 0 et 1
+au-dessus, la marche de Heaviside, et `zero` sa valeur en 0 même, 0.5 quand on ne la donne pas, comme le `heaviside`
+de MATLAB.
+
+```cesia
+math.Step(14 - filled, zero = 0) -->
+```
+
+```python
+import numpy as np
+temp = np.array([12.4, 12.9, np.nan, 13.8, np.nan, 14.6, 15.1, 15.3])
+filled = np.nan_to_num(temp, nan=temp[np.isfinite(temp)].mean())
+print(np.heaviside(14 - filled, 0))
+```
+
+```r
+temp <- c(12.4, 12.9, NA, 13.8, NaN, 14.6, 15.1, 15.3)
+filled <- replace(temp, is.na(temp), mean(temp[is.finite(temp)]))
+print(as.numeric(14 - filled > 0))
+```
+
+```matlab
+temp = [12.4 12.9 NaN 13.8 NaN 14.6 15.1 15.3];
+filled = temp;
+filled(isnan(filled)) = mean(temp(isfinite(temp)));
+disp(double(14 - filled > 0))
+```
+
+### Les bords des floats
+
+Un float a 53 bits : [math.Epsilon] est l'écart entre un nombre et le float suivant au-dessus, si bien que
+`math.Epsilon(1.0)` est le machine epsilon (l'écart entre 1 et le float suivant), et [math.NextAfter] est ce float
+suivant. [math.MaxFloat] est le plus grand float, [math.MinFloat] le plus petit float normal, [math.MaxInt] et
+[math.MinInt] les bornes des entiers de Cesia sur 63 bits, et [math.E] la base du logarithme naturel. [math.IsInf]
+trouve les infinis que laisse un overflow, et [math.LogSumExp] est `log(sum(exp(xs)))` sans cet overflow, le
+dénominateur du softmax (la fonction qui change des scores en probabilités) du machine learning (l'apprentissage
+automatique) :
+
+```cesia
+math.Epsilon(1.0) -->
+math.Epsilon(1e9) -->
+math.NextAfter(1.0, 2.0) -->
+math.MaxFloat -->
+math.MinFloat -->
+math.E -->
+math.IsInf(math.Exp([700.0, 710.0])) -->
+math.LogSumExp([1000.0, 1001.0, 1002.0]) -->
+```
+
+```python
+import numpy as np
+import scipy.special
+print(np.finfo(float).eps)
+print(np.spacing(1e9))
+print(np.nextafter(1.0, 2.0))
+print(np.finfo(float).max)
+print(np.finfo(float).tiny)
+print(np.e)
+with np.errstate(over="ignore"):
+    print(np.isinf(np.exp([700.0, 710.0])))
+print(scipy.special.logsumexp([1000.0, 1001.0, 1002.0]))
+```
+
+```r
+print(sprintf("%.16g", .Machine$double.eps))
+print(sprintf("%.16g", 2^(floor(log2(1e9)) - 52)))
+print(sprintf("%.17g", 1 + .Machine$double.eps))
+print(sprintf("%.17g", .Machine$double.xmax))
+print(sprintf("%.17g", .Machine$double.xmin))
+print(sprintf("%.16g", exp(1)))
+print(is.infinite(exp(c(700, 710))))
+x <- c(1000, 1001, 1002)
+print(sprintf("%.16g", max(x) + log(sum(exp(x - max(x))))))
+```
+
+```matlab
+disp(sprintf('%.16g', eps))
+disp(sprintf('%.16g', eps(1e9)))
+disp(sprintf('%.17g', 1 + eps))
+disp(sprintf('%.17g', realmax))
+disp(sprintf('%.17g', realmin))
+disp(sprintf('%.16g', exp(1)))
+disp(mat2str(isinf(exp([700 710]))))
+x = [1000 1001 1002];
+disp(sprintf('%.16g', max(x) + log(sum(exp(x - max(x))))))
+```
+
+### Constantes physiques : std/constants
+
+[std/constants] contient les 355 constantes de CODATA 2022, les valeurs que publie le NIST, par leurs noms dans sa
+table : [constants.Value] donne la valeur, [constants.Unit] l'unité, [constants.Uncertainty] l'incertitude type, 0 pour
+les constantes exactes, et [constants.Find] les noms qui contiennent un mot. L'énergie d'un photon de lumière verte,
+532 nm, vaut `h c / lambda` :
+
+```cesia
+use std/constants
+constants.Find("Planck") -->
+planck = constants.Value("Planck constant")
+light = constants.Value("speed of light in vacuum")
+planck * light / 532e-9 -->
+planck * light / 532e-9 / constants.Value("elementary charge") -->
+constants.Unit("Newtonian constant of gravitation") -->
+constants.Uncertainty("Newtonian constant of gravitation") -->
+```
+
+```python
+import scipy.constants as sc
+print(sc.find("Planck"))
+h = sc.value("Planck constant")
+c = sc.value("speed of light in vacuum")
+print(h * c / 532e-9)
+print(h * c / 532e-9 / sc.value("elementary charge"))
+print(sc.unit("Newtonian constant of gravitation"))
+print(sc.physical_constants["Newtonian constant of gravitation"][2])
+```
+
+### Ce qu'elles promettent
+
+Chaque fonction a tourné sur 100 000 entrées, ses bords parmi elles, à côté de numpy 2.5, R 4.6 et GNU Octave 11 (pour
+MATLAB), et a été comparée à mpmath sur 300 bits pour 20 000 d'entre elles : le nombre de résultats qui ne sont pas le
+float le plus proche de la valeur exacte, et la plus grande erreur, en ulps (units in the last place : l'écart entre
+deux floats voisins).
+
+| Fonction | Cesia | numpy | R | MATLAB (Octave) |
+|---|---|---|---|---|
+| [math.Cbrt] | 0 | 10 055, 3 ulps | 15 888, 120 ulps | 10 055, 3 ulps |
+| [math.Sinh], [math.Cosh], [math.Asinh], [math.Acosh], [math.Atanh] | 0 | 0 | 0 | 0 |
+| [math.Tanh] | 0 | 2 578, 1 ulp | 0 | 0 |
+| [math.Log2] | 34, 1 ulp | pareil | pareil | pareil |
+| [math.Log1p] | 41, 1 ulp | pareil | 130, 1 ulp | pareil |
+| [math.Expm1] | 541, 1 ulp | pareil | 606, 1 ulp | pareil |
+| [math.Log10] | 2 868, 2 ulps | pareil | pareil | pareil |
+| [math.Hypot] | 16, 1 ulp | pareil | pareil | pareil |
+| [math.SinDegrees] | 3 128, 1 ulp | 14 669 | 14 982 | 10 980 |
+| [math.CosDegrees] | 2 851, 1 ulp | 14 356 | 14 383 | 9 146 |
+| [math.TanDegrees] | 6 816, 2 ulps | 17 083 | 17 411 | 17 661 |
+
+Cesia appelle la bibliothèque C, ici glibc 2.44, comme numpy, R et Octave, pour toutes sauf [math.Cbrt], la sienne, et
+donne les mêmes bits que numpy là où numpy l'appelle aussi. La racine cubique de la bibliothèque C s'écarte jusqu'à
+3 ulps ; celle de Cesia prend le float le plus proche de la vraie racine à partir d'un polynôme dont le cube est rendu
+exact, et tranche les rares cas proches du milieu de deux floats par le signe exact d'une somme (les expansions de
+Shewchuk) : elle ne se trompe jamais, et va aussi vite. Le `tanh` de numpy est le sien, plus rapide et faux de 1 ulp
+une fois sur huit. Les degrés de numpy, R et Octave sont faux aux multiples de 180 et de 90 : le sinus de 180 degrés y
+vaut 1.2e-16 au lieu de 0, une erreur d'une infinité d'ulps ; la réduction de Cesia les rend exacts, et se trompe d'au
+plus 1 ulp ailleurs, là où les radians sont arrondis une fois. [math.Log10] est le point faible de la bibliothèque C,
+2 ulps près de 1, partout.
+
+### Ce qu'elles coûtent
+
+Sur un million de floats, en nanosecondes par élément, médianes de 5 passes alternées avec numpy 2.5 et R 4.6 (Intel
+Core i7-4720HQ, 4 cœurs, load average, la charge moyenne du système, de 2.1 à 2.6) : l'appel de Cesia sur l'array, sur
+tous les cœurs et sur un seul, et une boucle de code machine qui appelle la fonction sur chaque élément.
+
+| Fonction | Cesia, 4 cœurs | Cesia, 1 cœur | boucle | numpy | R |
+|---|---|---|---|---|---|
+| [math.Log10] | 5.7 | 11.3 | 12.4 | 9.7 | 17.0 |
+| [math.Log1p] | 6.0 | 11.8 | 12.5 | 9.8 | 16.0 |
+| [math.Expm1] | 6.5 | 13.8 | 15.3 | 12.1 | 17.0 |
+| [math.Cbrt] | 6.1 | 21.3 | 55.6 | 20.4 | 35.0 |
+| [math.Tanh] | 6.3 | 18.4 | 19.0 | 16.3 | 20.0 |
+| [math.Asinh] | 6.9 | 24.6 | 26.2 | 23.6 | 26.0 |
+| [math.SinDegrees] | 7.0 | 23.7 | 29.1 | 14.1 | 23.0 |
+| [math.Radians] | 1.9 | 1.7 | 3.9 | 1.8 | 6.0 |
+| [math.Hypot] | 3.2 | 9.2 | 12.6 | 8.8 | 29.0 |
+| [math.Clamp] | 2.1 | 1.9 | 76.6 | 1.5 | 7.0 |
+| [math.IsNan] | 3.1 | 6.0 | 3.5 | 0.6 | 2.0 |
+| [num.ReplaceNan] | 3.4 | 3.5 | 44.3 | 5.6 | 4.0 |
+| [math.LogSumExp] | 8.9 | 8.8 | | 24.5 | 12.0 |
+
+Sur un cœur, Cesia prend 1.04 à 1.21 fois le temps de numpy pour les fonctions de la bibliothèque C, que les deux
+appellent, et autant pour [math.Cbrt], la sienne et correctly rounded ; sur quatre, il passe devant. [math.LogSumExp]
+va trois fois plus vite que celle de scipy, qui fait l'array des différences, puis celui de leurs exponentielles, avant
+de les sommer. numpy en gagne trois : son `isnan` écrit un octet par élément, là où l'array de booléens de Cesia tient
+un mot de 8 octets ; son `clip` prend les instructions SIMD (une instruction qui traite plusieurs nombres à la fois) du
+processeur ; et `np.sin(np.radians(x))` saute la réduction exacte de [math.SinDegrees], dont `fmod` et `round`
+prennent 10 de ses 24 ns, au prix de `0.0` pour le sinus de 180 degrés. Une boucle qui appelle [math.Cbrt],
+[math.Clamp], [num.ReplaceNan], [math.Step], [math.Epsilon] ou [math.LogSumExp] reste dans l'interpréteur, car le code
+machine n'appelle aucune fonction écrite en OCaml ; donnez-lui l'array en un seul appel.
 
 ## Arrays et statistiques : std/num
 
@@ -302,6 +794,10 @@ heap.Items(heap.Pop(h)) -->
 - E. W. Dijkstra, *A note on two problems in connexion with graphs*, 1959 ; V. I. Levenshtein, *Binary codes capable of
   correcting deletions, insertions, and reversals*, 1966.
 - Chris Okasaki, *Purely Functional Data Structures*, 1998 : le leftist heap et les structures persistantes.
+- Jonathan Richard Shewchuk, *Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates*,
+  1997 : le signe exact des rares cas de [math.Cbrt] ; Pierre Blanchard, Desmond J. Higham et Nicholas J. Higham,
+  *Accurately computing the log-sum-exp and softmax functions*, 2021 : [math.LogSumExp] ; Charles F. F. Karney,
+  *Algorithms for geodesics*, 2013 : la réduction de [math.SinDegrees] ; CODATA 2022, les constantes de [std/constants].
 
 Chacun avec son lien dans [Références](references.md#données-et-nombres).
 

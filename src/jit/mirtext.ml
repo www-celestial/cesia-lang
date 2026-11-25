@@ -287,8 +287,9 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
       end
     | Op (op, r, x, y, _) ->
       let name = match op with Fadd -> "dadd" | Fsub -> "dsub" | Fmul -> "dmul" | Fdiv -> "ddiv" | _ -> "" in
-      if op = Fpow then pr "  call pd2, pow, r%d, %s, %s\n" r (operand x) (operand y)
-      else pr "  %s r%d, %s, %s\n" name r (in_reg Kfloat x) (operand y)
+      (match op with
+       | Fpow | Fhypot | Fmod -> pr "  call pd2, %s, r%d, %s, %s\n" (match op with Fpow -> "pow" | Fhypot -> "hypot" | _ -> "fmod") r (operand x) (operand y)
+       | _ -> pr "  %s r%d, %s, %s\n" name r (in_reg Kfloat x) (operand y))
     | Neg (r, x, site) ->
       pr "  mov x0, 0\n  subo r%d, x0, %s\n  bo %s\n" r (operand x) (error Ir.err_neg site x None)
     | Fneg (r, x) -> pr "  dneg r%d, %s\n" r (in_reg Kfloat x)
@@ -534,7 +535,7 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
   let rec fold = function
     | Ir.Tick (-1, false, s) :: rest ->
       let pure = function
-        | Ir.Move _ | Op ((Fadd | Fsub | Fmul | Fdiv | Fpow), _, _, _, _) | Fneg _ | Float_of _ | Math _ | Vget _ | Vset _
+        | Ir.Move _ | Op ((Fadd | Fsub | Fmul | Fdiv | Fpow | Fhypot | Fmod), _, _, _, _) | Fneg _ | Float_of _ | Math _ | Vget _ | Vset _
         | Tag _ | Len _ ->
           true
         | Op ((Add | Sub), _, _, _, site) -> site < 0
@@ -764,7 +765,9 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
   end;
   pr "  endfunc\n"
 
-let used = [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow"; "caml_modify" ]
+let used =
+  [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow"; "log10"; "log2"; "log1p"; "expm1";
+    "sinh"; "cosh"; "tanh"; "asinh"; "acosh"; "atanh"; "hypot"; "fmod"; "round"; "caml_modify" ]
 
 (* The unit as one module: each function, and the single entry [e] of the first one, which the C glue calls with the
    context and which gives the status. *)
