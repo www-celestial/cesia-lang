@@ -1,0 +1,106 @@
+(** The routes of std/http, found by the tree of their segments, against the walk of the list that found them before: the
+    first route added whose path and method fit answers, a path that some route takes by another method gets a 405, any
+    other a 404, and the params are the same. *)
+use std/dict
+use std/encode
+use std/gen
+use std/http
+use std/json
+use std/list
+use std/test
+use std/text
+use std/value
+
+(* The walk of the list, as std/http did it until the tree: each route in the order added, its path matched part by part. *)
+defn oldMatch(parts, path)
+  out = dict.Dict()
+  n = value.Len(parts)
+  for k in 1..n
+    part = parts[k]
+    if part == "*"
+      out["*"] = text.Join("/", if k == 1 path else list.Skip(k - 1, path) end)
+      return out
+    end
+    if k > value.Len(path)
+      return missing
+    end
+    if text.StartsWith(":", part)
+      out[text.ByteSlice(2, text.ByteLength(part), part)] = encode.UrlDecode(path[k])
+    else if part != path[k]
+      return missing
+    end
+  end
+  if n == value.Len(path) out else missing end
+end
+
+segs(path) = list.Filter(it != "", text.Split("/", path))
+fits(route, method) = route[1] == "*" or route[1] == method or (route[1] == "GET" and method == "HEAD")
+
+defn oldAnswer(routes, method, path)
+  (** [status, body] as the walk of the list gives them. *)
+  allowed = false
+  for i in 1..value.Len(routes)
+    params = oldMatch(segs(routes[i][2]), segs(path))
+    if not value.IsMissing(params)
+      if fits(routes[i], method)
+        return [200, "$i $(json.Text(params))"]
+      end
+      allowed = true
+    end
+  end
+  if allowed [405, "Method Not Allowed"] else [404, "Not Found"] end
+end
+
+defn app(routes)
+  (** The handler of routes given as [method, pattern]: route i answers its number and its params. *)
+  a = http.App()
+  for i in 1..value.Len(routes)
+    a = http.Route(routes[i][1], routes[i][2], r -> http.Plain("$i $(json.Text(r.Params))"), a)
+  end
+  http.Handler(a)
+end
+
+defn newAnswer(handle, method, path)
+  reply = handle({Method: method, Path: path, Query: "", Headers: [], Body: ""})
+  [reply.Status, reply.Body]
+end
+
+(* Few segments, so that routes overlap often: static ones, params, the rest, and texts that look like them. *)
+part = gen.Pick(["a", "b", "c", ":x", ":y", "*", ":", "*b", "%41"])
+pattern = gen.Map(ps -> "/$(text.Join("/", ps))", gen.List(part, max = 4))
+route = gen.Of([gen.Pick(["GET", "POST", "*", "HEAD", "get"]), pattern])
+asked = gen.Of([gen.Pick(["GET", "POST", "HEAD", "PUT"]), gen.Map(ps -> "/$(text.Join("/", ps))", gen.List(gen.Pick(["a", "b", "c", "x", "*", ":x", "%41", "A", "", "*b"]), max = 5))])
+cases = gen.Of({Routes: gen.List(route, max = 12), Asked: gen.List(asked, min = 1, max = 8)})
+
+defn agrees(c)
+  handle = app(c.Routes)
+  list.All([value.Equal(newAnswer(handle, q[1], q[2]), oldAnswer(c.Routes, q[1], q[2])) for q in c.Asked])
+end
+
+isTreeAsTheList() = test.ForAll(agrees, cases, cases = 400)
+
+defn isFirstAddedWins()
+  (** A param route added before a static one of the same place takes its paths too, as the list did; after it, not. *)
+  paramFirst = app([["GET", "/users/:id"], ["GET", "/users/me"]])
+  staticFirst = app([["GET", "/users/me"], ["GET", "/users/:id"]])
+  value.Equal(newAnswer(paramFirst, "GET", "/users/me"), [200, "1 {\"id\":\"me\"}"]) and value.Equal(newAnswer(staticFirst, "GET", "/users/me"), [200, "1 {}"]) and value.Equal(newAnswer(staticFirst, "GET", "/users/7"), [200, "2 {\"id\":\"7\"}"])
+end
+
+defn isMethodAfterPath()
+  (** The path first, then the method: another method gets a 405, the same path by a later route of that method its
+      answer, HEAD the GET route's. *)
+  notes = app([["GET", "/notes/:id"], ["POST", "/notes"], ["DELETE", "/notes/:n"]])
+  value.Equal(newAnswer(notes, "PUT", "/notes/7"), [405, "Method Not Allowed"]) and value.Equal(newAnswer(notes, "DELETE", "/notes/7"), [200, "3 {\"n\":\"7\"}"]) and newAnswer(notes, "HEAD", "/notes/7")[1] == 200 and value.Equal(newAnswer(notes, "GET", "/nowhere"), [404, "Not Found"])
+end
+
+defn isRestAsBefore()
+  (** A * takes the rest of the path, none of it too, as it came: params are decoded, the rest is not. *)
+  files = app([["GET", "/files/*"], ["GET", "/:name"]])
+  value.Equal(newAnswer(files, "GET", "/files"), [200, "1 {\"*\":\"\"}"]) and value.Equal(newAnswer(files, "GET", "/files//a/%41"), [200, "1 {\"*\":\"a/%41\"}"]) and value.Equal(newAnswer(files, "GET", "/%41"), [200, "2 {\"name\":\"A\"}"])
+end
+
+defn isManyRoutesFound()
+  (** 500 routes: the first, the last, and one that none takes. *)
+  many = app([["GET", "/r$i/:id"] for i in 1..500])
+  value.Equal(newAnswer(many, "GET", "/r1/7"), [200, "1 {\"id\":\"7\"}"]) and value.Equal(newAnswer(many, "GET", "/r500/7"), [200, "500 {\"id\":\"7\"}"]) and newAnswer(many, "GET", "/r501/7")[1] == 404
+end

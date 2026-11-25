@@ -582,6 +582,95 @@ let segments ctx (a : Types.t array) =
   let items = Array.of_list (List.map (fun p -> Types.Text p) parts) in
   Types.Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] }
 
+(* The routes of an app as a tree of the parts of their paths, built once by http.Handler: a request walks the segments of
+   its own path, so that finding its route costs the same with 500 routes as with 5. A route keeps its number, its place in
+   the order the routes were added, and the first one that takes the path and the method answers, as when each was tried
+   in its order: static parts and :name parts are both followed, since an earlier route of either may take the same path,
+   and a branch whose first route comes after the one found is left out. A * takes the rest of the path, none of it too,
+   and ends its route there, as http's matchPath does. *)
+module Parts = Hashtbl.Make (String)
+
+type node = {
+  mutable ends : (int * string option) list;  (* the routes that end at this node, by number, with their method *)
+  mutable rest : (int * string option) list;  (* the routes whose * stands here *)
+  fixed : node Parts.t;  (* a child for each static part *)
+  mutable param : node option;  (* one child for every :name part *)
+  mutable least : int;  (* the number of the first route under this node *)
+}
+
+let leaf () = { ends = []; rest = []; fixed = Parts.create 2; param = None; least = max_int }
+
+let rec grow node route meth parts k =
+  node.least <- min node.least route;
+  if k = Array.length parts then node.ends <- (route, meth) :: node.ends
+  else
+    let part = parts.(k) in
+    if part = "*" then node.rest <- (route, meth) :: node.rest
+    else
+      let child =
+        if part.[0] = ':' then (match node.param with Some c -> c | None -> let c = leaf () in node.param <- Some c; c)
+        else match Parts.find_opt node.fixed part with Some c -> c | None -> let c = leaf () in Parts.add node.fixed part c; c
+      in
+      grow child route meth parts (k + 1)
+
+(* Does a route's method take a request's? HEAD is GET without its body; [any] takes every method, to tell a 405 from a
+   404. A method that isn't a text takes nothing, and only a route of "*" takes a request whose method isn't one. *)
+let fits any asked = function
+  | Some "*" -> true
+  | _ when any -> true
+  | Some m -> (match asked with Some a -> String.equal m a || (String.equal m "GET" && String.equal a "HEAD") | None -> false)
+  | None -> false
+
+let earliest routes any asked found = List.fold_left (fun best (r, m) -> if r < best && fits any asked m then r else best) found routes
+
+let rec walk node path k any asked found =
+  if node.least >= found then found
+  else
+    let found = earliest node.rest any asked found in
+    if k = Array.length path then earliest node.ends any asked found
+    else
+      let found = match Parts.find_opt node.fixed path.(k) with Some c -> walk c path (k + 1) any asked found | None -> found in
+      match node.param with Some c -> walk c path (k + 1) any asked found | None -> found
+
+(* The cells of a list of texts, or a panic naming the function: only std/http gives them. *)
+let texts ctx name = function
+  | Array a -> Array.init (a.rows * a.cols) (fun i -> Native.text_arg ctx name (Value.elt a i))
+  | v -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
+
+let method_of = function Text m -> Some m | _ -> None
+
+(* router(methods, parts), the methods and the parts of the routes in their order, gives find(segments, method): the number
+   of the route that answers, 0 when no route takes the path, -1 when only routes of other methods do, for a 405. *)
+let router ctx (a : Types.t array) =
+  let root = leaf () in
+  (match a.(0), a.(1) with
+   | Array ms, Array ps when ms.rows * ms.cols = ps.rows * ps.cols ->
+     for i = 0 to (ms.rows * ms.cols) - 1 do
+       grow root (i + 1) (method_of (Value.elt ms i)) (texts ctx "router" (Value.elt ps i)) 0
+     done
+   | v, _ -> Runtime.fail ctx Type (Messages.need_array "router" (Value.describe v)));
+  Native.nat "find" 2 2 (fun ctx a ->
+      let path = texts ctx "find" a.(0) and asked = method_of a.(1) in
+      let found = walk root path 0 false asked max_int in
+      if found < max_int then Int found else if walk root path 0 true asked max_int < max_int then Int (-1) else Int 0)
+
+(* The Date header of a response, RFC 9110 section 6.6.1, in its IMF-fixdate form: made again when the second changes, not
+   for each response. *)
+let date_second = ref (-1)
+let date_line = ref (Text "")
+let days = [| "Sun"; "Mon"; "Tue"; "Wed"; "Thu"; "Fri"; "Sat" |]
+let months = [| "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec" |]
+
+let date _ _ =
+  let now = Float.to_int (Unix.time ()) in
+  if now <> !date_second then begin
+    let t = Unix.gmtime (Float.of_int now) in
+    date_line :=
+      Text (Printf.sprintf "date: %s, %02d %s %04d %02d:%02d:%02d GMT\r\n" days.(t.tm_wday) t.tm_mday months.(t.tm_mon) (t.tm_year + 1900) t.tm_hour t.tm_min t.tm_sec);
+    date_second := now
+  end;
+  !date_line
+
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =
   [ "arm", Native.nat "arm" 2 2 (arm n);
@@ -590,5 +679,7 @@ let http_natives n =
     "isHeader", Native.nat "isHeader" 2 2 is_header;
     "request", Native.nat "request" 3 3 request;
     "segments", Native.nat "segments" 1 1 segments;
+    "router", Native.nat "router" 2 2 router;
+    "dateLine", Native.nat "dateLine" 0 0 date;
     "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets));
     "stopping", Native.nat "stopping" 0 0 (fun _ _ -> Value.of_bool n.stopping) ]
