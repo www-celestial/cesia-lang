@@ -377,7 +377,8 @@ program that never gets hot never pays for it.
 
 ### When code gets hot
 
-- A version of a function whose result inference proves to be a number, an integer or a float, after 1,000 calls; when
+- A version of a function, whatever it gives, after 1,000 calls; one that gives a value other than a number, while no
+  hot loop or version of numbers has loaded the JIT yet, after 16,000 (below, *Versions that give values*); when
   its calls from the interpreter make fewer steps than coming into machine code and going back costs, as one with a loop
   of two turns does, they go back to the interpreter, which keeps its machine code and tries it again now and then, and
   its calls inside it, as a recursion's, stay machine code. The top of a file, a cell or code typed at a prompt is never
@@ -923,6 +924,80 @@ which Cesia's machine code makes, 49.2, against 763, 53.2, 205 and 11.4. Lua's i
 turn, against Cesia's 27: its call passes the arguments on its stack, where Cesia's makes an array and boxes them, as a
 native takes them. Node and LuaJIT make such calls machine code; Cesia does so only for the natives its JIT knows.
 
+### Versions that give values
+
+Until 2026-11-25, a version was machine code as a whole only when inference proved its result to be a number. A test
+that loops and gives a Bool, as `isPrime(k)`, a search that gives an index or `missing`, a recursion that makes maps,
+stayed interpreted, and so did a loop that called one, as machine code calls only machine code: around `if isPrime(k)`,
+`for k in 1..300000` ran in the interpreter, and each call of `isPrime` entered machine code for its `while` and left
+it. Now a version is a candidate whatever it gives:
+
+- Its variables of no type are values in registers, as its parameters and its result. A value is marked shared where the
+  interpreter marks it ([copy-on-write](#value-semantics-and-copy-on-write)): when a variable takes one that another
+  variable, a field or a cell holds, when a `return` gives one, and when a call passes one to a parameter that the
+  callee keeps, as one it gives back. Machine code lacked that last mark, for the calls it inlined too: after `q =
+  same(p)`, with `same(p) = p`, `q.X = 5.0` changed `p` as well, in machine code only, a bug of the JIT that
+  `tests/jit/value-results.ce` now checks in the three modes.
+- A value as a condition is tested as `true` or `false`; anything else is the interpreter's error at the condition, with
+  its message: native code puts the value in a slot of the frame and gives the error's code, and the interpreter's own
+  test makes the message. A value compared with `missing`, `true` or `false` is a comparison of two words.
+- A loop's call of such a version is a call from native code to native code once that version lowers, with the versions
+  it calls. A *dry lowering*, made and thrown away, decides it before the call commits its unit to it, so that a call
+  that machine code can't make, in a branch the loop rarely takes, stays a statement left to the interpreter. A version
+  whose body calls a native the JIT doesn't make, or holds a text made of parts, a `match`, a `?`, an `in`, a
+  comprehension or a function literal, is refused at once, before the versions it calls are lowered for nothing.
+
+The hard part is memory. Native code never calls back into OCaml, so nothing collects while it runs: each turn of a loop
+*reserves* the words it will make, and when the young heap lacks them, the run leaves, the interpreter's allocation
+collects, and the run comes back. A nested frame, the frame of a call that native code makes, can't leave, as its
+caller's registers would be lost. So a nested frame short of room *stops*: a loop's call then goes back to the
+interpreter, which makes that statement, and the loop goes on in machine code at its next turn; a version as a whole,
+called by the interpreter, runs once more after a collection, and when it is short again, the interpreter makes the call
+from its start, with the same steps, as nothing of it showed. A version short of room twice makes more than the young
+heap holds between two collections: its calls are the interpreter's after that. To make stops rare, a loop whose calls
+make values checks, at each turn, room for an eighth of the young heap besides its own words, 262,144 words once the
+heap has grown, so that a collection comes at the top of a turn, where the run can leave, rather than deep in a
+recursion. And what native code makes after a call checks its room again, right after that call, whose nested frames may
+have taken what the turn checked: the fuzzer found that case, a tree of maps made by a recursion past the young heap,
+which wrote below it.
+
+Loading the JIT costs about a millisecond. A short program that calls a helper of texts 1,500 times, which no JIT
+compiles, took 4.0 ms, and 5.0 once such versions got native at 1,000 calls; a version that gives a value now waits
+16,000 calls while nothing has loaded the JIT, and the program takes 4.43 ms, against 4.39 with main's binary (medians
+of 21 runs). And the way into native code from the interpreter cost about 250 ns, most of it the engine's own work
+before and after a run, over arrays that a version as a whole leaves empty; such a unit now skips it, and the way in
+costs about 85 ns (10^6 calls of a small version that calls another, from a loop the interpreter keeps, against the
+interpreter alone).
+
+Measured on 2026-11-26, `release` profile, 21 runs of each alternated with main's binary, from the start of the process
+to its end, while other work ran on the machine (load 2.6 to 4.0); the median, then the fastest and the slowest run, in
+ms:
+
+| Program | Before | Now | Interpreter only |
+|---|---:|---:|---:|
+| primes below 300,000, `isPrime(k)` a test that loops | 244.6 (233.6–321.5) | 159.0 (152.0–238.3) | 615.6 |
+| 20,000 trees of 127 maps made by a recursion, from a loop | 131.7 (124.3–142.5) | 49.9 (42.6–62.8) | 114.8 |
+| the same recursion, 100,000 calls from a loop the interpreter keeps | 283.1 (271.7–308.4) | 110.0 (103.2–134.2) | 286.0 |
+| a search that gives an integer or `missing`, 200,000 calls | 189.8 (178.7–236.5) | 113.1 (110.6–193.6) | 769.5 |
+
+The programs of `bench/` are the same as before, within the noise: they make no such calls. Beside the giants, the same
+programs, the whole process: the primes take 159 ms, against Python 3.14 1,061, Node 26 110, Go 1.26 121, Lua 5.5 337
+and LuaJIT 2.1 57; the trees 49.9, against Python 438, Node 80, Go 89, Lua 661 and LuaJIT 198. Node, Go and LuaJIT win
+the primes: the loop is a division, `math.Mod(n, d)`, at each turn, which Go and Cesia make on 64 bits, Node on 32 when
+its numbers fit, and LuaJIT as floats; Cesia also checks each `d * d` for overflow and counts its steps. The trees are
+Cesia's: a map is a few words taken from the young heap by moving a pointer, made whole, so with no write barrier, and a
+run collects nothing until it ends.
+
+What still keeps a version out is in the next part. A server's code is the case: the request path of Centauri, its door,
+its session and its route, calls natives at every step, `dict.GetOr`, `text.Contains`, `sys.Now`, the functions of
+`std/http`, builds texts and holds closures, and none of its versions lowers, before or now: a public request takes 19.2
+µs, as with main's binary (medians of 21 runs of 20,000 requests each, without the network), and a server of Centauri
+answers 13,000 requests of `/hello` a second on one core, beside 28,000 for `std/http` alone and 28,000 a core for Go's
+`net/http`. Native code would have to call OCaml for them, with every value it holds written to the frame first, as the
+collector may move it, the stacks read again after, as a call may grow them, and a native that waits, as a fiber does on
+the network, never called from there, as a wait can't leave a C frame: a call into OCaml from native code is C, beyond
+the budget of the glue.
+
 ### The contract
 
 The same program gives the same output, the same errors at the same lines, and the same limits, in the interpreter and in
@@ -951,6 +1026,11 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
   of it back;
 - a loop of a file's top that assigns a variable of the module which a function it calls, and doesn't inline, reads:
   that function would read the variable in its module while the machine code holds it in a register;
+- a version as a whole that reads the fields of its values or computes with values of no type: when it gets hot there
+  is no frame to bet on, and a bet that fails would have no way back but its whole call; inlined in a loop, its body is
+  made with the loop's bets;
+- a version as a whole with a loop whose calls make values, or that writes an array: a nested frame short of room could
+  not go back to the interpreter, which takes over no function in its middle; its loops get their own machine code;
 - under a debugger, the functions that hold a breakpoint and the code you step through;
 - everything on arm64, as Apple's chips, for now: programs run in the interpreter there, with the same results.
 
