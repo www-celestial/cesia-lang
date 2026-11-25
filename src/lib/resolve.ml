@@ -72,7 +72,7 @@ let rec pat_exprs f = function
 let children (f : expr -> unit) (e : expr) =
   match e.e with
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> f a; f b
-  | Neg a | Not a | Field (a, _) | Question a -> f a
+  | Neg a | Not a | Field (a, _) | Question a | Bang a -> f a
   | Assign (_, v) | Destructure (_, v) -> f v
   | Struct_lit { sfields; _ } -> for i = 0 to Array.length sfields - 1 do f (snd sfields.(i)) done
   | Call { callee; args; _ } -> f callee; for i = 0 to Array.length args - 1 do f args.(i).value done

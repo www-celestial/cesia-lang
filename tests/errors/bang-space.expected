@@ -1,0 +1,4 @@
+bang-space.ce:3:18: ! must follow its value, with no space.
+  3 | x = result.Ok(1) !
+    |                  ^
+exit 1

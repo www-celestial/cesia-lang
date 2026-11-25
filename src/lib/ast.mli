@@ -48,6 +48,7 @@ and node =
   | Use of { upath : string; ualias : string }
   | Interface of iface  (** at the top of a file *)
   | Question of expr  (** e? *)
+  | Bang of expr  (** e!: the value of an Ok, and an Err is a bug *)
   | Hook of hook  (** debugger hook: only exists with --debugger *)
 
 and hook = { mutable live : Bytes.t  (** per variable: surely assigned before this statement *) }

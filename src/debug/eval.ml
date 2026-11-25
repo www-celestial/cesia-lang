@@ -197,7 +197,7 @@ let same_code (w : world) (a : proto) (b : proto) =
     | Interp p, Interp q -> arr part p q
     | Var p, Var q -> name p q
     | Bin (o, p1, p2), Bin (q, q1, q2) -> check (o = q); expr p1 q1; expr p2 q2
-    | Neg p, Neg q | Not p, Not q | Question p, Question q -> expr p q
+    | Neg p, Neg q | Not p, Not q | Question p, Question q | Bang p, Bang q -> expr p q
     | And (p1, p2), And (q1, q2) | Or (p1, p2), Or (q1, q2) | Range (p1, p2), Range (q1, q2) | In_op (p1, p2), In_op (q1, q2) ->
       expr p1 q1;
       expr p2 q2
