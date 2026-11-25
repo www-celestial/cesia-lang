@@ -1,0 +1,73 @@
+(** std/columns in a program compiled to WebAssembly: the natives that std/plot needs, in Cesia, which cesia build
+    --target wasm takes for those of std/columns of the same names. Each gives what the interpreter's gives. *)
+use std/bug
+use std/list
+use std/value
+
+defn Pick(positions, xs)
+  (** The values at these positions, from 1. Position 0 gives missing. *)
+  n = value.Len(xs)
+  out = []
+  for i in positions
+    if i < 0 or i > n
+      bug.Panic("Index $i is outside this array of $n elements.")
+    end
+    out = list.Append(if i == 0 missing else xs[i] end, out)
+  end
+  out
+end
+
+defn Positions(mask)
+  (** The positions, from 1, where a mask of booleans is true. *)
+  out = []
+  for k in 1..value.Len(mask)
+    if mask[k] == true
+      out = list.Append(k, out)
+    end
+  end
+  out
+end
+
+defn Kind(xs)
+  (** How an array is stored: "int", "float" or "value", as the interpreter stores it: a non-empty array all of
+      integers, all of floats, or else values. *)
+  if not value.IsArray(xs) or value.Len(xs) == 0
+    return "value"
+  end
+  if list.All([value.IsInt(x) for x in xs])
+    return "int"
+  end
+  if list.All([value.IsFloat(x) for x in xs])
+    return "float"
+  end
+  "value"
+end
+
+defn Groups(cols)
+  (** Groups the rows that share the same values in a list of key columns: {Ids, Count, Firsts}. *)
+  n = if value.Len(cols) == 0 0 else value.Len(cols[1]) end
+  seen = {}
+  ids = []
+  firsts = []
+  for k in 1..n
+    key = "$([c[k] for c in cols])"
+    if not (key in seen)
+      seen[key] = value.Len(firsts) + 1
+      firsts = list.Append(k, firsts)
+    end
+    ids = list.Append(seen[key], ids)
+  end
+  {Ids: ids, Count: value.Len(firsts), Firsts: firsts}
+end
+
+defn Split(groups, xs)
+  (** The values of a column in each group, in order, without the missing ones. *)
+  out = [[] for g in 1..groups.Count]
+  for k in 1..value.Len(xs)
+    if value.IsSome(xs[k])
+      g = groups.Ids[k]
+      out[g] = list.Append(xs[k], out[g])
+    end
+  end
+  out
+end

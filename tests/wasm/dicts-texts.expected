@@ -1,0 +1,14 @@
+{a: 1, 2: "two"} 1 missing 9 true true
+["a", 2] [1, "two"] {2: "two"} {a: 1, 2: "two"}
+17 k20
+{x: 1, y: 2}
+13 195 hé 6
+true true true false
+1-a-2.5 ["h", "é", "y"] éll 8 233 é
+[a b] abc ABC ababab ["héllo", "world"] héLLo, worLd
+8 Hi
+{"A":1,"B":[true,null,"q\"x\n"],"C":2.5}
+dicts-texts.ce:28:14: Index 30 is outside this text of 12 characters.
+  28 | io.Print(text.Slice(1, 30, s))
+     |              ^
+exit 1

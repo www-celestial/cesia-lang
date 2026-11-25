@@ -44,7 +44,7 @@ type st = {
   shape_ids : (string, shape option) Hashtbl.t;  (* by keys: the typed map, or none for keys that stay general *)
   mutable reads : (Ast.func * (int, string list) Hashtbl.t) list;  (* each function's variables: the fields read of them *)
   mutable nums : (Ast.func * (int, kind option) Hashtbl.t) list;  (* each function's variables guessed to hold numbers *)
-  pages : (string, int) Hashtbl.t;  (* a package of std/ by its path, to the module of its version for a page *)
+  pages : (string, int) Hashtbl.t;  (* a package of std/, std/text, to the module of its version for a page *)
 }
 
 (* A function being compiled. *)
@@ -77,6 +77,13 @@ let chunk_size = 1 lsl 14
 
 let unsupported fc (pos : Pos.t) what = raise (Unsupported (fc.path, pos, what))
 
+(* SURVEY (temporary): with CESIA_WASM_SURVEY set, every place that stops the build, then exit 2. *)
+let survey = Sys.getenv_opt "CESIA_WASM_SURVEY" <> None
+let surveyed : (string, unit) Hashtbl.t = Hashtbl.create 64
+let note (file, (pos : Pos.t), what) =
+  let k = Printf.sprintf "%s:%d: %s" file (Pos.line pos) what in
+  if not (Hashtbl.mem surveyed k) then (Hashtbl.replace surveyed k (); prerr_endline ("SURVEY " ^ k))
+
 (* The cell of a file's variable that stays out of the locals; in a loop's chunk, a variable it was not given is a bug of
    the compiler. *)
 let cell_index fc i = if fc.locs.(i) = -3 then failwith "aot: a variable read in a loop it wasn't given" else fc.fn.cell_of.(i)
@@ -106,7 +113,8 @@ let site_at st file pos fname =
     let full = Loader.format_error ~source:(Some src) ~path ~pos ~text:"" ~hint:None ~trace:[] in
     let cut = String.index full '\n' in
     let header = String.sub full 0 cut and excerpt = String.sub full (cut + 1) (String.length full - cut - 1) in
-    let place = if fname = "" then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
+    (* A page's version of a package stands in for natives, which no trace names. *)
+    let place = if fname = "" || String.starts_with ~prefix:"std/page/" path then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
     let lib = String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path in
     let i = Vec.length st.sites in
     (* Its header and line of code, the function it is in, whether in a library, and its file and line, which a fiber's
@@ -166,6 +174,15 @@ let ver_name st (v : version) =
     n
 
 let has_env (f : Ast.func) = Array.length f.captures > 0
+
+(* The function of a page's version of a package, of this name: Plugin prepares those of src/web/. *)
+let page_fun st pkg name =
+  match Hashtbl.find_opt st.pages pkg with
+  | Some pm ->
+    (match List.assoc_opt name st.w.modules.(pm).mnames with
+     | Some c -> (match st.w.modules.(pm).cells.(c) with Fun { proto; env = [||] } -> Some proto | _ -> None)
+     | None -> None)
+  | None -> None
 
 let ready w (v : version) = if v.state <> 2 then Infer.run w v
 
@@ -454,6 +471,9 @@ and spec_num fc v =
   end
 
 let rec expr fc (e : expr) (want : kind) : ins list =
+  if survey then (try expr0 fc e want with Unsupported (f, p, w) -> note (f, p, w); [ unreachable ]) else expr0 fc e want
+
+and expr0 fc (e : expr) (want : kind) : ins list =
   let k, code = natural fc e in
   code @ convert fc ~from:k ~into:want
 
@@ -493,7 +513,7 @@ and natural fc (e : expr) : kind * ins list =
   | Call call -> call_expr fc e call
   | Lambda f -> V, closure fc f
   | Range (a, b) -> V, bound fc a e.pos @ bound fc b e.pos @ site fc e.pos @ [ call rt "range" ]
-  | In_op _ -> unsupported fc e.pos "in"
+  | In_op (a, b) -> V, expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "member" ]
   | Array_lit rows -> V, array_lit fc e rows
   | Comp { cbody; cvar; csrc; cguard } -> V, comprehension fc e cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read fc e b ixs uses_end
@@ -521,6 +541,9 @@ and block_value fc (b : block) k =
 
 (* A statement: its code leaves nothing. *)
 and stmt fc (e : expr) : ins list =
+  if survey then (try stmt0 fc e with Unsupported (f, p, w) -> note (f, p, w); [ unreachable ]) else stmt0 fc e
+
+and stmt0 fc (e : expr) : ins list =
   let rt = fc.st.rt in
   match e.e with
   | Use _ | Interface _ -> []
@@ -725,7 +748,10 @@ and var fc e (n : name) : kind * ins list =
      | Text s when fc.st.w.modules.(m).path = "" -> V, [ text rt s ]
      | (True | False) as b when fc.st.w.modules.(m).path = "" -> V, [ if b = True then g_true rt else g_false rt ]
      | Missing when fc.st.w.modules.(m).path = "" -> V, [ missing ]
-     | Native nat -> unsupported fc e.pos ("the native " ^ nat.nname ^ " as a value")
+     | Native nat ->
+       (match page_fun fc.st fc.st.w.modules.(m).mname nat.nname with
+        | Some p -> V, [ fn_global fc.st p ]
+        | None -> unsupported fc e.pos ("the native " ^ nat.nname ^ " as a value"))
      | _ -> V, unset_check [ Gget (cell_global fc.st m k) ])
   | Cell { m; k; _ } -> V, unset_check [ Gget (cell_global fc.st m k) ]
   | Unresolved -> unsupported fc e.pos "an unresolved name"
@@ -899,18 +925,26 @@ and comprehension fc e cbody cvar csrc cguard =
       | Some g -> cond fc g @ [ iff fc Bnone (fun () -> push) (fun () -> []) ])
   @ [ Lget out; call rt "built" ]
 
+(* An index of a dimension as Rtstd's read1 and read2 take it: its kind (0 a whole number, 1 a slice, 3 a value to
+   tell), its bounds and its value. *)
+and ix_operands fc pos (i : expr) =
+  match i.e with
+  | Range (a, b) -> [ I32 1 ] @ bound fc a pos @ bound fc b pos @ [ missing ]
+  | _ -> (match kind fc i with I -> [ I32 0 ] @ expr fc i I @ [ i64 0; missing ] | _ -> [ I32 3; i64 0; i64 0 ] @ expr fc i V)
+
 and index_read fc e b ixs uses_end =
   let rt = fc.st.rt in
+  let base = Rt.local fc.fb Rt.v in
+  let with_end f = if uses_end then (fc.ends <- base :: fc.ends; let r = f () in fc.ends <- List.tl fc.ends; r) else f () in
   match ixs with
+  | [| Ix ({ e = Range _; _ } as i) |] ->
+    V, expr fc b V @ [ Lset base; Lget base ] @ with_end (fun () -> ix_operands fc e.pos i) @ site fc e.pos @ [ call rt "read1" ]
+  | [| Ix i; Ix j |] when not uses_end ->
+    V, expr fc b V @ ix_operands fc e.pos i @ ix_operands fc e.pos j @ site fc e.pos @ [ call rt "read2" ]
   | [| Ix i |] ->
-    let base = Rt.local fc.fb Rt.v in
-    let with_end f = if uses_end then (fc.ends <- base :: fc.ends; let r = f () in fc.ends <- List.tl fc.ends; r) else f () in
-    (match i.e with
-     | Range _ -> unsupported fc e.pos "a slice"
-     | _ -> ());
     let idx = with_end (fun () -> match kind fc i with I -> expr fc i I | _ -> expr fc i V) in
     let fixed = match b.e with Var { b = Local v; _ } -> List.find_opt (fun (w, _, _) -> w = v) fc.fixed | _ -> None in
-    if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index_v" ]
+    if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base; I32 3; i64 0; i64 0 ] @ idx @ site fc e.pos @ [ call rt "read1" ]
     else if kind fc e = F && fixed <> None then begin
       (* A float array that the loop never writes: its floats and count taken at the chunk's start. *)
       let _, fs, n = Option.get fixed in
@@ -1176,6 +1210,8 @@ and set_path fc e root path value =
   let cs = Array.init n (fun _ -> Rt.local fc.fb Rt.v) in
   let vix (st : step) = match st.sk with Sindex ([| Ix i |], _) -> kind fc i <> I | _ -> false in
   let idx = Array.map (fun st -> Rt.local fc.fb (if vix st then Rt.v else I64)) path in
+  (* A step of two whole numbers: their locals. *)
+  let two = Array.make n None in
   let read_step j (st : step) =
     match st.sk with
     | Sindex ([| Ix i |], uses_end) ->
@@ -1183,27 +1219,34 @@ and set_path fc e root path value =
       let code = (match kind fc i with I -> expr fc i I | _ -> expr fc i V) @ [ Lset idx.(j) ] in
       if uses_end then fc.ends <- List.tl fc.ends;
       code
+    | Sindex ([| Ix x; Ix y |], false) ->
+      let li = Rt.local fc.fb I64 and lj = Rt.local fc.fb I64 in
+      let whole x = match kind fc x with I -> expr fc x I | _ -> expr fc x V @ site fc st.sp @ [ call rt "whole" ] in
+      two.(j) <- Some (li, lj);
+      whole x @ [ Lset li ] @ whole y @ [ Lset lj ]
     | Sindex _ -> unsupported fc st.sp "this index"
     | Sfield _ -> []
   in
   let get_step j (st : step) =
-    match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt (if vix st then "index_v" else "index") ]
-    | Sfield name -> [ Lget cs.(j); text rt name; cache rt ] @ site fc st.sp @ [ call rt "field" ]
+    match st.sk, two.(j) with
+    | Sindex _, Some (li, lj) -> [ Lget cs.(j); I32 0; Lget li; i64 0; missing; I32 0; Lget lj; i64 0; missing ] @ site fc st.sp @ [ call rt "read2" ]
+    | Sindex _, None -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt (if vix st then "index_v" else "index") ]
+    | Sfield name, _ -> [ Lget cs.(j); text rt name; cache rt ] @ site fc st.sp @ [ call rt "field" ]
   in
   let set_step j (st : step) v =
-    match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt (if vix st then "set_index_v" else "set_index") ]
-    | Sfield name -> [ Lget cs.(j); text rt name ] @ v @ site fc st.sp @ [ call rt "set_field" ]
+    match st.sk, two.(j) with
+    | Sindex _, Some (li, lj) -> [ Lget cs.(j); Lget li; Lget lj ] @ v @ site fc st.sp @ [ call rt "write2" ]
+    | Sindex _, None -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt (if vix st then "set_index_v" else "set_index") ]
+    | Sfield name, _ -> [ Lget cs.(j); text rt name ] @ v @ site fc st.sp @ [ call rt "set_field" ]
   in
   let x = Rt.local fc.fb Rt.v in
   (* The indexes and the value first, as the interpreter evaluates them, then the reads down the path. *)
   let own = if n > 1 then [ call rt "own" ] else [] in
-  get @ own @ [ Lset cs.(0) ]
-  @ List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ own @ [ Lset cs.(j) ] else []) @ read_step j st) steps)
-  @ stored fc value @ [ Lset x ]
-  @ (let rec back j v = if j < 0 then v else back (j - 1) (set_step j (List.nth steps j) v) in
-     back (n - 1) [ Lget x ])
+  (* In this order: the reads make the locals of the steps that the writes use. *)
+  let down = List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ own @ [ Lset cs.(j) ] else []) @ read_step j st) steps) in
+  let value = stored fc value in
+  let up = let rec back j v = if j < 0 then v else back (j - 1) (set_step j (List.nth steps j) v) in back (n - 1) [ Lget x ] in
+  get @ own @ [ Lset cs.(0) ] @ down @ value @ [ Lset x ] @ up
   @ (match root.b with
       | Local i when fc.locs.(i) >= 0 -> [ Lset fc.locs.(i) ]
       | Local i -> [ Gset (cell_global fc.st fc.pm (cell_index fc i)) ]
@@ -1238,18 +1281,18 @@ and call_expr fc e (call : call) : kind * ins list =
           if Array.exists (fun (a : arg) -> a.aname <> None) call.args then unsupported fc e.pos ("named arguments of " ^ text);
           let k = kind fc e in
           k, f fc (Array.map (fun (a : arg) -> a.value) call.args) e.pos k
-        | None -> unsupported fc e.pos (Printf.sprintf "%s.%s" (fst key) nat.nname))
+        | None ->
+          (match page_fun fc.st (fst key) nat.nname with
+           | Some p -> static_call fc e call p
+           | None -> unsupported fc e.pos (Printf.sprintf "%s.%s" (fst key) nat.nname)))
      | Fun { proto; env = [||] } ->
        let path = w.modules.(proto.pm).path in
        if path = "std/js.ce" && proto.pname = "Call" then js_call fc e call
        else
-         (match Hashtbl.find_opt fc.st.pages path with
-          | Some pm ->
-            (* A package that a page has a version of: its function of the same name. *)
-            (match List.assoc_opt proto.pname w.modules.(pm).mnames with
-             | Some c -> (match w.modules.(pm).cells.(c) with Fun { proto = p; env = [||] } -> static_call fc e call p | _ -> static_call fc e call proto)
-             | None -> static_call fc e call proto)
-          | None -> static_call fc e call proto)
+         (* A package that a page has a version of: its function of the same name. *)
+         (match page_fun fc.st (Filename.remove_extension path) proto.pname with
+          | Some p when p != proto -> static_call fc e call p
+          | _ -> static_call fc e call proto)
      | _ -> dynamic_call fc e call)
   | _ -> dynamic_call fc e call
 
@@ -1343,8 +1386,9 @@ let compile_version st (v : version) name ~hoisted ~main =
   let rt = st.rt in
   let f = Cache.ready v.owner.func in
   let path = fst (Vec.get st.w.files v.owner.file) in
-  if f.ret <> None then raise (Unsupported (path, f.fpos, "a declared result type"));
-  Array.iter (fun (p : param) -> if p.ptype <> None then raise (Unsupported (path, f.fpos, "a declared parameter type"))) f.params;
+  let chk ((a, b, c) as x) = if survey then note x else raise (Unsupported (a, b, c)) in
+  if f.ret <> None then chk (path, f.fpos, "a declared result type");
+  Array.iter (fun (p : param) -> if p.ptype <> None then chk (path, f.fpos, "a declared parameter type")) f.params;
   ready st.w v;
   let ps, rs = signature st v in
   (* A file's level gives nothing that anything reads. *)
@@ -1519,6 +1563,10 @@ let () =
   let filled pkg name fill =
     reg pkg name (fun fc args pos k ->
         let rt = fc.st.rt in
+        match fill, args with
+        | Some x, [| r; c |] -> x @ expr fc r V @ expr fc c V @ site fc pos @ [ call rt "fill2" ] @ convert fc ~from:V ~into:k
+        | None, [| x; r; c |] -> stored fc x @ expr fc r V @ expr fc c V @ site fc pos @ [ call rt "fill2" ] @ convert fc ~from:V ~into:k
+        | _ ->
         let x, size = match fill, args with Some x, [| n |] -> x, n | None, [| x; n |] -> stored fc x, n | _ -> unsupported fc pos "these sizes" in
         let g = "fill" in
         if not (Hashtbl.mem Rt.defs g) then
@@ -1618,6 +1666,67 @@ let () =
   reg "sys" "Sleep" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "sleep" ]));
   reg "sys" "Now" (fun fc _ _ k -> give fc k [ call fc.st.rt "now" ])
 
+(* The natives of std/dict, std/text and std/json that a page needs (Rtstd): the code of each argument, a value, then the
+   site, to a function of the runtime. *)
+let () =
+  Rtstd.init ();
+  let reg pkg name n f =
+    Hashtbl.replace natives ("std/" ^ pkg, name) (fun fc args pos k ->
+        if Array.length args <> n then unsupported fc pos (Printf.sprintf "%s.%s with %d arguments" pkg name (Array.length args));
+        f fc.st.rt (List.map (fun a -> expr fc a V) (Array.to_list args)) (site fc pos) @ convert fc ~from:V ~into:k)
+  in
+  let simple pkg name n fn = reg pkg name n (fun rt args site -> List.concat args @ site @ [ call rt fn ]) in
+  let a = List.nth in
+  reg "dict" "Get" 2 (fun rt x site -> a x 0 @ [ missing ] @ a x 1 @ [ text rt "Get" ] @ site @ [ call rt "dict_get" ]);
+  reg "dict" "GetOr" 3 (fun rt x site -> List.concat x @ [ text rt "GetOr" ] @ site @ [ call rt "dict_get" ]);
+  reg "dict" "Has" 2 (fun rt x site -> List.concat x @ [ text rt "Has" ] @ site @ [ call rt "dict_find"; I32 0; i32_ge_s ] @ bool_of rt);
+  simple "dict" "Put" 3 "dict_put";
+  simple "dict" "Drop" 2 "dict_drop";
+  simple "dict" "Keys" 1 "dict_Keys";
+  simple "dict" "Values" 1 "dict_Values";
+  simple "dict" "Pairs" 1 "dict_Pairs";
+  Hashtbl.replace with_names ("std/dict", "Dict") (fun fc a pos k ->
+      (match a.(0) with Some x -> expr fc x V | None -> [ missing ]) @ site fc pos @ [ call fc.st.rt "dict_of" ] @ convert fc ~from:V ~into:k);
+  simple "text" "ByteLength" 1 "byte_length";
+  simple "text" "Byte" 2 "byte";
+  simple "text" "ByteSlice" 3 "byte_slice";
+  simple "text" "ByteFind" 3 "byte_find";
+  List.iter (fun n -> simple "text" n 2 ("text_" ^ n)) [ "StartsWith"; "EndsWith"; "Contains" ];
+  simple "text" "Join" 2 "join";
+  simple "text" "Chars" 1 "chars";
+  simple "text" "Slice" 3 "text_slice";
+  simple "text" "Find" 2 "text_find";
+  simple "text" "Code" 1 "text_code";
+  simple "text" "Char" 1 "text_char";
+  simple "text" "Trim" 1 "trim";
+  simple "text" "Lower" 1 "text_Lower";
+  simple "text" "Upper" 1 "text_Upper";
+  simple "text" "Repeat" 2 "repeat";
+  simple "text" "Split" 2 "split";
+  simple "text" "Replace" 3 "replace";
+  simple "text" "FromNumbers" 2 "from_numbers";
+  simple "json" "Text" 1 "json_of";
+  simple "text" "Number" 1 "text_number";
+  simple "text" "Decimals" 2 "decimals";
+  simple "random" "Float" 0 "random_float";
+  (* list.Max and Min: two numbers of known kinds compared inline. *)
+  List.iter
+    (fun (name, op, gt) ->
+       Hashtbl.replace with_names ("std/list", name) (fun fc a pos k ->
+           let rt = fc.st.rt in
+           match a.(0), a.(1) with
+           | Some x, Some y when (kind fc x = I && kind fc y = I) || (kind fc x = F && kind fc y = F) ->
+             let kx = kind fc x in
+             let lx = Rt.local fc.fb (vt_of kx) and ly = Rt.local fc.fb (vt_of kx) in
+             expr fc x kx @ [ Lset lx ] @ expr fc y kx @ [ Lset ly; Lget ly; Lget lx; Lget ly; Lget lx ]
+             @ [ (match kx, gt with I, true -> i64_gt_s | I, false -> i64_lt_s | _, true -> f64_gt | _, false -> f64_lt); select ]
+             @ convert fc ~from:kx ~into:k
+           | Some x, y ->
+             expr fc x V @ (match y with Some y -> expr fc y V | None -> [ g_undef rt ]) @ [ I32 op; text rt name ] @ site fc pos @ [ call rt "best" ]
+             @ convert fc ~from:V ~into:k
+           | None, _ -> unsupported fc pos ("list." ^ name ^ " without its argument")))
+    [ "Max", 2, true; "Min", 0, false ]
+
 (* The runtime's functions of typed maps, now that every typed map is known: for each, a test of its type. *)
 let finish st =
   let rt = st.rt in
@@ -1653,8 +1762,9 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
   List.iter
     (fun (file, _, (fn : Ast.func), (l : layout)) ->
        let path = fst (Vec.get w.files file) in
-       if l.methods <> [] then raise (Unsupported (path, fn.fpos, "a method"));
-       if l.interfaces <> [] then raise (Unsupported (path, fn.fpos, "an interface")))
+       let chk ((a, b, c) as x) = if survey then note x else raise (Unsupported (a, b, c)) in
+       if l.methods <> [] then chk (path, fn.fpos, "a method");
+       if l.interfaces <> [] then chk (path, fn.fpos, "an interface"))
     prepared;
   let mains =
     List.filter_map
@@ -1699,4 +1809,5 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
   done;
   Buffer.add_char sites ']';
   Wasm.custom rt.m "cesia.sites" (Buffer.contents sites);
+  if survey && Hashtbl.length surveyed > 0 then exit 2;
   Wasm.write rt.m

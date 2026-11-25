@@ -1,0 +1,40 @@
+(** std/matrix in a program compiled to WebAssembly: the natives that std/plot needs, in Cesia, which cesia build
+    --target wasm takes for those of std/matrix of the same names. *)
+use std/bug
+use std/matrix
+use std/value
+
+defn Matmul(a, b)
+  (** The matrix product of two arrays of two dimensions, as floats. *)
+  sa = value.Size(a)
+  sb = value.Size(b)
+  if sa[2] != sb[1]
+    bug.Panic("Matmul can't multiply $(sa[1]) by $(sa[2]) with $(sb[1]) by $(sb[2]): the columns of the first must equal the rows of the second.")
+  end
+  out = matrix.Zeros(sa[1], sb[2])
+  for i in 1..sa[1]
+    for j in 1..sb[2]
+      s = 0.0
+      for k in 1..sa[2]
+        s += a[i, k] * b[k, j]
+      end
+      out[i, j] = s
+    end
+  end
+  out
+end
+
+defn Transpose(m)
+  (** The array of two dimensions with rows and columns swapped. *)
+  if not value.IsArray(m)
+    return m
+  end
+  s = value.Size(m)
+  out = matrix.Zeros(s[2], s[1])
+  for i in 1..s[1]
+    for j in 1..s[2]
+      out[j, i] = m[i, j]
+    end
+  end
+  out
+end

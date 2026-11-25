@@ -190,6 +190,7 @@ const own = {
     },
     Close (id) { const ws = sockets.get(id); if (ws && ws.readyState < 2) ws.close(1000) },
   },
+  'cesia:regex': { Test: (pattern, s) => new RegExp(decoder.decode(pattern), 'u').test(decoder.decode(s)) },
 }
 
 const rt = {
@@ -205,6 +206,19 @@ const rt = {
   fail,
   rand32 () { return crypto.getRandomValues(new Int32Array(1))[0] },
   now () { return (performance.timeOrigin + performance.now()) / 1000 },
+  // text.Number of the bytes in the window, as Native.number reads them, or NaN; text.Decimals in the scratch area, as
+  // printf rounds the exact value, a true half away from zero, and what rounds to zero without its sign.
+  number (len) {
+    const t = decoder.decode(new Uint8Array(memory.buffer, WINDOW, len))
+    return /^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/.test(t) ? Number(t) : NaN
+  },
+  decimals (x, n) {
+    let t = Math.abs(x) < 1e21 ? x.toFixed(n) : BigInt(Math.round(x)).toString() + (n > 0 ? '.' + '0'.repeat(n) : '')
+    if (/^-[0.]*$/.test(t)) t = t.slice(1)
+    const b = encoder.encode(t)
+    new Uint8Array(memory.buffer, SCRATCH, b.length).set(b)
+    return b.length
+  },
   // At the fuel's checkpoints: 1 lets the fibers ready run (every million steps, as the interpreter), 2 gives the
   // event loop back, else 0.
   checkpoint (full) {

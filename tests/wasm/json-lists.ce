@@ -1,0 +1,16 @@
+(* json.Parse and the lists and texts that a page has in Cesia (src/web/), json.Text, text.Number and Decimals. *)
+use std/io
+use std/json
+use std/list
+use std/text
+use std/random
+
+io.Print(json.Parse("{\"a\": [1, 2.5, -3, 1e3, true, null, \"x\\ny\\u00e9\"], \"b\": {}, \"c\": []}"))
+io.Print(json.Parse("[1, 2"), json.Parse("123456789012345678901234567890"), json.Parse("\"\\ud83d\\ude00\""))
+io.Print(json.Parse(json.Text({Rows: [{Id: 1, Name: "Ana"}], N: 2.0})))
+io.Print(list.Sort([3, 1, 2, 1]), list.Order([30, 10, 20]), list.Sort(["b", "a"]), list.Unique([1, 2, 1, "a", "a", [1], [1]]))
+io.Print(list.Flatten([[1], [2, 3], 4]), list.IndexOf(3, [1, 3]), list.Any([false, true]), list.All([true, false]), list.Mean([1, 2, 3, 4]))
+io.Print(text.Number("12"), text.Number("-3.5"), text.Number("1e3"), text.Number("abc"), text.Number("99999999999999999999"))
+io.Print(text.Decimals(2, 3.14159), text.Decimals(0, 2.5), text.Decimals(2, -0.001), text.Decimals(3, 7), text.Decimals(2, 2.675))
+r = random.Float()
+io.Print(r >= 0 and r < 1)

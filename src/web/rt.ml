@@ -275,6 +275,8 @@ let host rt name =
    | "checkpoint" -> import rt.m js "rt" "checkpoint" [ I32 ] [ I32 ]
    | "rand32" -> import rt.m js "rt" "rand32" [] [ I32 ]
    | "now" -> import rt.m js "rt" "now" [] [ F64 ]
+   | "number" -> import rt.m js "rt" "number" [ I32 ] [ F64 ]
+   | "decimals" -> import rt.m js "rt" "decimals" [ F64; I32 ] [ I32 ]
    | "park" -> import rt.m js "rt" "park" [ nn rt.fib; I32 ] [ I32 ]
    | "wake" -> import rt.m js "rt" "wake" [ nn rt.fib ] []
    | "spawn" -> import rt.m js "rt" "spawn" [ nn rt.fib; nn rt.fn; I32 ] []
@@ -527,8 +529,7 @@ let () =
             [ Lget x; Cast (false, T rt.map); Lset mp; Lget mp; struct_get rt.map m_vals; Lset vs; Lget mp; struct_get rt.map m_count; Lset n ]
             @ byte '{'
             @ upto k n (sep ','
-                        @ [ Lget 0; Lget mp; struct_get rt.map m_keys; struct_get rt.keys k_names; Lget k; array_get rt.vals;
-                            Cast (false, T rt.bytes); call rt "buf_add" ]
+                        @ [ Lget 0; Lget mp; struct_get rt.map m_keys; struct_get rt.keys k_names; Lget k; array_get rt.vals; I32 0; call rt "write" ]
                         @ byte ':' @ byte ' '
                         @ sub [ Lget vs; Lget k; array_get rt.vals ])
             @ byte '}' @ [ ret ], []);
@@ -899,7 +900,9 @@ let () =
                      Lget 1; i64 1; i64_lt_s; Lget 1; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_gt_s; i32_or;
                      If (Bnone, fail ~kind:k_index rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
                                   [ [ Lget 1; call rt "itoa" ]; [ Lget l; as_non_null; call rt "cells"; i64_extend_u; call rt "itoa" ] ] [ Lget 2 ], []);
-                     Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; call rt "elem"; ret ], []) ]
+                     Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; call rt "elem"; ret ], []);
+        (* A dictionary: the integer is its key. *)
+        Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; If (Bnone, [ Lget 0; Lget 1; call rt "box_i"; Lget 2; call rt "index_v"; ret ], []) ]
       @ fail rt (Messages.index_value a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ]);
   (* An index of any type: a whole number, or a float of one. *)
   def "whole" (fun rt -> [ v; I32 ], [ I64 ], fun fb ->
@@ -925,7 +928,8 @@ let () =
                      Lget 1; i64 1; i64_lt_s; Lget 1; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_gt_s; i32_or;
                      If (Bnone, fail ~kind:k_index rt (Messages.index_outside 1000001 1000002 |> fun m -> { m with text = replace m.text [ "1000001", a1; "1000002", a2 ] })
                                   [ [ Lget 1; call rt "itoa" ]; [ Lget l; as_non_null; call rt "cells"; i64_extend_u; call rt "itoa" ] ] [ Lget 3 ], []);
-                     Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; Lget 2; call rt "store_elt"; Lget l; ret ], []) ]
+                     Lget l; as_non_null; Lget 1; i32_wrap; I32 1; i32_sub; Lget 2; call rt "store_elt"; Lget l; ret ], []);
+        Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; If (Bnone, [ Lget 0; Lget 1; call rt "box_i"; Lget 2; Lget 3; call rt "set_field"; ret ], []) ]
       @ fail rt (Messages.index_value a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 3 ]);
   (* a..b, of integers. *)
   def "range" (fun rt -> [ I64; I64; I32 ], [ v ], fun fb ->
@@ -1024,7 +1028,7 @@ let () =
                      Lget ma; struct_get rt.map m_count; Lget mb; struct_get rt.map m_count; i32_ne; If (Bnone, [ I32 0; ret ], []);
                      Lget ma; struct_get rt.map m_count; Lset n ]
                    @ upto i n [ Lget mb; as_non_null; Lget ma; struct_get rt.map m_keys; struct_get rt.keys k_names; Lget i; array_get rt.vals;
-                                Cast (false, T rt.bytes); call rt "map_find"; Lset k;
+                                call rt "map_find"; Lset k;
                                 Lget k; I32 0; i32_lt_s; If (Bnone, [ I32 0; ret ], []);
                                 Lget ma; struct_get rt.map m_vals; Lget i; array_get rt.vals; Lget mb; struct_get rt.map m_vals; Lget k; array_get rt.vals;
                                 call rt "equal"; i32_eqz; If (Bnone, [ I32 0; ret ], []) ]
@@ -1058,31 +1062,51 @@ let () =
       @ upto i n [ Lget h; Lget 0; Lget i; array_get_u rt.bytes; i64_extend_u; i64_xor; I64 0x100000001b3L; i64_mul; Lset h ]
       @ [ Lget h; Lget h; i64 32; i64_shr_u; i64_xor; I64 0x2545F4914F6CDD1DL; i64_mul; Lset h;
           Lget h; Lget h; i64 29; i64_shr_u; i64_xor ]);
-  (* The place of a name in a map, or -1. *)
-  def "map_find" (fun rt -> [ nn rt.map; nn rt.bytes ], [ I32 ], fun fb ->
+  (* Two keys the same, as Trie.compare_keys: texts by their bytes, numbers by their value, 1 as 1.0. *)
+  def "key_eq" (fun rt -> [ v; v ], [ I32 ], fun _ ->
+      [ Lget 0; Lget 1; ref_eq; If (Bnone, [ I32 1; ret ], []);
+        Lget 0; Test (false, T rt.bytes);
+        If (Bnone, [ Lget 1; Test (false, T rt.bytes); If (Bval I32, [ Lget 0; Cast (false, T rt.bytes); Lget 1; Cast (false, T rt.bytes); call rt "bytes_eq" ], [ I32 0 ]); ret ], []);
+        Lget 1; Test (false, T rt.bytes); If (Bnone, [ I32 0; ret ], []);
+        Lget 0; Lget 1; call rt "equal" ]);
+  (* The hash of a key: a text's, or a number's from its value, an integer's and its float's the same. *)
+  def "key_hash" (fun rt -> [ v; I64 ], [ I64 ], fun fb ->
+      let x = local fb F64 and h = local fb I64 in
+      [ Lget 0; Test (false, T rt.bytes); If (Bnone, [ Lget 0; Cast (false, T rt.bytes); Lget 1; call rt "hash"; ret ], []);
+        Lget 0; call rt "is_int"; If (Bval I64, [ Lget 0; call rt "int_of" ],
+                                       [ Lget 0; call rt "as_float"; Ltee x; f64_trunc; Lget x; f64_eq; Lget x; f64_abs; F64 4e18; f64_lt; i32_and;
+                                         If (Bval I64, [ Lget x; i64_trunc_sat ], [ Lget x; Op 0xbd (* i64.reinterpret_f64 *) ]) ]);
+        Lget 1; i64_xor; I64 0x9E3779B97F4A7C15L; i64_mul; Lset h; Lget h; Lget h; i64 32; i64_shr_u; i64_xor ]);
+  (* The place of a key in a map, or -1. *)
+  def "map_find" (fun rt -> [ nn rt.map; v ], [ I32 ], fun fb ->
       let k = local fb (nn rt.keys) and names = local fb (nn rt.vals) and i = local fb I32 and n = local fb I32 in
       let slots = local fb (nn rt.i64s) and h = local fb I64 and mask = local fb I32 and sl = local fb I64 and e = local fb I32 in
       [ Lget 0; struct_get rt.map m_keys; Lset k; Lget k; struct_get rt.keys k_names; Lset names;
         Lget k; struct_get rt.keys k_slots; ref_is_null;
-        If (Bnone, [ Lget 0; struct_get rt.map m_count; Lset n ]
-                   @ upto i n [ Lget names; Lget i; array_get rt.vals; Cast (false, T rt.bytes); Lget 1; call rt "bytes_eq"; If (Bnone, [ Lget i; ret ], []) ]
+        If (Bnone, [ Lget 0; struct_get rt.map m_count; Lset n;
+                     Lget 1; Test (false, T rt.bytes);
+                     If (Bnone, upto i n [ Lget names; Lget i; array_get rt.vals; Test (false, T rt.bytes);
+                                           If (Bnone, [ Lget names; Lget i; array_get rt.vals; Cast (false, T rt.bytes); Lget 1; Cast (false, T rt.bytes); call rt "bytes_eq";
+                                                        If (Bnone, [ Lget i; ret ], []) ], []) ]
+                                @ [ I32 (-1); ret ], []) ]
+                   @ upto i n [ Lget names; Lget i; array_get rt.vals; Lget 1; call rt "key_eq"; If (Bnone, [ Lget i; ret ], []) ]
                    @ [ I32 (-1); ret ], []);
         Lget k; struct_get rt.keys k_slots; as_non_null; Lset slots;
         Lget slots; array_len; I32 1; i32_sub; Lset mask;
-        Lget 1; Lget k; struct_get rt.keys k_seed; call rt "hash"; Lset h;
+        Lget 1; Lget k; struct_get rt.keys k_seed; call rt "key_hash"; Lset h;
         Lget h; i32_wrap; Lget mask; i32_and; Lset i;
         Loop (Bnone, [
             Lget slots; Lget i; array_get rt.i64s; Lset sl;
             Lget sl; i64_eqz; If (Bnone, [ I32 (-1); ret ], []);
             Lget sl; Lget h; i64_xor; i64 32; i64_shr_u; i64_eqz;
             If (Bnone, [ Lget sl; i32_wrap; I32 1; i32_sub; Lset e;
-                         Lget names; Lget e; array_get rt.vals; Cast (false, T rt.bytes); Lget 1; call rt "bytes_eq"; If (Bnone, [ Lget e; ret ], []) ], []);
+                         Lget names; Lget e; array_get rt.vals; Lget 1; call rt "key_eq"; If (Bnone, [ Lget e; ret ], []) ], []);
             Lget i; I32 1; i32_add; Lget mask; i32_and; Lset i; Br 0 ]);
         unreachable ]);
   (* Name [e] in a table: false when its probe passes the limit. *)
-  def "slot_put" (fun rt -> [ nn rt.i64s; I64; nn rt.bytes; I32 ], [ I32 ], fun fb ->
+  def "slot_put" (fun rt -> [ nn rt.i64s; I64; v; I32 ], [ I32 ], fun fb ->
       let h = local fb I64 and i = local fb I32 and mask = local fb I32 and d = local fb I32 in
-      [ Lget 2; Lget 1; call rt "hash"; Lset h;
+      [ Lget 2; Lget 1; call rt "key_hash"; Lset h;
         Lget 0; array_len; I32 1; i32_sub; Lset mask; Lget h; i32_wrap; Lget mask; i32_and; Lset i;
         Block (Bnone, [ Loop (Bnone, [
             Lget 0; Lget i; array_get rt.i64s; i64_eqz; Br_if 1;
@@ -1092,11 +1116,14 @@ let () =
   (* The keys of the first [n] of these names: past 8 of them, a table of twice [cap] slots, made again with another seed
      while a probe passes the limit. *)
   def "keys_of" (fun rt -> [ nn rt.vals; I32; I32 ], [ nn rt.keys ], fun fb ->
-      let slots = local fb (nl rt.i64s) and seed = local fb I64 and i = local fb I32 in
+      let slots = local fb (nl rt.i64s) and seed = local fb I64 and i = local fb I32 and size = local fb I32 in
       [ Lget 1; I32 table_from; i32_le_u; If (Bnone, [ Lget 0; Rnull (T rt.i64s); I64 0L; struct_new rt.keys; ret ], []);
         Block (Bnone, [ Loop (Bnone, [
-            call rt "next_seed"; Lset seed; Lget 2; I32 2; i32_mul; array_new_default rt.i64s; Lset slots;
-            Block (Bnone, upto i 1 [ Lget slots; as_non_null; Lget seed; Lget 0; Lget i; array_get rt.vals; Cast (false, T rt.bytes); Lget i; call rt "slot_put"; i32_eqz; Br_if 2 ]
+            call rt "next_seed"; Lset seed;
+            (* Slots a power of two, at least twice the room: a mask then reaches each. *)
+            I32 16; Lset size; Block (Bnone, [ Loop (Bnone, [ Lget size; Lget 2; I32 2; i32_mul; i32_ge_u; Br_if 1; Lget size; I32 2; i32_mul; Lset size; Br 0 ]) ]);
+            Lget size; array_new_default rt.i64s; Lset slots;
+            Block (Bnone, upto i 1 [ Lget slots; as_non_null; Lget seed; Lget 0; Lget i; array_get rt.vals; Lget i; call rt "slot_put"; i32_eqz; Br_if 2 ]
                           @ [ Br 2 ]);
             Br 0 ]) ]);
         Lget 0; Lget slots; Lget seed; struct_new rt.keys ]);
@@ -1109,7 +1136,7 @@ let () =
         I32 1; Lget 0; struct_get rt.map m_keys; Lget w; Lget n; I32 0; struct_new rt.map ]);
   (* A new name and its value in an owned map: in the room of its keys when they are its alone, else in names and values
      twice as many, then its own. *)
-  def "map_add" (fun rt -> [ nn rt.map; nn rt.bytes; v ], [], fun fb ->
+  def "map_add" (fun rt -> [ nn rt.map; v; v ], [], fun fb ->
       let n = local fb I32 and k = local fb (nn rt.keys) and names = local fb (nn rt.vals) and cap = local fb I32 and w = local fb (nn rt.vals) in
       let remake = [ Lget 0; Lget names; Lget n; Lget names; array_len; call rt "keys_of"; struct_set rt.map m_keys ] in
       [ Lget 0; struct_get rt.map m_count; Lset n; Lget 0; struct_get rt.map m_keys; Lset k; Lget k; struct_get rt.keys k_names; Lset names;
@@ -1168,7 +1195,7 @@ let () =
                    @ [ Lget l; struct_get rt.list l_rows; Lget l; struct_get rt.list l_cols; Lget out; call rt "list_of"; ret ], []) ]
       @ fail rt (Messages.field_of a1 "\003" |> fun m -> { m with text = replace m.text [ "\003", a2 ] }) [ [ Lget 0; call rt "describe" ]; [ Lget 1 ] ] [ Lget 3 ]);
   (* m.Name = x: the map or struct to keep, the same one when owned, else a copy; a new name adds a key. *)
-  def "set_field" (fun rt -> [ v; nn rt.bytes; v; I32 ], [ v ], fun fb ->
+  def "set_field" (fun rt -> [ v; v; v; I32 ], [ v ], fun fb ->
       let mp = local fb (nl rt.map) and rc = local fb (nl rt.recd) and k = local fb I32 and n = local fb I32 and w = local fb (nn rt.vals) in
       (* A typed map written to becomes a map of the general form, owned, which the caller keeps. *)
       [ Lget 0; call rt "as_map"; Lset 0;
@@ -1181,17 +1208,17 @@ let () =
                      Lget mp; as_non_null; Lget 1; Lget 2; call rt "map_add"; Lget mp; ret ], []);
         Lget 0; Test (false, T rt.recd);
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc;
-                     Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 1; Lget 1; call rt "find_name"; Lset k;
+                     Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 1; Lget 1; call rt "text_of"; call rt "find_name"; Lset k;
                      Lget k; I32 0; i32_lt_s;
                      If (Bnone, fail ~kind:k_field rt (Messages.named_field "\003" a2 |> fun m -> { m with text = replace m.text [ "\003", a1 ] })
-                                  [ [ Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 0 ]; [ Lget 1 ] ] [ Lget 3 ], []);
+                                  [ [ Lget rc; struct_get rt.recd r_shape; struct_get rt.shape 0 ]; [ Lget 1; call rt "text_of" ] ] [ Lget 3 ], []);
                      Lget rc; struct_get rt.recd r_owned; i32_eqz;
                      If (Bnone, [ Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;
                                   Lget w; I32 0; Lget rc; struct_get rt.recd r_fields; I32 0; Lget n; array_copy rt.vals rt.vals;
                                   Lget w; Lget n; call rt "share_all";
                                   I32 1; Lget rc; struct_get rt.recd r_shape; Lget w; struct_new rt.recd; Lset rc ], []);
                      Lget rc; struct_get rt.recd r_fields; Lget k; Lget 2; array_set rt.vals; Lget rc; ret ], []) ]
-      @ fail rt (Messages.field_of a1 "\003" |> fun m -> { m with text = replace m.text [ "\003", a2 ] }) [ [ Lget 0; call rt "describe" ]; [ Lget 1 ] ] [ Lget 3 ])
+      @ fail rt (Messages.field_of a1 "\003" |> fun m -> { m with text = replace m.text [ "\003", a2 ] }) [ [ Lget 0; call rt "describe" ]; [ Lget 1; call rt "text_of" ] ] [ Lget 3 ])
 
 (* Calls: the depth, checked at each entry, and the fuel, taken at each loop and each entry. *)
 let () =
@@ -1240,9 +1267,9 @@ let cache rt =
 let () =
   def "index_v" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
       let mp = local fb (nl rt.map) and k = local fb I32 in
-      [ Lget 0; Test (false, T rt.map); Lget 1; Test (false, T rt.bytes); i32_and;
+      [ Lget 0; Test (false, T rt.map);
         If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp;
-                     Lget mp; as_non_null; Lget 1; Cast (false, T rt.bytes); call rt "map_find"; Lset k;
+                     Lget mp; as_non_null; Lget 1; call rt "map_find"; Lset k;
                      Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; call rt "share"; ret ], []) ]
                    @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
         Lget 0; Test (false, T rt.smap); Lget 1; Test (false, T rt.bytes); i32_and;
@@ -1251,8 +1278,8 @@ let () =
                    @ fail ~kind:k_index rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
         Lget 0; Lget 1; Lget 2; call rt "whole"; Lget 2; call rt "index" ]);
   def "set_index_v" (fun rt -> [ v; v; v; I32 ], [ v ], fun _ ->
-      [ Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; Lget 1; Test (false, T rt.bytes); i32_and;
-        If (Bnone, [ Lget 0; Lget 1; Cast (false, T rt.bytes); Lget 2; Lget 3; call rt "set_field"; ret ], []);
+      [ Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); Lget 1; Test (false, T rt.bytes); i32_and; i32_or;
+        If (Bnone, [ Lget 0; Lget 1; Lget 2; Lget 3; call rt "set_field"; ret ], []);
         Lget 0; Lget 1; Lget 3; call rt "whole"; Lget 2; Lget 3; call rt "set_index" ])
 
 (* Natives of std/list and std/value. *)

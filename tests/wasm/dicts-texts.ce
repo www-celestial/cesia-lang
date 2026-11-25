@@ -1,0 +1,28 @@
+(* The natives of std/dict and std/text compiled to WebAssembly, keys of numbers and texts, past 8 keys a table. *)
+use std/dict
+use std/io
+use std/json
+use std/text
+
+d = dict.Dict()
+d = dict.Put("a", 1, d)
+d = dict.Put(2, "two", d)
+io.Print(d, dict.Get("a", d), dict.Get("z", d), dict.GetOr("z", 9, d), dict.Has(2, d), dict.Has(2.0, d))
+io.Print(dict.Keys(d), dict.Values(d), dict.Drop("a", d), d)
+big = dict.Dict()
+for k in 1..20
+  big = dict.Put("k$k", k, big)
+end
+io.Print(dict.Get("k17", big), value(big))
+defn value(b)
+  dict.Keys(b)[20]
+end
+io.Print(dict.Dict([{Key: "x", Value: 1}, {Key: "y", Value: 2}]))
+s = "héllo, world"
+io.Print(text.ByteLength(s), text.Byte(2, s), text.ByteSlice(1, 3, s), text.ByteFind("o", 1, s))
+io.Print(text.StartsWith("hé", s), text.EndsWith("ld", s), text.Contains("lo,", s), text.Contains("x", s))
+io.Print(text.Join("-", [1, "a", 2.5]), text.Chars("héy"), text.Slice(2, 4, s), text.Find("w", s), text.Code("é"), text.Char(233))
+io.Print("[$(text.Trim("  a b \n"))]", text.Lower("AbC"), text.Upper("aBc"), text.Repeat(3, "ab"), text.Split(", ", s), text.Replace("l", "L", s))
+io.Print(text.ByteLength(text.FromNumbers("f32", [1.5, 2])), text.FromNumbers("u8", [72, 105]))
+io.Print(json.Text({A: 1, B: [true, missing, "q\"x\n"], C: 2.5}))
+io.Print(text.Slice(1, 30, s))

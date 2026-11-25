@@ -12,13 +12,27 @@ let build (ctx : Types.ctx) path =
   let files = ref [] in
   Loader.checking := true;
   Loader.prepared_file := (fun p -> files := p :: !files);
-  let main =
+  let main, pages =
     Fun.protect ~finally:(fun () -> Loader.checking := false; Loader.prepared_file := ignore) (fun () ->
         let src = In_channel.with_open_bin path In_channel.input_all in
-        Loader.prepare ~key:(Package.absolute path) ctx ~path ~src ~lookup:(Loader.lookup w))
+        let main = Loader.prepare ~key:(Package.absolute path) ctx ~path ~src ~lookup:(Loader.lookup w) in
+        (* The packages that a page has a version of, in src/web/, once the program uses them: their functions and
+           natives of the same names are taken (Aot.call_expr). A version may use another package that has one. *)
+        let used pkg = Array.exists (fun (md : Types.modul) -> md.mname = pkg || md.path = pkg ^ ".ce") w.modules in
+        let rec more pages =
+          match List.find_opt (fun (pkg, _) -> used pkg && not (List.mem_assoc pkg pages)) Pages.all with
+          | Some (pkg, src) ->
+            let ((_, m, _, _) as p) =
+              Loader.prepare ~key:("page:" ^ pkg) ctx ~path:("std/page/" ^ Filename.basename pkg ^ ".ce") ~src ~lookup:(Loader.lookup w)
+            in
+            files := p :: !files;
+            more ((pkg, m) :: pages)
+          | None -> pages
+        in
+        main, more [])
   in
   let module_bytes =
-    match Aot.build w (List.rev (main :: !files)) with
+    match Aot.build ~pages w (List.rev (main :: !files)) with
     | bytes -> bytes
     | exception Aot.Unsupported (file, pos, what) ->
       let m = Messages.wasm_unsupported what in

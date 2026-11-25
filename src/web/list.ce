@@ -1,0 +1,147 @@
+(** std/list in a program compiled to WebAssembly: the natives that src/web/rtstd.ml doesn't hold, in Cesia, which
+    cesia build --target wasm takes for those of std/list of the same names. Each gives what the interpreter's gives. *)
+use std/bug
+use std/list
+use std/math
+use std/value
+
+(* Can x be a key of a dictionary: a text, or a number but NaN? *)
+isKey(x) = value.IsText(x) or value.IsInt(x) or value.IsFloat(x) and x == x
+
+defn Unique(xs)
+  (** The elements without repeats, keeping the first of each. *)
+  seen = {}
+  others = []
+  out = []
+  for x in xs
+    if isKey(x)
+      if not (x in seen)
+        seen[x] = true
+        out = list.Append(x, out)
+      end
+    else if not (x in others)
+      others = list.Append(x, others)
+      out = list.Append(x, out)
+    end
+  end
+  out
+end
+
+defn Any(mask)
+  (** Is some element of an array of booleans true? *)
+  for x in mask
+    if x
+      return true
+    end
+  end
+  false
+end
+
+defn All(mask)
+  (** Are all the elements of an array of booleans true? *)
+  for x in mask
+    if not x
+      return false
+    end
+  end
+  true
+end
+
+defn IndexOf(x, xs)
+  (** The position, from 1, of the first element equal to x, or missing. *)
+  for k in 1..value.Len(xs)
+    if value.Equal(x, xs[k])
+      return k
+    end
+  end
+  missing
+end
+
+defn Flatten(xs)
+  (** The elements of xs, where each array element is replaced by its own elements, one level deep. *)
+  out = []
+  for x in xs
+    if value.IsArray(x)
+      for y in x
+        out = list.Append(y, out)
+      end
+    else
+      out = list.Append(x, out)
+    end
+  end
+  out
+end
+
+defn Zip(a, b)
+  (** The pairs of the elements of two lists, as long as the shorter. *)
+  [[a[k], b[k]] for k in 1..list.Min(value.Len(a), value.Len(b))]
+end
+
+defn Mean(xs, dim = missing)
+  (** The mean of the elements of an array, nan if it is empty. *)
+  if value.IsSome(dim)
+    bug.Panic("list.Mean with dim isn't compiled to WebAssembly yet.")
+  end
+  n = value.Len(xs)
+  if n == 0 math.Nan else list.Sum(xs) / n end
+end
+
+defn before(a, b)
+  (** Does a sort before b: numbers by their value, texts by their bytes? *)
+  if value.IsNumber(a) and value.IsNumber(b) or value.IsText(a) and value.IsText(b)
+    return a < b
+  end
+  bug.Panic("Can't sort $(describe(a)) with $(describe(b)).")
+end
+
+defn describe(x)
+  (** How a message names a value, as Value.describe. *)
+  if value.IsMissing(x)
+    "missing"
+  else if value.IsNumber(x)
+    "the number $x"
+  else if value.IsText(x)
+    "the text \"$x\""
+  else if value.IsArray(x)
+    "an array"
+  else if value.IsDict(x)
+    "a dictionary"
+  else
+    "$x"
+  end
+end
+
+defn Order(xs)
+  (** The positions, from 1, that put the elements in increasing order. Stable: a merge sort. *)
+  n = value.Len(xs)
+  ks = [k for k in 1..n]
+  width = 1
+  while width < n
+    out = []
+    lo = 1
+    while lo <= n
+      mid = list.Min(lo + width, n + 1)
+      hi = list.Min(lo + 2 * width, n + 1)
+      i = lo
+      j = mid
+      while i < mid or j < hi
+        if j >= hi or i < mid and not before(xs[ks[j]], xs[ks[i]])
+          out = list.Append(ks[i], out)
+          i += 1
+        else
+          out = list.Append(ks[j], out)
+          j += 1
+        end
+      end
+      lo = hi
+    end
+    ks = out
+    width *= 2
+  end
+  ks
+end
+
+defn Sort(xs)
+  (** The elements in increasing order, keeping the order of equal ones. *)
+  [xs[k] for k in Order(xs)]
+end
