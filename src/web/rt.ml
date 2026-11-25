@@ -63,7 +63,8 @@ let create () =
   let boxi = fresh_ty m (St [ S I64, false ]) in
   let boxf = fresh_ty m (St [ S F64, false ]) in
   let atom = fresh_ty m (St [ S I32, false ]) in
-  let list = fresh_ty m (St [ S I32, true; S I32, true; S I32, true; S (Ref (false, Array)), true ]) in
+  (* tip: no Append went on from this list yet, so the free cells of its store after its last are still free. *)
+  let list = fresh_ty m (St [ S I32, true; S I32, true; S I32, true; S (Ref (false, Array)), true; S I32, true ]) in
   let keys = fresh_ty m (St [ S (nn vals), false ]) in
   let map = fresh_ty m (St [ S I32, true; S (nn keys), true; S (nn vals), true ]) in
   (* A shape: the name of its struct, its fields, and how a message names it, "an Ok". *)
@@ -81,6 +82,7 @@ let l_owned = 0
 let l_rows = 1
 let l_cols = 2
 let l_store = 3
+let l_tip = 4
 let m_owned = 0
 let m_keys = 1
 let m_vals = 2
@@ -731,12 +733,12 @@ let () =
       @ [ Lget fl;
           If (Bnone, [ Lget n; array_new_default rt.f64s; Lset fs ]
                      @ upto i n [ Lget fs; Lget i; Lget 2; Lget i; array_get rt.vals; call rt "float_of"; array_set rt.f64s ]
-                     @ [ I32 1; Lget 0; Lget 1; Lget fs; struct_new rt.list; ret ], []);
+                     @ [ I32 1; Lget 0; Lget 1; Lget fs; I32 1; struct_new rt.list; ret ], []);
           Lget it;
           If (Bnone, [ Lget n; array_new_default rt.i64s; Lset is ]
                      @ upto i n [ Lget is; Lget i; Lget 2; Lget i; array_get rt.vals; call rt "int_of"; array_set rt.i64s ]
-                     @ [ I32 1; Lget 0; Lget 1; Lget is; struct_new rt.list; ret ], []);
-          I32 1; Lget 0; Lget 1; Lget 2; struct_new rt.list ]);
+                     @ [ I32 1; Lget 0; Lget 1; Lget is; I32 1; struct_new rt.list; ret ], []);
+          I32 1; Lget 0; Lget 1; Lget 2; I32 1; struct_new rt.list ]);
   def "cells" (fun rt -> [ nn rt.list ], [ I32 ], fun _ ->
       [ Lget 0; struct_get rt.list l_rows; Lget 0; struct_get rt.list l_cols; i32_mul ]);
   (* "1 by 3": the sizes of a message. *)
@@ -755,7 +757,7 @@ let () =
             Lget s; Test (false, T rt.i64s);
             If (Bnone, [ Lget n; array_new_default rt.i64s; Lset i; Lget i; I32 0; Lget s; Cast (false, T rt.i64s); I32 0; Lget n; array_copy rt.i64s rt.i64s; Lget i; Lset s; Br 1 ], []);
             Lget n; array_new_default rt.vals; Lset w; Lget w; I32 0; Lget s; Cast (false, T rt.vals); I32 0; Lget n; array_copy rt.vals rt.vals; Lget w; Lset s ]);
-        I32 1; Lget 0; struct_get rt.list l_rows; Lget 0; struct_get rt.list l_cols; Lget s; struct_new rt.list ]);
+        I32 1; Lget 0; struct_get rt.list l_rows; Lget 0; struct_get rt.list l_cols; Lget s; I32 1; struct_new rt.list ]);
   (* The store as values, for a cell of another kind: Arrays.store_elt. *)
   def "to_vals" (fun rt -> [ nn rt.list ], [ nn rt.vals ], fun fb ->
       let n = local fb I32 and i = local fb I32 and w = local fb (nn rt.vals) in
@@ -823,9 +825,9 @@ let () =
         Lget 1; Lget 0; i64_lt_s; If (Bval I32, [ I32 0 ], [ Lget 1; Lget 0; i64_sub; i32_wrap; I32 1; i32_add ]); Lset n;
         Lget n; array_new_default rt.i64s; Lset d ]
       @ upto i n [ Lget d; Lget i; Lget 0; Lget i; i64_extend_u; i64_add; array_set rt.i64s ]
-      @ [ I32 1; I32 1; Lget n; Lget d; struct_new rt.list ]);
+      @ [ I32 1; I32 1; Lget n; Lget d; I32 1; struct_new rt.list ]);
   (* A list being built, by a comprehension: values, room for more; [built] gives the list. *)
-  def "builder" (fun rt -> [], [ nn rt.list ], fun _ -> [ I32 1; I32 1; I32 0; I32 8; array_new_default rt.vals; struct_new rt.list ]);
+  def "builder" (fun rt -> [], [ nn rt.list ], fun _ -> [ I32 1; I32 1; I32 0; I32 8; array_new_default rt.vals; I32 1; struct_new rt.list ]);
   def "push" (fun rt -> [ nn rt.list; v ], [], fun fb ->
       let n = local fb I32 and s = local fb (nn rt.vals) and w = local fb (nn rt.vals) in
       [ Lget 0; struct_get rt.list l_cols; Lset n; Lget 0; struct_get rt.list l_store; Cast (false, T rt.vals); Lset s;
@@ -1028,3 +1030,78 @@ let () =
       [ Lget 0; Test (false, T rt.map); Lget 1; Test (false, T rt.bytes); i32_and;
         If (Bnone, [ Lget 0; Lget 1; Cast (false, T rt.bytes); Lget 2; Lget 3; call rt "set_field"; ret ], []);
         Lget 0; Lget 1; Lget 3; call rt "whole"; Lget 2; Lget 3; call rt "set_index" ])
+
+(* Natives of std/list and std/value. *)
+let () =
+  (* list.Sum: floats by blocks of 65536 as Kernels.sum, integers checked, anything else by Arith.add from 0. *)
+  def "sum" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let l = local fb (nl rt.list) and n = local fb I32 and i = local fb I32 and acc = local fb F64 and tot = local fb F64 in
+      let ai = local fb I64 and av = local fb v and d = local fb (nl rt.f64s) and e = local fb (nl rt.i64s) in
+      [ Lget 0; g_true rt; ref_eq; If (Bnone, [ I32 1; ref_i31; ret ], []);
+        Lget 0; g_false rt; ref_eq; If (Bnone, [ I32 0; ref_i31; ret ], []);
+        Lget 0; Test (false, T rt.list); i32_eqz; If (Bnone, [ Lget 0; ret ], []);
+        Lget 0; Cast (false, T rt.list); Lset l; Lget l; as_non_null; call rt "cells"; Lset n;
+        Lget l; struct_get rt.list l_store; Test (false, T rt.f64s);
+        If (Bnone, [ Lget l; struct_get rt.list l_store; Cast (false, T rt.f64s); Lset d ]
+                   @ upto i n [ Lget i; I32 0xffff; i32_and; i32_eqz;
+                                If (Bnone, [ Lget tot; Lget acc; f64_add; Lset tot; F64 0.; Lset acc ], []);
+                                Lget acc; Lget d; Lget i; array_get rt.f64s; f64_add; Lset acc ]
+                   @ [ Lget tot; Lget acc; f64_add; call rt "box_f"; ret ], []);
+        Lget l; struct_get rt.list l_store; Test (false, T rt.i64s);
+        If (Bnone, [ Lget l; struct_get rt.list l_store; Cast (false, T rt.i64s); Lset e ]
+                   @ upto i n [ Lget ai; Lget e; Lget i; array_get rt.i64s; Lget 1; call rt "add_i"; Lset ai ]
+                   @ [ Lget ai; call rt "box_i"; ret ], []);
+        I32 0; ref_i31; Lset av ]
+      @ upto i n [ I32 0; Lget av; Lget l; as_non_null; Lget i; call rt "elem"; Lget 1; call rt "arith"; Lset av ]
+      @ [ Lget av ]);
+  (* list.Append(x, xs): in the free cell after the last when xs is the tip of its store, as Lists.push. *)
+  def "append" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let l = local fb (nl rt.list) and n = local fb I32 and room = local fb I32 and w = local fb (nn rt.vals) and i = local fb I32 in
+      let took = [ Lget l; I32 0; struct_set rt.list l_tip; Lget l; I32 0; struct_set rt.list l_owned;
+                   I32 0; I32 1; Lget n; I32 1; i32_add; Lget l; struct_get rt.list l_store; I32 1; struct_new rt.list; ret ] in
+      let fits t = [ Lget l; struct_get rt.list l_tip; Lget n; Lget l; struct_get rt.list l_store; array_len; i32_lt_u; i32_and;
+                     Lget l; struct_get rt.list l_store; Test (false, T t); i32_and ] in
+      [ Lget 1; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_array "Append" a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 1; Cast (false, T rt.list); Lset l; Lget l; as_non_null; call rt "cells"; Lset n;
+        Lget l; struct_get rt.list l_rows; I32 1; i32_eq;
+        If (Bnone, [ Lget 0; Test (false, T rt.boxf) ] @ fits rt.f64s @ [ i32_and;
+                     If (Bnone, [ Lget l; struct_get rt.list l_store; Cast (false, T rt.f64s); Lget n; Lget 0; call rt "float_of"; array_set rt.f64s ] @ took, []);
+                     Lget 0; call rt "is_int" ] @ fits rt.i64s @ [ i32_and;
+                     If (Bnone, [ Lget l; struct_get rt.list l_store; Cast (false, T rt.i64s); Lget n; Lget 0; call rt "int_of"; array_set rt.i64s ] @ took, []) ]
+                   @ fits rt.vals
+                   @ [ If (Bnone, [ Lget l; struct_get rt.list l_store; Cast (false, T rt.vals); Lget n; Lget 0; call rt "share"; array_set rt.vals ] @ took, []) ], []);
+        (* A new store, twice as large; of values, each shared, then typed again as of_vals types it when the list is not a
+           row or the kinds differ. *)
+        Lget n; I32 2; i32_mul; Lset room; Lget room; I32 8; i32_lt_u; If (Bnone, [ I32 8; Lset room ], []);
+        Lget room; array_new_default rt.vals; Lset w ]
+      @ upto i n [ Lget w; Lget i; Lget l; as_non_null; Lget i; call rt "elem"; call rt "share"; array_set rt.vals ]
+      @ [ Lget w; Lget n; Lget 0; call rt "share"; array_set rt.vals;
+          I32 1; Lget n; I32 1; i32_add; Lget w; call rt "list_of"; Cast (false, T rt.list); Lset l;
+          (* list_of made a store of exactly the cells, of their kind: Lists.push keeps room in a store of the same kind. *)
+          Lget l; as_non_null; Lget room; call rt "with_room" ]);
+  (* The same list, its store of the same kind with room for [room] cells. *)
+  def "with_room" (fun rt -> [ nn rt.list; I32 ], [ v ], fun fb ->
+      let n = local fb I32 and f = local fb (nn rt.f64s) and i = local fb (nn rt.i64s) and w = local fb (nn rt.vals) in
+      [ Lget 0; call rt "cells"; Lset n;
+        Block (Bnone, [
+            Lget 0; struct_get rt.list l_store; Test (false, T rt.f64s);
+            If (Bnone, [ Lget 1; array_new_default rt.f64s; Lset f; Lget f; I32 0; Lget 0; struct_get rt.list l_store; Cast (false, T rt.f64s); I32 0; Lget n; array_copy rt.f64s rt.f64s;
+                         Lget 0; Lget f; struct_set rt.list l_store; Br 1 ], []);
+            Lget 0; struct_get rt.list l_store; Test (false, T rt.i64s);
+            If (Bnone, [ Lget 1; array_new_default rt.i64s; Lset i; Lget i; I32 0; Lget 0; struct_get rt.list l_store; Cast (false, T rt.i64s); I32 0; Lget n; array_copy rt.i64s rt.i64s;
+                         Lget 0; Lget i; struct_set rt.list l_store; Br 1 ], []);
+            Lget 1; array_new_default rt.vals; Lset w; Lget w; I32 0; Lget 0; struct_get rt.list l_store; Cast (false, T rt.vals); I32 0; Lget n; array_copy rt.vals rt.vals;
+            Lget 0; Lget w; struct_set rt.list l_store ]);
+        Lget 0 ]);
+  def "concat" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let a = local fb (nl rt.list) and b = local fb (nl rt.list) and n = local fb I32 and m = local fb I32 and i = local fb I32 and w = local fb (nn rt.vals) in
+      [ Lget 1; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_array "Concat" a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 0; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_array "Concat" a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 0; Cast (false, T rt.list); Lset a; Lget 1; Cast (false, T rt.list); Lset b;
+        Lget a; as_non_null; call rt "cells"; Lset n; Lget b; as_non_null; call rt "cells"; Lset m;
+        Lget n; Lget m; i32_add; array_new_default rt.vals; Lset w ]
+      @ upto i n [ Lget w; Lget i; Lget a; as_non_null; Lget i; call rt "elem"; call rt "share"; array_set rt.vals ]
+      @ upto i m [ Lget w; Lget n; Lget i; i32_add; Lget b; as_non_null; Lget i; call rt "elem"; call rt "share"; array_set rt.vals ]
+      @ [ I32 1; Lget n; Lget m; i32_add; Lget w; call rt "list_of" ]);
+  (* bug.Panic(x): an error of the program, its message the text of x. *)
+  def "panic" (fun rt -> [ v; I32 ], [ v ], fun _ -> fail rt (Messages.plain a1) [ [ Lget 0; call rt "text_of" ] ] [ Lget 1 ])

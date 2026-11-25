@@ -597,7 +597,23 @@ and pat_test fc (pt : pat) x fail =
       (List.init want (fun k ->
            let y = Rt.local fc.fb Rt.v in
            [ Lget r; struct_get rt.recd r_fields; I32 k; array_get rt.vals; Lset y ] @ pat_test fc cargs.(k) y fail))
-  | Pstruct _ -> unsupported fc 0 "a pattern of fields"
+  | Pstruct fs ->
+    (* A struct's fields or a map's keys, by name. *)
+    let names = Rt.local fc.fb (Rt.nl rt.vals) and vals = Rt.local fc.fb (Rt.nl rt.vals) and k = Rt.local fc.fb I32 in
+    [ Block (Bnone, [
+          Lget x; Test (false, T rt.recd);
+          If (Bnone, [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 1; Lset names;
+                       Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; Lset vals; Br 1 ], []);
+          Lget x; Test (false, T rt.map);
+          If (Bnone, [ Lget x; Cast (false, T rt.map); struct_get rt.map m_keys; struct_get rt.keys 0; Lset names;
+                       Lget x; Cast (false, T rt.map); struct_get rt.map m_vals; Lset vals; Br 1 ], []);
+          Br (fail + 1) ]) ]
+    @ List.concat_map
+      (fun (name, q) ->
+         let y = Rt.local fc.fb Rt.v in
+         [ Lget names; as_non_null; text rt name; call rt "find_name"; Ltee k; I32 0; i32_lt_s; Br_if fail;
+           Lget vals; as_non_null; Lget k; array_get rt.vals; Lset y ] @ pat_test fc q y fail)
+      (Array.to_list fs)
 
 and destructure fc e pt v =
   let rt = fc.st.rt in
@@ -925,6 +941,38 @@ let () =
         x @ (match kind fc size with I -> expr fc size I | _ -> expr fc size V @ site fc pos @ [ call rt "range_bound" ]) @ site fc pos @ [ call rt g ]
         @ convert fc ~from:V ~into:k)
   in
+  reg "list" "Sum" (fun fc args pos k ->
+      arity fc pos args 1;
+      expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "sum" ] @ convert fc ~from:V ~into:k);
+  reg "list" "Append" (fun fc args pos k ->
+      arity fc pos args 2;
+      expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "append" ] @ convert fc ~from:V ~into:k);
+  reg "list" "Concat" (fun fc args pos k ->
+      arity fc pos args 2;
+      expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "concat" ] @ convert fc ~from:V ~into:k);
+  reg "bug" "Panic" (fun fc args pos k ->
+      arity fc pos args 1;
+      expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "panic" ] @ convert fc ~from:V ~into:k);
+  let is name test =
+    reg "value" name (fun fc args pos k ->
+        arity fc pos args 1;
+        let rt = fc.st.rt in
+        expr fc args.(0) V @ test rt @ bool_of rt @ convert fc ~from:V ~into:k)
+  in
+  is "IsInt" (fun rt -> [ call rt "is_int" ]);
+  is "IsFloat" (fun rt -> [ Test (false, T rt.boxf) ]);
+  is "IsNumber" (fun rt -> let x = "is_number" in
+                  if not (Hashtbl.mem Rt.defs x) then Rt.def x (fun rt -> [ Rt.v ], [ I32 ], fun _ -> [ Lget 0; call rt "is_int"; Lget 0; Test (false, T rt.boxf); i32_or ]);
+                  [ call rt x ]);
+  is "IsText" (fun rt -> [ Test (false, T rt.bytes) ]);
+  is "IsArray" (fun rt -> [ Test (false, T rt.list) ]);
+  is "IsDict" (fun rt -> [ Test (false, T rt.map) ]);
+  is "IsStruct" (fun rt -> [ Test (false, T rt.recd) ]);
+  is "IsFunction" (fun rt -> [ Test (false, T rt.fn) ]);
+  is "IsMissing" (fun _ -> [ ref_is_null ]);
+  is "IsBool" (fun rt -> let x = "is_bool" in
+                if not (Hashtbl.mem Rt.defs x) then Rt.def x (fun rt -> [ Rt.v ], [ I32 ], fun _ -> [ Lget 0; g_true rt; ref_eq; Lget 0; g_false rt; ref_eq; i32_or ]);
+                [ call rt x ]);
   filled "list" "Fill" None;
   filled "matrix" "Zeros" (Some [ F64 0.; Call "box_f" ]);
   filled "matrix" "Ones" (Some [ F64 1.; Call "box_f" ])
