@@ -247,6 +247,19 @@
 
 ### Speed
 
+- `cesia build --target wasm` makes faster modules. Each `for` and `while` runs in a function of its own, 16,384 turns a
+  call, so that V8 and SpiderMonkey run it in their optimized code from its next call, where a long call stayed in its
+  first code; a map literal whose keys and kinds the compiler knows is a struct of WasmGC with typed fields, and a
+  statement that reads such a map or a float from a variable has a fast version after one test, the general one when the
+  test fails; a map past 8 keys finds them by a table of hashes with a seed drawn at random for each table, and takes a
+  new key in its own room; arithmetic and comparisons of values go inline for floats and small integers. In Node,
+  against the first slice: `matmul` 171 ms instead of 904, `structs` 151 instead of 923, `dyn` 310 instead of 1,103,
+  `points` 53 instead of 148, `mandel` 58 instead of 91, and `bench/maps.ce`, 500,000 keys, 413 where it hadn't ended
+  after 100 s (`cesia run` 342); JavaScript in the same Node takes 61, 142, 137, 34, 57 and 583. Chrome 158 and Firefox
+  160 are measured too, in the book's chapter Compiling to WebAssembly.
+- Modules compiled to WebAssembly are smaller: only the types their code uses, the texts of messages a byte each from a
+  data segment, and messages that name a value without the printer of arrays: hello world takes 322 bytes instead of
+  431, `matmul` 10,879 instead of 11,194; the loader 3,149 bytes instead of 3,820, 1,313 with Brotli.
 - `http.Handler` puts the routes in a tree of the parts of their paths, once, where each request tried them one by one:
   the route of a request costs the same among 500 routes as among 5, 2.9 µs for the last of 500 instead of 235, 2.8
   for the last of 100 instead of 44.8, the last item of an API of 200 routes in 3.5 instead of 159, and a path that none

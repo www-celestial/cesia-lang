@@ -18,7 +18,7 @@ cesia build --target wasm file.ce
 
 It writes two files beside `file.ce`: `file.wasm`, the module, and `file.js`, its loader, which fetches the module,
 starts it and writes what it prints. A program that uses packages gets them in the same module, compiled with it.
-Building again replaces both files. `file.js` is plain JavaScript of 80 lines, with no package to install and no step
+Building again replaces both files. `file.js` is plain JavaScript of 70 lines, with no package to install and no step
 after it.
 
 When something can't be compiled yet, the build stops at its place, writes no file, and gives the exit code 1:
@@ -172,90 +172,125 @@ place, with the same calls named.
 | `if`, `match` and its patterns, `for`, `while`, `return` | |
 | `result.Ok`, `result.Err`, `?`, `!`, `bug.Panic` and errors | |
 
-A map is made here for a few keys, as a record of fields: its keys sit in a row, which a new key copies and a read
-searches from the first. A map grown key by key to many thousands, as a dictionary of counts, is slow for now: the
-500,000 keys of `bench/maps.ce` hadn't ended after 100 seconds, where `cesia run` takes 255 ms
-([Speed](speed.md#computing)). Keep such work in `cesia run`, or in a server the page asks, until the next slice gives
-maps the hash trie of `cesia run`.
+A map keeps its keys in the order of insertion. Past 8 keys it finds them by a table of their hashes, as the table of a
+map of `cesia run` that nothing else holds ([How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie)), each
+table with a seed drawn at random, so that nobody outside can choose keys that fall together, and drawn again when keys
+fall together all the same. The 500,000 keys of `bench/maps.ce`, written one by one then each read once, take 413 ms in
+Node, against 342 for `cesia run` ([Speed and size](#speed-and-size)). A write to a map that another variable holds
+copies it whole, where `cesia run`'s trie copies one branch: a map of many keys that a function gets, writes and gives
+back costs a copy at each call.
 
 Of the standard library, these compile: `io.Print`; `math.Div`, `Mod`, `Abs`, `Floor`, `Ceil`, `Round`, `Sqrt`, `Exp`,
 `Log`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos` and `Atan`; `list.Sum`, `Append`, `Concat`, `Take`, `Skip`, `Reverse` and
-`Fill`; `matrix.Zeros`, `Ones` and `Reshape`; `value.Len`, `Text`, `Equal`, `Size` and the tests `IsInt` to
-`IsMissing`; and the packages written in Cesia, as `std/result`, as far as they use what this table compiles.
+`Fill`; `matrix.Zeros`, `Ones` and `Reshape`; `value.Len`, `Text`, `Equal`, `Size` and the tests `IsInt` to `IsMissing`;
+and the packages written in Cesia, as `std/result`, as far as they use what this table compiles.
 
 ## How it works
 
 The compiler is a plugin of Cesia, `cesia_wasm.cmxs`, which only `cesia build` loads: `cesia run` never pays for it. It
 loads the program as `cesia run` does, then compiles each function once for each kind of arguments it is called with, as
-the JIT does: where the types are known, an integer is an `i64` of WebAssembly, with the checks of Cesia's 63 bits, and a
-float an `f64`, both in the machine's registers; elsewhere, a value is a reference to an object of
+the JIT does: where the types are known, an integer is an `i64` of WebAssembly, with the checks of Cesia's 63 bits, and
+a float an `f64`, both in the machine's registers; elsewhere, a value is a reference to an object of
 [WasmGC](glossary.md#webassembly-and-wasmgc), the garbage collector of the browser itself, so that the module brings no
 collector of its own. An integer that fits in 31 bits is an `i31ref`, a reference that holds the number with no object
 behind it. A map literal shares its keys with every map of the same literal, and each read of a field remembers the keys
 it met last and where the field was in them: the next read of a map of the same keys takes the value at once, as an
 [inline cache](references.md#the-jit).
 
+Three things make this code fast in the engines of the browsers:
+
+- *Each loop in a function of its own.* V8 and SpiderMonkey, the engines of Chrome and Firefox, compile a function first
+  with a quick compiler, then, once it has run a while, again with their optimizing one; a call that is running stays in
+  its first code. So each `for` and `while` is a function of its own, a chunk, which runs at most 16,384 turns a call
+  and is called again while the loop goes on: its next call runs the optimized code. The variables of the loop go in and
+  come back, a `return` or a `?` inside leaves through the caller, and a float array that the loop only reads is taken
+  once.
+- *Typed maps.* A map literal whose keys are written in the code, and the kinds of whose values the compiler knows, as
+  `{X: i * 1.0, N: i}`, is a struct of WasmGC with a field of each kind, an `f64` for a float, an `i64` for an integer,
+  nothing in an object of its own. Everything else, `Print`, `==`, a pattern, `m.Name = v`, sees a map.
+- *Guesses, tested first.* A statement that reads `p.X` of a variable `p`, where `p` may hold a typed map, the only one
+  whose keys hold every field that the function reads of `p`, has two versions: the first tests that `p` holds that map,
+  one test, then reads its fields as the numbers they are; the second, for when the test fails, is the general code. A
+  variable that the function only ever sets to floats, as a sum, is guessed the same way. A wrong guess costs a test,
+  never another result: the general version runs.
+
 Each function of the runtime, the printing of a float or the arithmetic of two values of unknown type, goes into the
-module at its first use only: a program that never divides has no division in its module. The module and the loader are
+module at its first use only: a program that never divides has no division in its module, and only the types that its
+code uses are written. The texts of messages are bytes of a data segment, one byte each. The module and the loader are
 written by Cesia itself, with no tool of WebAssembly to install.
 
 ## Speed and size
 
-Five programs of [Speed](speed.md#computing), `maps` aside (see [What it compiles](#what-it-compiles)), compiled to
-WebAssembly and run in Node, beside the same programs written in JavaScript, run in the same Node, and beside `cesia
-run`; and `bench/points.ce`, 1,000 maps `{X, V}` each moved 2,000 times and written back into their list, with its
-twin `bench/points.js`. One machine, an Intel Core i7-4720HQ of 2015, 8 logical cores, Linux 7.2, Node 26.13 (V8), on
-2026-11-25, while other work ran on it (load 5.5 to 6.7): milliseconds, medians of 5 runs, the three sides taken in
-turn so that the load fell on each. *Alone* is the time of the program itself, once its module is
-loaded; *command* the whole command, Node's start included.
+The six programs of [Speed](speed.md#computing), `maps` among them, and `bench/points.ce`, 1,000 maps `{X, V}` each
+moved 2,000 times and written back into their list, compiled to WebAssembly and run in Node 26.13 (V8), in Chrome 158
+(V8) and in Firefox 160 (SpiderMonkey), both headless, beside the same programs written in JavaScript, run in the same
+engine, and beside `cesia run`. One machine, an Intel Core i7-4720HQ of 2015, 8 logical cores, Linux 7.2, on 2026-11-25,
+while other work ran on it (load 2.0 to 3.0): milliseconds, medians of 5 runs, the sides taken in turn so that the load
+fell on each, a new process for each run in Node and a new browser for each round. The times are those of the program
+alone, once its module is loaded; `cesia run`'s is the whole command, its start of about 5 ms included. The faster of
+each engine is in bold.
 
-| Program | WebAssembly, alone | JavaScript, alone | WebAssembly, command | JavaScript, command | `cesia run`, command |
+| Program | Node, WebAssembly | Node, JavaScript | Chrome, WebAssembly | Chrome, JavaScript | Firefox, WebAssembly | Firefox, JavaScript | `cesia run` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `fib` | **121** | 141 | **116** | 120 | **146** | 187 | 63 |
+| `mandel` | 58 | **57** | 58 | **54** | 107 | **56** | 64 |
+| `matmul` | 171 | **61** | 198 | **62** | 231 | **84** | 48 |
+| `structs` | 151 | **142** | 138 | **112** | 314 | **109** | 42 |
+| `dyn` | 310 | **137** | 260 | **129** | 385 | **116** | 64 |
+| `points` | 53 | **34** | 41 | **29** | 98 | **37** | 54 |
+| `maps` | **413** | 583 | **349** | 414 | 517 | **479** | 342 |
+
+The first slice of this compiler took, in Node, 124 ms for `fib`, 91 for `mandel`, 904 for `matmul`, 923 for `structs`,
+1,103 for `dyn` and 148 for `points`, and `maps` hadn't ended after 100 seconds.
+
+**Where WebAssembly wins.** On calls of functions on numbers: `fib`, 30 million calls on integers of 63 bits checked at
+each step, in the three engines, against JavaScript, whose numbers are floats with no check. On a map of many keys:
+`maps`, 500,000 keys of text, in Node and Chrome. And `mandel` and `structs` come within 2 to 24% of JavaScript in Node
+and Chrome.
+
+**Where JavaScript wins, and why.**
+
+- *The checks of `matmul`.* Each of its 27 million turns reads two cells of arrays: Cesia checks each index against the
+  count of the array, then WebAssembly checks it again against its store, and each `i * n + k + 1` is checked against
+  the 63 bits of Cesia's integers. V8 knows from the loop that the index stays in its array and adds in 32 bits: 2.7 to
+  3.2 times.
+- *A call through a value.* `dyn` calls one of two functions taken from a list at each of its 10 million turns: the call
+  tests that the value is a function of that arity, counts the depth of the calls, and gives back its float in an object
+  of its own. V8 sees the two functions that the call meets, puts their code in the loop and keeps the float in a
+  register: 2.0 to 3.3 times. An entry of a function value for the kinds its arguments have at the run would take the
+  float with no object; it isn't made yet.
+- *A new map at each turn.* `points` makes a map at each of its 2 million turns, a struct of WasmGC now, and writes it
+  into its list, which tests that nothing else holds the list and that the cell is in it; V8 writes its object in place:
+  1.4 to 2.6 times.
+- *Firefox.* SpiderMonkey runs these modules 1.2 to 2.4 times slower than Chrome does, where its JavaScript keeps up
+  with V8's: a page that must be fast is measured in Firefox too. Of the loops in functions of their own, Firefox gained
+  on `matmul` only, 1,069 ms to 439 in its own measures, as if it ran the others in its optimized code from the start;
+  why that code is slower on these modules wasn't found in this slice.
+- Rust or C compiled to WebAssembly, with no check of overflow, weren't measured here.
+
+And `cesia run`, with its JIT, wins every row but `points` and `mandel` against WebAssembly, though its time holds its
+start.
+
+**Size.** What a server sends, in bytes, plain and compressed by Brotli at its quality 11, as a server compresses files
+once ahead of time, beside the first slice of this compiler:
+
+| Program | Module | Module, Brotli | First slice | First slice, Brotli | JavaScript source, Brotli |
 |---|---:|---:|---:|---:|---:|
-| `fib` | **124** | 176 | 176 | 218 | 74 |
-| `mandel` | 91 | **65** | 138 | 106 | 67 |
-| `matmul` | 904 | **67** | 952 | 105 | 50 |
-| `structs` | 923 | **184** | 980 | 226 | 48 |
-| `dyn` | 1,103 | **155** | 1,152 | 206 | 74 |
-| `points` | 148 | **37** | 189 | 75 | 47 |
+| hello world, `io.Print("Hello from Cesia")` | 322 | 244 | 431 | 321 |  |
+| `fib` | 2,277 | 1,061 | 2,615 | 1,173 | 79 |
+| `mandel` | 3,249 | 1,499 | 2,928 | 1,409 | 238 |
+| `matmul` | 10,879 | 3,138 | 11,194 | 3,243 | 210 |
+| `structs` | 13,100 | 4,725 | 13,448 | 4,393 | 250 |
+| `dyn` | 10,571 | 3,958 | 11,461 | 4,053 | 199 |
+| `points` | 10,576 | 4,344 | 11,754 | 4,271 | 196 |
+| `maps` | 9,480 | 4,214 | 10,934 | 4,122 | 135 |
+| `loan.ce` of this chapter | 20,258 | 6,609 | 18,988 | 5,762 |  |
 
-**Where WebAssembly wins.** On calls of functions on numbers: `fib`, 30 million calls on integers of 63 bits checked
-at each step, runs in 124 ms against 176 for JavaScript, whose numbers are floats with no check.
-
-**Where JavaScript wins, and why.** Everywhere else, by 1.4 times on `mandel` to 13.5 times on `matmul`; and `cesia
-run`, with its JIT, wins every row as a whole command:
-
-- *One long call.* V8 compiles a module first with a quick compiler, then compiles again with its optimizing one the
-  functions that run often; a call that is already running goes on in the first code. `matmul` is one call of 27
-  million turns: with `node --no-liftoff`, which compiles all at once with the optimizing compiler, the same module
-  took 414 ms where it had just taken 1,567, one run of each, one after the other, under a heavier load than the
-  table's. JavaScript's engine moves a running loop to its fast code; the next slice cuts the hot loops of a long call
-  into functions of their own, which V8 then optimizes.
-- *A map made at each step.* `structs` and `points` make a new map at each turn and read its fields through a function
-  of the runtime; V8 gives each of JavaScript's objects a hidden class, which its code reads inline. The next slice
-  makes a map whose keys the compiler knows a struct of WasmGC with typed fields.
-- *A call through a value.* `dyn` calls through a list of two functions, its floats boxed in objects at each call,
-  where V8's optimizing compiler can inline the functions a call meets.
-- The WebAssembly of `points` written by hand for the design of this compiler, with every value an `i64` and the
-  same checks, took 47 ms alone: what the compiler can reach once it knows the types of a map's fields. Rust or C
-  compiled to WebAssembly, with no check of overflow, weren't measured here.
-
-**Size.** What a server sends, in bytes, plain and compressed by Brotli at its quality 11, as a server compresses
-files once ahead of time:
-
-| Program | Module | Module, Brotli | JavaScript source, Brotli |
-|---|---:|---:|---:|
-| hello world, `io.Print("Hello from Cesia")` | 431 | 321 | |
-| `fib` | 2,615 | 1,173 | 79 |
-| `mandel` | 2,928 | 1,409 | 238 |
-| `matmul` | 11,194 | 3,243 | 210 |
-| `structs` | 13,448 | 4,393 | 250 |
-| `dyn` | 11,461 | 4,053 | 199 |
-| `points` | 11,754 | 4,271 | 196 |
-| `loan.ce` of this chapter | 18,988 | 5,762 | |
-
-The loader, `NAME.js`, adds about 3,820 bytes, 1,525 with Brotli. A program that prints a list, a map or a value of a
-type the compiler doesn't know brings the printer of every value, most of the 11 KB above; the hand-written `points`
-was 469 bytes. JavaScript's source stays smaller, since its engine is in the browser already.
+The loader, `NAME.js`, adds 3,149 bytes, 1,313 with Brotli, where it added 3,820 and 1,525: it comes without the
+comments of its source. A module holds only the types its code uses, and the text of a message takes a byte a byte. A
+loop in a function of its own, and a statement in two versions, make a program of loops larger, as `loan.ce`. A program
+that prints a list, a map or a value of a type the compiler doesn't know brings the printer of every value; JavaScript's
+source stays smaller, since its engine is in the browser already.
 
 ## Further reading
 
@@ -264,8 +299,15 @@ was 469 bytes. JavaScript's source stays smaller, since its engine is in the bro
 - Wasm 3.0 and its proposal of garbage collection, 2025: the structs, arrays and `i31ref` that Cesia's values are made of.
 - L. Peter Deutsch and Allan M. Schiffman, *Efficient Implementation of the Smalltalk-80 System*, 1984: the inline
   cache, which each read of a field keeps.
+- Craig Chambers, David Ungar and Elgin Lee, *An Efficient Implementation of SELF*, 1989: maps, the layout shared by
+  the objects of one shape, which V8 calls hidden classes; Cesia's typed maps in a page.
+- Python 3.6's compact dict, after Raymond Hettinger, and Donald E. Knuth, *The Art of Computer Programming*, volume 3,
+  section 6.4: the table of a map past 8 keys, and what its probes cost.
+- Guy L. Steele Jr., Doug Lea and Christine H. Flood, *Fast Splittable Pseudorandom Number Generators*, 2014:
+  SplitMix64, which draws the seed of each table.
 
-Each with its link in [References](references.md#webassembly) and [The JIT](references.md#the-jit).
+Each with its link in [References](references.md#webassembly), [The JIT](references.md#the-jit),
+[Values and maps](references.md#values-and-maps) and [Tests](references.md#tests).
 
 ## Next
 
