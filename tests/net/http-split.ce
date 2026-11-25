@@ -7,6 +7,9 @@ use std/result
 use std/text
 use std/value
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 request = "GET /x HTTP/1.1$(crlf)Host: a$(crlf)$crlf"
 handle(r) = {Status: 200, Body: r.Path}
@@ -23,7 +26,7 @@ defn readUntil(c, wanted, got)
 end
 
 defn client()
-  c = net.Connect("127.0.0.1", 18091)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET /x HT")?
   sys.Sleep(0.01)
   net.Write(c, text.Slice(10, value.Len(request), request))?
@@ -33,6 +36,6 @@ defn client()
   result.Ok([count(first), count(both)])
 end
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18091))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 io.Print(client())

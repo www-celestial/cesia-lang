@@ -7,18 +7,21 @@ use std/io
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = if r.Path == "/boom" bug.Panic("broken") else {Status: 200, Body: "fine"} end
 
 defn get(path)
-  c = net.Connect("127.0.0.1", 18093)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   reply = net.Read(c)?
   net.Close(c)
   result.Ok(text.Split(crlf, reply)[1])
 end
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18093))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 io.Print(get("/boom"))
 io.Print(get("/next"))

@@ -9,7 +9,7 @@ d = text.Char(36)
 proc = sys.Start("sh", args = ["-c", "echo $d$d; exec sleep 30"]).Value
 io.Print("child", text.Trim(sys.ReadOutput(proc).Value))
 if sys.Env("SERVE") == "yes"
-  http.Serve(http.App(), port = 18407)
+  http.Serve(http.App(), port = text.Number(sys.Args[1]))
   io.Print("child ended with", sys.WaitExit(proc))
 else
   sys.Sleep(30)

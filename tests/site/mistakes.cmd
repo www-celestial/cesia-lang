@@ -1,6 +1,7 @@
 # Each mistake of a book fails the build and names its place; a link of the README to a file that is no page is named and
 # kept, and the build goes on, as it did when the README was no page.
 t=$(mktemp -d)
+port=$(cesia run --allow net=own "$root/tests/free-port.ce")
 export XDG_CACHE_HOME="$t/cache"
 f='```'
 add() { printf '%s\n' "$@" >> docs/book/first.md; }
@@ -11,8 +12,9 @@ french() {  # the same, with its French pages
   echo "== $1"
   rm -rf "$t/proj"
   cp -r proj "$t/"
-  # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
-  sed 's/18751/18752/g' "$t/proj/docs/book/files.md" > "$t/files.md" && mv "$t/files.md" "$t/proj/docs/book/files.md"
+  # The server of files.md listens on a port the system gave free: 18751 there stands for it, and another test could
+  # hold it. Not sed -i, which macOS reads otherwise.
+  sed "s/18751/$port/g" "$t/proj/docs/book/files.md" > "$t/files.md" && mv "$t/files.md" "$t/proj/docs/book/files.md"
   (cd "$t/proj" && eval "$2" && cesia doc --site; echo "exit $?") 2>&1 | sed "s#$t#TMP#g; s#^[0-9]* files: #N files: #"
 }
 try "a wrong -->" 'add "" "${f}cesia" "1 + 1 --> 3" "$f"'

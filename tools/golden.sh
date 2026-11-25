@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Golden tests: for each name.ce with name.expected, runs cesia from the test's folder
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
-# Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "cesia run").
+# Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "cesia run"). A frame of a trace in
+# std/ is compared with N for its line: (std/result.ce:N).
 #   tools/golden.sh [--no-spec | --both] [--quick | --slow] FOLDER...
 # --no-spec runs the other path of the engine, for the tests that run differently there: not those of a folder with a
 # .one-path file, which says why, nor a .cmd that doesn't pass $no_spec on. --both runs each test on the first path, then on
@@ -44,6 +45,19 @@ clock() {
   fi
 }
 
+# A frame of a trace in std/ has N for its line, (std/http.ce:N), in the text of $1, into $norm: a line of std/ moves
+# each time a comment above it grows, and a test is about the frame, which names its function. The frames of the test's
+# own files keep their lines; a line of 0 or less stays, and fails.
+std_lines() {
+  local s=$1 re='\((std/[a-z0-9-]+\.ce):[1-9][0-9]*\)'
+  norm=""
+  while [[ $s =~ $re ]]; do
+    norm+="${s%%"${BASH_REMATCH[0]}"*}(${BASH_REMATCH[1]}:N)"
+    s=${s#*"${BASH_REMATCH[0]}"}
+  done
+  norm+=$s
+}
+
 # One run of a test on one path: its output in $out, and $out.failed when it differs from the expected one. A test of a
 # .ce runs in this job's shell, a .cmd in a shell of its own, since it may change the shell.
 run_path() {
@@ -70,6 +84,11 @@ run_path() {
   # Read whole by bash: no process for a test that passes, and diff for one that doesn't.
   IFS= read -r -d '' got < "$out" || true
   IFS= read -r -d '' want < "$dir/$name.expected" || true
+  if [[ $got == *"(std/"* ]]; then
+    std_lines "$got"
+    got=$norm
+    printf '%s' "$got" > "$out"
+  fi
   if [ "$got" != "$want" ]; then
     diff -u "$dir/$name.expected" "$out" > "$out.diff"
     echo "$dir/$name $no_spec" > "$out.failed"

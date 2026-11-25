@@ -1,4 +1,5 @@
 use std/http
+use std/net
 use std/sys
 use std/bug
 use std/dict
@@ -6,7 +7,10 @@ use std/fiber
 use std/io
 use std/result
 
-base = "http://127.0.0.1:18201"
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
+base = "http://127.0.0.1:$port"
 
 defn hello(req)
   http.Plain("hello $(req.Params["name"]) $(dict.GetOr("q", "none", req.Query))")
@@ -51,7 +55,7 @@ defn hdr(name, r)
   io.Print(name, http.HeaderValue(name, r.Value.Headers))
 end
 
-fiber.Spawn(() -> http.Serve(a, port = 18201))
+fiber.Spawn(() -> http.Serve(a, listener = served))
 sys.Sleep(0.05)
 show(http.Fetch("$base/"))
 show(http.Fetch("$base/hello/ann?q=x%20y"))

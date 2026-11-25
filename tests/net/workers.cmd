@@ -1,16 +1,17 @@
 # Two workers serve one port; one that dies is started again; TERM stops them all, and the supervisor ends with 0.
+port=$("$root/_build/default/src/bin/main.exe" run --allow net=own "$root/tests/free-port.ce")
 out=$(mktemp)
-"$root/_build/default/src/bin/main.exe" run $no_spec --workers 2 --allow net=:18410,exec=sh workers.ce > "$out" 2>&1 &
+"$root/_build/default/src/bin/main.exe" run $no_spec --workers 2 --allow net=:$port,exec=sh workers.ce $port > "$out" 2>&1 &
 pid=$!
 ask() {
-  exec 3<>/dev/tcp/127.0.0.1/18410 || return 1
+  exec 3<>/dev/tcp/127.0.0.1/$port || return 1
   printf 'GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n' >&3
   tail -1 <&3
   exec 3<&-
 }
 # The supervisor's children: pgrep -P lists them on Linux as on macOS, whose pgrep has no -c, and whose wc pads its count.
 workers() { pgrep -P $pid | wc -l | tr -d ' '; }
-for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/18410) 2> /dev/null && break; sleep 0.01; done
+for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2> /dev/null && break; sleep 0.01; done
 for _ in $(seq 1 100); do [ "$(workers)" = 2 ] && break; sleep 0.02; done
 echo "workers: $(workers)"
 first=$(ask)

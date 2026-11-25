@@ -13,14 +13,15 @@ defn serveOnce(listener)
 end
 
 defn client()
-  c = net.Connect("127.0.0.1", 18081)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "hello")?
   reply = net.Read(c)?
   net.Close(c)
   result.Ok(reply)
 end
 
-listener = result.Unwrap(net.Listen(18081))
+listener = result.Unwrap(net.Listen(0))
+port = net.Port(listener)
 server = fiber.Spawn(() -> serveOnce(listener))
 sys.Sleep(0)
 io.Print(client())

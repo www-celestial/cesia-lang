@@ -10,6 +10,9 @@ use std/result
 use std/sys
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "\r\n"
 big = text.Repeat(65536, "x")
 heard = fiber.Channel(size = 1)
@@ -37,7 +40,7 @@ end
 
 defn raw(request)
   (* The whole answer to a request written by hand, read to the end of the connection. *)
-  c = net.Connect("127.0.0.1", 18802)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, request)?
   out = ""
   more = net.Read(c)?
@@ -53,19 +56,19 @@ defn main()
   app = http.App() then http.Get("/rows", r -> http.Stream(rows, headers = [{Name: "content-type", Value: "text/csv"}]))
   app = app then http.Get("/broken", r -> http.Stream(broken)) then http.Get("/slow", r -> http.Stream(slow))
   app = app then http.Get("/ping", r -> http.Plain("pong"))
-  fiber.Spawn(() -> http.Serve(app, port = 18802, timeout = 1))
+  fiber.Spawn(() -> http.Serve(app, listener = served, timeout = 1))
   sys.Sleep(0)
-  got = http.Fetch("http://127.0.0.1:18802/rows")?
+  got = http.Fetch("http://127.0.0.1:$port/rows")?
   io.Print(got.Status, got.Body, http.HeaderValue("transfer-encoding", got.Headers), http.HeaderValue("content-type", got.Headers))
   head = raw("HEAD /rows HTTP/1.1$(crlf)Host: a$(crlf)Connection: close$crlf$crlf")?
   io.Print("HEAD, the head alone:", text.EndsWith("$crlf$crlf", head) and not text.Contains("row", head))
   old = raw("GET /rows HTTP/1.0$(crlf)Host: a$crlf$crlf")?
   io.Print("HTTP/1.0, no chunks:", not text.Contains("transfer-encoding", old) and text.EndsWith("$(crlf)$(crlf)row 1\nrow 2\nrow 3\n", old))
-  io.Print(http.Fetch("http://127.0.0.1:18802/broken") then result.MapErr(e -> e.Message))
+  io.Print(http.Fetch("http://127.0.0.1:$port/broken") then result.MapErr(e -> e.Message))
   (* A client that asks and never reads: the server's writes fill the buffers of the socket, then send gives an Err. *)
-  c = net.Connect("127.0.0.1", 18802)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET /slow HTTP/1.1$(crlf)Host: a$crlf$crlf")?
-  io.Print("meanwhile:", http.Fetch("http://127.0.0.1:18802/ping")?.Body)
+  io.Print("meanwhile:", http.Fetch("http://127.0.0.1:$port/ping")?.Body)
   sent = fiber.Receive(heard, timeout = 5)?
   io.Print("the slow client got some pieces, not all:", sent > 0 and sent < 4096)
   net.Close(c)

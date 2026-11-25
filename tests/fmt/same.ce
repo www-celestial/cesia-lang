@@ -1,0 +1,43 @@
+(* For every.cmd: the files of Cesia under the folder Args[1], each beside its copy under Args[2] that cesia fmt wrote;
+   names a copy that doesn't keep the tree of its file, and one that changed when its file doesn't read. *)
+use std/cesia
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text
+
+defn files(dir)
+  (** The paths of the .ce files under a folder, from it. *)
+  out = []
+  for name in list.Sort(sys.List(dir)?)
+    if sys.Stat("$dir/$name")?.IsDir
+      out = list.Concat(out, ["$name/$f" for f in files("$dir/$name")?])
+    else if text.EndsWith(".ce", name)
+      out = list.Append(name, out)
+    end
+  end
+  result.Ok(out)
+end
+
+defn compared(a, b)
+  (** Compares each file under a with its copy under b: the number of copies that differ, in an Ok. *)
+  bad = 0
+  for f in files(a)?
+    src = sys.Read("$a/$f")?
+    out = sys.Read("$b/$f")?
+    same = cesia.SameTree(src, out)
+    reads = result.IsOk(same) or result.IsOk(cesia.SameTree(src, src))
+    if reads and not (result.IsOk(same) and same.Value)
+      io.Print("another tree: $f")
+      bad += 1
+    else if not reads and out != src
+      io.Print("changed though it doesn't read: $f")
+      bad += 1
+    end
+  end
+  result.Ok(bad)
+end
+
+bad = compared(sys.Args[1], sys.Args[2])!
+io.Print(if bad == 0 "every copy keeps the tree of its file" else "$bad copies differ" end)

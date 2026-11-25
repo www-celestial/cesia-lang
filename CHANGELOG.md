@@ -363,6 +363,21 @@
 
 ### Fixes
 
+- The golden tests compare a frame of a trace in `std/` with `N` for its line, `in Unwrap (std/result.ce:N)`, where
+  ten of them broke each time a comment of `std/` grew above the frame's line, with no fault: the frame and its
+  function are what they check, and the frames of a test's own files keep their lines.
+- The tests that listen, of `tests/net`, `tests/sys`, `tests/tls`, `tests/testing` and the book of `tests/site`, the
+  OCaml tests of `std/net` and `tools/reload-test.sh`, take a port that the system gives free, `net.Listen(0)` and
+  `net.Port`, or `tests/free-port.ce` where a `--allow` or another process names it first, where each wrote its own:
+  two suites running side by side, or a server of another program, took the same port, and a test failed that had no
+  fault.
+- `cesia fmt` reads an `if` that takes no `end` as the parser does: `a if c else b`, a guard `return x if c` or
+  `break if c`, opens no block, where it opened one that no `end` closed, so that every line after it moved two spaces
+  in: ten files of Ceres and two of Cesia's tests were named out of the style for it. An `if` after the `else` of
+  `a if c else b` opens one, and one right after the condition of an `if`, a `while`, a `for` or a `match` starts its
+  body. A file where fmt can't match each block with its `end` is now left as it is, named as a bug of fmt, and no
+  longer written wrong. A test formats every file of Cesia's code, tests and examples, and of Ceres, Centauri and Cemacs
+  when they are beside it: each keeps its tree, and fmt on its own output changes nothing.
 - A page compiled to WebAssembly no longer gives the event loop back in the middle of a frame: its slice of 8 ms
   started at its last yield only, so that the first checkpoint after a wait, as a page waits for its next event, yielded
   at once and painted a frame late, 18 to 35 ms (p99) while the invoices page of Ceres scrolled; it starts when the

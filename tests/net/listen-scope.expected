@@ -1,20 +1,20 @@
 Ok("listening on 127.0.0.1")
 Ok("listening on localhost")
 Ok("listening on ::1")
-listen-scope.ce:7:8: Permission "net" denied for listening on 0.0.0.0:18301, which other machines can reach.
-  7 | l = net.Listen(18301, host = host)
+listen-scope.ce:8:8: Permission "net" denied for listening on 0.0.0.0:PORT, which other machines can reach.
+  8 | l = net.Listen(text.Number(sys.Args[2]), host = host)
     |        ^
-  Run again with --allow net=0.0.0.0:18301; net=:18301 listens on this machine only.
-listen-scope.ce:7:8: Permission "net" denied for listening on [::]:18301, which other machines can reach.
-  7 | l = net.Listen(18301, host = host)
+  Run again with --allow net=0.0.0.0:PORT; net=:PORT listens on this machine only.
+listen-scope.ce:8:8: Permission "net" denied for listening on [::]:PORT, which other machines can reach.
+  8 | l = net.Listen(text.Number(sys.Args[2]), host = host)
     |        ^
-  Run again with --allow net=[::]:18301; net=:18301 listens on this machine only.
+  Run again with --allow net=[::]:PORT; net=:PORT listens on this machine only.
 Ok("listening on 0.0.0.0")
 Ok("listening on ::")
 Ok("listening on 127.0.0.1")
-listen-scope.ce:7:8: Permission "net" denied for listening on 0.0.0.0:18301, which other machines can reach.
-  7 | l = net.Listen(18301, host = host)
+listen-scope.ce:8:8: Permission "net" denied for listening on 0.0.0.0:PORT, which other machines can reach.
+  8 | l = net.Listen(text.Number(sys.Args[2]), host = host)
     |        ^
-  Run again with --allow net=0.0.0.0:18301; net=:18301 listens on this machine only.
+  Run again with --allow net=0.0.0.0:PORT; net=:PORT listens on this machine only.
 Ok("listening on 0.0.0.0")
 exit 0

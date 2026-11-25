@@ -1,23 +1,27 @@
 use std/tls
 use std/http
+use std/net
 use std/sys
 use std/fiber
 use std/io
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 defn main()
   api = tls.Open()?
   a = http.Post("/echo", req -> http.Plain("secure: $(req.Body)"), http.Get("/", req -> http.Plain("over tls"), http.App()))
   wrap = tls.Server(sys.Args[1], sys.Args[2], api)?
-  fiber.Spawn(() -> http.Serve(a, port = 18204, wrap = wrap))
+  fiber.Spawn(() -> http.Serve(a, listener = served, wrap = wrap))
   sys.Sleep(0.05)
   insecure = tls.Client(api, verify = false)
-  r = http.Fetch("https://127.0.0.1:18204/", secure = insecure)?
+  r = http.Fetch("https://127.0.0.1:$port/", secure = insecure)?
   io.Print(r.Status, r.Body)
-  r = http.Fetch("https://127.0.0.1:18204/echo", method = "POST", body = text.Repeat(100000, "x"), secure = insecure)?
+  r = http.Fetch("https://127.0.0.1:$port/echo", method = "POST", body = text.Repeat(100000, "x"), secure = insecure)?
   io.Print(r.Status, text.ByteLength(r.Body))
-  io.Print(http.Fetch("https://127.0.0.1:18204/", secure = tls.Client(api)) then result.MapErr(it.Message))
+  io.Print(http.Fetch("https://127.0.0.1:$port/", secure = tls.Client(api)) then result.MapErr(it.Message))
   io.Print(tls.Server("nothing.pem", sys.Args[2], api) then result.MapErr(it.Kind))
   result.Ok(missing)
 end
