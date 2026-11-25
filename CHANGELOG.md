@@ -24,6 +24,13 @@
   « f needs the argument b »; and `x then f(a, it)?` made the function `it -> f(a, it)?`, whose `?` left that hidden
   function and not the one that held it, so that its Err went on as a value.
 
+### Shapes
+
+- `std/check`: shapes of what comes from outside, `check.Text(1, 200)`, `Int`, `Float`, `Money(2)`, `Bool`, `Date`, `Time`, `Email`,
+  `Id`, `Url`, `OneOf`, `List`, `Record`, `Secret`, with `optional` and `default`. `check.Read` gives the value made clean or
+  a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
+  log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
