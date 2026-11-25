@@ -45,6 +45,7 @@ type st = {
   mutable reads : (Ast.func * (int, string list) Hashtbl.t) list;  (* each function's variables: the fields read of them *)
   mutable nums : (Ast.func * (int, kind option) Hashtbl.t) list;  (* each function's variables guessed to hold numbers *)
   pages : (string, int) Hashtbl.t;  (* a package of std/, std/text, to the module of its version for a page *)
+  mutable scripts : (string * string) list;  (* the JavaScript modules that js.Call names: each file, and its name beside the program *)
 }
 
 (* A function being compiled. *)
@@ -1302,6 +1303,19 @@ and js_call fc e (call : call) =
   let rt = fc.st.rt in
   match Array.map (fun (a : arg) -> a.aname, a.value) call.args with
   | [| None, { e = Ltext m; _ }; None, { e = Ltext n; _ }; None, args |] ->
+    (* A path is the file's beside the code that calls it, as a use: the build puts it beside the program. *)
+    let m =
+      if String.contains m ':' then m
+      else begin
+        let file = Filename.concat (Filename.dirname fc.path) m in
+        let base = Filename.basename m in
+        (match List.assoc_opt base (List.map (fun (f, b) -> b, f) fc.st.scripts) with
+         | Some f when f <> file -> unsupported fc e.pos (Printf.sprintf "two JavaScript modules named %s: %s and %s" base f file)
+         | Some _ -> ()
+         | None -> fc.st.scripts <- (file, base) :: fc.st.scripts);
+        "./" ^ base
+      end
+    in
     let name = "js:" ^ m ^ "#" ^ n in
     Wasm.import rt.m name m n [ Rt.v ] [ Rt.v ];
     Rt.for_js rt;
@@ -1554,8 +1568,11 @@ let () =
       arity fc pos args 1;
       expr fc args.(0) V @ [ call fc.st.rt "len" ] @ convert fc ~from:I ~into:k);
   reg "value" "Text" (fun fc args pos k ->
-      arity fc pos args 1;
-      expr fc args.(0) V @ [ call fc.st.rt "text_of" ] @ convert fc ~from:V ~into:k);
+      if Array.length args = 2 then expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "text_upto" ] @ convert fc ~from:V ~into:k
+      else begin
+        arity fc pos args 1;
+        expr fc args.(0) V @ [ call fc.st.rt "text_of" ] @ convert fc ~from:V ~into:k
+      end);
   reg "value" "Equal" (fun fc args pos k ->
       arity fc pos args 2;
       let rt = fc.st.rt in
@@ -1707,6 +1724,14 @@ let () =
   simple "text" "FromNumbers" 2 "from_numbers";
   simple "json" "Text" 1 "json_of";
   simple "text" "Number" 1 "text_number";
+  simple "text" "Numbers" 2 "numbers";
+  (* text.Str of any count of values: their texts end to end. *)
+  Hashtbl.replace natives ("std/text", "Str") (fun fc args _ k ->
+      let rt = fc.st.rt in
+      let b = Rt.local fc.fb (Rt.nn rt.buf) in
+      [ call rt "buf_new"; Lset b ]
+      @ List.concat_map (fun a -> [ Lget b ] @ expr fc a V @ [ call rt "text_of"; call rt "buf_add" ]) (Array.to_list args)
+      @ [ Lget b; call rt "buf_done" ] @ convert fc ~from:V ~into:k);
   simple "text" "Decimals" 2 "decimals";
   simple "random" "Float" 0 "random_float";
   (* list.Max and Min: two numbers of known kinds compared inline. *)
@@ -1755,7 +1780,7 @@ let finish st =
 let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let rt = Rt.create () in
   let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
-             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = []; pages = Hashtbl.create 4 } in
+             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = []; pages = Hashtbl.create 4; scripts = [] } in
   List.iter (fun (path, m) -> Hashtbl.replace st.pages path m) pages;
   ignore (need rt "box_f");
   let hoisted = List.concat_map (fun (_, _, _, (l : layout)) -> List.map snd (Array.to_list l.hoisted)) prepared in
@@ -1810,4 +1835,4 @@ let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) 
   Buffer.add_char sites ']';
   Wasm.custom rt.m "cesia.sites" (Buffer.contents sites);
   if survey && Hashtbl.length surveyed > 0 then exit 2;
-  Wasm.write rt.m
+  Wasm.write rt.m, List.rev st.scripts

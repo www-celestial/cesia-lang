@@ -31,9 +31,9 @@ let build (ctx : Types.ctx) path =
         in
         main, more [])
   in
-  let module_bytes =
+  let module_bytes, scripts =
     match Aot.build ~pages w (List.rev (main :: !files)) with
-    | bytes -> bytes
+    | built -> built
     | exception Aot.Unsupported (file, pos, what) ->
       let m = Messages.wasm_unsupported what in
       raise (Pos.Load_error { file; pos; kind = "build"; text = m.text; hint = m.hint })
@@ -60,7 +60,15 @@ let build (ctx : Types.ctx) path =
   let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
   let at = find 0 in
   let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
-  Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js)
+  Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js);
+  (* The JavaScript modules that js.Call names, beside the program, where its loader imports them. *)
+  List.iter
+    (fun (file, base) ->
+       let src = try In_channel.with_open_bin file In_channel.input_all with Sys_error _ -> stop (Messages.cant_read file) in
+       let dest = Filename.concat (Filename.dirname path) base in
+       if not (Sys.file_exists dest && Package.absolute dest = Package.absolute file) then
+         Out_channel.with_open_bin dest (fun oc -> Out_channel.output_string oc src))
+    scripts
 
 (* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it; the exit code. *)
 let main = function

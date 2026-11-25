@@ -560,3 +560,48 @@ let () =
   (* random.Float: splitmix64 from the seed the loader drew, as the interpreter's from its own: 53 bits. *)
   def "random_float" (fun rt -> [ I32 ], [ v ], fun _ ->
       [ call rt "next_seed"; i64 11; i64_shr_u; Op 0xba (* f64.convert_i64_u *); F64 0x1p-53; f64_mul; call rt "box_f" ])
+
+(* Messages.number_bytes of a count of bytes, a kind and its size, all known at the run: the kind and its size one
+   operand, with the words between them. *)
+let number_bytes rt n kind size site =
+  let t = (Messages.number_bytes "\005" 1000001 1000003).text in
+  let at x = let k = ref 0 in while String.sub t !k (String.length x) <> x do incr k done; !k in
+  let a = at "1000003" and b = at "\005" and c = at "1000001" in
+  let m = Messages.plain (String.sub t 0 a ^ a1 ^ String.sub t (a + 7) (b - a - 7) ^ a2 ^ String.sub t (c + 7) (String.length t - c - 7)) in
+  fail rt m [ n; kind @ [ text rt (String.sub t (b + 1) (c - b - 1)) ] @ size @ [ call rt "cat3" ] ] [ Lget site ]
+
+(* value.Text(x, most): at most [most] characters, the last an ellipsis when it is cut. text.Numbers: the numbers that
+   the bytes of a text hold, little-endian. *)
+let () =
+  def "text_upto" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let t = local fb (nn rt.bytes) and most = local fb I32 and b = local fb (nn rt.buf) in
+      [ Lget 1; call rt "is_int"; If (Bval I32, [ Lget 1; call rt "int_of"; i64 1; i64_ge_s ], [ I32 0 ]);
+        If (Bnone, [], fail rt (Messages.text_most a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ]);
+        Lget 1; call rt "int_of"; i64 (1 lsl 30); i64_gt_s; If (Bval I32, [ I32 (1 lsl 30) ], [ Lget 1; call rt "int_of"; i32_wrap ]); Lset most;
+        Lget 0; call rt "text_of"; Lset t;
+        Lget t; call rt "code_points"; Lget most; i32_le_u; If (Bnone, [ Lget t; ret ], []);
+        call rt "buf_new"; Lset b; Lget b; Lget t; I32 0; Lget t; Lget most; I32 1; i32_sub; call rt "char_byte"; call rt "sub"; call rt "buf_add";
+        Lget b; text rt "\xe2\x80\xa6"; call rt "buf_add"; Lget b; call rt "buf_done" ]);
+  def "numbers" (fun rt -> [ v; v; I32 ], [ v ], fun fb ->
+      let kind = local fb I32 and size = local fb I32 and s = local fb (nn rt.bytes) and n = local fb I32 and w = local fb (nn rt.vals) in
+      let i = local fb I32 and k = local fb I32 and x = local fb I64 in
+      let kinds = [ "u8", 1; "i8", 1; "u16", 2; "i16", 2; "u32", 4; "i32", 4; "f32", 4; "f64", 8 ] in
+      need_text rt "Numbers" 0 2 @ need_text rt "Numbers" 1 2
+      @ List.concat (List.mapi (fun j (name, sz) -> [ Lget 0; Cast (false, T rt.bytes); text rt name; call rt "bytes_eq"; If (Bnone, [ I32 (j + 1); Lset kind; I32 sz; Lset size ], []) ]) kinds)
+      @ [ Lget kind; i32_eqz; If (Bnone, fail rt (Messages.number_kind "Numbers" a1) [ bytes_of rt 0 ] [ Lget 2 ], []) ]
+      @ bytes_of rt 1 @ [ Lset s; Lget s; array_len; Lget size; Op 0x6e (* div_u *); Lset n;
+          Lget n; Lget size; i32_mul; Lget s; array_len; i32_ne;
+          If (Bnone, number_bytes rt [ Lget s; array_len; i64_extend_u; call rt "itoa" ] (bytes_of rt 0) [ Lget size; i64_extend_u; call rt "itoa" ] 2, []);
+          Lget n; array_new_default rt.vals; Lset w ]
+      @ upto i n [ i64 0; Lset x; Lget size; Lset k;
+                   Block (Bnone, [ Loop (Bnone, [ Lget k; i32_eqz; Br_if 1; Lget k; I32 1; i32_sub; Lset k;
+                                                  Lget x; i64 8; i64_shl; Lget s; Lget i; Lget size; i32_mul; Lget k; i32_add; array_get_u rt.bytes; i64_extend_u; i64_or; Lset x; Br 0 ]) ]);
+                   Lget w; Lget i;
+                   Lget kind; I32 7; i32_eq; If (Bval v, [ Lget x; i32_wrap; Op 0xbe (* f32.reinterpret_i32 *); Op 0xbb (* f64.promote_f32 *); call rt "box_f" ],
+                     [ Lget kind; I32 8; i32_eq; If (Bval v, [ Lget x; Op 0xbf (* f64.reinterpret_i64 *); call rt "box_f" ],
+                       [ Lget kind; I32 2; i32_eq; If (Bnone, [ Lget x; i64 56; i64_shl; i64 56; i64_shr_s; Lset x ], []);
+                         Lget kind; I32 4; i32_eq; If (Bnone, [ Lget x; i64 48; i64_shl; i64 48; i64_shr_s; Lset x ], []);
+                         Lget kind; I32 6; i32_eq; If (Bnone, [ Lget x; i64 32; i64_shl; i64 32; i64_shr_s; Lset x ], []);
+                         Lget x; call rt "box_i" ]) ]);
+                   array_set rt.vals ]
+      @ [ I32 1; Lget n; Lget w; call rt "list_of" ])
