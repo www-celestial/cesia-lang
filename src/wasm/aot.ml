@@ -877,11 +877,10 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   in
   let cf = { fc with fb; locs; labels = []; ends = []; tail = -1; exit = Some (push, rv); fixed } in
   let turns = Rt.local fb I32 in
-  (* The fuel of the turns taken, at once. *)
-  let spend =
-    [ Gget (fuel rt); i64 chunk_size; Lget turns; i64_extend_u; i64_sub; i64_sub; Gset (fuel rt);
-      Gget (fuel rt); i64 0; i64_le_s; If (Bnone, [ call rt "refuel" ], []) ]
-  in
+  (* The fuel of the turns taken, at once; the caller refuels. A call here, after the loop, with the loop's variables
+     alive across it, made SpiderMonkey's Ion keep them in memory through the whole loop: mandel's chunk ran 2 times
+     slower in Firefox, 124 ms against 64 without the call. *)
+  let spend = [ Gget (fuel rt); i64 chunk_size; Lget turns; i64_extend_u; i64_sub; i64_sub; Gset (fuel rt) ] in
   let out status = spend @ push @ (if !leaves then zero rk else []) @ [ I32 status; ret ] in
   let la = Rt.local fb (Rt.nl rt.list) in
   let hoist =
@@ -909,6 +908,7 @@ and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) 
   @ [ block fc "done" Bnone (fun () ->
         [ loop fc "again" Bnone (fun () ->
               gets @ [ Call wf.fname; Lset status ] @ (if !leaves then [ Lset back ] else []) @ sets
+              @ [ Gget (fuel rt); i64 0; i64_le_s; If (Bnone, [ call rt "refuel" ], []) ]
               @ [ Lget status; I32 1; i32_eq; Br_if (depth_of fc "again") ]
               @ (if !leaves then [ Lget status; I32 2; i32_eq; iff fc Bnone (fun () -> leave_with fc [ Lget back ]) (fun () -> []) ] else [])) ]) ]
 
