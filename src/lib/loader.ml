@@ -104,7 +104,7 @@ let message_of_error = function
   | Value.Limit { what; _ } -> Some (Messages.limit what).text
   | Stack_overflow -> Some (Messages.limit (stack_limit ())).text
   | Out_of_memory -> Some (Messages.limit "memory").text
-  | _ -> None
+  | e -> Option.map (fun why -> (Messages.stray why).text) (!Runtime.stray e)
 
 (* An error leaves the frame base and the site where it was raised, deep in the calls: the native that goes on after it
    puts them back, as a return would. *)
@@ -989,7 +989,13 @@ let guarded ?(strict = false) w body =
     | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at (current ()) ~text ~hint at)
     | Value.Quit code -> flush_all w; code
     | Value.Limit { what; at } -> limit_reached what at
-    | Sys_error text -> flushed (fun () -> w.err ("cesia: " ^ text ^ "\n"))
+    (* An error of the system that a native let out: a panic of the kind io, at the site where it was raised. *)
+    | e when !Runtime.stray e <> None ->
+      let fiber = current () in
+      (match Runtime.stray_panic fiber e with
+       | Some (Value.Kerr { text; hint; at; _ }) when at >= 0 && at < Vec.length w.sites ->
+         flushed (fun () -> report_at fiber ~text ~hint at)
+       | _ -> flushed (fun () -> w.err ("cesia: " ^ Option.value (!Runtime.stray e) ~default:"" ^ "\n")))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
     | Stack_overflow when not strict -> limit_reached (stack_limit ()) (current ()).site
     | Out_of_memory when not strict -> limit_reached "memory" (current ()).site

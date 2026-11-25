@@ -179,7 +179,7 @@ let () =
   check "read=/tmp denies escape through .." (code = 1);
   let code, _, err = run "io.Print(1)\ntest.Stray()\n" in
   check "an error of the system that a native lets out is a panic of the kind io, at its call"
-    (code = 1 && has "2:5: Stray met an error of the system that it didn't expect: getcwd: No such file or directory." err);
+    (code = 1 && has "2:5: An error of the system that the code didn't expect: getcwd: No such file or directory." err);
   let _, out, _ = run "match fiber.Wait(fiber.Spawn(() -> test.Stray()))\n  result.Err(e) -> io.Print(e.Kind)\n  result.Ok(_) -> io.Print(\"ok\")\nend\n" in
   check "it stops its fiber alone, as any panic" (out = "io\n");
   let code, out, _ = run "defn f(n)\n  xs = [1, 2]\n  ys = test.Same(xs)\n  ys[1] = n\n  xs[1] + ys[1]\nend\nio.Print(f(5))\n" in

@@ -380,8 +380,12 @@ let scope_matches perm scope target =
    it a path is taken as written. *)
 let real_path = ref (fun (p : string) -> Some p)
 
-(* The words of an error of the system that a native let out: src/sys adds those of its calls. *)
+(* The words of an error of the system that a native let out: src/sys adds those of its calls. A handler at each call of
+   a native cost 0.6 to 1.8 ns a call, a twentieth of sys.Now's: what catches a panic catches it instead, for nothing. *)
 let stray = ref (function Sys_error m -> Some m | _ -> None)
+
+let stray_panic ctx e =
+  Option.map (fun why -> Value.Kerr { kind = Io; text = (Messages.stray why).text; hint = None; at = ctx.site }) (!stray e)
 
 (* Where a path leads when the act is on the name itself, a link that it names not followed (removed, renamed, read as a
    link): its folder resolved, then the name as written. A name that ends in a / or is . or .. is followed, as the system

@@ -135,6 +135,13 @@ let body task fiber g () =
   | exception (Value.Kerr { text; kind; at; _ } as e) ->
     w.on_panic fiber e;
     finish fiber task from (Value.err w (panic_value w text kind at))
+  | exception e when !Runtime.stray e <> None ->
+    (* An error of the system that a native let out: the fiber's panic, of the kind io, where it was raised. *)
+    (match Runtime.stray_panic fiber e with
+     | Some (Value.Kerr { text; kind; at; _ } as p) ->
+       w.on_panic fiber p;
+       finish fiber task from (Value.err w (panic_value w text kind at))
+     | _ -> raise e)
   | exception (Value.Limit { what = ("nesting" | "memory") as what; _ } as e) ->
     (* A value too deep to show is the problem of this fiber, and so is the memory it was taking when the limit came:
        a server's request that takes too much stops alone, and frees what it took. The steps belong to the whole

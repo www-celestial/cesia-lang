@@ -479,7 +479,7 @@ let engine_names path missing extra =
   plain (Printf.sprintf "The engine %s doesn't give the natives of its cesia.toml: %s." path
            (String.concat "; " (part "it lacks" missing @ part "it adds" extra)))
 let engine_misuse what = plain (Printf.sprintf "Cesia_v1.%s, by a native package." what)
-let stray name why = plain (Printf.sprintf "%s met an error of the system that it didn't expect: %s." name why)
+let stray why = plain (Printf.sprintf "An error of the system that the code didn't expect: %s." why)
 let native_raised name e = plain (Printf.sprintf "%s raised %s: a bug of its native package." name e)
 let native_needs name want got = plain (Printf.sprintf "%s needs %s, not %s." name want got)
 let sql_plugin reason = plain (Printf.sprintf "Can't load SQLite's plugin cesia_sqlite.cmxs: %s." reason)
