@@ -107,6 +107,36 @@ donne `CreatedAt`, la règle que le chapitre [SQLite](sqlite.md) applique aux co
 refusées, et une clé qui ne nomme aucun champ aussi : chaque message nomme la clé. Un champ qui a une valeur par défaut,
 comme `Admin`, peut être omis.
 
+### Les formes (*shapes*) : des bornes et un message pour chaque champ
+
+`From` vérifie les types. Ce qu'envoie un visiteur demande aussi des bornes : un nom de 120 octets au plus, une quantité
+de 1 à 1 000 000, une adresse e-mail, une liste de 50 lignes au plus. [std/check] le dit par une *forme* (*shape*), une
+map qui décrit une valeur, et [check.Read] donne un `Ok` de la valeur nettoyée, ou un `Err` d'une map de chaque champ
+faux, par son chemin, vers un message qu'un formulaire peut montrer à côté :
+
+```cesia
+use std/check
+Line = check.Record({Label: check.Text(1, 200), Qty: check.Int(1, 1000000), Price: check.Money(2)})
+Order = check.Record({Email: check.Email(), Due: check.Date(), Lines: check.List(Line, 1, 50)})
+check.Read(Order, {Email: " Bo@Example.com", Due: "2026-12-01", Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]}) --> result.Ok({Email: "bo@example.com", Due: 1796083200, Lines: [{Label: "Bread", Qty: 4, Price: 1.25}]})
+check.Read(Order, {Email: "bo", Due: "2026-12-01", Lines: [{Label: "", Qty: 0, Price: 1}]}) then result.IsErr() --> true
+```
+
+- Chaque texte est de l'UTF-8 valide sans caractère de contrôle, sans espaces aux bouts, borné en octets ; chaque nombre a
+  son intervalle (un `Int` de -(2^30 - 1) à 2^30 - 1 s'il ne dit rien, ce que tient aussi une page en WebAssembly) ;
+  chaque liste, son nombre d'éléments au plus.
+- Un jour est un `check.Date()`, `"2026-12-01"`, et un instant un `check.Time()`, `"2026-12-01T08:30:00Z"` ou avec son
+  décalage : les deux sont lus en secondes depuis 1970, comme Cepheus les garde, et réécrits en texte par `check.Out`.
+- Un champ que la forme ne déclare pas est ôté par `Read` : qui ajoute `Admin: true` n'ajoute rien. Un champ facultatif
+  qu'il omet est là, avec sa valeur par défaut ou `missing`, pour que `x.Note` n'échoue jamais.
+- `check.Read(shape, query, texts = true)` lit des valeurs écrites en texte, comme les donnent une *query string* ou
+  l'environnement : `"42"` pour un `Int`, `""` pour un champ absent.
+- [check.Out] rend une valeur au-dehors par sa forme : les champs déclarés seuls, les dates en texte, jamais un
+  `check.Secret()` ; [check.Masked] écrit chaque secret `(secret)`, pour un log ; [check.Schema] donne le *JSON Schema*
+  d'une forme, comme OpenAPI décrit un corps.
+- C'est du Cesia pur : la page vérifie un formulaire pendant qu'on tape, avec la même forme que le serveur vérifie de
+  nouveau.
+
 ## Lire du CSV
 
 [std/csv] lit le CSV comme les tableurs l'écrivent : un champ qui contient une virgule ou une fin de ligne est entre

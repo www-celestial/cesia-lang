@@ -24,6 +24,13 @@
   « f needs the argument b »; and `x then f(a, it)?` made the function `it -> f(a, it)?`, whose `?` left that hidden
   function and not the one that held it, so that its Err went on as a value.
 
+### Shapes
+
+- `std/check`: shapes of what comes from outside, `check.Text(1, 200)`, `Int`, `Float`, `Money(2)`, `Bool`, `Date`, `Time`, `Email`,
+  `Id`, `Url`, `OneOf`, `List`, `Record`, `Secret`, with `optional` and `default`. `check.Read` gives the value made clean or
+  a map of each wrong field to its message; `check.Out` keeps the declared fields only; `check.Masked` hides secrets for a
+  log; `check.Schema` gives the JSON Schema. Pure Cesia, so a page and its server share one shape.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
@@ -295,6 +302,14 @@
 
 ### Fixes
 
+- A server no longer slows down as it serves. Once the large allocations reserved since the last full checkpoint passed
+  a quarter of the memory limit (with the default limit, a few minutes of a busy server), every reservation after it
+  asked OCaml for the size of its heap, `Gc.quick_stat`, which took a third to a half of a request's time, and only a
+  full checkpoint, which a request's fiber never reaches, started the count again: a plaintext route of `std/http` fell
+  from 29,300 to 14,900 requests a second and stayed there, 30 to 64 µs of CPU a request, with no database at all, and
+  a TechEmpower app on Cepheus the same. The heap is now looked at once each time a quarter is crossed, as was meant:
+  30,100, then 35,500 a second over the same 19 minutes (12 rounds alternated with the binary before and a Go server
+  as the control, load 3.7 to 11.8).
 - Each response of `http.Serve` has a `Date` header, as RFC 9110 asks of a server with a clock (section 6.6.1), in its
   form of section 5.6.7, `date: Wed, 25 Nov 2026 13:40:00 GMT`: caches and clients read the age of a response from it.
   The line is made again when the second changes, not for each response, and a handler that sets its own `Date` keeps

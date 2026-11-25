@@ -1173,6 +1173,13 @@ before each large allocation, and at each megabyte of a text that values are wri
 `io.Print` or `json.Text`. When the heap seems past it, Cesia runs a full collection first, and stops the program only
 if the memory still in use is past the limit: garbage alone never reaches it.
 
+The large allocations are counted as they are reserved, since OCaml's count of its heap sees them only at its next
+cycle, and the heap is looked at once each time their count since the last full checkpoint or full collection crosses
+a quarter of the limit. Until 2026-11-25 it was looked at at every reservation past the first quarter, and a server,
+whose request fibers never reach a full checkpoint, paid OCaml's count, `Gc.quick_stat`, at each one: after a few
+minutes of serving, a third to a half of its time, its plaintext route down from 29,300 to 14,900 requests a second
+(stacks of the process sampled with `eu-stack`, 12 rounds of 19 minutes alternated with a Go server as the control).
+
 The work on whole arrays and columns of [std/num], [std/frame] and [std/sql] runs on several cores, through OCaml 5's
 *domains*, its system threads: half the logical cores, at most 16, unless `CESIA_CORES` says otherwise. A small array
 stays on one core, since starting a domain has its cost. That work touches no value of the program while it runs, so it

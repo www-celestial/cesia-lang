@@ -15,8 +15,8 @@ use std/io
 io.Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
-algo cells cpp crypto csv date dict encode fiber flags fn frame gen heap http list live markdown math mesh num ode optimize path plot quad queue random result set sparse special sql stats syntax test tls value websocket 
- 39 1
+algo cells check constants cpp crypto csv date dict encode fiber flags fn frame gen heap http list live markdown math mesh num ode optimize path plot quad queue random result set sparse special sql stats syntax test tls value websocket 
+ 41 1
 all as installed
 std/csv        cesia 1.3.0  changed by hand
 std/ holds the libraries of Cesia 1.3.0.
@@ -37,6 +37,7 @@ usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugg
        cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]
        cesia check [--json] [--stdin file.ce] [path...]
        cesia fmt [--check] [path...]
+       cesia build --target wasm file.ce
        cesia lsp
        cesia do [task [args...]]
        cesia new name

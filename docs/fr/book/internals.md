@@ -1320,6 +1320,14 @@ checkpoints complets et avant chaque grande allocation. Quand le heap semble la 
 collection complète, et n'arrête le programme que si la mémoire encore utilisée dépasse la limite : les déchets seuls ne
 l'atteignent jamais.
 
+Les grandes allocations sont comptées quand elles sont réservées, puisque le compte qu'OCaml fait de son heap ne les
+voit qu'à son cycle suivant, et le heap est regardé une fois chaque fois que leur compte depuis le dernier checkpoint
+complet ou la dernière collection complète passe un quart de la limite. Jusqu'au 25 novembre 2026, il l'était à chaque
+réservation passé le premier quart, et un serveur, dont les fibers de requêtes n'atteignent jamais de checkpoint
+complet, payait le compte d'OCaml, `Gc.quick_stat`, à chacune : après quelques minutes de service, du tiers à la moitié
+de son temps, sa route plaintext tombée de 29 300 à 14 900 requêtes par seconde (piles du processus échantillonnées
+avec `eu-stack`, 12 tours de 19 minutes alternés avec un serveur Go comme témoin).
+
 Le travail sur des arrays et des colonnes entières de [std/num], [std/frame] et [std/sql] tourne sur plusieurs cœurs, à
 travers les *domains* d'OCaml 5, ses threads du système : la moitié des cœurs logiques, 16 au plus, sauf si
 `CESIA_CORES` dit autre chose. Un petit array reste sur un cœur, puisque lancer un domain a son coût. Ce travail ne
