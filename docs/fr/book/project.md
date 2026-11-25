@@ -208,8 +208,8 @@ cesia test
 
 ## Servir
 
-`src/main.ce` ouvre la base de données dans `data/`, et sert les routes derrière [http.Logger]. [result.Unwrap] arrête le
-programme avec le message d'une `Err`, comme un port déjà pris, là où un résultat ignoré le finirait sans un mot :
+`src/main.ce` ouvre la base de données dans `data/`, et sert les routes derrière [http.Logger]. [`!`](errors.md#quand-un-err-est-un-bug) après
+un résultat arrête le programme avec le message d'une `Err`, comme un port déjà pris, là où un résultat ignoré le finirait sans un mot :
 
 ```text
 use std/http

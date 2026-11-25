@@ -105,7 +105,7 @@ The three ways to look into a result, side by side:
 | Written | For an `Ok` | For an `Err` | Where |
 |---|---|---|---|
 | `x?` | its value | the function gives the `Err` back at once | inside a function |
-| `x!` | its value | a bug: the program, or the fiber, stops at the `!` | anywhere |
+| `x!` | its value | a bug: the program, or only its [fiber](fibers.md), stops at the `!` | anywhere |
 | `match x` | the arm `result.Ok(v)` | the arm `result.Err(e)` | anywhere |
 
 `!` keeps to its value as `?` does, with no space before it, and chains the same: `f(x)!.Name`, `rows[1]!`.
