@@ -64,7 +64,7 @@ let build (ctx : Types.ctx) path =
     let at = find 0 in
     String.sub s 0 at ^ value ^ String.sub s (at + String.length key) (String.length s - at - String.length key)
   in
-  let listed = "[" ^ String.concat ", " (List.map (fun (_, base) -> "'./" ^ base ^ "'") scripts) ^ "]" in
+  let listed = "[" ^ String.concat ", " (List.map (fun (_, base) -> Aot.json_text ("./" ^ base)) scripts) ^ "]" in
   let js = fill "@SCRIPTS@" listed (fill "@WASM@" (name ^ ".wasm") glue) in
   Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js);
   (* The JavaScript modules that js.Call names, beside the program, where its loader imports them. *)
