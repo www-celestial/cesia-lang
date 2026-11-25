@@ -7,6 +7,7 @@ use std/io
 use std/result
 use std/sys
 use std/text
+use std/value
 
 defn shown(r)
   (** A run without its time. *)
@@ -47,6 +48,9 @@ defn Main()
       io.Print(line)
     end
   end
+  (* Without code, the page keeps each slider, the titles and what the cells printed, and no line of the cells' code. *)
+  bare = cells.Html("knobs.ce", code = false)?
+  io.Print("without code: $(text.Contains("<h2>Parameters</h2>", bare)) $(text.Contains("n is 3", bare)) $(value.Len([l for l in text.Lines(bare) if text.Contains("class=\"slider\"", l)])) sliders, no code: $(not text.Contains("cells.Slider(", bare)) $(not text.Contains("<pre><code", bare)) $(not text.Contains("rate(2)", bare))")
   result.Ok(missing)
 end
 
