@@ -41,6 +41,7 @@ type t = {
   list : int;
   keys : int;
   map : int;
+  smap : int;
   shape : int;
   recd : int;
   fn : int;
@@ -71,6 +72,9 @@ let create () =
   let keys = fresh_ty m (St [ S (nn vals), false; S (nl i64s), false; S I64, false ]) in
   (* mine: no other map holds these keys, so a new name goes in their free room. *)
   let map = fresh_ty m (St [ S I32, true; S (nn keys), true; S (nn vals), true; S I32, true; S I32, true ]) in
+  (* A map of a literal whose keys and kinds the compiler knows, its values typed: this base, its ownership and keys,
+     then a field each, of the type the compiler made for those keys (Aot.shape_type). *)
+  let smap = Wasm.sub_ty m ~final:false [] (St [ S I32, true; S (nn keys), false ]) in
   (* A shape: the name of its struct, its fields, and how a message names it, "an Ok". *)
   let shape = fresh_ty m (St [ S (nn bytes), false; S (nn vals), false; S (nn bytes), false ]) in
   let recd = fresh_ty m (St [ S I32, true; S (nn shape), false; S (nn vals), true ]) in
@@ -78,7 +82,7 @@ let create () =
   let buf = fresh_ty m (St [ S (nn bytes), true; S I32, true ]) in
   (* What a read of a field remembers: the keys or shape it last met, and the place of the field there. *)
   let cache = fresh_ty m (St [ S (Ref (true, Eq)), true; S I32, true ]) in
-  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; list; keys; map; shape; recd; fn; buf; cache; fns = Hashtbl.create 8;
+  { m; bytes; vals; f64s; i64s; boxi; boxf; atom; list; keys; map; smap; shape; recd; fn; buf; cache; fns = Hashtbl.create 8;
     texts = Hashtbl.create 64; inits = [] }
 
 (* Fields. *)
@@ -95,6 +99,8 @@ let m_mine = 4
 let k_names = 0
 let k_slots = 1
 let k_seed = 2
+let s_owned = 0
+let s_keys = 1
 let r_owned = 0
 let r_shape = 1
 let r_fields = 2
@@ -397,6 +403,16 @@ let () =
       [ Lget 0; call rt "digits"; Lset p; Lget p; I32 (scratch + 40); Lget p; i32_sub; call rt "out_mem" ]);
   def "print_f" (fun rt -> [ F64 ], [], fun _ -> [ I32 scratch; Lget 0; host rt "ftoa"; call rt "out_mem" ])
 
+(* Typed maps, the work of the compiler's types done at the end of a build (Aot.finish): [sget] the value of field k,
+   [sto_map] the same map in the general form, [scopy] an owned copy; their values held twice then. [as_map] turns a typed
+   map into the general form, for what reads a map whole: Print, ==, a pattern. *)
+let () =
+  def "sget" (fun rt -> [ nn rt.smap; I32 ], [ v ], fun _ -> [ unreachable ]);
+  def "sto_map" (fun rt -> [ nn rt.smap ], [ nn rt.map ], fun _ -> [ unreachable ]);
+  def "scopy" (fun rt -> [ nn rt.smap ], [ nn rt.smap ], fun _ -> [ unreachable ]);
+  def "as_map" (fun rt -> [ v ], [ v ], fun _ ->
+      [ Lget 0; Test (false, T rt.smap); If (Bval v, [ Lget 0; Cast (false, T rt.smap); call rt "sto_map" ], [ Lget 0 ]) ])
+
 (* Element k, from 0, of a list, as a value. *)
 let () =
   def "elem" (fun rt -> [ nn rt.list; I32 ], [ v ], fun _ ->
@@ -427,6 +443,7 @@ let () =
       let sub e = [ Lget 0 ] @ e @ [ I32 1; call rt "write" ] in
       let x = 1 in
       [ Lget x; ref_is_null; If (Bnone, add "missing" @ [ ret ], []);
+        Lget x; Test (false, T rt.smap); If (Bnone, [ Lget x; call rt "as_map"; Lset x ], []);
         Lget x; call rt "is_int"; If (Bnone, [ Lget 0; Lget x; call rt "int_of"; call rt "write_int"; ret ], []);
         Lget x; Test (false, T rt.boxf); If (Bnone, [ Lget 0; Lget x; call rt "float_of"; call rt "write_float"; ret ], []);
         Lget x; g_true rt; ref_eq; If (Bnone, add "true" @ [ ret ], []);
@@ -495,7 +512,7 @@ let () =
         Lget 0; call rt "is_int"; Lget 0; Test (false, T rt.boxf); i32_or; If (Bnone, shown "the number ", []);
         Lget 0; Test (false, T rt.bytes); If (Bnone, shown "the text ", []);
         Lget 0; Test (false, T rt.list); If (Bnone, [ text rt "an array"; ret ], []);
-        Lget 0; Test (false, T rt.map); If (Bnone, [ text rt "a dictionary"; ret ], []);
+        Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; If (Bnone, [ text rt "a dictionary"; ret ], []);
         Lget 0; Test (false, T rt.recd); If (Bnone, [ Lget 0; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 2; ret ], []);
         Lget 0; Test (false, T rt.fn);
         If (Bnone, [ call rt "buf_new"; Lset x; Lget x; text rt "function "; call rt "buf_add";
@@ -807,7 +824,8 @@ let () =
   def "share" (fun rt -> [ v ], [ v ], fun _ ->
       [ Block (Bnone, [ Block (Bval (nn rt.list), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.list); Br 1 ]); I32 0; struct_set rt.list l_owned; Lget 0; ret ]);
         Block (Bnone, [ Block (Bval (nn rt.map), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.map); Br 1 ]); I32 0; struct_set rt.map m_owned; Lget 0; ret ]);
-        Block (Bnone, [ Block (Bval (nn rt.recd), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.recd); Br 1 ]); I32 0; struct_set rt.recd r_owned ]);
+        Block (Bnone, [ Block (Bval (nn rt.recd), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.recd); Br 1 ]); I32 0; struct_set rt.recd r_owned; Lget 0; ret ]);
+        Block (Bnone, [ Block (Bval (nn rt.smap), [ Lget 0; Br_on_cast (0, true, Eq, false, T rt.smap); Br 1 ]); I32 0; struct_set rt.smap s_owned ]);
         Lget 0 ]);
   (* xs[i], i a whole number. *)
   def "index" (fun rt -> [ v; I64; I32 ], [ v ], fun fb ->
@@ -874,6 +892,7 @@ let () =
         Lget 0; Test (false, T rt.bytes);
         If (Bnone, [ Lget 0; Cast (false, T rt.bytes); call rt "code_points"; i64_extend_u; ret ], []);
         Lget 0; Test (false, T rt.map); If (Bnone, [ Lget 0; Cast (false, T rt.map); struct_get rt.map m_count; i64_extend_u; ret ], []);
+        Lget 0; Test (false, T rt.smap); If (Bnone, [ Lget 0; Cast (false, T rt.smap); struct_get rt.smap s_keys; struct_get rt.keys k_names; array_len; i64_extend_u; ret ], []);
         Lget 0; Test (false, T rt.recd); If (Bnone, [ Lget 0; Cast (false, T rt.recd); struct_get rt.recd r_fields; array_len; i64_extend_u; ret ], []);
         i64 1 ]);
   def "code_points" (fun rt -> [ nn rt.bytes ], [ I32 ], fun fb ->
@@ -901,6 +920,8 @@ let () =
       let x = local fb F64 and y = local fb F64 in
       [ Lget 0; Lget 1; ref_eq; If (Bnone, [ I32 1; ret ], []);
         Lget 0; ref_is_null; Lget 1; ref_is_null; i32_or; If (Bnone, [ I32 0; ret ], []);
+        Lget 0; Test (false, T rt.smap); Lget 1; Test (false, T rt.smap); i32_or;
+        If (Bnone, [ Lget 0; call rt "as_map"; Lget 1; call rt "as_map"; call rt "equal"; ret ], []);
         Lget 0; call rt "is_int";
         If (Bnone, [ Lget 1; call rt "is_int"; If (Bnone, [ Lget 0; call rt "int_of"; Lget 1; call rt "int_of"; i64_eq; ret ], []);
                      Lget 1; Test (false, T rt.boxf); If (Bnone, [ Lget 0; call rt "int_of"; Lget 1; call rt "float_of"; call rt "int_float"; i32_eqz; ret ], []);
@@ -1047,6 +1068,7 @@ let () =
 (* Maps and structs: a field by its name, through the cache of the place that reads it. *)
 let () =
   def "field" (fun rt -> [ v; nn rt.bytes; nn rt.cache; I32 ], [ v ], fun fb ->
+      let sm = local fb (nl rt.smap) in
       let mp = local fb (nl rt.map) and rc = local fb (nl rt.recd) and k = local fb I32 and l = local fb (nl rt.list) and i = local fb I32 and n = local fb I32 and out = local fb (nn rt.vals) in
       [ Lget 0; Test (false, T rt.map);
         If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp;
@@ -1056,6 +1078,15 @@ let () =
                      Lget k; I32 0; i32_ge_s;
                      If (Bnone, [ Lget 2; Lget mp; struct_get rt.map m_keys; struct_set rt.cache 0; Lget 2; Lget k; struct_set rt.cache 1;
                                   Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; ret ], []) ]
+                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
+        Lget 0; Test (false, T rt.smap);
+        If (Bnone, [ Lget 0; Cast (false, T rt.smap); Lset sm;
+                     Lget sm; struct_get rt.smap s_keys; Lget 2; struct_get rt.cache 0; ref_eq;
+                     If (Bnone, [ Lget sm; as_non_null; Lget 2; struct_get rt.cache 1; call rt "sget"; ret ], []);
+                     Lget sm; struct_get rt.smap s_keys; struct_get rt.keys k_names; Lget 1; call rt "find_name"; Lset k;
+                     Lget k; I32 0; i32_ge_s;
+                     If (Bnone, [ Lget 2; Lget sm; struct_get rt.smap s_keys; struct_set rt.cache 0; Lget 2; Lget k; struct_set rt.cache 1;
+                                  Lget sm; as_non_null; Lget k; call rt "sget"; ret ], []) ]
                    @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 3 ], []);
         Lget 0; Test (false, T rt.recd);
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc;
@@ -1075,7 +1106,9 @@ let () =
   (* m.Name = x: the map or struct to keep, the same one when owned, else a copy; a new name adds a key. *)
   def "set_field" (fun rt -> [ v; nn rt.bytes; v; I32 ], [ v ], fun fb ->
       let mp = local fb (nl rt.map) and rc = local fb (nl rt.recd) and k = local fb I32 and n = local fb I32 and w = local fb (nn rt.vals) in
-      [ Lget 0; Test (false, T rt.map);
+      (* A typed map written to becomes a map of the general form, owned, which the caller keeps. *)
+      [ Lget 0; call rt "as_map"; Lset 0;
+        Lget 0; Test (false, T rt.map);
         If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp;
                      Lget mp; struct_get rt.map m_owned; i32_eqz; If (Bnone, [ Lget mp; as_non_null; call rt "map_copy"; Lset mp ], []);
                      Lget mp; as_non_null; Lget 1; call rt "map_find"; Lset k;
@@ -1141,9 +1174,13 @@ let () =
                      Lget mp; as_non_null; Lget 1; Cast (false, T rt.bytes); call rt "map_find"; Lset k;
                      Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget mp; struct_get rt.map m_vals; Lget k; array_get rt.vals; call rt "share"; ret ], []) ]
                    @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
+        Lget 0; Test (false, T rt.smap); Lget 1; Test (false, T rt.bytes); i32_and;
+        If (Bnone, [ Lget 0; Cast (false, T rt.smap); struct_get rt.smap s_keys; struct_get rt.keys k_names; Lget 1; Cast (false, T rt.bytes); call rt "find_name"; Lset k;
+                     Lget k; I32 0; i32_ge_s; If (Bnone, [ Lget 0; Cast (false, T rt.smap); Lget k; call rt "sget"; call rt "share"; ret ], []) ]
+                   @ fail rt (Messages.dict_absent a1) [ [ Lget 1; call rt "describe" ] ] [ Lget 2 ], []);
         Lget 0; Lget 1; Lget 2; call rt "whole"; Lget 2; call rt "index" ]);
   def "set_index_v" (fun rt -> [ v; v; v; I32 ], [ v ], fun _ ->
-      [ Lget 0; Test (false, T rt.map); Lget 1; Test (false, T rt.bytes); i32_and;
+      [ Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or; Lget 1; Test (false, T rt.bytes); i32_and;
         If (Bnone, [ Lget 0; Lget 1; Cast (false, T rt.bytes); Lget 2; Lget 3; call rt "set_field"; ret ], []);
         Lget 0; Lget 1; Lget 3; call rt "whole"; Lget 2; Lget 3; call rt "set_index" ])
 
@@ -1298,6 +1335,9 @@ let () =
         Lget 0; Test (false, T rt.map);
         If (Bnone, [ Lget 0; Cast (false, T rt.map); Lset mp; Lget mp; struct_get rt.map m_owned; If (Bnone, [ Lget 0; ret ], []);
                      Lget mp; as_non_null; call rt "map_copy"; ret ], []);
+        Lget 0; Test (false, T rt.smap);
+        If (Bnone, [ Lget 0; Cast (false, T rt.smap); struct_get rt.smap s_owned; If (Bnone, [ Lget 0; ret ], []);
+                     Lget 0; Cast (false, T rt.smap); call rt "scopy"; ret ], []);
         Lget 0; Test (false, T rt.recd);
         If (Bnone, [ Lget 0; Cast (false, T rt.recd); Lset rc; Lget rc; struct_get rt.recd r_owned; If (Bnone, [ Lget 0; ret ], []);
                      Lget rc; struct_get rt.recd r_fields; array_len; Lset n; Lget n; array_new_default rt.vals; Lset w;

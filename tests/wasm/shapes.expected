@@ -1,0 +1,13 @@
+[{X: 2.0, Y: 1.0, N: 2}, {X: 3.0, Y: 1.0, N: 3}, {X: 4.0, Y: 1.0, N: 4}] [2.0, 3.0, 4.0] 3 true true
+{X: 2.0, Y: 1.0, N: 2} {X: "text", Y: 1.0, N: 2, Z: true} true {X: 2.0, Y: 1.0, N: 2} 2 3
+matched 2.0 2
+11.0 {X: 2, Y: 3.0, N: 2}
+6.0
+{X: 1.5, Y: 2.0, N: 1} {X: 9.5, Y: 1.0, N: 0} [false, true, true]
+Err({Message: "a typed error", Code: 7})
+shapes.ce:32:17: Can't multiply the text "x" by the number 2.0.
+  32 |     t = t + p.X * p.Y
+     |                 ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in total (shapes.ce:32)
+exit 1

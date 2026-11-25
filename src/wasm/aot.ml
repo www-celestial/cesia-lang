@@ -17,6 +17,16 @@ exception Unsupported of string * Pos.t * string  (* file, position, what *)
 
 type kind = I | F | V
 
+(* A typed map: the keys of a literal, in its order, and the kind of each field, those of the values of the first literal
+   of these keys compiled; its type extends Rt's smap. *)
+type shape = { skeys : string array; sty : int; skinds : kind array }
+
+(* A variable read, in a statement's fast version, from a local of a known type, after its guard. *)
+type temp = Tshape of shape * int | Tnum of kind * int
+
+(* What a fast version guesses of a variable: it holds this typed map, or a number of this kind. *)
+type guess = Gshape of int * shape | Gnum of int * kind
+
 let kind_of = function TI -> I | TF -> F | _ -> V
 let vt_of : kind -> Wasm.vt = function I -> I64 | F -> F64 | V -> Rt.v
 
@@ -30,6 +40,10 @@ type st = {
   mutable lambdas : (Ast.func * proto) list;
   mutable counter : int;
   mutable values : (version * string) list;  (* the entry of a version called as a value *)
+  mutable shapes : shape list;  (* the typed maps, in the order made *)
+  shape_ids : (string, shape option) Hashtbl.t;  (* by keys: the typed map, or none for keys that stay general *)
+  mutable reads : (Ast.func * (int, string list) Hashtbl.t) list;  (* each function's variables: the fields read of them *)
+  mutable nums : (Ast.func * (int, kind option) Hashtbl.t) list;  (* each function's variables guessed to hold numbers *)
 }
 
 (* A function being compiled. *)
@@ -53,6 +67,8 @@ type fc = {
       (* in a loop's chunk: the code that gives back its state, and the local of the function's result *)
   fixed : (int * int * int) list;
       (* in a loop's chunk, the float arrays it reads and never writes: variable, the local of its floats, of its count *)
+  ovr : (int, ty) Hashtbl.t option;  (* in a statement's fast version, the types of the nodes it knows better *)
+  temps : (int * temp) list;  (* in a statement's fast version, its variables of a known type *)
 }
 
 (* A loop's chunk runs at most this many turns a call. *)
@@ -128,7 +144,10 @@ let convert fc ~from ~into =
   | V, F -> [ call rt "as_float" ]
   | F, I -> [ i64_trunc_sat ]
 
-let ty fc (e : expr) = fc.ver.tn.(e.id)
+let ty fc (e : expr) =
+  match fc.ovr with
+  | Some h -> (match Hashtbl.find_opt h e.id with Some t -> t | None -> fc.ver.tn.(e.id))
+  | None -> fc.ver.tn.(e.id)
 let kind fc e = kind_of (ty fc e)
 
 (* The versions to compile: each one's function, made once. *)
@@ -262,6 +281,169 @@ let rec scan ?(written = Hashtbl.create 1) seen leaves (e : expr) =
 
 let zero = function I -> [ I64 0L ] | F -> [ F64 0. ] | V -> [ Rt.missing ]
 
+(* The expressions right under a node, those of the functions defined in it left to them. *)
+let children (e : expr) : expr list =
+  let ixs is = List.filter_map (function Ix x -> Some x | All -> None) (Array.to_list is) in
+  let rec pat = function
+    | Plit x -> [ x ]
+    | Parray ps -> List.concat_map pat (Array.to_list ps)
+    | Pstruct fs -> List.concat_map (fun (_, p) -> pat p) (Array.to_list fs)
+    | Pcons c -> List.concat_map pat (Array.to_list c.cargs)
+    | Pname _ | Pwild -> []
+  in
+  let bl = Array.to_list in
+  match e.e with
+  | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _ | Interface _ | Hook _ | Lambda _ | Fn_def _ -> []
+  | Interp parts -> List.filter_map (function Hole x -> Some x | Lit _ -> None) (Array.to_list parts)
+  | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> [ a; b ]
+  | Neg a | Not a | Field (a, _) | Question a | Bang a -> [ a ]
+  | Call c -> c.callee :: List.map (fun (a : arg) -> a.value) (Array.to_list c.args)
+  | Assign (_, v) -> [ v ]
+  | If (c, y, n) -> (c :: bl y) @ bl n
+  | While { cond; body; _ } -> cond :: bl body
+  | Return r -> Option.to_list r.rvalue
+  | Array_lit rows -> List.concat_map bl (Array.to_list rows)
+  | Comp { cbody; csrc; cguard; _ } -> cbody :: csrc :: Option.to_list cguard
+  | Index (b, is, _) -> b :: ixs is
+  | Struct_lit { sfields; _ } -> List.map snd (Array.to_list sfields)
+  | For { iter; fbody; _ } -> iter :: bl fbody
+  | Set { path; value; _ } ->
+    List.concat_map (fun (st : step) -> match st.sk with Sindex (is, _) -> ixs is | Sfield _ -> []) (Array.to_list path) @ [ value ]
+  | Destructure (p, v) -> pat p @ [ v ]
+  | Match { subject; arms } -> subject :: List.concat_map (fun a -> pat a.pt @ Option.to_list a.guard @ [ a.abody ]) (Array.to_list arms)
+
+let rec iter_nodes f (e : expr) = f e; List.iter (iter_nodes f) (children e)
+
+(* An expression that writes no variable and goes nowhere: its fast version can read its variables once, before it. *)
+let rec simple (e : expr) =
+  (match e.e with
+   | Assign _ | Set _ | While _ | For _ | Destructure _ | Fn_def _ | Return _ | Break | Question _ | Bang _ | Match _ | If _ | Comp _
+   | Hook _ -> false
+   | _ -> true)
+  && List.for_all simple (children e)
+
+(* The typed map of these keys, made at the first literal of them compiled with a value of a known kind, its fields of
+   that literal's kinds; none for keys whose first literal knows no kind. *)
+let shape_for st (names : string array) (kinds : kind array) =
+  let key = String.concat "," (Array.to_list names) in
+  match Hashtbl.find_opt st.shape_ids key with
+  | Some s -> s
+  | None ->
+    let s =
+      if Array.length names > 0 && Array.exists (fun k -> k <> V) kinds then begin
+        let rt = st.rt in
+        let fields = List.map (fun k -> S (vt_of k), true) (Array.to_list kinds) in
+        let sty = Wasm.sub_ty rt.m ~final:true [ rt.smap ] (St ([ S I32, true; S (Rt.nn rt.keys), false ] @ fields)) in
+        let sh = { skeys = Array.copy names; sty; skinds = Array.copy kinds } in
+        st.shapes <- st.shapes @ [ sh ];
+        Some sh
+      end
+      else None
+    in
+    Hashtbl.replace st.shape_ids key s;
+    s
+
+let field_index sh name =
+  let rec go j = if j = Array.length sh.skeys then -1 else if sh.skeys.(j) = name then j else go (j + 1) in
+  go 0
+
+(* The fields that the function reads of each of its variables, by name: p.X. *)
+let reads_of fc =
+  match List.assq_opt fc.fn fc.st.reads with
+  | Some h -> h
+  | None ->
+    let h = Hashtbl.create 8 in
+    Array.iter
+      (iter_nodes (fun e ->
+           match e.e with
+           | Field ({ e = Var { b = Local p; _ }; _ }, name) ->
+             let l = Option.value (Hashtbl.find_opt h p) ~default:[] in
+             if not (List.mem name l) then Hashtbl.replace h p (name :: l)
+           | _ -> ()))
+      (Lazy.force fc.fn.body);
+    fc.st.reads <- (fc.fn, h) :: fc.st.reads;
+    h
+
+(* The typed map a variable is guessed to hold: the only one whose keys hold every field the function reads of it. *)
+let spec_shape fc p =
+  if fc.locs.(p) = -1 || fc.kinds.(p) <> V then None
+  else
+    match Hashtbl.find_opt (reads_of fc) p with
+    | None | Some [] -> None
+    | Some names ->
+      (match List.filter (fun sh -> List.for_all (fun n -> field_index sh n >= 0) names) fc.st.shapes with
+       | [ sh ] -> Some sh
+       | _ -> None)
+
+let rec pat_binds v = function
+  | Pname { b = Local i; _ } -> i = v
+  | Pname _ | Pwild | Plit _ -> false
+  | Parray ps -> Array.exists (pat_binds v) ps
+  | Pstruct fs -> Array.exists (fun (_, p) -> pat_binds v p) fs
+  | Pcons c -> Array.exists (pat_binds v) c.cargs
+
+(* The types of a statement's nodes when its guesses hold, into [ovr] where they differ from Infer's; the guesses it
+   makes, into [uses]. A field of a typed map has its field's kind; a sum of numbers is a number. *)
+let rec refine fc ovr uses (e : expr) : ty =
+  let r = refine fc ovr uses in
+  let orig = fc.ver.tn.(e.id) in
+  let set t = if t != orig then Hashtbl.replace ovr e.id t; t in
+  let numeric t = t == TI || t == TF in
+  let use u = if not (List.mem u !uses) then uses := u :: !uses in
+  match e.e with
+  | Field ({ e = Var { b = Local p; _ }; _ }, name) ->
+    (match spec_shape fc p with
+     | Some sh -> use (Gshape (p, sh)); (match sh.skinds.(field_index sh name) with I -> set TI | F -> set TF | V -> orig)
+     | None -> orig)
+  | Var { b = Local v; _ } when orig == TA ->
+    (match spec_num fc v with
+     | Some k -> use (Gnum (v, k)); set (if k = I then TI else TF)
+     | None -> orig)
+  | Bin ((Add | Sub | Mul), a, b) ->
+    let ta = r a in
+    let tb = r b in
+    if numeric ta && numeric tb then set (if ta == TI && tb == TI then TI else TF) else orig
+  | Bin (Div, a, b) ->
+    let ta = r a in
+    let tb = r b in
+    if numeric ta && numeric tb then set TF else orig
+  | Neg a -> let t = r a in if numeric t then set t else orig
+  | _ -> List.iter (fun c -> ignore (r c)) (children e); orig
+
+(* A variable guessed to hold a number of one kind: one the function only assigns, never a parameter, each value a number
+   of that kind when the guesses hold (itself guessed so while it is weighed). *)
+and spec_num fc v =
+  if fc.locs.(v) = -1 || fc.kinds.(v) <> V || v < Array.length fc.fn.params then None
+  else begin
+    let h =
+      match List.assq_opt fc.fn fc.st.nums with
+      | Some h -> h
+      | None -> let h = Hashtbl.create 8 in fc.st.nums <- (fc.fn, h) :: fc.st.nums; h
+    in
+    match Hashtbl.find_opt h v with
+    | Some k -> k
+    | None ->
+      let values = ref [] and other = ref false in
+      Array.iter
+        (iter_nodes (fun e ->
+             match e.e with
+             | Assign ({ b = Local i; _ }, x) when i = v -> values := x :: !values
+             | For { var = { b = Local i; _ }; _ } | Set { root = { b = Local i; _ }; _ } | Fn_def ({ b = Local i; _ }, _)
+               when i = v -> other := true
+             | Comp { cvar = { b = Local i; _ }; _ } when i = v -> other := true
+             | Destructure (pt, _) -> if pat_binds v pt then other := true
+             | Match { arms; _ } -> if Array.exists (fun a -> pat_binds v a.pt) arms then other := true
+             | _ -> ()))
+        (Lazy.force fc.fn.body);
+      let holds k t =
+        Hashtbl.replace h v (Some k);
+        List.for_all (fun x -> refine fc (Hashtbl.create 4) (ref []) x == t) !values
+      in
+      let k = if !other || !values = [] then None else if holds F TF then Some F else if holds I TI then Some I else None in
+      Hashtbl.replace h v k;
+      k
+  end
+
 let rec expr fc (e : expr) (want : kind) : ins list =
   let k, code = natural fc e in
   code @ convert fc ~from:k ~into:want
@@ -306,6 +488,10 @@ and natural fc (e : expr) : kind * ins list =
   | Array_lit rows -> V, array_lit fc e rows
   | Comp { cbody; cvar; csrc; cguard } -> V, comprehension fc e cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read fc e b ixs uses_end
+  | Field ({ e = Var { b = Local p; _ }; _ }, name) when (match List.assoc_opt p fc.temps with Some (Tshape _) -> true | _ -> false) ->
+    (match List.assoc p fc.temps with
+     | Tshape (sh, t) -> let j = field_index sh name in sh.skinds.(j), [ Lget t; struct_get sh.sty (2 + j) ]
+     | Tnum _ -> assert false)
   | Field (b, name) -> V, expr fc b V @ [ text rt name; cache rt ] @ site fc e.pos @ [ call rt "field" ]
   | Struct_lit { sname; sfields } -> V, struct_lit fc e sname sfields
   | End_index ->
@@ -342,9 +528,10 @@ and stmt fc (e : expr) : ins list =
     end
   | Fn_def (_, _) -> unsupported fc e.pos "this definition"
   | Assign (n, v) ->
-    let k = match n.b with Local i when fc.locs.(i) >= 0 -> fc.kinds.(i) | _ -> V in
-    let value = if k = V then stored fc v else expr fc v k in
-    write_var fc n e.pos value k
+    versioned fc e (fun fc ->
+        let k = match n.b with Local i when fc.locs.(i) >= 0 -> fc.kinds.(i) | _ -> V in
+        let value = if k = V then stored fc v else expr fc v k in
+        write_var fc n e.pos value k)
   | If (c, y, n) -> cond fc c @ [ iff fc Bnone (fun () -> block_stmts fc y) (fun () -> block_stmts fc n) ]
   | While { cond = c; body; _ } ->
     let looped cf _ next =
@@ -356,7 +543,7 @@ and stmt fc (e : expr) : ins list =
     if fc.ends = [] then outlined fc (c :: Array.to_list body) [] [] (fun _ -> []) looped else looped fc [] (fun () -> tick rt)
   | For { var; iter; fbody; _ } -> for_loop fc ~outline:(fc.ends = []) ~scanned:(Array.to_list fbody) var iter (fun cf -> block_stmts cf fbody)
   | Break -> [ Br (depth_of fc "break") ]
-  | Set { root; path; value } -> set_path fc e root path value
+  | Set { root; path; value } -> versioned fc e (fun fc -> set_path fc e root path value)
   | Destructure (pt, v) -> destructure fc e pt v
   | Return r -> return fc e r
   | Hook _ -> []
@@ -376,6 +563,7 @@ and cond fc (e : expr) : ins list =
   | And (a, b) -> cond fc a @ [ iff fc (Bval I32) (fun () -> cond fc b) (fun () -> [ I32 0 ]) ]
   | Or (a, b) -> cond fc a @ [ iff fc (Bval I32) (fun () -> [ I32 1 ]) (fun () -> cond fc b) ]
   | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) when typed fc a && typed fc b -> compare_typed fc op a b
+  | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) -> quick_compare fc e op a b ~test:true
   | _ -> expr fc e V @ site fc e.pos @ [ call rt "truth" ]
 
 and typed fc e = match kind fc e with I | F -> true | V -> false
@@ -407,28 +595,88 @@ and compare_typed fc op a b =
 and binary fc e op a b =
   let rt = fc.st.rt in
   let k = kind fc e in
-  let arith_op = function Add -> 0 | Sub -> 1 | Mul -> 2 | Div -> 3 | _ -> 4 in
   match op with
   | Add | Sub | Mul ->
     (match k with
      | I -> I, Rt.checked rt fc.fb (match op with Add -> `Add | Sub -> `Sub | _ -> `Mul) (expr fc a I) (expr fc b I) (site fc e.pos)
      | F -> F, expr fc a F @ expr fc b F @ [ (match op with Add -> f64_add | Sub -> f64_sub | _ -> f64_mul) ]
-     | V -> V, [ I32 (arith_op op) ] @ expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "arith" ])
+     | V -> V, quick_arith fc e op a b)
   | Div ->
     (match k with
      | F -> F, expr fc a F @ expr fc b F @ [ f64_div ]
-     | _ -> V, [ I32 3 ] @ expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "arith" ] @ convert fc ~from:V ~into:V)
+     | _ -> V, quick_arith fc e op a b)
   | Pow ->
     (match k with
      | I -> I, expr fc a I @ expr fc b I @ site fc e.pos @ [ call rt "pow_i" ]
      | F -> F, expr fc a F @ expr fc b F @ [ host rt "pow" ]
      | V -> V, [ I32 4 ] @ expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "arith" ])
-  | Lt | Le | Gt | Ge ->
-    if typed fc a && typed fc b then V, cond fc e @ bool_of rt
-    else V, [ I32 (match op with Lt -> 0 | Le -> 1 | Gt -> 2 | _ -> 3) ] @ expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "cmp" ]
-  | Eq | Ne ->
-    if typed fc a && typed fc b then V, cond fc e @ bool_of rt
-    else V, [ I32 (if op = Eq then 0 else 1) ] @ expr fc a V @ expr fc b V @ [ call rt "eqv" ]
+  | Lt | Le | Gt | Ge | Eq | Ne ->
+    if typed fc a && typed fc b then V, cond fc e @ bool_of rt else V, quick_compare fc e op a b ~test:false
+
+(* The operands of an operation, each once, in order, into locals of their kinds. *)
+and operands fc a b =
+  let ka = kind fc a and kb = kind fc b in
+  let la = Rt.local fc.fb (vt_of ka) and lb = Rt.local fc.fb (vt_of kb) in
+  (ka, la), (kb, lb), expr fc a ka @ [ Lset la ] @ expr fc b kb @ [ Lset lb ]
+
+(* +, -, * and / of values: inline when both are floats, a float and a number, or both integers of 31 bits, whose sum
+   and product fit; else by the runtime's arith, which takes every case and its errors. *)
+and quick_arith fc e op a b =
+  let rt = fc.st.rt in
+  let (ka, la), (kb, lb), pre = operands fc a b in
+  let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
+  let generic = [ I32 (match op with Add -> 0 | Sub -> 1 | Mul -> 2 | _ -> 3) ] @ boxed (ka, la) @ boxed (kb, lb) @ site fc e.pos @ [ call rt "arith" ] in
+  let float (k, l) = match k with F -> [ Lget l ] | I -> [ Lget l; f64_of_i64 ] | V -> [ Lget l; Cast (false, T rt.boxf); struct_get rt.boxf 0 ] in
+  let is_f l = [ Lget l; Test (false, T rt.boxf) ] in
+  let fop = match op with Add -> f64_add | Sub -> f64_sub | Mul -> f64_mul | _ -> f64_div in
+  let on_floats = float (ka, la) @ float (kb, lb) @ [ fop; call rt "box_f" ] in
+  let small l = [ Lget l; Cast (false, I31); i31_get_s; i64_extend_s ] in
+  let on_ints =
+    match op with
+    | Div -> small la @ [ f64_of_i64 ] @ small lb @ [ f64_of_i64; f64_div; call rt "box_f" ]
+    | _ -> small la @ small lb @ [ (match op with Add -> i64_add | Sub -> i64_sub | _ -> i64_mul); call rt "box_i" ]
+  in
+  pre
+  @ (match ka, kb with
+      | V, V ->
+        is_f la @ is_f lb @ [ i32_and;
+                              If (Bval Rt.v, on_floats,
+                                  [ Lget la; Test (false, I31); Lget lb; Test (false, I31); i32_and; If (Bval Rt.v, on_ints, generic) ]) ]
+      | V, (F | I) -> is_f la @ [ If (Bval Rt.v, on_floats, generic) ]
+      | (F | I), V -> is_f lb @ [ If (Bval Rt.v, on_floats, generic) ]
+      | _ -> generic)
+
+(* <, <=, >, >=, == and != of values, as an i32 when [test], else a value: inline when both are floats, an integer of 31
+   bits against an integer, or a float against a float; else by the runtime (cmp gives missing for missing, and its
+   errors; eqv compares anything). An integer against a float goes to the runtime, which compares them exactly. *)
+and quick_compare fc e op a b ~test =
+  let rt = fc.st.rt in
+  let (ka, la), (kb, lb), pre = operands fc a b in
+  let boxed (k, l) = Lget l :: convert fc ~from:k ~into:V in
+  let generic =
+    (match op with
+     | Eq | Ne -> [ I32 (if op = Eq then 0 else 1) ] @ boxed (ka, la) @ boxed (kb, lb) @ [ call rt "eqv" ]
+     | _ -> [ I32 (match op with Lt -> 0 | Le -> 1 | Gt -> 2 | _ -> 3) ] @ boxed (ka, la) @ boxed (kb, lb) @ site fc e.pos @ [ call rt "cmp" ])
+    @ (if test then site fc e.pos @ [ call rt "truth" ] else [])
+  in
+  let fop = match op with Lt -> f64_lt | Le -> f64_le | Gt -> f64_gt | Ge -> f64_ge | Eq -> f64_eq | _ -> f64_ne in
+  let iop = match op with Lt -> i64_lt_s | Le -> i64_le_s | Gt -> i64_gt_s | Ge -> i64_ge_s | Eq -> i64_eq | _ -> i64_ne in
+  let float (k, l) = match k with F -> [ Lget l ] | _ -> [ Lget l; Cast (false, T rt.boxf); struct_get rt.boxf 0 ] in
+  let int (k, l) = match k with I -> [ Lget l ] | _ -> [ Lget l; Cast (false, I31); i31_get_s; i64_extend_s ] in
+  let bt = if test then Bval I32 else Bval Rt.v in
+  let out c = c @ if test then [] else bool_of rt in
+  let is t l = [ Lget l; Test (false, t) ] in
+  pre
+  @ (match ka, kb with
+      | V, V ->
+        is (T rt.boxf) la @ is (T rt.boxf) lb @ [ i32_and;
+                                                  If (bt, out (float (ka, la) @ float (kb, lb) @ [ fop ]),
+                                                      is I31 la @ is I31 lb @ [ i32_and; If (bt, out (int (ka, la) @ int (kb, lb) @ [ iop ]), generic) ]) ]
+      | V, F -> is (T rt.boxf) la @ [ If (bt, out (float (ka, la) @ float (kb, lb) @ [ fop ]), generic) ]
+      | F, V -> is (T rt.boxf) lb @ [ If (bt, out (float (ka, la) @ float (kb, lb) @ [ fop ]), generic) ]
+      | V, I -> is I31 la @ [ If (bt, out (int (ka, la) @ int (kb, lb) @ [ iop ]), generic) ]
+      | I, V -> is I31 lb @ [ If (bt, out (int (ka, la) @ int (kb, lb) @ [ iop ]), generic) ]
+      | _ -> generic)
 
 and interp fc parts =
   let rt = fc.st.rt in
@@ -448,6 +696,8 @@ and var fc e (n : name) : kind * ins list =
     get @ [ Ltee x; g_undef rt; ref_eq; If (Bnone, Rt.fail rt (Messages.unset n.text) [] (site fc e.pos), []); Lget x ]
   in
   match n.b with
+  | Local i when (match List.assoc_opt i fc.temps with Some (Tnum _) -> true | _ -> false) ->
+    (match List.assoc i fc.temps with Tnum (k, t) -> k, [ Lget t ] | Tshape _ -> assert false)
   | Local i when fc.locs.(i) >= 0 ->
     let get = [ Lget fc.locs.(i) ] in
     if fc.kinds.(i) = V && fc.fn.maybe_undef.(i) then V, unset_check get else fc.kinds.(i), get
@@ -664,6 +914,42 @@ and index_read fc e b ixs uses_end =
     else V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index" ]
   | _ -> unsupported fc e.pos "an index of several dimensions"
 
+(* A statement that writes a variable or a path, twice when it reads fields of a variable guessed to hold a typed map or
+   numbers of a variable guessed to hold them: a fast version, its guesses checked first, each variable read once into a
+   local of its type, then its nodes of the kinds those types give; and the general version, when a guess fails. *)
+and versioned fc (e : expr) plain =
+  let parts = match e.e with Assign (_, v) -> [ v ] | Set _ -> children e | _ -> [] in
+  if fc.ovr <> None || parts = [] || not (List.for_all simple parts) then plain fc
+  else begin
+    let ovr = Hashtbl.create 8 and uses = ref [] in
+    List.iter (fun x -> ignore (refine fc ovr uses x)) parts;
+    if !uses = [] then plain fc
+    else begin
+      let rt = fc.st.rt in
+      let temps =
+        List.map
+          (function
+            | Gshape (p, sh) -> p, Tshape (sh, Rt.local fc.fb (Rt.nn sh.sty))
+            | Gnum (v, k) -> v, Tnum (k, Rt.local fc.fb (vt_of k)))
+          (List.rev !uses)
+      in
+      [ block fc "general" Bnone (fun () ->
+            [ block fc "guess" Bnone (fun () ->
+                  let fail = depth_of fc "guess" + 1 in
+                  let cast into p = Block (Bval (Ref (false, into)), [ Lget fc.locs.(p); Br_on_cast (0, true, Eq, false, into); drop; Br fail ]) in
+                  List.concat_map
+                    (fun (p, t) ->
+                       match t with
+                       | Tshape (sh, l) -> [ cast (T sh.sty) p; Lset l ]
+                       | Tnum (F, l) -> [ cast (T rt.boxf) p; struct_get rt.boxf 0; Lset l ]
+                       | Tnum (_, l) -> [ cast I31 p; i31_get_s; i64_extend_s; Lset l ])
+                    temps
+                  @ plain { fc with ovr = Some ovr; temps }
+                  @ [ Br (depth_of fc "general") ]) ]
+            @ plain fc) ]
+    end
+  end
+
 and struct_lit fc e sname fields =
   let rt = fc.st.rt in
   let names = Array.map fst fields in
@@ -671,8 +957,48 @@ and struct_lit fc e sname fields =
   if List.length (List.sort_uniq String.compare (Array.to_list names)) < n then unsupported fc e.pos "a map with a key twice";
   let vals = List.concat_map (fun (_, v) -> stored fc v) (Array.to_list fields) @ [ array_new_fixed rt.vals n ] in
   match sname with
-  | None -> [ I32 1; keys rt names ] @ vals @ [ I32 n; I32 0; struct_new rt.map ]
+  | None ->
+    (match shape_for fc.st names (Array.map (fun (_, v) -> kind fc v) fields) with
+     | Some sh -> typed_lit fc sh names fields
+     | None -> [ I32 1; keys rt names ] @ vals @ [ I32 n; I32 0; struct_new rt.map ])
   | Some s -> [ I32 1; shape rt s names ] @ vals @ [ struct_new rt.recd ]
+
+(* A literal of a typed map: its values first, in order; a typed field takes a value of its kind, and a value of any kind
+   when it is one at the run; a value that isn't, the map of the general form. *)
+and typed_lit fc sh names fields =
+  let rt = fc.st.rt in
+  let n = Array.length names in
+  let vs =
+    Array.map
+      (fun (_, v) ->
+         let k = kind fc v in
+         let l = Rt.local fc.fb (vt_of k) in
+         k, l, (if k = V then stored fc v else expr fc v k) @ [ Lset l ])
+      fields
+  in
+  let general = [ I32 1; keys rt names ] @ List.concat (List.map (fun (k, l, _) -> Lget l :: convert fc ~from:k ~into:V) (Array.to_list vs))
+                @ [ array_new_fixed rt.vals n; I32 n; I32 0; struct_new rt.map ] in
+  let pre = List.concat_map (fun (_, _, c) -> c) (Array.to_list vs) in
+  let never = ref false and tests = ref [] in
+  let typed =
+    [ I32 1; keys rt names ]
+    @ List.concat
+      (List.mapi
+         (fun j (k, l, _) ->
+            match sh.skinds.(j), k with
+            | fk, vk when fk = vk -> [ Lget l ]
+            | V, vk -> Lget l :: convert fc ~from:vk ~into:V
+            | F, V -> tests := [ Lget l; Test (false, T rt.boxf) ] :: !tests; [ Lget l; Cast (false, T rt.boxf); struct_get rt.boxf 0 ]
+            | I, V -> tests := [ Lget l; call rt "is_int" ] :: !tests; [ Lget l; call rt "int_of" ]
+            | _ -> never := true; [])
+         (Array.to_list vs))
+    @ [ struct_new sh.sty ]
+  in
+  if !never then pre @ general
+  else
+    match List.rev !tests with
+    | [] -> pre @ typed
+    | t :: rest -> pre @ t @ List.concat_map (fun t -> t @ [ i32_and ]) rest @ [ If (Bval Rt.v, typed, general) ]
 
 (* e?: the value of an Ok, or the function returns the Err. e! (bang): the same Ok, and an Err stops the program at the !,
    as result.Unwrap does; any other value gets the type error of its sign. *)
@@ -696,7 +1022,7 @@ and bang_failed fc e x =
   let message ty find vals =
     [ Lget m; Cast (false, T ty) ] @ find @ [ Lset k; Lget k; I32 0; i32_ge_s;
       If (Bnone, [ Lget m; Cast (false, T ty) ] @ vals @ [ Lget k; array_get rt.vals; Lset m ], []) ] in
-  [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; I32 0; array_get rt.vals; Lset m;
+  [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; I32 0; array_get rt.vals; call rt "as_map"; Lset m;
     Lget m; Test (false, T rt.map);
     If (Bnone, message rt.map [ text rt "Message"; call rt "map_find" ] [ struct_get rt.map m_vals ],
         [ Lget m; Test (false, T rt.recd);
@@ -784,7 +1110,9 @@ and pat_test fc (pt : pat) x fail =
     (* A struct's fields or a map's keys, by name. *)
     let names = Rt.local fc.fb (Rt.nl rt.vals) and vals = Rt.local fc.fb (Rt.nl rt.vals) and k = Rt.local fc.fb I32 in
     let mp = Rt.local fc.fb (Rt.nl rt.map) in
-    [ Rnull (T rt.map); Lset mp;
+    let x0 = x in
+    let x = Rt.local fc.fb Rt.v in
+    [ Lget x0; call rt "as_map"; Lset x; Rnull (T rt.map); Lset mp;
       Block (Bnone, [
           Lget x; Test (false, T rt.recd);
           If (Bnone, [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 1; Lset names;
@@ -981,7 +1309,7 @@ let compile_version st (v : version) name ~hoisted ~main =
   (* Parameters are numbered from 0 in the tail loop: they are the first locals after the env. *)
   let fc =
     { st; fb; ver = v; fn = f; path = fst (Vec.get st.w.files v.owner.file); pname = v.owner.pname; file = v.owner.file;
-      pm = v.owner.pm; locs; kinds; env; labels = []; ends = []; hoisted; tail = (if main then -1 else 0); exit = None; fixed = [] }
+      pm = v.owner.pm; locs; kinds; env; labels = []; ends = []; hoisted; tail = (if main then -1 else 0); exit = None; fixed = []; ovr = None; temps = [] }
   in
   let rk = if main then V else kind_of v.ret in
   let generic = match v.owner.generic with Some g -> g == v | None -> false in
@@ -1192,7 +1520,9 @@ let () =
                   [ call rt x ]);
   is "IsText" (fun rt -> [ Test (false, T rt.bytes) ]);
   is "IsArray" (fun rt -> [ Test (false, T rt.list) ]);
-  is "IsDict" (fun rt -> [ Test (false, T rt.map) ]);
+  is "IsDict" (fun rt -> let x = "is_dict" in
+                if not (Hashtbl.mem Rt.defs x) then Rt.def x (fun rt -> [ Rt.v ], [ I32 ], fun _ -> [ Lget 0; Test (false, T rt.map); Lget 0; Test (false, T rt.smap); i32_or ]);
+                [ call rt x ]);
   is "IsStruct" (fun rt -> [ Test (false, T rt.recd) ]);
   is "IsFunction" (fun rt -> [ Test (false, T rt.fn) ]);
   is "IsMissing" (fun _ -> [ ref_is_null ]);
@@ -1203,10 +1533,35 @@ let () =
   filled "matrix" "Zeros" (Some [ F64 0.; Call "box_f" ]);
   filled "matrix" "Ones" (Some [ F64 1.; Call "box_f" ])
 
+(* The runtime's functions of typed maps, now that every typed map is known: for each, a test of its type. *)
+let finish st =
+  let rt = st.rt in
+  let body name f =
+    if Wasm.has_func rt.m name then begin
+      let wf = Wasm.find_func rt.m name in
+      wf.body <- List.concat_map f st.shapes @ [ unreachable ]
+    end
+  in
+  let field sh j = [ Lget 0; Cast (false, T sh.sty); struct_get sh.sty (2 + j) ] in
+  let boxed sh j = field sh j @ (match sh.skinds.(j) with I -> [ call rt "box_i" ] | F -> [ call rt "box_f" ] | V -> [ call rt "share" ]) in
+  let each sh f = List.concat (List.init (Array.length sh.skeys) f) in
+  let n sh = Array.length sh.skeys in
+  body "sget" (fun sh ->
+      [ Lget 0; Test (false, T sh.sty);
+        If (Bnone, each sh (fun j -> [ Lget 1; I32 j; i32_eq; If (Bnone, boxed sh j @ [ ret ], []) ]), []) ]);
+  body "sto_map" (fun sh ->
+      [ Lget 0; Test (false, T sh.sty);
+        If (Bnone, [ I32 1; Lget 0; struct_get rt.smap s_keys ] @ each sh (boxed sh) @ [ array_new_fixed rt.vals (n sh); I32 (n sh); I32 0; struct_new rt.map; ret ], []) ]);
+  body "scopy" (fun sh ->
+      [ Lget 0; Test (false, T sh.sty);
+        If (Bnone, [ I32 1; Lget 0; struct_get rt.smap s_keys ]
+                   @ each sh (fun j -> field sh j @ (if sh.skinds.(j) = V then [ call rt "share" ] else [])) @ [ struct_new sh.sty; ret ], []) ])
+
 (* The program: its files, in the order the interpreter runs them, become the start of the module. *)
 let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let rt = Rt.create () in
-  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [] } in
+  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
+             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = [] } in
   ignore (need rt "box_f");
   let hoisted = List.concat_map (fun (_, _, _, (l : layout)) -> List.map snd (Array.to_list l.hoisted)) prepared in
   List.iter
@@ -1245,6 +1600,7 @@ let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let start = Wasm.func rt.m "main" [] [] in
   start.body <- rt.inits @ List.concat_map (fun n -> [ Call n; drop ]) mains @ [ call rt "flush" ];
   drain ();
+  finish st;
   Wasm.export rt.m "main" "main";
   let sites = Buffer.create 4096 in
   Buffer.add_char sites '[';

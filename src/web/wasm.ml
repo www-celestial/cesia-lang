@@ -58,13 +58,14 @@ type t = {
   dnames : (string, int) Hashtbl.t;
   exports : (string * string) Vec.t;  (* export name, function *)
   customs : (string * string) Vec.t;
+  supers : (int, bool * int list) Hashtbl.t;  (* a type declared with its supertypes: final, the supertypes *)
   mutable memory : int;  (* pages, 0 for none *)
 }
 
 let create () =
   { types = Vec.create (); typekeys = Hashtbl.create 64; imports = Vec.create (); funcs = Vec.create ();
     fnames = Hashtbl.create 256; globals = Vec.create (); gnames = Hashtbl.create 256; datas = Vec.create ();
-    dnames = Hashtbl.create 64; exports = Vec.create (); customs = Vec.create (); memory = 0 }
+    dnames = Hashtbl.create 64; exports = Vec.create (); customs = Vec.create (); supers = Hashtbl.create 8; memory = 0 }
 
 (* A type, added once: the same struct twice is one type. *)
 let ty m c =
@@ -82,7 +83,18 @@ let fresh_ty m c =
   Vec.add_last m.types c;
   i
 
+(* A struct type that others extend (not [final]), or that extends [parents]. *)
+let sub_ty m ~final parents c =
+  let i = fresh_ty m c in
+  Hashtbl.replace m.supers i (final, parents);
+  i
+
 let fn_ty m params results = ty m (Fn (params, results))
+
+let find_func m name =
+  let r = ref None in
+  Vec.iter (fun f -> if f.fname = name then r := Some f) m.funcs;
+  match !r with Some f -> f | None -> raise Not_found
 let has_func m name = Hashtbl.mem m.fnames name
 
 let import m name modname field params results =
@@ -279,7 +291,13 @@ let write m =
         u b 1;
         Buffer.add_char b '\x4e';
         u b (Vec.length m.types);
-        Vec.iter (comp b) m.types
+        iteri
+          (fun i c ->
+             (match Hashtbl.find_opt m.supers i with
+              | Some (final, parents) -> Buffer.add_char b (if final then '\x4f' else '\x50'); vec b u parents
+              | None -> ());
+             comp b c)
+          m.types
       end);
   section out 2 (fun b ->
       if Vec.length m.imports > 0 then begin
