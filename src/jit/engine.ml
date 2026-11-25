@@ -114,7 +114,7 @@ let make (w : world) (ver : version) fns start loops =
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
        come back through a call of the first function. *)
     if calls && (not pure) && fns.(0).loose then None
-    else if nested_room && (fns.(0).loose || (loops = [||] && (fns.(0).looped || not pure))) then None
+    else if nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
     else begin
       (* The room the outermost frame checks at its start and at each turn of its loops covers what nested frames make
          then, up to [margin] words: a run comes back there after a collection rather than short in a nested frame. *)
@@ -444,13 +444,11 @@ let go (ctx : ctx) code entry =
     else if st = Ir.room_out then begin
       (* A nested frame of a version as a whole was short of room in the young heap: once more on an empty one, unless a
          call of it was short there before; short again, the call goes back to the interpreter, from its start, the only
-         point where such a version's run comes back: when an earlier run left after the frame's own step, that step is
-         not counted twice. *)
+         point where such a version's run comes back: the frame's own step is the call's, counted before native code. *)
       if not short && code.rooms = 0 then begin
         Gc.minor ();
         again ~short:true entry first
       end else begin
-        if entry <> 1 then ctx.fuel <- ctx.fuel + 1;
         code.rooms <- code.rooms + 1;
         Lower.starve code.vers.(io.(Ir.io_b));
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ code.vers.(io.(Ir.io_b)).owner.pname ^ " short of room, a call made by the interpreter");
