@@ -1,0 +1,100 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/value
+
+(* Loops run in functions of their own, a chunk of turns at a time: what they read and write comes back, a return or
+   a ? from inside leaves the function, break leaves the loop, and a loop longer than a chunk goes on where it was. *)
+defn first(xs, want)
+  for i in 1..value.Len(xs)
+    if xs[i] == want
+      return i
+    end
+  end
+  -1
+end
+
+defn positive(x)
+  if x < 0
+    result.Err("negative $x")
+  else
+    result.Ok(x)
+  end
+end
+defn checked(xs)
+  total = 0
+  for x in xs
+    v = positive(x)?
+    total = total + v
+  end
+  result.Ok(total)
+end
+
+defn long(n)
+  s = 0
+  f = 0.0
+  k = 0
+  while k < n
+    k = k + 1
+    s = s + math.Mod(k, 7)
+    f = f + 0.5
+  end
+  [s, f, k]
+end
+
+defn nested(n)
+  hits = 0
+  for i in 1..n
+    for j in 1..n
+      if j > i
+        break
+      end
+      for k in [1, 2, 3]
+        hits = hits + k
+      end
+    end
+    if i == n
+      return hits
+    end
+  end
+  0
+end
+
+defn adders(n)
+  fs = []
+  for i in 1..n
+    fs = list.Append(x -> x + i, fs)
+  end
+  [f(100) for f in fs]
+end
+defn fill(n)
+  a = matrix.Zeros(n)
+  for i in 1..n
+    a[i] = i * 0.5
+  end
+  s = 0.0
+  for i in 1..n
+    s = s + a[i] * a[n + 1 - i]
+  end
+  s
+end
+
+io.Print(first([4, 5, 6], 6), first([4, 5, 6], 9))
+io.Print(checked([1, 2, 3]), checked([1, -2, 3]))
+io.Print(long(40000))
+io.Print(nested(30))
+io.Print(adders(3))
+io.Print(fill(50000))
+total = 0
+for i in 1..50000
+  total = total + i
+end
+io.Print(total)
+words = ["a", "bb", "ccc"]
+lens = 0
+for w in words
+  lens = lens + value.Len(w)
+end
+io.Print(lens)

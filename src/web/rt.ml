@@ -120,6 +120,7 @@ let i64_gt_s = Op 0x55
 let i64_gt_u = Op 0x56
 let i64_le_s = Op 0x57
 let i64_ge_s = Op 0x59
+let i64_ge_u = Op 0x5a
 let f64_eq = Op 0x61
 let f64_ne = Op 0x62
 let f64_lt = Op 0x63

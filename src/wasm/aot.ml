@@ -49,9 +49,20 @@ type fc = {
   mutable ends : int list;  (* the locals of the arrays that an [end] measures, the innermost first *)
   hoisted : Ast.func list;
   tail : int;  (* the local of the self tail call's flag, -1 *)
+  exit : (ins list * int) option;
+      (* in a loop's chunk: the code that gives back its state, and the local of the function's result *)
+  fixed : (int * int * int) list;
+      (* in a loop's chunk, the float arrays it reads and never writes: variable, the local of its floats, of its count *)
 }
 
+(* A loop's chunk runs at most this many turns a call. *)
+let chunk_size = 1 lsl 14
+
 let unsupported fc (pos : Pos.t) what = raise (Unsupported (fc.path, pos, what))
+
+(* The cell of a file's variable that stays out of the locals; in a loop's chunk, a variable it was not given is a bug of
+   the compiler. *)
+let cell_index fc i = if fc.locs.(i) = -3 then failwith "aot: a variable read in a loop it wasn't given" else fc.fn.cell_of.(i)
 
 (* Sites: where an error can be, with what the loader writes of it. *)
 let json_text s =
@@ -205,6 +216,51 @@ type native_call = fc -> expr array -> pos -> kind -> ins list
 
 let natives : (string * string, native_call) Hashtbl.t = Hashtbl.create 32
 
+(* The variables of the function that this code reads or writes, into [seen], and whether it can leave the function
+   (a return, a ?). A function defined in it has its own variables, but reads here those it captures. *)
+let rec scan ?(written = Hashtbl.create 1) seen leaves (e : expr) =
+  let go = scan ~written seen leaves in
+  let name (n : name) = match n.b with Local i -> Hashtbl.replace seen i () | _ -> () in
+  let set (n : name) = name n; match n.b with Local i -> Hashtbl.replace written i () | _ -> () in
+  let func (f : Ast.func) = Array.iter (fun (outer, _) -> Hashtbl.replace seen outer ()) f.captures in
+  let block b = Array.iter go b in
+  let ixs = Array.iter (function All -> () | Ix e -> go e) in
+  let rec pat = function
+    | Pname n -> set n
+    | Pwild -> ()
+    | Plit e -> go e
+    | Parray ps -> Array.iter pat ps
+    | Pstruct fs -> Array.iter (fun (_, p) -> pat p) fs
+    | Pcons c -> Array.iter pat c.cargs
+  in
+  match e.e with
+  | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Break | End_index | Use _ | Interface _ | Hook _ -> ()
+  | Interp parts -> Array.iter (function Lit _ -> () | Hole e -> go e) parts
+  | Var n -> name n
+  | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> go a; go b
+  | Neg a | Not a | Field (a, _) -> go a
+  | Question a -> leaves := true; go a
+  | Call c -> go c.callee; Array.iter (fun (a : arg) -> go a.value) c.args
+  | Assign (n, v) -> set n; go v
+  | If (c, y, n) -> go c; block y; block n
+  | While { cond; body; _ } -> go cond; block body
+  | Return r -> leaves := true; Option.iter go r.rvalue
+  | Lambda f -> func f
+  | Fn_def (n, f) -> set n; func f
+  | Array_lit rows -> Array.iter (Array.iter go) rows
+  | Comp { cbody; cvar; csrc; cguard } -> go cbody; set cvar; go csrc; Option.iter go cguard
+  | Index (b, is, _) -> go b; ixs is
+  | Struct_lit { sfields; _ } -> Array.iter (fun (_, v) -> go v) sfields
+  | For { var; iter; fbody; _ } -> set var; go iter; block fbody
+  | Set { root; path; value } ->
+    set root;
+    Array.iter (fun (st : step) -> match st.sk with Sindex (is, _) -> ixs is | Sfield _ -> ()) path;
+    go value
+  | Destructure (p, v) -> pat p; go v
+  | Match { subject; arms } -> go subject; Array.iter (fun a -> pat a.pt; Option.iter go a.guard; go a.abody) arms
+
+let zero = function I -> [ I64 0L ] | F -> [ F64 0. ] | V -> [ Rt.missing ]
+
 let rec expr fc (e : expr) (want : kind) : ins list =
   let k, code = natural fc e in
   code @ convert fc ~from:k ~into:want
@@ -289,10 +345,14 @@ and stmt fc (e : expr) : ins list =
     write_var fc n e.pos value k
   | If (c, y, n) -> cond fc c @ [ iff fc Bnone (fun () -> block_stmts fc y) (fun () -> block_stmts fc n) ]
   | While { cond = c; body; _ } ->
-    [ block fc "break" Bnone (fun () ->
-          [ loop fc "loop" Bnone (fun () ->
-                cond fc c @ [ i32_eqz; Br_if (depth_of fc "break") ] @ block_stmts fc body @ tick rt @ [ Br (depth_of fc "loop") ]) ]) ]
-  | For { var; iter; fbody; _ } -> for_loop fc var iter (fun () -> block_stmts fc fbody)
+    let looped cf _ next =
+      [ block cf "break" Bnone (fun () ->
+            [ loop cf "loop" Bnone (fun () ->
+                  cond cf c @ [ i32_eqz; Br_if (depth_of cf "break") ] @ block_stmts cf body @ next ()
+                  @ [ Br (depth_of cf "loop") ]) ]) ]
+    in
+    if fc.ends = [] then outlined fc (c :: Array.to_list body) [] [] (fun _ -> []) looped else looped fc [] (fun () -> tick rt)
+  | For { var; iter; fbody; _ } -> for_loop fc ~outline:(fc.ends = []) ~scanned:(Array.to_list fbody) var iter (fun cf -> block_stmts cf fbody)
   | Break -> [ Br (depth_of fc "break") ]
   | Set { root; path; value } -> set_path fc e root path value
   | Destructure (pt, v) -> destructure fc e pt v
@@ -389,7 +449,7 @@ and var fc e (n : name) : kind * ins list =
   | Local i when fc.locs.(i) >= 0 ->
     let get = [ Lget fc.locs.(i) ] in
     if fc.kinds.(i) = V && fc.fn.maybe_undef.(i) then V, unset_check get else fc.kinds.(i), get
-  | Local i -> V, unset_check [ Gget (cell_global fc.st fc.pm fc.fn.cell_of.(i)) ]
+  | Local i -> V, unset_check [ Gget (cell_global fc.st fc.pm (cell_index fc i)) ]
   | Cell { m; k; stable = true } ->
     (match fc.st.w.modules.(m).cells.(k) with
      | Fun { proto; env = [||] } -> V, [ fn_global fc.st proto ]
@@ -407,7 +467,7 @@ and var fc e (n : name) : kind * ins list =
 and write_var fc (n : name) pos value k =
   match n.b with
   | Local i when fc.locs.(i) >= 0 -> value @ convert fc ~from:k ~into:fc.kinds.(i) @ [ Lset fc.locs.(i) ]
-  | Local i -> value @ convert fc ~from:k ~into:V @ [ Gset (cell_global fc.st fc.pm fc.fn.cell_of.(i)) ]
+  | Local i -> value @ convert fc ~from:k ~into:V @ [ Gset (cell_global fc.st fc.pm (cell_index fc i)) ]
   | Cell { m; k = c; _ } -> value @ convert fc ~from:k ~into:V @ [ Gset (cell_global fc.st m c) ]
   | Unresolved -> unsupported fc pos "an unresolved name"
 
@@ -431,46 +491,141 @@ and array_lit fc e rows =
 
 (* for var in iter: a range counts in an i64 of its own, as the interpreter's for; an array is read cell by cell, its
    count taken at the start. *)
-and for_loop fc (var : name) (iter : expr) body =
+and for_loop fc ~outline ?(scanned = []) (var : name) (iter : expr) body =
   let rt = fc.st.rt in
   let vk = match var.b with Local i when fc.locs.(i) >= 0 -> fc.kinds.(i) | _ -> V in
+  let var_ix = match var.b with Local i -> [ i ] | _ -> [] in
+  let run state init looped =
+    if outline then outlined fc scanned var_ix state init looped
+    else
+      let ls = List.map (fun t -> Rt.local fc.fb t) state in
+      init ls @ looped fc ls (fun () -> tick rt)
+  in
   match iter.e with
   | Range (a, b) ->
-    let i = Rt.local fc.fb I64 and hi = Rt.local fc.fb I64 in
-    bound fc a iter.pos @ [ Lset i ] @ bound fc b iter.pos @ [ Lset hi ]
-    @ [ block fc "break" Bnone (fun () ->
-          [ loop fc "loop" Bnone (fun () ->
-                [ Lget i; Lget hi; i64_gt_s; Br_if (depth_of fc "break") ]
-                @ write_var fc var iter.pos [ Lget i ] I
-                @ [ block fc "continue" Bnone body ]
-                @ tick rt
-                @ [ Lget i; i64 1; i64_add; Lset i; Br (depth_of fc "loop") ]) ]) ]
+    run [ I64; I64 ]
+      (function [ i; hi ] -> bound fc a iter.pos @ [ Lset i ] @ bound fc b iter.pos @ [ Lset hi ] | _ -> assert false)
+      (fun cf ls next ->
+         match ls with
+         | [ i; hi ] ->
+           [ block cf "break" Bnone (fun () ->
+                 [ loop cf "loop" Bnone (fun () ->
+                       [ Lget i; Lget hi; i64_gt_s; Br_if (depth_of cf "break") ]
+                       @ write_var cf var iter.pos [ Lget i ] I
+                       @ [ block cf "continue" Bnone (fun () -> body cf) ]
+                       @ [ Lget i; i64 1; i64_add; Lset i ] @ next () @ [ Br (depth_of cf "loop") ]) ]) ]
+         | _ -> assert false)
   | _ ->
-    let src = Rt.local fc.fb Rt.v and l = Rt.local fc.fb (Rt.nl rt.list) and k = Rt.local fc.fb I32 and n = Rt.local fc.fb I32 in
-    let elem =
-      if vk = F then [ Lget l; struct_get rt.list l_store; Cast (false, T rt.f64s); Lget k; array_get rt.f64s ]
-      else [ Lget l; as_non_null; Lget k; call rt "elem"; call rt "share" ]
-    in
-    expr fc iter V @ [ Lset src;
-                       Lget src; Test (false, T rt.list);
-                       If (Bnone, [], Rt.fail rt (Messages.cant_loop a1) [ [ Lget src; call rt "describe" ] ] (site fc iter.pos));
-                       Lget src; Cast (false, T rt.list); Lset l;
-                       Lget l; I32 0; struct_set rt.list l_owned;
-                       Lget l; as_non_null; call rt "cells"; Lset n; I32 0; Lset k ]
-    @ [ block fc "break" Bnone (fun () ->
-          [ loop fc "loop" Bnone (fun () ->
-                [ Lget k; Lget n; i32_ge_u; Br_if (depth_of fc "break") ]
-                @ write_var fc var iter.pos elem (if vk = F then F else V)
-                @ [ block fc "continue" Bnone body ]
-                @ tick rt
-                @ [ Lget k; I32 1; i32_add; Lset k; Br (depth_of fc "loop") ]) ]) ]
+    run [ Rt.nl rt.list; I32; I32 ]
+      (function
+        | [ l; k; n ] ->
+          let src = Rt.local fc.fb Rt.v in
+          expr fc iter V @ [ Lset src;
+                             Lget src; Test (false, T rt.list);
+                             If (Bnone, [], Rt.fail rt (Messages.cant_loop a1) [ [ Lget src; call rt "describe" ] ] (site fc iter.pos));
+                             Lget src; Cast (false, T rt.list); Lset l;
+                             Lget l; I32 0; struct_set rt.list l_owned;
+                             Lget l; as_non_null; call rt "cells"; Lset n; I32 0; Lset k ]
+        | _ -> assert false)
+      (fun cf ls next ->
+         match ls with
+         | [ l; k; n ] ->
+           let elem =
+             if vk = F then [ Lget l; struct_get rt.list l_store; Cast (false, T rt.f64s); Lget k; array_get rt.f64s ]
+             else [ Lget l; as_non_null; Lget k; call rt "elem"; call rt "share" ]
+           in
+           [ block cf "break" Bnone (fun () ->
+                 [ loop cf "loop" Bnone (fun () ->
+                       [ Lget k; Lget n; i32_ge_u; Br_if (depth_of cf "break") ]
+                       @ write_var cf var iter.pos elem (if vk = F then F else V)
+                       @ [ block cf "continue" Bnone (fun () -> body cf) ]
+                       @ [ Lget k; I32 1; i32_add; Lset k ] @ next () @ [ Br (depth_of cf "loop") ]) ]) ]
+         | _ -> assert false)
+
+(* A loop in a function of its own, its chunk, which runs at most [chunk_size] turns a call and is called again while
+   the loop goes on. The engines run a function first with code made fast (V8's Liftoff, SpiderMonkey's baseline), then,
+   once it has run a while, with optimized code (TurboFan, Ion), but only from its next call: a loop that runs long in
+   the function that holds it would never leave the first code. The chunk gets the variables that the loop reads or
+   writes and its own state (a range's counter and end, an array's cells and place), and gives them back, then a status:
+   0 the loop is over, 1 its turns are spent, 2 the function returns, its result after the variables. *)
+and outlined fc (scanned : expr list) (extra : int list) (state : Wasm.vt list) init looped =
+  let st = fc.st and rt = fc.st.rt in
+  let seen = Hashtbl.create 16 and leaves = ref false and written = Hashtbl.create 16 in
+  List.iter (scan ~written seen leaves) scanned;
+  List.iter (fun i -> Hashtbl.replace written i ()) extra;
+  List.iter (fun i -> Hashtbl.replace seen i ()) extra;
+  let live = List.sort compare (Hashtbl.fold (fun i () acc -> if fc.locs.(i) >= 0 then i :: acc else acc) seen []) in
+  let rk = kind_of fc.ver.ret in
+  let ps = state @ List.map (fun i -> vt_of fc.kinds.(i)) live in
+  let rs = ps @ (if !leaves then [ vt_of rk ] else []) @ [ I32 ] in
+  st.counter <- st.counter + 1;
+  let wf = Wasm.func rt.m (Printf.sprintf "loop%d:%s" st.counter fc.pname) ps rs in
+  let fb = { Rt.f = wf; n = 0; rev = []; tmp = -1 } in
+  let ns = List.length state in
+  let locs = Array.map (fun l -> if l = -1 then -1 else -3) fc.locs in
+  List.iteri (fun j i -> locs.(i) <- ns + j) live;
+  let push = List.init (List.length ps) (fun j -> Lget j) in
+  let rv = if !leaves then Rt.local fb (vt_of rk) else -1 in
+  (* The float arrays read and never written: their floats and count once, at the start. *)
+  let fixed =
+    List.filter_map
+      (fun i ->
+         if fc.ver.tv.(i) == TFA && not (Hashtbl.mem written i) && not fc.fn.maybe_undef.(i) then
+           Some (i, Rt.local fb (Rt.nl rt.f64s), Rt.local fb I32)
+         else None)
+      live
+  in
+  let cf = { fc with fb; locs; labels = []; ends = []; tail = -1; exit = Some (push, rv); fixed } in
+  let turns = Rt.local fb I32 in
+  (* The fuel of the turns taken, at once. *)
+  let spend =
+    [ Gget (fuel rt); i64 chunk_size; Lget turns; i64_extend_u; i64_sub; i64_sub; Gset (fuel rt);
+      Gget (fuel rt); i64 0; i64_le_s; If (Bnone, [ call rt "refuel" ], []) ]
+  in
+  let out status = spend @ push @ (if !leaves then zero rk else []) @ [ I32 status; ret ] in
+  let la = Rt.local fb (Rt.nl rt.list) in
+  let hoist =
+    List.concat_map
+      (fun (i, fs, n) ->
+         [ Lget locs.(i); Test (false, T rt.list);
+           If (Bnone, [ Lget locs.(i); Cast (false, T rt.list); Lset la; Lget la; struct_get rt.list l_store; Test (false, T rt.f64s);
+                        If (Bnone, [ Lget la; struct_get rt.list l_store; Cast (false, T rt.f64s); Lset fs; Lget la; as_non_null; call rt "cells"; Lset n ], []) ], []) ])
+      fixed
+  in
+  wf.body <-
+    hoist @ [ I32 chunk_size; Lset turns;
+      block cf "spent" Bnone (fun () ->
+          looped cf (List.init ns Fun.id) (fun () -> [ Lget turns; I32 1; i32_sub; Ltee turns; i32_eqz; Br_if (depth_of cf "spent") ])
+          @ out 0) ]
+    @ out 1;
+  wf.locals <- List.rev fb.rev;
+  (* The caller: the state made, then the chunk called while its turns are spent. *)
+  let temps = List.map (fun t -> Rt.local fc.fb t) state in
+  let status = Rt.local fc.fb I32 in
+  let back = if !leaves then Rt.local fc.fb (vt_of rk) else -1 in
+  let gets = List.map (fun t -> Lget t) temps @ List.map (fun i -> Lget fc.locs.(i)) live in
+  let sets = List.rev_map (fun l -> Lset l) (temps @ List.map (fun i -> fc.locs.(i)) live) in
+  init temps
+  @ [ block fc "done" Bnone (fun () ->
+        [ loop fc "again" Bnone (fun () ->
+              gets @ [ Call wf.fname; Lset status ] @ (if !leaves then [ Lset back ] else []) @ sets
+              @ [ Lget status; I32 1; i32_eq; Br_if (depth_of fc "again") ]
+              @ (if !leaves then [ Lget status; I32 2; i32_eq; iff fc Bnone (fun () -> leave_with fc [ Lget back ]) (fun () -> []) ] else [])) ]) ]
+
+(* Leaves the function with the result that [value] gives, of its kind: from a loop's chunk, through the chunk's
+   caller. *)
+and leave_with fc value =
+  match fc.exit with
+  | None -> value @ leave fc @ [ ret ]
+  | Some (_, -1) -> failwith "aot: a loop that returns, seen as one that doesn't"
+  | Some (push, rv) -> value @ [ Lset rv ] @ push @ [ Lget rv; I32 2; ret ]
 
 and comprehension fc e cbody cvar csrc cguard =
   let rt = fc.st.rt in
   ignore e;
   let out = Rt.local fc.fb (Rt.nn rt.list) in
   [ call rt "builder"; Lset out ]
-  @ for_loop fc cvar csrc (fun () ->
+  @ for_loop fc ~outline:false cvar csrc (fun fc ->
       let push = [ Lget out ] @ stored fc cbody @ [ call rt "push" ] in
       match cguard with
       | None -> push
@@ -487,12 +642,21 @@ and index_read fc e b ixs uses_end =
      | Range _ -> unsupported fc e.pos "a slice"
      | _ -> ());
     let idx = with_end (fun () -> match kind fc i with I -> expr fc i I | _ -> expr fc i V) in
+    let fixed = match b.e with Var { b = Local v; _ } -> List.find_opt (fun (w, _, _) -> w = v) fc.fixed | _ -> None in
     if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index_v" ]
+    else if kind fc e = F && fixed <> None then begin
+      (* A float array that the loop never writes: its floats and count taken at the chunk's start. *)
+      let _, fs, n = Option.get fixed in
+      let x = Rt.local fc.fb I64 in
+      F, idx @ [ Lset x; Lget x; i64 1; i64_sub; Lget n; i64_extend_u; i64_ge_u;
+                 If (Bnone, expr fc b V @ [ Lget x ] @ site fc e.pos @ [ call rt "index"; drop; unreachable ], []);
+                 Lget fs; Lget x; i32_wrap; I32 1; i32_sub; array_get rt.f64s ]
+    end
     else if ty fc b == TFA && kind fc e = F then
       (* A float array: its cell, checked. *)
       let x = Rt.local fc.fb I64 and l = Rt.local fc.fb (Rt.nl rt.list) in
       F, expr fc b V @ [ Lset base ] @ idx @ [ Lset x; Lget base; Cast (false, T rt.list); Lset l;
-                                               Lget x; i64 1; i64_lt_s; Lget x; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_gt_s; i32_or;
+                                               Lget x; i64 1; i64_sub; Lget l; as_non_null; call rt "cells"; i64_extend_u; i64_ge_u;
                                                If (Bnone, [ Lget base; Lget x ] @ site fc e.pos @ [ call rt "index"; drop ], []);
                                                Lget l; struct_get rt.list l_store; Cast (false, T rt.f64s); Lget x; i32_wrap; I32 1; i32_sub; array_get rt.f64s ]
     else V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index" ]
@@ -516,7 +680,7 @@ and question fc e a =
                   If (Bval I32, [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_shape; struct_get rt.shape 0; text rt name; call rt "bytes_eq" ], [ I32 0 ]) ] in
   let ret_kind = kind_of fc.ver.ret in
   stored fc a @ [ Lset x ]
-  @ is "Ok" @ [ If (Bnone, [], is "Err" @ [ If (Bnone, [ Lget x ] @ convert fc ~from:V ~into:ret_kind @ leave fc @ [ ret ],
+  @ is "Ok" @ [ If (Bnone, [], is "Err" @ [ If (Bnone, leave_with fc ([ Lget x ] @ convert fc ~from:V ~into:ret_kind),
                                                 Rt.fail rt (Messages.question_value a1) [ [ Lget x; call rt "describe" ] ] (site fc e.pos)) ]) ]
   @ [ Lget x; Cast (false, T rt.recd); struct_get rt.recd r_fields; I32 0; array_get rt.vals; call rt "share" ]
 
@@ -527,7 +691,7 @@ and return fc e (r : ret) =
   let k = kind_of fc.ver.ret in
   let value = match r.rvalue with Some v -> if k = V then stored fc v else expr fc v k | None -> [ missing ] @ convert fc ~from:V ~into:k in
   ignore e;
-  value @ leave fc @ [ ret ]
+  leave_with fc value
 
 and closure fc (f : Ast.func) =
   let rt = fc.st.rt in
@@ -551,7 +715,7 @@ and closure fc (f : Ast.func) =
 (* The value of a variable of this function, by its number. *)
 and var_value fc i =
   if fc.locs.(i) >= 0 then fc.kinds.(i), [ Lget fc.locs.(i) ]
-  else V, [ Gget (cell_global fc.st fc.pm fc.fn.cell_of.(i)) ]
+  else V, [ Gget (cell_global fc.st fc.pm (cell_index fc i)) ]
 
 and match_expr fc e subject arms k =
   let rt = fc.st.rt in
@@ -677,7 +841,7 @@ and set_path fc e root path value =
      back (n - 1) [ Lget x ])
   @ (match root.b with
       | Local i when fc.locs.(i) >= 0 -> [ Lset fc.locs.(i) ]
-      | Local i -> [ Gset (cell_global fc.st fc.pm fc.fn.cell_of.(i)) ]
+      | Local i -> [ Gset (cell_global fc.st fc.pm (cell_index fc i)) ]
       | Cell { m; k; _ } -> [ Gset (cell_global fc.st m k) ]
       | Unresolved -> unsupported fc e.pos "an unresolved name")
 
@@ -795,7 +959,7 @@ let compile_version st (v : version) name ~hoisted ~main =
   (* Parameters are numbered from 0 in the tail loop: they are the first locals after the env. *)
   let fc =
     { st; fb; ver = v; fn = f; path = fst (Vec.get st.w.files v.owner.file); pname = v.owner.pname; file = v.owner.file;
-      pm = v.owner.pm; locs; kinds; env; labels = []; ends = []; hoisted; tail = (if main then -1 else 0) }
+      pm = v.owner.pm; locs; kinds; env; labels = []; ends = []; hoisted; tail = (if main then -1 else 0); exit = None; fixed = [] }
   in
   let rk = if main then V else kind_of v.ret in
   let generic = match v.owner.generic with Some g -> g == v | None -> false in
