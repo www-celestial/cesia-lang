@@ -192,7 +192,7 @@ Of the standard library, these compile: `io.Print`; `math.Div`, `Mod`, `Abs`, `F
 `Pairs`; `text.ByteLength`, `Byte`, `ByteSlice`, `ByteFind`, `StartsWith`, `EndsWith`, `Contains`, `Find`, `Slice`,
 `Split`, `Join`, `Replace`, `Trim`, `Lower`, `Upper`, `Repeat`, `Chars`, `Code`, `Char`, `Number`, `Decimals`, `Str`,
 `Numbers`, `FromNumbers`, `Bytes`, `FromBytes`, `PadLeft`, `PadRight`, `IsUtf8` and `ByteFindAny` (without `not`); `date.Local`, on the
-clock of the page; `http.Fetch`; `json.Parse` and `json.Text`; `columns.Pick`, `Positions`, `Kind`, `Groups` and `Split`;
+clock of the page; `encode.Hex` and the rest of `std/encode`; `http.Fetch`; `json.Parse` and `json.Text`; `columns.Pick`, `Positions`, `Kind`, `Groups` and `Split`;
 `regex.Test`; `random.Float`; `value.Len`, `Text`, `Equal`, `Size` and the tests `IsInt` to `IsMissing`; and the
 packages written in Cesia, as `std/result`, `std/plot`, `std/check` or `std/websocket`, as far as they use what this
 table compiles: a shape of `std/check` reads a form in a page as it reads the body of a request on the server.
@@ -200,7 +200,7 @@ The fibers have [their section](#fibers).
 
 A page has no interpreter to call a native of: the compiler writes each one in WebAssembly, or, where Cesia says it as
 well and fast enough, takes a version of its package written in Cesia, in `src/web/` of Cesia's sources: `list.ce`,
-`json.ce`, `columns.ce`, `matrix.ce`, `regex.ce`, `text.ce`, `date.ce`, `http.ce` and `websocket.ce`, each function the
+`json.ce`, `columns.ce`, `matrix.ce`, `regex.ce`, `text.ce`, `date.ce`, `encode.ce`, `http.ce` and `websocket.ce`, each function the
 native of the same name, with its results and its errors. `regex.Test` runs the `RegExp` of the page: its patterns are
 JavaScript's, which the common ones, classes, groups, anchors and repeats, share with Cesia's. `date.Local` reads the
 clock of the page, in the browser's time zone. `http.Fetch` runs the page's `fetch`: a URL may be a path of the page's

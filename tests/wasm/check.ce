@@ -2,6 +2,7 @@
    versions of src/web give (FromBytes, IsUtf8, ByteFindAny, PadLeft, PadRight, Local), the same as cesia run. *)
 use std/check
 use std/date
+use std/encode
 use std/io
 use std/json
 use std/text
@@ -17,3 +18,4 @@ io.Print(text.IsUtf8(text.FromBytes([0xC3, 0xA9])), text.IsUtf8(text.FromBytes([
 io.Print(text.ByteFindAny("\"\\$", 1, "ab\\c"), text.ByteFindAny(" \t", 4, "let  x"), text.ByteFindAny("xyz", 1, "abc"))
 io.Print(text.PadLeft(3, "0", "7"), text.PadRight(3, ".", "7"), text.PadLeft(5, "ab", "x"), text.PadLeft(2, "0", "123"))
 io.Print(date.ToUnix(date.Local(1793534400)), date.Format(date.Utc(date.Local(1793534400))))
+io.Print(encode.Hex("hé"), encode.UrlEncode("a b/é"), encode.Base64("hi"))

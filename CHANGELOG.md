@@ -234,7 +234,8 @@
 - In a page, `std/check` reads a shape as on the server, the same values and the same messages: the forms of a page and
   the body of its request are checked by one definition. `http.Fetch` is the page's `fetch`, a path of its origin
   allowed, its cookies sent, `peer` refused (the browser doesn't tell the address); `date.Local` is on the clock of the
-  page; `text.Bytes`, `FromBytes`, `PadLeft`, `PadRight`, `IsUtf8` and `ByteFindAny` compile.
+  page; `encode.Hex` and so `std/encode`, `text.Bytes`, `FromBytes`, `PadLeft`, `PadRight`, `IsUtf8` and
+  `ByteFindAny` compile.
 - `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them

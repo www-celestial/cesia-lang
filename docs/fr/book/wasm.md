@@ -199,7 +199,7 @@ De la bibliothèque standard, ceci compile : `io.Print` ; `math.Div`, `Mod`, `Ab
 `Pairs` ; `text.ByteLength`, `Byte`, `ByteSlice`, `ByteFind`, `StartsWith`, `EndsWith`, `Contains`, `Find`, `Slice`,
 `Split`, `Join`, `Replace`, `Trim`, `Lower`, `Upper`, `Repeat`, `Chars`, `Code`, `Char`, `Number`, `Decimals`, `Str`,
 `Numbers`, `FromNumbers`, `Bytes`, `FromBytes`, `PadLeft`, `PadRight`, `IsUtf8` et `ByteFindAny` (sans `not`) ; `date.Local`, à
-l'horloge de la page ; `http.Fetch` ; `json.Parse` et `json.Text` ; `columns.Pick`, `Positions`, `Kind`, `Groups` et `Split` ;
+l'horloge de la page ; `encode.Hex` et le reste de `std/encode` ; `http.Fetch` ; `json.Parse` et `json.Text` ; `columns.Pick`, `Positions`, `Kind`, `Groups` et `Split` ;
 `regex.Test` ; `random.Float` ; `value.Len`, `Text`, `Equal`, `Size` et les tests `IsInt` à `IsMissing` ; et les
 packages écrits en Cesia, comme `std/result`, `std/plot`, `std/check` ou `std/websocket`, pour autant qu'ils n'utilisent
 que ce que ce tableau compile : une shape (une forme, ce que doit être une valeur) de `std/check` lit un formulaire dans
@@ -208,7 +208,7 @@ une page comme elle lit le body d'une requête sur le serveur. Les fibers ont [l
 Une page n'a pas d'interpréteur dont appeler une native (une fonction de la bibliothèque écrite dans le langage de
 l'interpréteur) : le compilateur écrit chacune en WebAssembly, ou, là où Cesia la dit aussi bien et assez vite, prend une
 version de son package écrite en Cesia, dans `src/web/` des sources de Cesia : `list.ce`, `json.ce`, `columns.ce`,
-`matrix.ce`, `regex.ce`, `text.ce`, `date.ce`, `http.ce` et `websocket.ce`, chaque fonction la native du même nom, avec
+`matrix.ce`, `regex.ce`, `text.ce`, `date.ce`, `encode.ce`, `http.ce` et `websocket.ce`, chaque fonction la native du même nom, avec
 ses résultats et ses erreurs. `regex.Test` lance la `RegExp` de la page : ses patterns sont ceux de JavaScript, que les
 courants, classes, groupes, ancres et répétitions, partagent avec ceux de Cesia. `date.Local` lit l'horloge de la page,
 dans le fuseau horaire du navigateur. `http.Fetch` lance le `fetch` de la page : une URL peut être un chemin de l'origine

@@ -1,0 +1,18 @@
+(** std/encode in a program compiled to WebAssembly: Hex, its native, in Cesia, which cesia build --target wasm takes for
+    std/encode's of the same name, with the same result; UrlEncode and the others of std/encode follow it. *)
+use std/list
+use std/math
+use std/text
+
+digits = "0123456789abcdef"   (* The figures of hexadecimal, in lower case. *)
+
+defn Hex(s)
+  (** The hexadecimal text of the bytes of a text, in lower case. *)
+  out = []
+  for b in text.Bytes(s)
+    hi = math.Div(b, 16) + 1
+    lo = math.Mod(b, 16) + 1
+    out = list.Append(text.Slice(lo, lo, digits), list.Append(text.Slice(hi, hi, digits), out))
+  end
+  text.Join("", out)
+end
