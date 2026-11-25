@@ -1,7 +1,8 @@
 (** Cryptography through libsodium: never written by hand here. Run with --allow ffi=sodium.
     Texts hold bytes: encode.Hex and encode.Base64 give them a printable form. Blake2b and IsSame don't go through
     libsodium: blake2b, a native of this package, is OCaml's own BLAKE2b, the reference code of RFC 7693, the same bytes
-    in 0.3 µs where a call through std/c took 18; isSame compares in OCaml, every byte read. They take s as the others do. *)
+    in 0.47 µs where a call through std/c took 3.6; isSame compares in OCaml, every byte read, in 0.16 µs where it took
+    3.4. They take s as the others do. *)
 use std/c
 use std/bug
 use std/list

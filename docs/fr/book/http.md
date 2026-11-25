@@ -67,6 +67,74 @@ ask("/nowhere").Status -->
 
 Un chemin qu'aucune route ne prend reçoit un `404`.
 
+## Comment une requête trouve sa route
+
+La première route ajoutée qui prend le chemin, puis la méthode, répond. Une partie écrite d'un motif ne prend qu'elle-même,
+une partie avec `:` n'importe quel mot, et un `*` final le reste du chemin. Une route de `:id` ajoutée avant celle de `me`
+prendrait aussi `/users/me` ; ajoutée après, comme ici, elle prend les autres mots :
+
+```cesia
+users = http.App()
+  then http.Get("/users/me", r -> http.Plain("you"))
+  then http.Get("/users/:id", r -> http.Plain("user $(r.Params.id)"))
+askUsers(method, path) = http.Handler(users)({Method: method, Path: path, Query: "", Headers: [], Body: ""})
+askUsers("GET", "/users/me").Body -->
+askUsers("GET", "/users/7").Body -->
+askUsers("HEAD", "/users/7").Status -->
+askUsers("DELETE", "/users/7").Status -->
+```
+
+Le chemin vient d'abord : un chemin que seules des routes d'autres méthodes prennent reçoit un `405`, Method Not Allowed
+(méthode non permise), et un `HEAD` la route de son `GET`, dont le serveur laisse le corps de côté.
+
+[http.Handler] range les routes, une fois, dans un [trie](glossary.md#trie) des parties de leurs chemins, un arbre où
+chaque niveau est choisi par une partie : chaque partie écrite mène à une branche à elle, trouvée par une table de
+hachage, et les parties `:` d'une même place partagent une branche. Une requête suit les parties de son propre chemin dans
+l'arbre, si bien que trouver sa route coûte autant parmi 500 routes que parmi 5. Chaque route garde sa place dans l'ordre
+où elles ont été ajoutées, et la marche laisse de côté une branche dont toutes les routes viennent après celle déjà
+trouvée : la réponse est toujours celle que donneraient les routes essayées une à une, ce que `tests/lang/http-routes.ce`
+vérifie sur des ensembles de routes tirés au hasard.
+
+Une API de 200 routes, 40 ressources avec leur liste, leur création, un élément, son changement et sa suppression :
+
+```cesia
+defn api(resources)
+  a = http.App()
+  for name in resources
+    a = a
+      then http.Get("/api/v1/$name", r -> http.Json([]))
+      then http.Post("/api/v1/$name", r -> http.Json({Made: true}, status = 201))
+      then http.Get("/api/v1/$name/:id", r -> http.Json({Id: r.Params.id}))
+      then http.Put("/api/v1/$name/:id", r -> http.Json({Changed: r.Params.id}))
+      then http.Delete("/api/v1/$name/:id", r -> http.Plain("", status = 204))
+  end
+  a
+end
+shopApi = http.Handler(api(["res$i" for i in 1..40]))
+askApi(method, path) = shopApi({Method: method, Path: path, Query: "", Headers: [], Body: ""})
+askApi("GET", "/api/v1/res40/7").Body -->
+askApi("PATCH", "/api/v1/res40/7").Status -->
+```
+
+Ce que cela coûte, mesuré le 2026-11-25 sur la machine de [Vitesse](speed.md#à-côté-des-géants) : le handler appelé avec
+une requête et sans réseau, donc la route, ses params et la réponse du handler, en microsecondes, les médianes de 5
+lancements alternés avec la version d'avant l'arbre, qui essayait les routes une à une, et à côté du `ServeMux` de Go
+1.26.3 qui fait la même chose, son `ServeHTTP` appelé directement.
+
+| Routes, et celle demandée | Une à une | L'arbre | Le `ServeMux` de Go |
+|---|---:|---:|---:|
+| 10, la première | 3,0 | 3,1 | 0,32 |
+| 10, la dernière | 6,7 | 2,8 | 0,30 |
+| 100, la dernière | 44,8 | 2,8 | 0,28 |
+| 500, la dernière | 235 | 2,9 | 0,33 |
+| 500, un chemin qu'aucune ne prend : un `404` | 243 | 0,84 | 1,48 |
+| l'API ci-dessus, son dernier élément | 159 | 3,5 | 0,36 |
+
+Go est de 8 à 12 fois plus rapide sur une route qui répond, puisque son handler est compilé là où celui de Cesia tourne
+dans l'interpréteur : une requête qu'aucune route ne prend ne lance aucun handler, et reçoit son `404` de Cesia en
+0,84 µs, plus vite que Go. L'arbre coûte une fois ce que les routes essayées une à une ne coûtaient pas : 91 µs à
+construire pour les 200 routes de l'API, quand [http.Handler] est appelé, au démarrage d'un serveur.
+
 ## Du JSON en entrée
 
 [http.BodyJson] lit le corps d'une requête comme du JSON. Avec `From`, le corps est vérifié avant que votre code s'en
@@ -140,6 +208,12 @@ Lancez-le, et interrogez-le depuis un autre terminal :
 cesia run --allow net=:8080 shop.ce
 curl localhost:8080/hello/Ana
 ```
+
+Chaque réponse qu'il envoie a un en-tête `Date`, l'heure de la réponse dans la forme de la RFC 9110 (section 5.6.7), comme
+`date: Wed, 25 Nov 2026 13:40:00 GMT`, puisqu'un serveur qui a une horloge doit en envoyer un (section 6.6.1) : les caches
+et les clients y lisent l'âge d'une réponse. Le serveur récrit la ligne quand la seconde change, pas à chaque réponse. Un
+handler qui met sa propre `Date`, par [http.WithHeader], la garde ; les réponses de [http.Handler], qu'aucun réseau ne
+porte, n'en ont pas.
 
 ### Arrêter
 
