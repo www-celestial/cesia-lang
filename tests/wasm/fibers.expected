@@ -1,0 +1,25 @@
+[1, 2, 3] Ok("done")
+timeout
+Ok(1) Ok(2)
+timeout a
+sent
+timeout true
+timeout
+cancelled
+The fiber was cancelled here.
+Ok(1) closed
+closed
+fibers.ce:63:38: Can't add the number 1 and the text "a".
+  63 | bad = fiber.Wait(fiber.Spawn(() -> 1 + "a"))
+     |                                      ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in <anonymous> (fibers.ce:63)
+type 63
+fibers.ce:65:42: x
+  65 | io.Print(fiber.Wait(fiber.Spawn(() -> bug.Panic("x"))).Error.Kind)
+     |                                          ^
+  in <anonymous> (fibers.ce:65)
+user
+25050
+<channel 1> <task 2>
+exit 0

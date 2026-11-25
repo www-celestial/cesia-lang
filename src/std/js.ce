@@ -1,0 +1,17 @@
+(** JavaScript, for a program that cesia build --target wasm compiled: it runs in a page or in Node, and Call calls a
+    function of a JavaScript module beside it. That is the one way out; the one way in is a channel given to Call, which
+    JavaScript fills. cesia run has no JavaScript: there, Call is a bug. *)
+use std/bug
+
+defn Call(module, name, args)
+  (** Calls the function name of the JavaScript module module, both texts written in the call: a path beside the Cesia
+      file that calls it, as "./page.js", which cesia build puts beside the program, or "cesia:websocket" and
+      "cesia:regex", the loader's own. args is a list, each argument given to the
+      function as JavaScript takes it: a text as a Uint8Array of its bytes, a number as a number, a boolean as a boolean,
+      missing as null, a list as an array, and a channel of std/fiber as a handle whose send(value) puts a value in it
+      and close() closes it, which JavaScript keeps to send values later, as events come. What the function gives comes
+      back the same way: a string as its UTF-8, bytes as a text, a number as an integer when it is whole, null or
+      undefined as missing, an array as a list. Anything else, a dictionary or a function, is an error. The chapter
+      Compiling to WebAssembly of the book shows a page that counts its clicks so. *)
+  bug.Panic("js.Call($module, $name) runs only in a program that cesia build --target wasm compiled, in a page or in Node.")
+end

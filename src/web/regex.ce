@@ -1,0 +1,6 @@
+(** std/regex in a program compiled to WebAssembly: Test by the RegExp of the page or of Node, through js.Call, which
+    cesia build --target wasm takes for regex.Test. Its patterns are JavaScript's, which the common ones share with
+    Cesia's: classes, groups, anchors, repeats. *)
+use std/js
+
+Test(pattern, s) = js.Call("cesia:regex", "Test", [pattern, s])   (** Does the pattern match somewhere in the text? *)

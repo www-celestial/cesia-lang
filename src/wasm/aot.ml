@@ -35,6 +35,8 @@ type st = {
   rt : Rt.t;
   sites : string Vec.t;
   site_ids : (string, int) Hashtbl.t;
+  site_texts : string Vec.t;  (* the texts that sites name, each once *)
+  text_ids : (string, int) Hashtbl.t;
   mutable vers : (version * string) list;
   mutable todo : version list;
   mutable lambdas : (Ast.func * proto) list;
@@ -44,6 +46,8 @@ type st = {
   shape_ids : (string, shape option) Hashtbl.t;  (* by keys: the typed map, or none for keys that stay general *)
   mutable reads : (Ast.func * (int, string list) Hashtbl.t) list;  (* each function's variables: the fields read of them *)
   mutable nums : (Ast.func * (int, kind option) Hashtbl.t) list;  (* each function's variables guessed to hold numbers *)
+  pages : (string, int) Hashtbl.t;  (* a package of std/, std/text, to the module of its version for a page *)
+  mutable scripts : (string * string) list;  (* the JavaScript modules that js.Call names: each file, and its name beside the program *)
 }
 
 (* A function being compiled. *)
@@ -96,6 +100,12 @@ let json_text s =
   Buffer.add_char b '"';
   Buffer.contents b
 
+(* A text of the table of sites: its place there, each text once. *)
+let intern st x =
+  match Hashtbl.find_opt st.text_ids x with
+  | Some k -> k
+  | None -> let k = Vec.length st.site_texts in Vec.add_last st.site_texts x; Hashtbl.replace st.text_ids x k; k
+
 let site_at st file pos fname =
   let path, src = Vec.get st.w.files file in
   let key = Printf.sprintf "%d:%d:%s" file pos fname in
@@ -105,10 +115,17 @@ let site_at st file pos fname =
     let full = Loader.format_error ~source:(Some src) ~path ~pos ~text:"" ~hint:None ~trace:[] in
     let cut = String.index full '\n' in
     let header = String.sub full 0 cut and excerpt = String.sub full (cut + 1) (String.length full - cut - 1) in
-    let place = if fname = "" then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
+    (* A page's version of a package stands in for natives, which no trace names. *)
+    let place = if fname = "" || String.starts_with ~prefix:"std/page/" path then "" else Printf.sprintf "%s (%s:%d)" fname path (Pos.line pos) in
     let lib = String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path in
     let i = Vec.length st.sites in
-    Vec.add_last st.sites (Printf.sprintf "[%s,%s,%s,%d]" (json_text header) (json_text excerpt) (json_text place) (if lib then 1 else 0));
+    (* Its header, its line of code and the line of its caret, the function it is in, whether in a library, and its file
+       and line, which a fiber's panic gives its task: each text once in the table, the sites of a line share it. *)
+    let line_end = match String.index_opt excerpt '\n' with Some k -> k + 1 | None -> String.length excerpt in
+    let t x = string_of_int (intern st x) in
+    Vec.add_last st.sites
+      (String.concat "," [ t header; t (String.sub excerpt 0 line_end); t (String.sub excerpt line_end (String.length excerpt - line_end)); t place;
+                           (if lib then "1" else "0"); t path; string_of_int (Pos.line pos) ]);
     Hashtbl.replace st.site_ids key i;
     i
 
@@ -162,6 +179,15 @@ let ver_name st (v : version) =
     n
 
 let has_env (f : Ast.func) = Array.length f.captures > 0
+
+(* The function of a page's version of a package, of this name: Plugin prepares those of src/web/. *)
+let page_fun st pkg name =
+  match Hashtbl.find_opt st.pages pkg with
+  | Some pm ->
+    (match List.assoc_opt name st.w.modules.(pm).mnames with
+     | Some c -> (match st.w.modules.(pm).cells.(c) with Fun { proto; env = [||] } -> Some proto | _ -> None)
+     | None -> None)
+  | None -> None
 
 let ready w (v : version) = if v.state <> 2 then Infer.run w v
 
@@ -234,6 +260,11 @@ let cell_global st m k =
 type native_call = fc -> expr array -> pos -> kind -> ins list
 
 let natives : (string * string, native_call) Hashtbl.t = Hashtbl.create 32
+
+(* Natives whose arguments may be named or left out, as their parameters say: each argument in its parameter's place. *)
+type bound_call = fc -> expr option array -> pos -> kind -> ins list
+
+let with_names : (string * string, bound_call) Hashtbl.t = Hashtbl.create 16
 
 (* The variables of the function that this code reads or writes, into [seen], and whether it can leave the function
    (a return, a ?). A function defined in it has its own variables, but reads here those it captures. *)
@@ -484,7 +515,7 @@ and natural fc (e : expr) : kind * ins list =
   | Call call -> call_expr fc e call
   | Lambda f -> V, closure fc f
   | Range (a, b) -> V, bound fc a e.pos @ bound fc b e.pos @ site fc e.pos @ [ call rt "range" ]
-  | In_op _ -> unsupported fc e.pos "in"
+  | In_op (a, b) -> V, expr fc a V @ expr fc b V @ site fc e.pos @ [ call rt "member" ]
   | Array_lit rows -> V, array_lit fc e rows
   | Comp { cbody; cvar; csrc; cguard } -> V, comprehension fc e cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read fc e b ixs uses_end
@@ -716,7 +747,10 @@ and var fc e (n : name) : kind * ins list =
      | Text s when fc.st.w.modules.(m).path = "" -> V, [ text rt s ]
      | (True | False) as b when fc.st.w.modules.(m).path = "" -> V, [ if b = True then g_true rt else g_false rt ]
      | Missing when fc.st.w.modules.(m).path = "" -> V, [ missing ]
-     | Native nat -> unsupported fc e.pos ("the native " ^ nat.nname ^ " as a value")
+     | Native nat ->
+       (match page_fun fc.st fc.st.w.modules.(m).mname nat.nname with
+        | Some p -> V, [ fn_global fc.st p ]
+        | None -> unsupported fc e.pos ("the native " ^ nat.nname ^ " as a value"))
      | _ -> V, unset_check [ Gget (cell_global fc.st m k) ])
   | Cell { m; k; _ } -> V, unset_check [ Gget (cell_global fc.st m k) ]
   | Unresolved -> unsupported fc e.pos "an unresolved name"
@@ -890,18 +924,26 @@ and comprehension fc e cbody cvar csrc cguard =
       | Some g -> cond fc g @ [ iff fc Bnone (fun () -> push) (fun () -> []) ])
   @ [ Lget out; call rt "built" ]
 
+(* An index of a dimension as Rtstd's read1 and read2 take it: its kind (0 a whole number, 1 a slice, 3 a value to
+   tell), its bounds and its value. *)
+and ix_operands fc pos (i : expr) =
+  match i.e with
+  | Range (a, b) -> [ I32 1 ] @ bound fc a pos @ bound fc b pos @ [ missing ]
+  | _ -> (match kind fc i with I -> [ I32 0 ] @ expr fc i I @ [ i64 0; missing ] | _ -> [ I32 3; i64 0; i64 0 ] @ expr fc i V)
+
 and index_read fc e b ixs uses_end =
   let rt = fc.st.rt in
+  let base = Rt.local fc.fb Rt.v in
+  let with_end f = if uses_end then (fc.ends <- base :: fc.ends; let r = f () in fc.ends <- List.tl fc.ends; r) else f () in
   match ixs with
+  | [| Ix ({ e = Range _; _ } as i) |] ->
+    V, expr fc b V @ [ Lset base; Lget base ] @ with_end (fun () -> ix_operands fc e.pos i) @ site fc e.pos @ [ call rt "read1" ]
+  | [| Ix i; Ix j |] when not uses_end ->
+    V, expr fc b V @ ix_operands fc e.pos i @ ix_operands fc e.pos j @ site fc e.pos @ [ call rt "read2" ]
   | [| Ix i |] ->
-    let base = Rt.local fc.fb Rt.v in
-    let with_end f = if uses_end then (fc.ends <- base :: fc.ends; let r = f () in fc.ends <- List.tl fc.ends; r) else f () in
-    (match i.e with
-     | Range _ -> unsupported fc e.pos "a slice"
-     | _ -> ());
     let idx = with_end (fun () -> match kind fc i with I -> expr fc i I | _ -> expr fc i V) in
     let fixed = match b.e with Var { b = Local v; _ } -> List.find_opt (fun (w, _, _) -> w = v) fc.fixed | _ -> None in
-    if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base ] @ idx @ site fc e.pos @ [ call rt "index_v" ]
+    if kind fc i <> I then V, expr fc b V @ [ Lset base; Lget base; I32 3; i64 0; i64 0 ] @ idx @ site fc e.pos @ [ call rt "read1" ]
     else if kind fc e = F && fixed <> None then begin
       (* A float array that the loop never writes: its floats and count taken at the chunk's start. *)
       let _, fs, n = Option.get fixed in
@@ -1167,6 +1209,8 @@ and set_path fc e root path value =
   let cs = Array.init n (fun _ -> Rt.local fc.fb Rt.v) in
   let vix (st : step) = match st.sk with Sindex ([| Ix i |], _) -> kind fc i <> I | _ -> false in
   let idx = Array.map (fun st -> Rt.local fc.fb (if vix st then Rt.v else I64)) path in
+  (* A step of two whole numbers: their locals. *)
+  let two = Array.make n None in
   let read_step j (st : step) =
     match st.sk with
     | Sindex ([| Ix i |], uses_end) ->
@@ -1174,27 +1218,34 @@ and set_path fc e root path value =
       let code = (match kind fc i with I -> expr fc i I | _ -> expr fc i V) @ [ Lset idx.(j) ] in
       if uses_end then fc.ends <- List.tl fc.ends;
       code
+    | Sindex ([| Ix x; Ix y |], false) ->
+      let li = Rt.local fc.fb I64 and lj = Rt.local fc.fb I64 in
+      let whole x = match kind fc x with I -> expr fc x I | _ -> expr fc x V @ site fc st.sp @ [ call rt "whole" ] in
+      two.(j) <- Some (li, lj);
+      whole x @ [ Lset li ] @ whole y @ [ Lset lj ]
     | Sindex _ -> unsupported fc st.sp "this index"
     | Sfield _ -> []
   in
   let get_step j (st : step) =
-    match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt (if vix st then "index_v" else "index") ]
-    | Sfield name -> [ Lget cs.(j); text rt name; cache rt ] @ site fc st.sp @ [ call rt "field" ]
+    match st.sk, two.(j) with
+    | Sindex _, Some (li, lj) -> [ Lget cs.(j); I32 0; Lget li; i64 0; missing; I32 0; Lget lj; i64 0; missing ] @ site fc st.sp @ [ call rt "read2" ]
+    | Sindex _, None -> [ Lget cs.(j); Lget idx.(j) ] @ site fc st.sp @ [ call rt (if vix st then "index_v" else "index") ]
+    | Sfield name, _ -> [ Lget cs.(j); text rt name; cache rt ] @ site fc st.sp @ [ call rt "field" ]
   in
   let set_step j (st : step) v =
-    match st.sk with
-    | Sindex _ -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt (if vix st then "set_index_v" else "set_index") ]
-    | Sfield name -> [ Lget cs.(j); text rt name ] @ v @ site fc st.sp @ [ call rt "set_field" ]
+    match st.sk, two.(j) with
+    | Sindex _, Some (li, lj) -> [ Lget cs.(j); Lget li; Lget lj ] @ v @ site fc st.sp @ [ call rt "write2" ]
+    | Sindex _, None -> [ Lget cs.(j); Lget idx.(j) ] @ v @ site fc st.sp @ [ call rt (if vix st then "set_index_v" else "set_index") ]
+    | Sfield name, _ -> [ Lget cs.(j); text rt name ] @ v @ site fc st.sp @ [ call rt "set_field" ]
   in
   let x = Rt.local fc.fb Rt.v in
   (* The indexes and the value first, as the interpreter evaluates them, then the reads down the path. *)
   let own = if n > 1 then [ call rt "own" ] else [] in
-  get @ own @ [ Lset cs.(0) ]
-  @ List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ own @ [ Lset cs.(j) ] else []) @ read_step j st) steps)
-  @ stored fc value @ [ Lset x ]
-  @ (let rec back j v = if j < 0 then v else back (j - 1) (set_step j (List.nth steps j) v) in
-     back (n - 1) [ Lget x ])
+  (* In this order: the reads make the locals of the steps that the writes use. *)
+  let down = List.concat (List.mapi (fun j st -> (if j > 0 then get_step (j - 1) (List.nth steps (j - 1)) @ own @ [ Lset cs.(j) ] else []) @ read_step j st) steps) in
+  let value = stored fc value in
+  let up = let rec back j v = if j < 0 then v else back (j - 1) (set_step j (List.nth steps j) v) in back (n - 1) [ Lget x ] in
+  get @ own @ [ Lset cs.(0) ] @ down @ value @ [ Lset x ] @ up
   @ (match root.b with
       | Local i when fc.locs.(i) >= 0 -> [ Lset fc.locs.(i) ]
       | Local i -> [ Gset (cell_global fc.st fc.pm (cell_index fc i)) ]
@@ -1207,6 +1258,21 @@ and call_expr fc e (call : call) : kind * ins list =
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; text } ->
     (match w.modules.(m).cells.(k) with
+     | Native nat when Hashtbl.mem with_names (w.modules.(m).mname, nat.nname) ->
+       let slots = Array.make (max nat.max_args (Array.length call.args)) None in
+       let k = ref 0 in
+       Array.iter
+         (fun (a : arg) ->
+            match a.aname with
+            | None -> if !k < Array.length slots then slots.(!k) <- Some a.value; incr k
+            | Some n ->
+              (match Array.find_index (String.equal n) nat.params with
+               | Some j -> slots.(j) <- Some a.value
+               | None -> unsupported fc e.pos (Printf.sprintf "the argument %s of %s" n text)))
+         call.args;
+       if !k > nat.max_args then unsupported fc e.pos (Printf.sprintf "%s with %d arguments" text !k);
+       let k = kind fc e in
+       k, (Hashtbl.find with_names (w.modules.(m).mname, nat.nname)) fc slots e.pos k
      | Native nat ->
        let key = (w.modules.(m).mname, nat.nname) in
        (match Hashtbl.find_opt natives key with
@@ -1214,10 +1280,45 @@ and call_expr fc e (call : call) : kind * ins list =
           if Array.exists (fun (a : arg) -> a.aname <> None) call.args then unsupported fc e.pos ("named arguments of " ^ text);
           let k = kind fc e in
           k, f fc (Array.map (fun (a : arg) -> a.value) call.args) e.pos k
-        | None -> unsupported fc e.pos (Printf.sprintf "%s.%s" (fst key) nat.nname))
-     | Fun { proto; env = [||] } -> static_call fc e call proto
+        | None ->
+          (match page_fun fc.st (fst key) nat.nname with
+           | Some p -> static_call fc e call p
+           | None -> unsupported fc e.pos (Printf.sprintf "%s.%s" (fst key) nat.nname)))
+     | Fun { proto; env = [||] } ->
+       let path = w.modules.(proto.pm).path in
+       if path = "std/js.ce" && proto.pname = "Call" then js_call fc e call
+       else
+         (* A package that a page has a version of: its function of the same name. *)
+         (match page_fun fc.st (Filename.remove_extension path) proto.pname with
+          | Some p when p != proto -> static_call fc e call p
+          | _ -> static_call fc e call proto)
      | _ -> dynamic_call fc e call)
   | _ -> dynamic_call fc e call
+
+(* js.Call(module, name, args): an import of the module named, which the loader finds beside the program; both texts
+   written in the call, so that the module's imports say all that a page calls. *)
+and js_call fc e (call : call) =
+  let rt = fc.st.rt in
+  match Array.map (fun (a : arg) -> a.aname, a.value) call.args with
+  | [| None, { e = Ltext m; _ }; None, { e = Ltext n; _ }; None, args |] ->
+    (* A path is the file's beside the code that calls it, as a use: the build puts it beside the program. *)
+    let m =
+      if String.contains m ':' then m
+      else begin
+        let file = Filename.concat (Filename.dirname fc.path) m in
+        let base = Filename.basename m in
+        (match List.assoc_opt base (List.map (fun (f, b) -> b, f) fc.st.scripts) with
+         | Some f when f <> file -> unsupported fc e.pos (Printf.sprintf "two JavaScript modules named %s: %s and %s" base f file)
+         | Some _ -> ()
+         | None -> fc.st.scripts <- (file, base) :: fc.st.scripts);
+        "./" ^ base
+      end
+    in
+    let name = "js:" ^ m ^ "#" ^ n in
+    Wasm.import rt.m name m n [ Rt.v ] [ Rt.v ];
+    Rt.for_js rt;
+    V, expr fc args V @ [ Call name ]
+  | _ -> unsupported fc e.pos "js.Call without its module and name written as texts, then its list of arguments"
 
 and static_call fc e (call : call) (proto : proto) =
   let rt = fc.st.rt in
@@ -1464,8 +1565,11 @@ let () =
       arity fc pos args 1;
       expr fc args.(0) V @ [ call fc.st.rt "len" ] @ convert fc ~from:I ~into:k);
   reg "value" "Text" (fun fc args pos k ->
-      arity fc pos args 1;
-      expr fc args.(0) V @ [ call fc.st.rt "text_of" ] @ convert fc ~from:V ~into:k);
+      if Array.length args = 2 then expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt "text_upto" ] @ convert fc ~from:V ~into:k
+      else begin
+        arity fc pos args 1;
+        expr fc args.(0) V @ [ call fc.st.rt "text_of" ] @ convert fc ~from:V ~into:k
+      end);
   reg "value" "Equal" (fun fc args pos k ->
       arity fc pos args 2;
       let rt = fc.st.rt in
@@ -1473,6 +1577,10 @@ let () =
   let filled pkg name fill =
     reg pkg name (fun fc args pos k ->
         let rt = fc.st.rt in
+        match fill, args with
+        | Some x, [| r; c |] -> x @ expr fc r V @ expr fc c V @ site fc pos @ [ call rt "fill2" ] @ convert fc ~from:V ~into:k
+        | None, [| x; r; c |] -> stored fc x @ expr fc r V @ expr fc c V @ site fc pos @ [ call rt "fill2" ] @ convert fc ~from:V ~into:k
+        | _ ->
         let x, size = match fill, args with Some x, [| n |] -> x, n | None, [| x; n |] -> stored fc x, n | _ -> unsupported fc pos "these sizes" in
         let g = "fill" in
         if not (Hashtbl.mem Rt.defs g) then
@@ -1539,6 +1647,109 @@ let () =
   filled "matrix" "Zeros" (Some [ F64 0.; Call "box_f" ]);
   filled "matrix" "Ones" (Some [ F64 1.; Call "box_f" ])
 
+(* Fibers: std/fiber and the waits of std/sys, on the loader's scheduler (Rt). *)
+let () =
+  let reg pkg name f = Hashtbl.replace with_names ("std/" ^ pkg, name) f in
+  let opt fc = function Some a -> expr fc a V | None -> [ missing ] in
+  let give fc k code = code @ convert fc ~from:V ~into:k in
+  (* The start of a fiber, which the loader calls: its function, then its task's result. *)
+  let fiber_entry st =
+    let rt = st.rt in
+    if not (Wasm.has_func rt.m "x_fiber") then begin
+      let f = Wasm.func rt.m "x_fiber" [ Rt.nn rt.fib; Rt.nn rt.fn ] [] in
+      let call0 = dyn_call st 0 in
+      f.body <-
+        [ Lget 0; Gset (Rt.current rt); I32 0; Gset (depth rt); I32 0; I32 (-1); store32 (calls + 4);
+          Lget 0; struct_get rt.fib Rt.fb_cancelled; If (Bnone, [ host rt "unwind" ], []);
+          Lget 0; struct_get rt.fib Rt.fb_task; Cast (false, T rt.task) ]
+        @ Rt.ok_of rt [ Lget 1; I32 (-1); Call call0 ] @ [ call rt "finish" ];
+      Wasm.export rt.m "fiber" "x_fiber";
+      Rt.for_fibers rt
+    end
+  in
+  reg "fiber" "Spawn" (fun fc a pos k ->
+      fiber_entry fc.st;
+      give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "spawn" ]));
+  reg "fiber" "Wait" (fun fc a pos k -> Rt.for_fibers fc.st.rt; give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "wait" ]));
+  reg "fiber" "Cancel" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "cancel" ]));
+  reg "fiber" "Channel" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "chan_make" ]));
+  reg "fiber" "Send" (fun fc a pos k ->
+      give fc k ((match a.(0) with Some x -> stored fc x | None -> [ missing ]) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "chan_send" ]));
+  reg "fiber" "Receive" (fun fc a pos k -> give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "receive" ]));
+  reg "fiber" "Close" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "close" ]));
+  reg "fiber" "Select" (fun fc a pos k -> give fc k (opt fc a.(0) @ opt fc a.(1) @ site fc pos @ [ call fc.st.rt "select" ]));
+  reg "sys" "Sleep" (fun fc a pos k -> give fc k (opt fc a.(0) @ site fc pos @ [ call fc.st.rt "sleep" ]));
+  reg "sys" "Now" (fun fc _ _ k -> give fc k [ call fc.st.rt "now" ])
+
+(* The natives of std/dict, std/text and std/json that a page needs (Rtstd): the code of each argument, a value, then the
+   site, to a function of the runtime. *)
+let () =
+  Rtstd.init ();
+  let reg pkg name n f =
+    Hashtbl.replace natives ("std/" ^ pkg, name) (fun fc args pos k ->
+        if Array.length args <> n then unsupported fc pos (Printf.sprintf "%s.%s with %d arguments" pkg name (Array.length args));
+        f fc.st.rt (List.map (fun a -> expr fc a V) (Array.to_list args)) (site fc pos) @ convert fc ~from:V ~into:k)
+  in
+  let simple pkg name n fn = reg pkg name n (fun rt args site -> List.concat args @ site @ [ call rt fn ]) in
+  let a = List.nth in
+  reg "dict" "Get" 2 (fun rt x site -> a x 0 @ [ missing ] @ a x 1 @ [ text rt "Get" ] @ site @ [ call rt "dict_get" ]);
+  reg "dict" "GetOr" 3 (fun rt x site -> List.concat x @ [ text rt "GetOr" ] @ site @ [ call rt "dict_get" ]);
+  reg "dict" "Has" 2 (fun rt x site -> List.concat x @ [ text rt "Has" ] @ site @ [ call rt "dict_find"; I32 0; i32_ge_s ] @ bool_of rt);
+  simple "dict" "Put" 3 "dict_put";
+  simple "dict" "Drop" 2 "dict_drop";
+  simple "dict" "Keys" 1 "dict_Keys";
+  simple "dict" "Values" 1 "dict_Values";
+  simple "dict" "Pairs" 1 "dict_Pairs";
+  Hashtbl.replace with_names ("std/dict", "Dict") (fun fc a pos k ->
+      (match a.(0) with Some x -> expr fc x V | None -> [ missing ]) @ site fc pos @ [ call fc.st.rt "dict_of" ] @ convert fc ~from:V ~into:k);
+  simple "text" "ByteLength" 1 "byte_length";
+  simple "text" "Byte" 2 "byte";
+  simple "text" "ByteSlice" 3 "byte_slice";
+  simple "text" "ByteFind" 3 "byte_find";
+  List.iter (fun n -> simple "text" n 2 ("text_" ^ n)) [ "StartsWith"; "EndsWith"; "Contains" ];
+  simple "text" "Join" 2 "join";
+  simple "text" "Chars" 1 "chars";
+  simple "text" "Slice" 3 "text_slice";
+  simple "text" "Find" 2 "text_find";
+  simple "text" "Code" 1 "text_code";
+  simple "text" "Char" 1 "text_char";
+  simple "text" "Trim" 1 "trim";
+  simple "text" "Lower" 1 "text_Lower";
+  simple "text" "Upper" 1 "text_Upper";
+  simple "text" "Repeat" 2 "repeat";
+  simple "text" "Split" 2 "split";
+  simple "text" "Replace" 3 "replace";
+  simple "text" "FromNumbers" 2 "from_numbers";
+  simple "json" "Text" 1 "json_of";
+  simple "text" "Number" 1 "text_number";
+  simple "text" "Numbers" 2 "numbers";
+  (* text.Str of any count of values: their texts end to end. *)
+  Hashtbl.replace natives ("std/text", "Str") (fun fc args _ k ->
+      let rt = fc.st.rt in
+      let b = Rt.local fc.fb (Rt.nn rt.buf) in
+      [ call rt "buf_new"; Lset b ]
+      @ List.concat_map (fun a -> [ Lget b ] @ expr fc a V @ [ call rt "text_of"; call rt "buf_add" ]) (Array.to_list args)
+      @ [ Lget b; call rt "buf_done" ] @ convert fc ~from:V ~into:k);
+  simple "text" "Decimals" 2 "decimals";
+  simple "random" "Float" 0 "random_float";
+  (* list.Max and Min: two numbers of known kinds compared inline. *)
+  List.iter
+    (fun (name, op, gt) ->
+       Hashtbl.replace with_names ("std/list", name) (fun fc a pos k ->
+           let rt = fc.st.rt in
+           match a.(0), a.(1) with
+           | Some x, Some y when (kind fc x = I && kind fc y = I) || (kind fc x = F && kind fc y = F) ->
+             let kx = kind fc x in
+             let lx = Rt.local fc.fb (vt_of kx) and ly = Rt.local fc.fb (vt_of kx) in
+             expr fc x kx @ [ Lset lx ] @ expr fc y kx @ [ Lset ly; Lget ly; Lget lx; Lget ly; Lget lx ]
+             @ [ (match kx, gt with I, true -> i64_gt_s | I, false -> i64_lt_s | _, true -> f64_gt | _, false -> f64_lt); select ]
+             @ convert fc ~from:kx ~into:k
+           | Some x, y ->
+             expr fc x V @ (match y with Some y -> expr fc y V | None -> [ g_undef rt ]) @ [ I32 op; text rt name ] @ site fc pos @ [ call rt "best" ]
+             @ convert fc ~from:V ~into:k
+           | None, _ -> unsupported fc pos ("list." ^ name ^ " without its argument")))
+    [ "Max", 2, true; "Min", 0, false ]
+
 (* The runtime's functions of typed maps, now that every typed map is known: for each, a test of its type. *)
 let finish st =
   let rt = st.rt in
@@ -1564,10 +1775,11 @@ let finish st =
                    @ each sh (fun j -> field sh j @ (if sh.skinds.(j) = V then [ call rt "share" ] else [])) @ [ struct_new sh.sty; ret ], []) ])
 
 (* The program: its files, in the order the interpreter runs them, become the start of the module. *)
-let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
+let build ?(pages = []) (w : world) (prepared : (int * int * Ast.func * layout) list) =
   let rt = Rt.create () in
-  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
-             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = [] } in
+  let st = { w; rt; sites = Vec.create (); site_ids = Hashtbl.create 256; site_texts = Vec.create (); text_ids = Hashtbl.create 256; vers = []; todo = []; lambdas = []; counter = 0; values = [];
+             shapes = []; shape_ids = Hashtbl.create 16; reads = []; nums = []; pages = Hashtbl.create 4; scripts = [] } in
+  List.iter (fun (path, m) -> Hashtbl.replace st.pages path m) pages;
   ignore (need rt "box_f");
   let hoisted = List.concat_map (fun (_, _, _, (l : layout)) -> List.map snd (Array.to_list l.hoisted)) prepared in
   List.iter
@@ -1610,12 +1822,19 @@ let build (w : world) (prepared : (int * int * Ast.func * layout) list) =
   (* Last, when every text of the code is known: the start makes them first. *)
   start.body <- rt.inits @ run;
   Wasm.export rt.m "main" "main";
+  Wasm.export rt.m "flush" (Rt.need rt "flush");
+  (* {"t": the texts, "s": seven numbers a site}: in a file of its own beside the module, which the loader reads at the
+     first error only: a page that runs without one never loads it. *)
   let sites = Buffer.create 4096 in
-  Buffer.add_char sites '[';
+  Buffer.add_string sites "{\"t\":[";
+  for i = 0 to Vec.length st.site_texts - 1 do
+    if i > 0 then Buffer.add_char sites ',';
+    Buffer.add_string sites (json_text (Vec.get st.site_texts i))
+  done;
+  Buffer.add_string sites "],\"s\":[";
   for i = 0 to Vec.length st.sites - 1 do
     if i > 0 then Buffer.add_char sites ',';
     Buffer.add_string sites (Vec.get st.sites i)
   done;
-  Buffer.add_char sites ']';
-  Wasm.custom rt.m "cesia.sites" (Buffer.contents sites);
-  Wasm.write rt.m
+  Buffer.add_string sites "]}";
+  Wasm.write rt.m, List.rev st.scripts, Buffer.contents sites

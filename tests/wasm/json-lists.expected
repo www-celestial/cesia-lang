@@ -1,0 +1,10 @@
+Ok({a: [1, 2.5, -3, 1000.0, true, missing, "x
+yé"], b: {}, c: []})
+Err({Kind: "json", Message: "Expected a comma or ], at byte 6."}) Ok("123456789012345678901234567890") Ok("😀")
+Ok({Rows: [{Id: 1, Name: "Ana"}], N: 2.0})
+[1, 1, 2, 3] [2, 3, 1] ["a", "b"] [1, 2, "a", [1]]
+[1, 2, 3, 4] 2 true false 2.5
+12 -3.5 1000.0 missing 1e20
+3.14 3 0.00 7.000 2.67
+true
+exit 0

@@ -1,0 +1,19 @@
+(* fiber.Select compiled to WebAssembly: the first ready in the order of the list, a wait on all with one timer. *)
+use std/fiber
+use std/io
+use std/sys
+
+jobs = fiber.Channel()
+stop = fiber.Channel()
+fiber.Send("job 1", jobs)
+io.Print(fiber.Select([stop, jobs]))
+io.Print(fiber.Select([jobs], timeout = 0))
+late = fiber.Channel()
+fiber.Spawn(defn ()
+  sys.Sleep(0.02)
+  fiber.Send("late", late)
+end)
+io.Print(fiber.Select([stop, late]).Value.Value)
+io.Print(fiber.Select([stop, late], timeout = 0.02).Error.Kind)
+fiber.Close(stop)
+io.Print(fiber.Select([stop, jobs]).Error.Kind)

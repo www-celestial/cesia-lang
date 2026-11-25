@@ -22,6 +22,36 @@
     (cat ../web/glue.js)
     (echo "|glue}\n")))))
 
+; The versions of packages of std/ for a page, written in Cesia: Pages.all, each package with its source.
+(rule
+ (targets pages.ml)
+ (deps
+  (glob_files ../web/*.ce))
+ (action
+  (with-stdout-to
+   %{targets}
+   (progn
+    (echo "let all = [\n")
+    (echo "  \"std/websocket\", {page|")
+    (cat ../web/websocket.ce)
+    (echo "|page};\n")
+    (echo "  \"std/list\", {page|")
+    (cat ../web/list.ce)
+    (echo "|page};\n")
+    (echo "  \"std/json\", {page|")
+    (cat ../web/json.ce)
+    (echo "|page};\n")
+    (echo "  \"std/columns\", {page|")
+    (cat ../web/columns.ce)
+    (echo "|page};\n")
+    (echo "  \"std/matrix\", {page|")
+    (cat ../web/matrix.ce)
+    (echo "|page};\n")
+    (echo "  \"std/regex\", {page|")
+    (cat ../web/regex.ce)
+    (echo "|page};\n")
+    (echo "]\n")))))
+
 ; Loaded at its first use, not at start-up: its size costs no start-up, so its code inlines as much as it gains from.
 (env
  (release

@@ -479,6 +479,13 @@ that run often into machine code as the program runs. Cesia's JIT is a method JI
 versions of functions that give numbers and the hot loops, numbers, arrays, maps and structs, and gives back to the
 interpreter when a bet fails. See [Speed](speed.md) and [How Cesia works](internals.md#the-jit).
 
+## JavaScript Promise Integration
+
+JSPI, a part of WebAssembly: a call of a module waits for a promise of JavaScript, the engine setting its whole stack
+aside, frames and locals, until the promise is resolved, then taking it up where it stopped. A program compiled by
+`cesia build --target wasm` runs its fibers so, each a call of the module that waits: see
+[Compiling to WebAssembly](wasm.md#fibers).
+
 ## Keep-alive
 
 An HTTP connection kept open after a response, for the next request of the same client, which saves opening a connection

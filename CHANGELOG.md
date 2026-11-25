@@ -206,6 +206,18 @@
   build, at its place. Values are objects of WasmGC, the browser's own collector; the compiler is a plugin,
   `cesia_wasm.cmxs`, that only `cesia build` loads. The book's chapter Compiling to WebAssembly shows a program in a
   page.
+- Fibers in WebAssembly: `fiber.Spawn`, `Wait`, `Cancel`, `Channel` with its size, `Send`, `Receive` and `Select` with
+  their timeouts, `Close`, `sys.Sleep` and `sys.Now`, in the order of `cesia run`, each wait parking the fiber's whole
+  stack by JavaScript Promise Integration (Chrome 137, Firefox 153, Safari 27, Node 26). A long run gives the page its
+  event loop back every 8 ms: a loop of 2 seconds leaves Chrome at 60 frames a second, for 2% of its time, and Firefox
+  at 57, for 8%.
+- `std/js`: `js.Call(module, name, args)` calls a function of a JavaScript module beside the program, the one way out
+  of a page; a channel given to it is the one way in, filled by JavaScript. In a page, `std/websocket` is the browser's
+  WebSocket, and `regex.Test` its `RegExp`.
+- The standard library of a page: dictionaries of keys of numbers and texts, most of `std/text`, `json.Parse` and
+  `json.Text`, `list.Sort`, `Max`, `Min` and the others, `std/columns` and `std/matrix` as `std/plot` uses them,
+  slices, masks and indexes of two dimensions, `in`: Ceres's pages, `std/plot` in them, run in Chrome and Firefox.
+  The places of errors go in `file.sites`, which the loader reads at the first error only.
 - `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them

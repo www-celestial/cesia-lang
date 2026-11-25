@@ -12,14 +12,28 @@ let build (ctx : Types.ctx) path =
   let files = ref [] in
   Loader.checking := true;
   Loader.prepared_file := (fun p -> files := p :: !files);
-  let main =
+  let main, pages =
     Fun.protect ~finally:(fun () -> Loader.checking := false; Loader.prepared_file := ignore) (fun () ->
         let src = In_channel.with_open_bin path In_channel.input_all in
-        Loader.prepare ~key:(Package.absolute path) ctx ~path ~src ~lookup:(Loader.lookup w))
+        let main = Loader.prepare ~key:(Package.absolute path) ctx ~path ~src ~lookup:(Loader.lookup w) in
+        (* The packages that a page has a version of, in src/web/, once the program uses them: their functions and
+           natives of the same names are taken (Aot.call_expr). A version may use another package that has one. *)
+        let used pkg = Array.exists (fun (md : Types.modul) -> md.mname = pkg || md.path = pkg ^ ".ce") w.modules in
+        let rec more pages =
+          match List.find_opt (fun (pkg, _) -> used pkg && not (List.mem_assoc pkg pages)) Pages.all with
+          | Some (pkg, src) ->
+            let ((_, m, _, _) as p) =
+              Loader.prepare ~key:("page:" ^ pkg) ctx ~path:("std/page/" ^ Filename.basename pkg ^ ".ce") ~src ~lookup:(Loader.lookup w)
+            in
+            files := p :: !files;
+            more ((pkg, m) :: pages)
+          | None -> pages
+        in
+        main, more [])
   in
-  let module_bytes =
-    match Aot.build w (List.rev (main :: !files)) with
-    | bytes -> bytes
+  let module_bytes, scripts, sites =
+    match Aot.build ~pages w (List.rev (main :: !files)) with
+    | built -> built
     | exception Aot.Unsupported (file, pos, what) ->
       let m = Messages.wasm_unsupported what in
       raise (Pos.Load_error { file; pos; kind = "build"; text = m.text; hint = m.hint })
@@ -43,10 +57,19 @@ let build (ctx : Types.ctx) path =
     stop (Messages.wasm_overwrite js_path)
   end;
   Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
+  Out_channel.with_open_bin (base ^ ".sites") (fun oc -> Out_channel.output_string oc sites);
   let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
   let at = find 0 in
   let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
-  Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js)
+  Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js);
+  (* The JavaScript modules that js.Call names, beside the program, where its loader imports them. *)
+  List.iter
+    (fun (file, base) ->
+       let src = try In_channel.with_open_bin file In_channel.input_all with Sys_error _ -> stop (Messages.cant_read file) in
+       let dest = Filename.concat (Filename.dirname path) base in
+       if not (Sys.file_exists dest && Package.absolute dest = Package.absolute file) then
+         Out_channel.with_open_bin dest (fun oc -> Out_channel.output_string oc src))
+    scripts
 
 (* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it; the exit code. *)
 let main = function

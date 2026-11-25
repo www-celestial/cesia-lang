@@ -6,8 +6,9 @@ that every current browser runs, near the speed of machine code, inside the page
 `cesia build` compiles the program [ahead of time](glossary.md#ahead-of-time-compilation): the page holds your program
 and the few functions of the runtime it uses, and no interpreter.
 
-This is a first slice: numbers, texts, lists, maps, functions and closures, `if`, `match` and loops, results, `?` and `!`,
-and errors. What it doesn't compile yet is an error at the build, at its place: see
+It compiles numbers, texts, lists, maps and dictionaries, functions and closures, `if`, `match` and loops, results, `?`
+and `!`, errors, and [fibers](#fibers) with their channels; a program calls the [JavaScript](#javascript) of its page by
+`js.Call`, and a long one leaves the page fluid. What it doesn't compile yet is an error at the build, at its place: see
 [What it compiles](#what-it-compiles).
 
 ## The command
@@ -16,17 +17,18 @@ and errors. What it doesn't compile yet is an error at the build, at its place: 
 cesia build --target wasm file.ce
 ```
 
-It writes two files beside `file.ce`: `file.wasm`, the module, and `file.js`, its loader, which fetches the module,
-starts it and writes what it prints. A program that uses packages gets them in the same module, compiled with it.
-Building again replaces both files. `file.js` is plain JavaScript of 70 lines, with no package to install and no step
-after it.
+It writes three files beside `file.ce`: `file.wasm`, the module; `file.js`, its loader, which fetches the module, starts
+it and writes what it prints; and `file.sites`, the places of its errors, which the loader reads at the first error only.
+A program that uses packages gets them in the same module, compiled with it, and the JavaScript modules that it calls
+by `js.Call` beside it ([JavaScript](#javascript)). Building again replaces them. `file.js` is plain JavaScript of 250
+lines, with no package to install and no step after it.
 
 When something can't be compiled yet, the build stops at its place, writes no file, and gives the exit code 1:
 
 ```text
-fib.ce:3:10: std/fiber.Spawn isn't compiled to WebAssembly yet.
-  3 | t = fiber.Spawn(() -> 1 + 1)
-    |          ^
+area.ce:3:1: a declared result type isn't compiled to WebAssembly yet.
+  3 | defn area(r Float) Float
+    | ^
   cesia run runs it; cesia build --target wasm compiles part of Cesia for now.
 ```
 
@@ -154,8 +156,9 @@ typo.ce:4:25: Can't multiply the text "1055.666" by the number 100.
   in cents (typo.ce:4)
 ```
 
-The message comes from the same table as the interpreter's, and the module keeps the places of its errors in a section
-of its own, `cesia.sites`, that the loader reads only when an error happens.
+The message comes from the same table as the interpreter's. The places of the errors, each line of code with the marks
+under it, are in `typo.sites`, beside the module, which the loader reads only when an error happens: a page that runs
+without one never loads it, and in a page the error is written once that file came.
 
 The limits are those of `cesia run`: 10,000 calls deep at most, then the error `Limit "depth" reached.`, at the same
 place, with the same calls named.
@@ -164,13 +167,15 @@ place, with the same calls named.
 
 | Compiled | Not yet |
 |---|---|
-| integers of 63 bits, checked as `cesia run` checks them; floats; true, false and missing | fibers and channels |
-| texts in UTF-8, `$` in texts, comparing them | methods, interfaces |
-| lists, arrays of floats and of integers, ranges, comprehensions, `x[i]` and `x[i] = v` | slices, `x[a..b]` |
-| maps written as literals, their fields, `m["key"]`, `m.Name = v` | types declared on parameters and results |
-| functions, closures, functions as values, recursion | `dict.Put`, `dict.Dict` and most of the standard library |
+| integers of 63 bits, checked as `cesia run` checks them; floats; true, false and missing | methods, interfaces |
+| texts in UTF-8, `$` in texts, comparing them | types declared on parameters and results |
+| lists, arrays of floats and of integers, ranges, comprehensions, `x[i]`, `x[a..b]`, a mask, `m[i, j]`, and their writes | `for x in` a channel |
+| maps written as literals, their fields, `m["key"]`, `m.Name = v`; dictionaries of keys of numbers and texts, `in` | an index of three dimensions |
+| functions, closures, functions as values, recursion | the packages of the system: files, processes, sockets but the WebSocket |
 | `if`, `match` and its patterns, `for`, `while`, `return` | |
 | `result.Ok`, `result.Err`, `?`, `!`, `bug.Panic` and errors | |
+| [fibers](#fibers): `fiber.Spawn`, `Wait`, `Cancel`, `Channel`, `Send`, `Receive`, `Select`, `Close`; `sys.Sleep`, `sys.Now` | |
+| [JavaScript](#javascript): `js.Call`, and `std/websocket` through the WebSocket of the page | |
 
 A map keeps its keys in the order of insertion. Past 8 keys it finds them by a table of their hashes, as the table of a
 map of `cesia run` that nothing else holds ([How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie)), each
@@ -181,9 +186,170 @@ copies it whole, where `cesia run`'s trie copies one branch: a map of many keys 
 back costs a copy at each call.
 
 Of the standard library, these compile: `io.Print`; `math.Div`, `Mod`, `Abs`, `Floor`, `Ceil`, `Round`, `Sqrt`, `Exp`,
-`Log`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos` and `Atan`; `list.Sum`, `Append`, `Concat`, `Take`, `Skip`, `Reverse` and
-`Fill`; `matrix.Zeros`, `Ones` and `Reshape`; `value.Len`, `Text`, `Equal`, `Size` and the tests `IsInt` to `IsMissing`;
-and the packages written in Cesia, as `std/result`, as far as they use what this table compiles.
+`Log`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos` and `Atan`; `list.Sum`, `Append`, `Concat`, `Take`, `Skip`, `Reverse`,
+`Fill`, `Max`, `Min`, `Sort`, `Order`, `Unique`, `Flatten`, `IndexOf`, `Any`, `All`, `Mean` and `Zip`; `matrix.Zeros`,
+`Ones`, `Reshape`, `Matmul` and `Transpose`; `dict.Dict`, `Get`, `GetOr`, `Has`, `Put`, `Drop`, `Keys`, `Values` and
+`Pairs`; `text.ByteLength`, `Byte`, `ByteSlice`, `ByteFind`, `StartsWith`, `EndsWith`, `Contains`, `Find`, `Slice`,
+`Split`, `Join`, `Replace`, `Trim`, `Lower`, `Upper`, `Repeat`, `Chars`, `Code`, `Char`, `Number`, `Decimals`, `Str`,
+`Numbers` and `FromNumbers`; `json.Parse` and `json.Text`; `columns.Pick`, `Positions`, `Kind`, `Groups` and `Split`;
+`regex.Test`; `random.Float`; `value.Len`, `Text`, `Equal`, `Size` and the tests `IsInt` to `IsMissing`; and the
+packages written in Cesia, as `std/result`, `std/plot` or `std/websocket`, as far as they use what this table compiles.
+The fibers have [their section](#fibers).
+
+A page has no interpreter to call a native of: the compiler writes each one in WebAssembly, or, where Cesia says it as
+well and fast enough, takes a version of its package written in Cesia, in `src/web/` of Cesia's sources: `list.ce`,
+`json.ce`, `columns.ce`, `matrix.ce`, `regex.ce` and `websocket.ce`, each function the native of the same name, with its
+results and its errors. `regex.Test` runs the `RegExp` of the page: its patterns are JavaScript's, which the common ones,
+classes, groups, anchors and repeats, share with Cesia's.
+
+## Fibers
+
+A program compiled to WebAssembly has the fibers of [std/fiber](fibers.md), with the same order as `cesia run`: a
+fiber that waits lets the others run, the first ready first, and a program that waits for what nothing can bring stops
+with the same error, `All fibers are waiting and nothing can wake them.` This one runs three fibers, a producer, a
+channel of size 1 between them, and a wait with a timeout:
+
+```cesia
+(* relay.ce *)
+use std/fiber
+use std/io
+use std/result
+use std/sys
+
+ch = fiber.Channel(size = 1)
+producer = fiber.Spawn(defn ()
+  for k in 1..3
+    fiber.Send(k * 10, ch)
+  end
+  "sent"
+end)
+got = [result.Unwrap(fiber.Receive(ch)) for k in 1..3]
+io.Print(got, fiber.Wait(producer))
+io.Print(fiber.Receive(ch, timeout = 0.05).Error.Kind)
+slow = fiber.Spawn(() -> sys.Sleep(10))
+fiber.Cancel(slow)
+io.Print(fiber.Wait(slow).Error.Kind)
+```
+
+`node relay.js` and a page print what `cesia run relay.ce` prints:
+
+```text
+[10, 20, 30] Ok("sent")
+timeout
+cancelled
+```
+
+*How.* WebAssembly has no fibers of its own yet, and four ways were weighed, each measured or tried:
+
+- [JavaScript Promise Integration](glossary.md#javascript-promise-integration) (JSPI) lets a call of the module wait for
+  a promise of JavaScript: the engine sets the whole stack of the call aside, frames, locals and all, and takes it up
+  again when the promise is resolved. The main program and each fiber are such calls; a fiber that waits gives the
+  loader a promise, which the loader resolves when its turn comes. Measured with a module of 155 bytes that waits
+  100,000 times in a row: one wait and its return cost 0.17 µs in Node 26, 0.66 µs in Chrome 158 and 2.9 µs in Firefox
+  160; a call that doesn't wait, 9 to 13 ns. A page waits for a socket or a click, not a million times a second, and code
+  that doesn't wait pays nothing. It runs in Chrome since its version 137 (May 2025), in Firefox since 153 (July 2026),
+  in Safari since 27 (fall 2026), and in Node 26.
+- Asyncify, the pass of Binaryen that rewrites each function to unwind its stack into the memory and wind it back,
+  can't hold the references of WasmGC that Cesia's values are: `wasm-opt --asyncify` on a module of WasmGC stops with
+  "Asyncify does not yet support non-number types, like references".
+- The proposal of stack switching (WasmFX), whose continuations are the fibers themselves, runs in no browser without
+  a flag yet.
+- A program turned by the compiler into a state machine, each function that may wait cut at its waits, would cost
+  every call through a value, where the compiler can't know whether the callee waits, and every function of the
+  standard library.
+
+So JSPI. The scheduler is the loader's, as the interpreter's: one fiber runs at a time, in the order of the ready queue,
+each next one started by a microtask of JavaScript; what wakes a fiber, a value sent, a timer, a message of a socket,
+puts it at the end of that queue. A fiber that waits keeps its depth of calls and their sites, so that an error in it
+names its own calls, as `cesia run` does; a panic in a fiber is the `Err` of its task, after its message.
+
+*A page stays fluid.* A program runs on the thread of the page: while it computes, the page paints nothing and takes no
+click. At each checkpoint of its fuel, every 62,500 steps, the loader looks at the clock; past 8 ms, the program waits
+for the event loop of the page, which paints and takes its events, then goes on, first. That costs a message of
+JavaScript, a few microseconds, and once a frame's time has passed it goes through the browser's next frame: Firefox,
+between messages alone, paints 12 times a second. And every million steps, as `cesia run`, the fibers ready run.
+Measured on a loop of 500 million square roots in one call, 2.1 seconds, with a page that counts its frames:
+
+| | Chrome 158 | Firefox 160 |
+|---|---|---|
+| Frames while the loop runs, yielding | 128 to 130, each 16.7 ms apart | 141 to 144, 17.1 ms apart (p50), 33 to 50 (p99) |
+| Frames while the loop runs, without yielding | 0 | 1 to 3 |
+| Time of the loop, yielding / without | 2,150 to 2,187 / 2,112 to 2,120 ms | 2,457 to 2,505 / 2,302 to 2,325 ms |
+
+The loop costs 2% more in Chrome and 8% in Firefox, and the page paints every frame. A `setTimeout` instead of the
+message cost 55% more, waiting 4 ms each time; `scheduler.postTask` and `scheduler.yield()` left Firefox at 12 frames a
+second, and the second Chrome too.
+
+## JavaScript
+
+[js.Call]`(module, name, args)` calls the function `name` of a module of JavaScript: a path
+beside the Cesia file that calls it, as a `use` is, which `cesia build` puts beside the program, or `cesia:websocket` and
+`cesia:regex`, the loader's own. Both are written in the call, as texts: the module's imports say all that a program
+calls. A value goes to JavaScript as JavaScript takes it, and comes back the same way:
+
+| Cesia | JavaScript |
+|---|---|
+| a text | a `Uint8Array` of its bytes, which `new TextDecoder().decode` makes a string; a string comes back as its UTF-8 |
+| an integer, a float | a number; a whole number comes back as an integer |
+| true, false, missing | `true`, `false`, `null`; `null` and `undefined` come back as missing |
+| a list | an array |
+| a channel of std/fiber | a handle: `send(value)` puts a value in it, `close()` closes it |
+
+That is the one way out, a call, and the one way in, a channel that JavaScript fills: a click, a message, a timer of
+the page comes to the program as a value on a channel, where a fiber waits for it. A dictionary or a function doesn't
+cross: its JSON text does, with `json.Text`.
+
+Here a button counts its clicks. The program asks `page.js` to send each click on its channel, then waits for them one
+by one; between two, it waits, and the page is free:
+
+```cesia norun
+(* counter.ce: counts the clicks of a button of the page; between two, the program waits and the page is free. *)
+use std/fiber
+use std/js
+
+clicks = fiber.Channel()
+js.Call("./page.js", "Start", [clicks])
+n = 0
+while true
+  _ = fiber.Receive(clicks)
+  n += 1
+  js.Call("./page.js", "Show", ["$n clicks"])
+end
+```
+
+`page.js`, beside it, is the page's side:
+
+```js
+// page.js: the page's side of counter.ce. A text comes as the bytes of its UTF-8, a channel as a handle.
+export function Start (clicks) {
+  document.querySelector('button').addEventListener('click', () => clicks.send('click'))
+}
+export function Show (text) {
+  document.querySelector('output').textContent = new TextDecoder().decode(text)
+}
+```
+
+And `index.html`, which loads the program:
+
+```html
+<!doctype html>
+<meta charset="utf-8">
+<title>Counter</title>
+<button>Click</button> <output>0 clicks</output>
+<script type="module" src="counter.js"></script>
+```
+
+`cesia build --target wasm counter.ce`, then serve the folder as for [the loan](#a-first-program-in-a-page): three
+clicks write `3 clicks`, in Chrome 158 and in Firefox 160.
+
+*The WebSocket.* In a program compiled to WebAssembly, [websocket.Dial], `websocket.Send` and `websocket.Close`
+are the WebSocket of the page, or of Node, through `cesia:websocket`, with the same arguments and results: `Dial` gives a
+`Conn` whose `Messages` receives each message, and that closes when the connection ends. The browser makes the
+handshake and sends its own headers, its cookies and its origin: `headers` must be empty there. A message comes whole,
+and nothing waits for a full `Messages`, since a browser can't slow its server down.
+
+Ceres, the user interface of the project, runs its pages so: compiled to WebAssembly, its loop waits on a channel of
+the page's events, and its live screen is a WebSocket of the page.
 
 ## How it works
 
@@ -292,6 +458,26 @@ loop in a function of its own, and a statement in two versions, make a program o
 that prints a list, a map or a value of a type the compiler doesn't know brings the printer of every value; JavaScript's
 source stays smaller, since its engine is in the browser already.
 
+*A page of Ceres.* The invoices page of Ceres, the user interface of the project, compiled to WebAssembly and live from
+its app: a form, a list that the app keeps up to date, a graph of `std/plot` and a table of 100,000 rows. Measured in
+`tests/web/frames.html` of Ceres, on the same machine (load 2 to 3), headless: from the browser's frame to the page
+painted, its work in WebAssembly and WebGL's, while the wheel scrolls the table 200 notches, one every 16 ms, and while
+a field is typed in, medians of 2 to 3 rounds; WebGL took 1.0 to 1.4 ms of it:
+
+| | Chrome 158 | Firefox 160 |
+|---|---|---|
+| First paint, from the start of the page | 462 to 600 ms | 175 to 231 ms |
+| A frame while scrolling, p50 / p99 | 8.2 to 9.7 / 19 to 35 ms | 1.7 to 2.2 / 7 to 19 ms |
+| A frame while typing, p50 / p99 | 1.2 to 1.6 / 2.2 to 18 ms | 1.3 to 1.7 / 2.0 to 18 ms |
+| Frames of the browser while scrolling, p50 / p99 apart | 16.7 / 33 to 50 ms | 17.1 / 17.1 to 17.2 ms |
+
+V8 runs this page 4 times slower than SpiderMonkey, where it ran the programs above faster; without its first compiler,
+Liftoff (`--no-liftoff`), its frames take 7.2 to 7.8 ms, so it isn't that the long loop of the page stays in that code;
+why it is so wasn't found in this slice. The page's module is 1,023,363 bytes, 177,562 in Brotli, its loader 10,433
+(3,698), and the glue of Ceres 5,765 in Brotli; `browser.sites`, 1,091,744 bytes, comes only at an error. `std/plot`, all
+of whose kinds of graphs the module holds though the page draws bars, is most of it: its largest functions draw graphs
+of three dimensions.
+
 ## Further reading
 
 - Andreas Haas and others, *Bringing the Web up to Speed with WebAssembly*, 2017: the design of WebAssembly, its types
@@ -305,6 +491,10 @@ source stays smaller, since its engine is in the browser already.
   section 6.4: the table of a map past 8 keys, and what its probes cost.
 - Guy L. Steele Jr., Doug Lea and Christine H. Flood, *Fast Splittable Pseudorandom Number Generators*, 2014:
   SplitMix64, which draws the seed of each table.
+- The WebAssembly Community Group's proposal *JavaScript Promise Integration*, and V8's *Introducing the WebAssembly
+  JavaScript Promise Integration API*, 2024: the fibers of a page.
+- Luna Phipps-Costin and others, *Continuing WebAssembly with Effect Handlers*, 2023: stack switching, the fibers that
+  WebAssembly may have one day.
 
 Each with its link in [References](references.md#webassembly), [The JIT](references.md#the-jit),
 [Values and maps](references.md#values-and-maps) and [Tests](references.md#tests).
