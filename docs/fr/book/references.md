@@ -195,6 +195,15 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   Sam Lindley. "Continuing WebAssembly with Effect Handlers". *Proceedings of the ACM on Programming Languages* 7
   (OOPSLA2), 460–485, 2023. <https://doi.org/10.1145/3622814>. Le stack switching (le changement de pile), WasmFX : des
   continuations qui seraient les fibers elles-mêmes, dans aucun navigateur sans flag pour l'instant.
+- WebAssembly Community Group. "WebAssembly JavaScript Interface" et "WebAssembly Web API".
+  <https://webassembly.github.io/spec/js-api/> et <https://webassembly.github.io/spec/web-api/>. `WebAssembly.compile`,
+  `instantiate`, et `compileStreaming`, qui compile un module pendant que ses octets arrivent et ne prend qu'une réponse
+  de type `application/wasm` : comment le loader d'une page lance son module.
+- Binaryen. <https://github.com/WebAssembly/binaryen>. L'optimiseur `wasm-opt`, et sa passe GUFA, qui suit chaque valeur
+  à travers un module pris comme fermé : mesuré sur la page de Ceres, pas lancé par `cesia build`.
+- Stefan Krause. js-framework-benchmark. <https://github.com/krausest/js-framework-benchmark>. La même table construite
+  par chaque framework de JavaScript, et par ceux de Rust compilés vers WebAssembly : les tailles à côté de la page de
+  Ceres.
 
 ## Fibers et channels
 

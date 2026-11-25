@@ -328,8 +328,29 @@
   `text.ByteLength` in 269.8 ms instead of 322.7, of `sys.Now` in 422.9 instead of 517.6; and machine code makes
   `math.Abs` of an integer itself, 10^7 calls in 20.2 ms instead of 302.1 (medians of 21 runs, alternated).
 
+- A page compiled to WebAssembly is smaller, and holds only what it may run. `std/plot` keeps in each layer the functions
+  of its kind, put there by `plot.Bars`, `plot.Surface` and the others, where it looked them up by the kind's name: a
+  program carries the code of the kinds of graphs it makes and no other, in the interpreter, which infers only those,
+  and in a module. `+`, `-`, `*`, `/` and the comparisons of two values of unknown type call one small function of the
+  runtime each, in place of their tests written at each place; an argument left out whose default is no number makes no
+  version of a function of its own; a module holds only what its exports reach. The invoices page of Ceres: 388,054
+  bytes instead of 1,023,363, 103,145 with Brotli instead of 177,562, its frames as fast. The book's chapter Compiling to
+  WebAssembly weighs it part by part, beside the frameworks of JavaScript.
+- A page starts sooner: its loader asks for the module and for the JavaScript modules that `js.Call` names at once, and
+  compiles the module while its bytes arrive when the server says `application/wasm`. The invoices page of Ceres, a
+  first page of a new Firefox, paints in 193 to 239 ms instead of 447 to 499.
+- A loop compiled to WebAssembly runs 1.7 times faster in Firefox when it is called often, as the inner loop of
+  `mandel`, 133 ms to 76: its chunk counts its fuel and its caller refuels, where a call after the loop, its variables
+  alive across it, made Firefox's Ion keep them in memory through the whole loop.
+
 ### Fixes
 
+- A page compiled to WebAssembly no longer gives the event loop back in the middle of a frame: its slice of 8 ms
+  started at its last yield only, so that the first checkpoint after a wait, as a page waits for its next event, yielded
+  at once and painted a frame late, 18 to 35 ms (p99) while the invoices page of Ceres scrolled; it starts when the
+  program runs again after it waited, and Firefox's p99 fell to 3 to 4 ms.
+- `std/http` serves a `.wasm` file as `application/wasm`, where it said `application/octet-stream`: a browser compiles a
+  module while it arrives only when it is typed so.
 - A server no longer slows down as it serves. Once the large allocations reserved since the last full checkpoint passed
   a quarter of the memory limit (with the default limit, a few minutes of a busy server), every reservation after it
   asked OCaml for the size of its heap, `Gc.quick_stat`, which took a third to a half of a request's time, and only a
