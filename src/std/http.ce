@@ -905,7 +905,7 @@ end
 
 (* Static files under a folder. A path can't leave it. *)
 types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/javascript", "json": "application/json",
-  "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
+  "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8", "wasm": "application/wasm"}
 
 defn FileResponse(path)
   (** The response with the content of a file, typed by its extension, or a 404 if it can't be read.
