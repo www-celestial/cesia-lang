@@ -641,3 +641,15 @@ use std/result
 use std/sys
 sys.Write("mean.html", cells.Html("mean.ce")!)
 ```
+
+With `code = false`, the page leaves out the code of every cell, and the cells that show nothing: their titles, their
+inputs, what they printed, their values and their errors stay, a page for someone who wants the results, as Cemacs shows
+a file of cells as an app after `C-c e t`. `code = true`, the default, gives the page above, and writing it changes
+nothing: `cells.Html("mean.ce")` is `cells.Html("mean.ce", allow = [], code = true)`.
+
+```cesia norun
+use std/cells
+use std/result
+use std/sys
+sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce", code = false)))
+```

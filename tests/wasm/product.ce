@@ -1,0 +1,8 @@
+use std/io
+
+(* The product checked inline: within 2^31 - 1 of zero at once, else by the runtime; -2^31 squared is 2^62, one too many. *)
+defn times(a, b)
+  a * b
+end
+io.Print(times(2147483647, 2147483647), times(-2147483647, 2147483647), times(-2147483648, 2147483647))
+io.Print(times(-2147483648, -2147483648))

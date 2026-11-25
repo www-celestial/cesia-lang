@@ -1,0 +1,35 @@
+use std/io
+use std/list
+use std/value
+use std/math
+
+xs = [1, 2, 3]
+ys = xs
+ys[1] = 10
+io.Print(xs, ys, value.Len(xs))
+squares = [i * i for i in 1..10 if math.Mod(i, 2) == 1]
+io.Print(squares, list.Sum(squares), list.Sum([0.5, 0.25]), list.Sum([1, 2.5]))
+fs = [1.0, 2.0]
+fs[1] = 3
+mixed = [1, 2.0]
+mixed[1] = 3
+io.Print(fs, mixed)
+grid = [[1, 2], [3, 4]]
+copy = grid
+copy[2][1] = 30
+io.Print(grid, copy, grid[2][end], xs[end - 1])
+words = ["a", "b\"c"]
+io.Print(words, [], [[]], [missing, true, 1.5])
+acc = []
+for k in 1..5
+  acc = list.Append(k * 10, acc)
+end
+io.Print(acc, list.Concat(acc, ["z"]), list.Take(2, acc), list.Skip(3, acc), list.Reverse(acc))
+total = 0
+for x in acc
+  total = total + x
+end
+io.Print(total, 1..4, list.Map(x -> x + 1, [1, 2]), list.Filter(x -> x > 1, [1, 2, 3]))
+io.Print([1, 2] + [10, 20], [1, 2] * 2, [1, 2] == [1, 3], value.Equal([1, 2], [1, 2]))
+m = [1 2; 3 4]
+io.Print(m, value.Len(m))

@@ -198,7 +198,9 @@ let rec nest (b : block) =
   !d
 
 let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "cos"; "Tan", "tan"; "Asin", "asin";
-             "Acos", "acos"; "Atan", "atan" ]
+             "Acos", "acos"; "Atan", "atan"; "Log10", "log10"; "Log2", "log2"; "Log1p", "log1p"; "Expm1", "expm1";
+             "Sinh", "sinh"; "Cosh", "cosh"; "Tanh", "tanh"; "Asinh", "asinh"; "Acosh", "acosh";
+             "Atanh", "atanh" ]
 
 let reg st k = Vec.push st.kinds k
 let block st = Vec.push st.blocks { Ir.ins = []; term = Return (Int 0) }
@@ -1036,6 +1038,13 @@ and call_expr st e (call : call) =
        (* The floor modulo by a positive constant d is in 0..d - 1. *)
        proves st r (match name, y with "Mod", (Ir.Int d, _) when d > 0 -> Some (0, d - 1) | _ -> None);
        r
+     | Native { nname = "Hypot"; _ } ->
+       let a = args_of call 2 in
+       let x = to_float st (expr st a.(0)) in
+       let y = to_float st (expr st a.(1)) in
+       fresh st Kfloat (fun r -> Op (Fhypot, r, x, y, -1))
+     | Native { nname = ("SinDegrees" | "CosDegrees" | "TanDegrees") as name; f1 = Some _; _ } ->
+       degrees st name (to_float st (expr st (args_of call 1).(0)))
      | Native { nname; f1 = Some _; _ } when List.mem_assoc nname math ->
        let a = args_of call 1 in
        let x = to_float st (expr st a.(0)) in
@@ -1418,6 +1427,66 @@ and select ?(kind = Ir.Kfloat) st cmp y x =
   goto st join;
   carry st base join;
   Reg r
+
+(* A float: [yes ()] where [a cmp b], else [no ()], each made in a block of its own. *)
+and fbranch st cmp a b yes no =
+  let r = reg st Ir.Kfloat and y = block st and n = block st and join = block st in
+  let base = facts st st.cur in
+  close st (Branch (cmp, Ir.Kfloat, a, b, y, n));
+  carry st base y;
+  st.cur <- y;
+  emit st (Move (r, yes ()));
+  goto st join;
+  carry st base n;
+  st.cur <- n;
+  emit st (Move (r, no ()));
+  goto st join;
+  carry st base join;
+  Ir.Reg r
+
+(* math.SinDegrees, CosDegrees and TanDegrees of x, the operations of [Kernels.sind], [cosd] and [tand] in their order,
+   so that each gives the bits of the interpreter: x = 90 q + r, |r| <= 45, then the function of r or its cofunction by
+   the quadrant q mod 4, and the exact values at 30 and 45. *)
+and degrees st name x =
+  let op o a b = fst (fresh st Ir.Kfloat (fun d -> Op (o, d, a, b, -1))) in
+  let lib f a = fst (fresh st Ir.Kfloat (fun d -> Math (f, d, a))) in
+  let neg a = fst (fresh st Ir.Kfloat (fun d -> Fneg (d, a))) in
+  let sign r v = fbranch st Lt r (Float 0.) (fun () -> Float (-.v)) (fun () -> Float v) in
+  let rr = op Fmod x (Float 360.) in
+  let q = lib "round" (op Fdiv rr (Float 90.)) in
+  let r = op Fsub rr (op Fmul (Float 90.) q) in
+  let p = fbranch st Lt q (Float 0.) (fun () -> op Fadd q (Float 4.)) (fun () -> q) in
+  let p = fbranch st Eq p (Float 4.) (fun () -> Float 0.) (fun () -> p) in
+  let a = lib "fabs" r in
+  let rad () = op Fmul r (Float 0.017453292519943295) in
+  let special at45 at30 other =
+    fbranch st Eq a (Float 45.) at45 (fun () -> fbranch st Eq a (Float 30.) at30 other) in
+  let sin_r () = special (fun () -> sign r 0.7071067811865476) (fun () -> sign r 0.5) (fun () -> lib "sin" (rad ())) in
+  let cos_r () = special (fun () -> Float 0.7071067811865476) (fun () -> Float 0.8660254037844386) (fun () -> lib "cos" (rad ())) in
+  (* The quadrant 0 for a NaN, as int_of_float gives 0 for it. *)
+  let quadrant f0 f1 f2 f3 =
+    fbranch st Eq p (Float 1.) f1 (fun () -> fbranch st Eq p (Float 2.) f2 (fun () -> fbranch st Eq p (Float 3.) f3 f0)) in
+  (* A zero with the sign of z: -0 where 1 / z is below 0. *)
+  let zero_of z = fbranch st Lt (op Fdiv (Float 1.) z) (Float 0.) (fun () -> neg (Float 0.)) (fun () -> Float 0.) in
+  let v =
+    match name with
+    | "SinDegrees" ->
+      let s = quadrant sin_r cos_r (fun () -> neg (sin_r ())) (fun () -> neg (cos_r ())) in
+      fbranch st Eq s (Float 0.) (fun () -> zero_of x) (fun () -> s)
+    | "CosDegrees" -> op Fadd (quadrant cos_r (fun () -> neg (sin_r ())) (fun () -> neg (cos_r ())) sin_r) (Float 0.)
+    | _ ->
+      let odd = fbranch st Eq p (Float 1.) (fun () -> Float 1.) (fun () -> fbranch st Eq p (Float 3.) (fun () -> Float 1.) (fun () -> Float 0.)) in
+      fbranch st Eq odd (Float 1.)
+        (fun () ->
+           fbranch st Eq r (Float 0.)
+             (fun () -> fbranch st Eq p (Float 1.) (fun () -> op Fdiv (Float 1.) (Float 0.)) (fun () -> op Fdiv (Float (-1.)) (Float 0.)))
+             (fun () ->
+                neg (special (fun () -> sign r 1.) (fun () -> sign r 1.7320508075688772) (fun () -> op Fdiv (Float 1.) (lib "tan" (rad ()))))))
+        (fun () ->
+           let t = special (fun () -> sign r 1.) (fun () -> sign r 0.5773502691896257) (fun () -> lib "tan" (rad ())) in
+           fbranch st Eq t (Float 0.) (fun () -> zero_of (fbranch st Eq p (Float 2.) (fun () -> neg x) (fun () -> x))) (fun () -> t))
+  in
+  v, Ir.Kfloat
 
 (* The steps of an operation on an array of [n] cells, as the interpreter's natives charge them: n / 16 + 1, at its site. *)
 and charge st (e : expr) n =

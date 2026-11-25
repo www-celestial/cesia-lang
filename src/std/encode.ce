@@ -6,15 +6,15 @@ use std/result
 use std/text
 use std/value
 
-hexDigits = "0123456789abcdef"
 base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 digit(k, digits) = text.ByteSlice(k + 1, k + 1, digits)
 
 defn Hex(s)
-  (** The hexadecimal text of the bytes of a text, in lower case.
+  (** The hexadecimal text of the bytes of a text, in lower case. hex, a native of this package, writes it in one pass.
 
-        Hex("hi") --> "6869" *)
-  text.Join("", ["$(digit(math.Div(b, 16), hexDigits))$(digit(math.Mod(b, 16), hexDigits))" for b in text.Bytes(s)])
+        Hex("hi") --> "6869"
+        Hex("$(text.Char(0))$(text.FromBytes([255, 16]))") --> "00ff10" *)
+  hex(s)
 end
 
 defn hexValue(b)

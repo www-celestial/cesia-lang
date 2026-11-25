@@ -1,0 +1,28 @@
+; cesia build --target wasm: Cesia compiled ahead of time to WebAssembly. A library whose plugin cesia_wasm.cmxs the
+; binary loads for cesia build only (src/bin/main.ml), so that no program pays for its code. The runtime and the loader
+; it writes beside a module are in src/web/, copied here: one plugin.
+
+(library
+ (name cesia_wasm)
+ (flags
+  (:standard -open Cesia))
+ (libraries cesia cesia_sys))
+
+(copy_files#
+ (files ../web/*.ml))
+
+(rule
+ (targets glue.ml)
+ (deps ../web/glue.js)
+ (action
+  (with-stdout-to
+   %{targets}
+   (progn
+    (echo "let text = {glue|")
+    (cat ../web/glue.js)
+    (echo "|glue}\n")))))
+
+; Loaded at its first use, not at start-up: its size costs no start-up, so its code inlines as much as it gains from.
+(env
+ (release
+  (ocamlopt_flags (-inline 200))))

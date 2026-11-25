@@ -66,6 +66,73 @@ ask("/nowhere").Status -->
 
 A path that no route takes gets a `404`.
 
+## How a request finds its route
+
+The first route added that takes the path, then the method, answers. A written part of a pattern takes only itself, a
+part with `:` any word, and a final `*` the rest of the path. A route of `:id` added before one of `me` would take
+`/users/me` too; added after it, as here, it takes the other words:
+
+```cesia
+users = http.App()
+  then http.Get("/users/me", r -> http.Plain("you"))
+  then http.Get("/users/:id", r -> http.Plain("user $(r.Params.id)"))
+askUsers(method, path) = http.Handler(users)({Method: method, Path: path, Query: "", Headers: [], Body: ""})
+askUsers("GET", "/users/me").Body -->
+askUsers("GET", "/users/7").Body -->
+askUsers("HEAD", "/users/7").Status -->
+askUsers("DELETE", "/users/7").Status -->
+```
+
+The path comes first: a path that only routes of other methods take gets a `405`, Method Not Allowed, and a `HEAD` the
+route of its `GET`, whose body the server leaves out.
+
+[http.Handler] puts the routes in a [trie](glossary.md#trie) of the parts of their paths, once: each written part leads to
+a branch of its own, found by a hash table, and the `:` parts of one place share one branch. A request follows the parts
+of its own path down the tree, so its route costs the same to find among 500 routes as among 5. Each route keeps its
+place in the order they were added, and the walk leaves out a branch whose routes all come after the one it has found:
+the answer is always the one the routes tried one by one would give, which `tests/lang/http-routes.ce` checks on random
+sets of routes.
+
+An API of 200 routes, 40 resources with their list, their creation, one item, its change and its removal:
+
+```cesia
+defn api(resources)
+  a = http.App()
+  for name in resources
+    a = a
+      then http.Get("/api/v1/$name", r -> http.Json([]))
+      then http.Post("/api/v1/$name", r -> http.Json({Made: true}, status = 201))
+      then http.Get("/api/v1/$name/:id", r -> http.Json({Id: r.Params.id}))
+      then http.Put("/api/v1/$name/:id", r -> http.Json({Changed: r.Params.id}))
+      then http.Delete("/api/v1/$name/:id", r -> http.Plain("", status = 204))
+  end
+  a
+end
+shopApi = http.Handler(api(["res$i" for i in 1..40]))
+askApi(method, path) = shopApi({Method: method, Path: path, Query: "", Headers: [], Body: ""})
+askApi("GET", "/api/v1/res40/7").Body -->
+askApi("PATCH", "/api/v1/res40/7").Status -->
+```
+
+What it costs, measured on 2026-11-25 on the machine of [Speed](speed.md#beside-the-giants): the handler called with a
+request and no network, so the route, its params and the handler's response, in microseconds, the medians of 5 runs
+alternated with the version before the tree, which tried the routes one by one, and beside the `ServeMux` of Go 1.26.3
+doing the same, its `ServeHTTP` called directly.
+
+| Routes, and the one asked | One by one | The tree | Go's `ServeMux` |
+|---|---:|---:|---:|
+| 10, the first | 3.0 | 3.1 | 0.32 |
+| 10, the last | 6.7 | 2.8 | 0.30 |
+| 100, the last | 44.8 | 2.8 | 0.28 |
+| 500, the last | 235 | 2.9 | 0.33 |
+| 500, a path that none takes: a `404` | 243 | 0.84 | 1.48 |
+| the API above, its last item | 159 | 3.5 | 0.36 |
+
+Go is 8 to 12 times faster on a route that answers, as its handler is compiled where Cesia's runs in the interpreter: a
+request that no route takes runs no handler, and gets its `404` from Cesia in 0.84 µs, faster than Go. The tree costs
+once what the routes tried one by one didn't: 91 µs to build for the 200 routes of the API, when [http.Handler] is
+called, at the start of a server.
+
 ## JSON in
 
 [http.BodyJson] reads the body of a request as JSON. With `From`, the body is checked before your code uses it, and a wrong one
@@ -138,6 +205,12 @@ Run it, and ask it from another terminal:
 cesia run --allow net=:8080 shop.ce
 curl localhost:8080/hello/Ana
 ```
+
+Each response it sends has a `Date` header, the time of the response in the form of RFC 9110 (section 5.6.7), as
+`date: Wed, 25 Nov 2026 13:40:00 GMT`, since a server with a clock must send one (section 6.6.1): caches and clients
+read the age of a response from it. The server writes the line again when the second changes, not for each response. A
+handler that sets its own `Date`, by [http.WithHeader], keeps it; the responses of [http.Handler], which no network
+carries, have none.
 
 ### Stopping
 

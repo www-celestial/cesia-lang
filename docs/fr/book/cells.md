@@ -687,3 +687,16 @@ use std/result
 use std/sys
 sys.Write("mean.html", cells.Html("mean.ce")!)
 ```
+
+Avec `code = false`, la page laisse de côté le code de chaque cell, et les cells qui ne montrent rien : leurs titres,
+leurs inputs, ce qu'elles ont affiché, leurs valeurs et leurs erreurs restent, une page pour qui veut les résultats,
+comme Cemacs montre un fichier de cells comme une app (une application : ici, des réglages et leurs résultats) après
+`C-c e t`. `code = true`, par défaut, donne la page ci-dessus, et l'écrire ne change rien : `cells.Html("mean.ce")` est
+`cells.Html("mean.ce", allow = [], code = true)`.
+
+```cesia norun
+use std/cells
+use std/result
+use std/sys
+sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce", code = false)))
+```

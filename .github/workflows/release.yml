@@ -124,8 +124,9 @@ jobs:
           mkdir -p out/bin
           cp -R libraries/lib out/lib
           # The plugins that the binary loads from lib/, the JIT at the first hot unit, SQLite's natives and the
-          # debugger's engine at their first call, and the runner of cesia test; without the C debug info, as the binary.
-          for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs testing/cesia_testing.cmxs debug/cesia_debug.cmxs; do
+          # debugger's engine at their first call, the runner of cesia test and the compiler of cesia build; without the
+          # C debug info, as the binary.
+          for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs testing/cesia_testing.cmxs debug/cesia_debug.cmxs wasm/cesia_wasm.cmxs; do
             cp "_build/default/src/$plugin" out/lib/
             file="out/lib/$(basename "$plugin")"
             # Dune's files are read-only, and so is their copy: strip writes it.

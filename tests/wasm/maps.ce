@@ -1,0 +1,27 @@
+use std/io
+use std/value
+
+p = {X: 1, V: 2.5}
+q = p
+q.X = 10
+q.Z = "new"
+io.Print(p, q, p.X + q.X, p.V)
+ps = [{X: i, V: i * 2} for i in 1..3]
+for i in 1..3
+  pt = ps[i]
+  ps[i] = {X: pt.X + pt.V, V: pt.V}
+end
+io.Print(ps, ps.X)
+nested = {A: {B: [1, 2]}}
+nested.A.B[2] = 20
+io.Print(nested, value.Equal({X: 1}, {X: 1}), {X: 1} == {X: 2})
+d = {a: 1, b: 2}
+io.Print(d["a"], d.b)
+d["a"] = 5
+io.Print(d)
+struct Point { X, Y }
+pt = Point(1, 2)
+io.Print(pt, pt.X, pt == Point(1, 2))
+moved = pt
+moved.Y = 5
+io.Print(pt, moved)

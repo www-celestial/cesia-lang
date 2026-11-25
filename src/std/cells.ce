@@ -1975,12 +1975,13 @@ defn inputHtml(x)
   text.Str("<p class=\"input\"><label>", name, " ", box, "</label></p>\n")
 end
 
-defn cellHtml(cell, i, errors, ran, inputs)
-  (** Cell i of the page: its title, its code, then its errors, or its inputs, what it printed and its value. *)
+defn cellHtml(cell, i, errors, ran, inputs, code = true)
+  (** Cell i of the page: its title, its code, then its errors, or its inputs, what it printed and its value. Without its code, a cell that shows nothing
+      has no section, its title neither, as the view of an app of Cemacs leaves it out. *)
   title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
   body = text.Join("\n", list.DropWhile(l -> values.IsSome(marker(l)), text.Lines(cell.Source)))
-  code = if text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
-  out = [code]
+  colors = if not code or text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
+  out = [colors]
   if values.Len(errors) > 0
     out = list.Append("<pre class=\"error\">$(escape(text.Join("\n", ["line $(e.Line): $(e.Message)" for e in errors])))</pre>\n", out)
   else if values.IsSome(ran)
@@ -1988,14 +1989,17 @@ defn cellHtml(cell, i, errors, ran, inputs)
     out = list.Concat(out, printedHtml(ran, i))
     out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value, "$i") end, out)
   end
-  if title == "" and text.Join("", out) == "" "" else "<section>\n$title$(text.Join("", out))</section>\n" end
+  shown = text.Join("", out)
+  if shown == "" and (title == "" or not code) "" else "<section>\n$title$(shown)</section>\n" end
 end
 
-defn Html(path, allow = [])
+defn Html(path, allow = [], code = true)
   (** Runs every cell of a file in a new session, from the top, and gives the page of the file in an Ok: one HTML text
       that needs no other file and no script, with each cell's title, its code colored, what it printed, its value (a
       graph as its SVG, an animation paused under a box Play, a table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
-      session has the permissions of allow, as Session. Needs the read permission of the file. *)
+      session has the permissions of allow, as Session. With code = false, the page leaves out the code of every cell,
+      and the cells that show nothing: the titles, inputs, results and errors of the others, as Cemacs shows a file of
+      cells as an app. Needs the read permission of the file. *)
   cells = Parse(sys.Read(path)?)
   analysis = Analyse(cells)
   session = Session(path, allow = allow)?
@@ -2010,7 +2014,7 @@ defn Html(path, allow = [])
       end
       ran = r.Value
     end
-    parts = list.Append(cellHtml(cells[i], i, errors, ran, analysis[i].Inputs), parts)
+    parts = list.Append(cellHtml(cells[i], i, errors, ran, analysis[i].Inputs, code = code), parts)
   end
   close(session)
   name = list.Last(text.Split("/", path))

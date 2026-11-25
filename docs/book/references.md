@@ -149,6 +149,16 @@ publisher moves it.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. The backend that makes Cesia's
   machine code from the text of its IR, copied into `src/sys/mir/`.
 
+## WebAssembly
+
+- Andreas Haas, Andreas Rossberg, Derek L. Schuff, Ben L. Titzer, Michael Holman, Dan Gohman, Luke Wagner, Alon Zakai,
+  JF Bastien. "Bringing the Web up to Speed with WebAssembly". *PLDI 2017*, ACM, 185–200.
+  <https://doi.org/10.1145/3062341.3062363>. The design of WebAssembly: a typed code, validated before it runs, compiled
+  by the browser. The format that `cesia build --target wasm` writes.
+- WebAssembly Community Group. "Wasm 3.0 Completed", 2025. <https://webassembly.org/news/2025-09-17-wasm-3.0/>, and the
+  proposal it took in, <https://github.com/WebAssembly/gc>. Garbage collection in WebAssembly: structs, arrays and
+  `i31ref` whose memory the engine manages. Cesia's values in a page.
+
 ## Fibers and channels
 
 - C. A. R. Hoare. "Communicating Sequential Processes". *Communications of the ACM* 21(8):666–677, 1978.
@@ -338,6 +348,16 @@ BLAKE2 is under [Cryptography](#cryptography), QuickCheck and the shrinking of H
 - V. I. Levenshtein. "Binary codes capable of correcting deletions, insertions, and reversals". *Soviet Physics Doklady*
   10(8):707–710, 1966; the Russian original, 1965: <https://www.mathnet.ru/eng/dan31411>. The edit distance of
   [algo.Levenshtein].
+- Jonathan Richard Shewchuk. "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates".
+  *Discrete & Computational Geometry* 18(3):305–363, 1997. <https://doi.org/10.1007/PL00009321>. The exact sum of
+  floats whose sign decides the few cases of [math.Cbrt] near the middle of two floats.
+- Pierre Blanchard, Desmond J. Higham, Nicholas J. Higham. "Accurately computing the log-sum-exp and softmax functions".
+  *IMA Journal of Numerical Analysis* 41(4), 2021. The largest term first, then `log1p` of the others: [math.LogSumExp].
+- Charles F. F. Karney. "Algorithms for geodesics". *Journal of Geodesy* 87(1):43–55, 2013.
+  <https://doi.org/10.1007/s00190-012-0578-z>. The exact reduction of an angle in degrees of [math.SinDegrees],
+  [math.CosDegrees] and [math.TanDegrees].
+- Peter J. Mohr, David B. Newell, Barry N. Taylor, Eite Tiesinga. *CODATA Recommended Values of the Fundamental Physical
+  Constants: 2022*. NIST, 2024. <https://physics.nist.gov/cuu/Constants/>. The 355 constants of [std/constants].
 
 ## Databases
 

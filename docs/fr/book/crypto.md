@@ -2,10 +2,12 @@
 
 Dans ce chapitre, vous gardez des secrets : vous rangez un mot de passe de façon que personne ne puisse le relire, vous
 vérifiez qu'un message n'a pas été modifié, vous le chiffrez pour une clé ou pour une personne, et vous le signez.
-[std/crypto] fait tout cela par libsodium, une bibliothèque que des experts ont écrite et vérifiée ; rien n'en est écrit à
-la main en Cesia, puisqu'une primitive de cryptographie (une brique de base, comme un chiffrement ou un hash) écrite par
-quelqu'un d'autre est le premier endroit que regarde une attaque. Il lui faut `--allow ffi=sodium`, et la libsodium d'une
-release (une version publiée de Cesia), que Cesia apporte avec lui.
+[std/crypto] le fait par libsodium, une bibliothèque que des experts ont écrite et vérifiée, et son BLAKE2b par celui du
+runtime d'OCaml (ce qui accompagne un programme pendant qu'il tourne) ; rien n'en est écrit à la main en Cesia, sauf la
+comparaison de deux secrets, dix lignes, puisqu'une primitive de cryptographie (une brique de base, comme un chiffrement
+ou un hash) écrite par quelqu'un d'autre est le premier endroit que regarde une attaque. Il lui faut
+`--allow ffi=sodium`, et la libsodium d'une release (une version publiée de Cesia), que Cesia apporte avec lui :
+[Ce qui tourne où](#ce-qui-tourne-où) dit quel appel tourne dans quoi.
 
 Les exemples de ce chapitre ne tournent pas quand le livre est construit, puisque ses pages ne peuvent appeler que la
 bibliothèque mathématique du C ; les mêmes exemples tournent dans la référence de chaque fonction, sous `cesia test`.
@@ -63,7 +65,10 @@ où l'une après l'autre prenaient 3 645 ms ; voir [C et C++](c.md#un-appel-qui-
 `==` s'arrête au premier octet qui diffère : le temps qu'il prend dit donc à un attaquant combien d'octets étaient justes,
 un essai après l'autre. C'est une *timing attack* (une attaque par la mesure du temps). [crypto.IsSame] compare deux textes
 en un temps qui ne dépend que de leur longueur : servez-vous-en pour tous les secrets, un token (la suite d'octets secrète
-qu'un programme présente pour prouver ses droits), un HMAC, un hash.
+qu'un programme présente pour prouver ses droits), un HMAC, un hash. Il lit chaque octet des deux et rassemble leurs
+différences par un `or`, sans branche sur elles, comme le fait en OCaml eqaf, la comparaison de MirageOS ; deux textes de
+longueurs différentes diffèrent tout de suite, puisqu'une longueur n'est pas un secret. Ses réponses sont celles de
+`sodium_memcmp` de libsodium, ce que vérifie `tests/crypto/crypto.ce`.
 
 ## Chiffrer avec une clé
 
@@ -118,6 +123,32 @@ le seed peut les refaire.
 [crypto.SecretKeySize], 32 ; [crypto.NonceSize], 24 ; [crypto.MacSize], 16 ; [crypto.PublicKeySize], 32 ;
 [crypto.SignPublicSize], 32 ; [crypto.SignSecretSize], 64 ; [crypto.SignatureSize], 64 ; [crypto.PasswordSize], la place
 que peut prendre un résultat de [crypto.HashPassword], 128.
+
+## Ce qui tourne où
+
+[crypto.Blake2b] tourne dans le runtime d'OCaml, dont le BLAKE2b est le code de référence de la RFC 7693 : les mêmes
+octets que celui de libsodium à toutes les tailles de 16 à 64 et toutes les longueurs de texte de 0 à 260, ce que
+`tests/crypto/crypto.ce` vérifie avec le vecteur de la RFC, le BLAKE2b-512 de `"abc"`. [crypto.IsSame] tourne dans Cesia
+lui-même, comme [encode.Hex], qui donne à un hash sa forme imprimable. Tout le reste tourne dans libsodium :
+[crypto.Sha256], [crypto.Sha512] et [crypto.HmacSha256], puisqu'OCaml n'a pas de SHA-2 à lui et qu'un SHA-2 écrit ici
+serait une primitive écrite à la main ; [crypto.Random], du générateur du système ; le chiffrement de [crypto.Seal] et
+de [crypto.BoxSeal], les signatures de [crypto.Sign], et l'Argon2 de [crypto.HashPassword].
+
+Ce que cela change, mesuré le 2026-11-25 sur la machine de [Vitesse](speed.md#à-côté-des-géants), en microsecondes, les
+médianes de 5 lancements alternés avec la version d'avant, qui appelait le BLAKE2b et le `sodium_memcmp` de libsodium
+par [std/c] et écrivait l'hexadécimal en Cesia, et à côté de `hashlib.blake2b` et `hmac.compare_digest` de Python
+3.14.10 :
+
+| Appel | Avant | Maintenant | Python |
+|---|---:|---:|---:|
+| [crypto.Blake2b] d'un secret de 64 octets, 32 en sortie | 3,56 | 0,47 | 0,67 |
+| le même, puis [encode.Hex] | 19,2 | 0,87 | 0,62 |
+| [crypto.IsSame] de 32 octets | 3,38 | 0,16 | 0,12 |
+| la vérification d'une session : le hash de son secret, en hexadécimal, comparé à celui gardé | 23,5 | 1,18 | 0,84 |
+| la même vérification derrière une route de [std/http], le secret lu dans un cookie | 30,8 | 4,7 | |
+
+Python reste plus rapide là où il appelle son C tout de suite, de 0,1 à 0,3 µs : les appels de Cesia passent par
+l'interpréteur.
 
 ## Pour aller plus loin
 

@@ -9,6 +9,9 @@ val sub : ctx -> t -> t -> t
 val mul : ctx -> t -> t -> t
 val div : ctx -> t -> t -> t
 val pow : ctx -> t -> t -> t
+
+(** C's hypot of two numbers, element by element as [div]: math.Hypot. *)
+val hypot : ctx -> t -> t -> t
 val neg : ctx -> t -> t
 val lt : ctx -> t -> t -> t
 val le : ctx -> t -> t -> t

@@ -70,6 +70,18 @@
 
 ### Science
 
+- `std/math` has the rest of the functions of one number of numpy, R and MATLAB: `Log10`, `Log2`, `Log1p`, `Expm1`,
+  `Cbrt`, `Sinh`, `Cosh`, `Tanh`, `Asinh`, `Acosh`, `Atanh`, `Hypot`, `SinDegrees`, `CosDegrees`, `TanDegrees`,
+  `Radians`, `Degrees`, `IsNan`, `IsInf`, `IsFinite`, `Clamp`, `Step`, `LogSumExp`, `Epsilon` and `NextAfter`, and
+  the constants `E`, `MaxFloat`, `MinFloat`, `MaxInt` and `MinInt`; `num.ReplaceNan` fills the NaN and missing values
+  of an array. Each works on a number and on an array, element by element, and gives the bits of numpy where numpy
+  calls the C library too. `math.Cbrt` is correctly rounded, where the C library's cube root is up to 3 ulps away
+  (`np.cbrt(27.0)` is `3.0000000000000004`, `math.Cbrt(27)` is `3.0`), and as fast; the degrees are reduced exactly,
+  so that `math.SinDegrees(180)` is `0.0`. Machine code calls the C library for `Log10` to `Atanh` and `Hypot` itself.
+  The book's chapter Numbers cleans a weather station's log with them, beside Python, R and MATLAB, and gives the
+  precision of each against mpmath, numpy, R and Octave.
+- `std/constants` holds the 355 physical constants of CODATA 2022 by their names in NIST's table: `constants.Value`,
+  `Unit`, `Uncertainty` and `Find`, the bits of `scipy.constants`.
 - Graphs are black on white, their texts in JetBrains Mono, the font of the code in Cemacs, which draws them as
   `plot.Save` writes them: the layers without a color are black, lines told apart by their dash, solid, dashed, dotted
   and dash-dot in turn, points by their shape, circle, square, triangle and cross, bars by their grey, the ink at 100,
@@ -147,6 +159,9 @@
 - The page of `cells.Html` draws a table as Cemacs does: a thin frame and the rule under its header in ink, lighter
   lines between its rows and columns, its header bold, a number on the right with its decimal point under those of its
   column, a text on the left, every text escaped.
+- `cells.Html(path, allow = [], code = true)`: with `code = false`, the page leaves out the code of every cell, and the
+  cells that show nothing, as Cemacs shows a file of cells as an app after `C-c e t`; without it, the page is the same as
+  before, to the byte.
 - `std/mesh` makes solid parts of triangles: `mesh.Box`, `mesh.Cylinder`, `mesh.Cone` and `mesh.Sphere`, closed, their
   corners counterclockwise from outside, 48 segments around by default; `mesh.Move`, `mesh.Turn` (degrees around an axis,
   the right hand's rule, Rodrigues' formula), `mesh.Scale` (a mirror turns the corners back) and `mesh.Merge`;
@@ -176,6 +191,13 @@
 
 ### Tools
 
+- `cesia build --target wasm file.ce` compiles a program ahead of time to WebAssembly: `file.wasm` and its loader
+  `file.js`, which `node file.js` runs and a page runs as a module script, with the output, the errors, their places and
+  the limits of `cesia run`, byte for byte. A first slice: integers of 63 bits checked, floats, texts, lists, maps,
+  functions and closures, `if`, `match` and loops, results and `?`; what it doesn't compile yet is an error at the
+  build, at its place. Values are objects of WasmGC, the browser's own collector; the compiler is a plugin,
+  `cesia_wasm.cmxs`, that only `cesia build` loads. The book's chapter Compiling to WebAssembly shows a program in a
+  page.
 - `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
   `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
@@ -217,6 +239,19 @@
 
 ### Speed
 
+- `http.Handler` puts the routes in a tree of the parts of their paths, once, where each request tried them one by one:
+  the route of a request costs the same among 500 routes as among 5, 2.9 µs for the last of 500 instead of 235, 2.8
+  for the last of 100 instead of 44.8, the last item of an API of 200 routes in 3.5 instead of 159, and a path that none
+  of 500 takes gets its 404 in 0.84 µs instead of 243 (the handler called without the network, medians of 5 runs,
+  alternated; Go's `ServeMux` takes 0.28 to 0.36 µs, its 404 1.48). The first route added that takes the path, then
+  the method, answers, as before, which a test checks on random sets of routes against the walk of the list; building
+  the tree takes 91 µs for 200 routes, when `http.Handler` is called.
+- `crypto.Blake2b` is the BLAKE2b of OCaml's runtime, the reference code of RFC 7693, where it called libsodium's through
+  `std/c`: the same bytes, at every size, in 0.47 µs instead of 3.56; `crypto.IsSame` compares in OCaml, every byte
+  read, as `sodium_memcmp` did, in 0.16 µs instead of 3.38; and `encode.Hex` writes its text in one pass, so that a hash
+  of 32 bytes and its hex take 0.87 µs instead of 19.2. The check of a session, the hash of its secret in hex compared
+  with the one kept, takes 1.18 µs instead of 23.5, beside Python's 0.84 (medians of 5 runs, alternated). The other
+  calls of `std/crypto` stay in libsodium.
 - The cache of loaded packages reads the code of a function only when that function first runs: an entry is a head,
   which the load reads and checks, then a record for each function, its body with the names of its variables, which the
   run maps from the file and checks at that function's first call alone. `use std/plot` reads 25 KB of its entry of
@@ -258,6 +293,11 @@
   `math.Abs` of an integer itself, 10^7 calls in 20.2 ms instead of 302.1 (medians of 21 runs, alternated).
 
 ### Fixes
+
+- Each response of `http.Serve` has a `Date` header, as RFC 9110 asks of a server with a clock (section 6.6.1), in its
+  form of section 5.6.7, `date: Wed, 25 Nov 2026 13:40:00 GMT`: caches and clients read the age of a response from it.
+  The line is made again when the second changes, not for each response, and a handler that sets its own `Date` keeps
+  it.
 
 - An error of the system that a native lets out instead of an Err, a `Sys_error` or an error of Unix, is a panic of the
   kind io at the native's call, which stops its fiber alone, where it ended the program with a line naming no place, or

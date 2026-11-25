@@ -84,6 +84,17 @@ alone give 0.
 | `--json` | one JSON object per line, and nothing else: `file`, `line`, `column`, `end` (the column after the span), `severity` (`"error"` or `"warning"`), `message`, `hint` |
 | `--stdin file.ce` | the text of that file comes from the input instead of the disk, as an editor sends a buffer not yet saved |
 
+## cesia build
+
+```bash
+cesia build --target wasm file.ce
+```
+
+Compiles a program to WebAssembly: `file.wasm`, the module, and `file.js`, its loader, beside `file.ce`; `node file.js`
+runs it, and a page runs it with `<script type="module" src="file.js">`. What this first slice doesn't compile is an error
+at its place, with the exit code 1; a `file.js` that `cesia build` didn't write stays, and the build stops with the code
+2. See [Compiling to WebAssembly](wasm.md).
+
 ## cesia fmt
 
 ```bash

@@ -1,0 +1,6 @@
+use std/io
+use std/value
+
+name = "Cesia"
+io.Print("hello $name, $(1 + 1) and ${value.Len(name)}", value.Len("été"), "a" < "b", "abc" == "abc", "b" > "abc")
+io.Print(value.Text([1, "x"]), value.Text(2.5), "quote: \"q\"")

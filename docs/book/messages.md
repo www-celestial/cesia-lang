@@ -453,6 +453,9 @@ From `cesia` itself, before a program runs: the command ends with the code 2, or
 | `--workers needs Linux or macOS: on Windows, a program serves on one core` |  |
 | `cesia: nothing is documented under …` |  |
 | `cesia: … is in std/…: cesia doc ….….` |  |
+| `cesia: cesia build needs its plugin, cesia_wasm.cmxs, beside the binary: …` |  |
+| `cesia: … is no loader that cesia build wrote: move it away, or build a file of another name` |  |
+| `… isn't compiled to WebAssembly yet.` | `cesia run runs it; cesia build --target wasm compiles part of Cesia for now.` |
 | `Internal error: …` |  |
 
 ## cesia.toml, cesia do and cesia new

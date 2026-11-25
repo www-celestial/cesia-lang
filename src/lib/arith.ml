@@ -160,6 +160,17 @@ let div_scalar ctx a b =
 
 let div ctx a b = lifted Kernels.Div div_scalar ctx a b
 
+let hypot ctx a b =
+  lifted Kernels.Hypot
+    (fun ctx a b ->
+       match to_float a, to_float b with
+       | Some x, Some y -> Float (Float.hypot x y)
+       | _ -> (
+         match a, b with
+         | Missing, _ | _, Missing -> Missing
+         | _ -> Runtime.fail ctx Type (Messages.need_number "Hypot" (Value.describe (if to_float a = None then a else b)))))
+    ctx a b
+
 let rec int_pow ctx base n =
   if n = 0 then 1
   else if n = 1 then base

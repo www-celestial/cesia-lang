@@ -426,5 +426,5 @@ Each with its link in [References](references.md#the-jit) and [Values and maps](
 
 ## Next
 
-Your programs run fast with nothing to write. The next chapter, [C and C++](c.md), calls the libraries of the system from
-Cesia.
+Your programs run fast with nothing to write. The next chapter, [Compiling to WebAssembly](wasm.md), runs them in a web
+page.

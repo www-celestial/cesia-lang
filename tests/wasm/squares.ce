@@ -1,0 +1,11 @@
+use std/io
+
+(* Products of typed integers, checked inline: -2^31 squared is 2^62, one too many for 63 bits. An error in an argument
+   of io.Print writes nothing of its line. *)
+defn squares()
+  for i in 1..3
+    m = -2147483646 - i
+    io.Print(m * 2147483647, m + m, m - 4611686016279904256, m * m)
+  end
+end
+squares()

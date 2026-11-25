@@ -1,0 +1,12 @@
+use std/io
+
+(* The limit of depth, as the interpreter's: 10,000 calls. *)
+defn down(n)
+  if n == 0
+    0
+  else
+    1 + down(n - 1)
+  end
+end
+io.Print(down(9000))
+io.Print(down(20000))

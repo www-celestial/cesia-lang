@@ -61,6 +61,18 @@ if [ -z "$mode" ]; then
   dune=$!
   jobs+=($dune)
 fi
+# What cesia build --target wasm compiles of the golden tests, native and in Node: the same output, byte for byte. Node 22
+# or later runs WebAssembly's GC.
+wasm=""
+if [ -z "$mode" ]; then
+  if command -v node > /dev/null && node -e 'process.exit(+process.versions.node.split(".")[0] < 22 ? 1 : 0)'; then
+    tools/wasm-test.sh tests/wasm tests/jit tests/errors tests/programs tests/lang > "$logs/wasm.log" 2>&1 &
+    wasm=$!
+    jobs+=($wasm)
+  else
+    echo "tools/wasm-test.sh skipped: no Node 22 or later"
+  fi
+fi
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
 skip() {  # folder, reason
   echo "$1 skipped: $2"
@@ -85,6 +97,14 @@ if [ -n "$dune" ]; then
     tail -5 "$logs/dune.log"
   else
     cat "$logs/dune.log"
+    failed=1
+  fi
+fi
+if [ -n "$wasm" ]; then
+  if wait "$wasm"; then
+    grep '^wasm-test:' "$logs/wasm.log"
+  else
+    cat "$logs/wasm.log"
     failed=1
   fi
 fi
