@@ -175,6 +175,17 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   compilateur qui produit le code machine) qui fabrique le code machine de Cesia à partir du texte de son IR (la forme du
   programme entre sa source et le code machine), copié dans `src/sys/mir/`.
 
+## WebAssembly
+
+- Andreas Haas, Andreas Rossberg, Derek L. Schuff, Ben L. Titzer, Michael Holman, Dan Gohman, Luke Wagner, Alon Zakai,
+  JF Bastien. "Bringing the Web up to Speed with WebAssembly". *PLDI 2017*, ACM, 185–200.
+  <https://doi.org/10.1145/3062341.3062363>. La conception de WebAssembly : un code typé, validé avant de tourner,
+  compilé par le navigateur. Le format qu'écrit `cesia build --target wasm`.
+- WebAssembly Community Group. "Wasm 3.0 Completed", 2025. <https://webassembly.org/news/2025-09-17-wasm-3.0/>, et la
+  proposition qu'il a reprise, <https://github.com/WebAssembly/gc>. Le garbage collection dans WebAssembly (la mémoire
+  libérée par le moteur quand plus rien ne la tient) : des structs, des tableaux et des `i31ref` dont le moteur gère la
+  mémoire. Les valeurs de Cesia dans une page.
+
 ## Fibers et channels
 
 - C. A. R. Hoare. "Communicating Sequential Processes". *Communications of the ACM* 21(8):666–677, 1978.

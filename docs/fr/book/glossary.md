@@ -9,6 +9,12 @@ Une application binary interface : la façon dont le code compilé passe ses arg
 pour que du code compilé à part puisse l'appeler. Le C en a une stable sur chaque système et le C++ n'en a aucune : Cesia
 atteint donc le C++ à travers une petite couche C. Voir [C et C++](c.md).
 
+## Ahead-of-time compilation
+
+Compiler un programme vers le code qui tournera avant qu'il tourne, une fois, au lieu de pendant qu'il tourne, comme le
+fait un JIT. `cesia build --target wasm` compile ahead of time : la page reçoit le programme compilé et aucun compilateur.
+Voir [Compiler vers WebAssembly](wasm.md).
+
 ## Amortized cost
 
 Le coût moyen d'une opération sur une longue suite d'opérations, quand la plupart sont bon marché et quelques-unes chères.
@@ -1097,6 +1103,14 @@ ainsi `std/` et `deps/`, refaits à partir de `cesia.lock` par `cesia pkg instal
 
 L'heure du jour telle que le système la tient, que le système peut avancer ou reculer, comme quand il se corrige par le
 réseau. [sys.Now] la lit : voir [Fichiers](files.md#lhorloge).
+
+## WebAssembly and WasmGC
+
+WebAssembly est un format de code pour une machine qui n'existe pas, petit et vérifié avant de tourner, que les
+navigateurs et Node compilent vers le code du vrai processeur : près de la vitesse native, dans la sandbox de la page.
+WasmGC y ajoute des structs, des tableaux et des références dont la mémoire est gérée par le garbage collector du
+navigateur lui-même. Les valeurs de Cesia dans une page sont des objets de WasmGC : voir
+[Compiler vers WebAssembly](wasm.md#comment-ça-marche).
 
 ## WebSocket
 

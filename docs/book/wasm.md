@@ -174,8 +174,9 @@ place, with the same calls named.
 
 A map is made here for a few keys, as a record of fields: its keys sit in a row, which a new key copies and a read
 searches from the first. A map grown key by key to many thousands, as a dictionary of counts, is slow for now: the
-500,000 keys of `bench/maps.ce` hadn't ended after 100 seconds, where `cesia run` takes 255 ms ([Speed](speed.md#computing)). Keep such work in `cesia run`,
-or in a server the page asks, until the next slice gives maps the hash trie of `cesia run`.
+500,000 keys of `bench/maps.ce` hadn't ended after 100 seconds, where `cesia run` takes 255 ms
+([Speed](speed.md#computing)). Keep such work in `cesia run`, or in a server the page asks, until the next slice gives
+maps the hash trie of `cesia run`.
 
 Of the standard library, these compile: `io.Print`; `math.Div`, `Mod`, `Abs`, `Floor`, `Ceil`, `Round`, `Sqrt`, `Exp`,
 `Log`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos` and `Atan`; `list.Sum`, `Append`, `Concat`, `Take`, `Skip`, `Reverse` and
@@ -204,8 +205,8 @@ Five programs of [Speed](speed.md#computing), `maps` aside (see [What it compile
 WebAssembly and run in Node, beside the same programs written in JavaScript, run in the same Node, and beside `cesia
 run`; and `bench/points.ce`, 1,000 maps `{X, V}` each moved 2,000 times and written back into their list, with its
 twin `bench/points.js`. One machine, an Intel Core i7-4720HQ of 2015, 8 logical cores, Linux 7.2, Node 26.13 (V8), on
-2026-11-25, while other work ran on it (load 5.5 to 6.7): milliseconds, medians of 5 runs, the
-three sides taken in turn so that the load fell on each. *Alone* is the time of the program itself, once its module is
+2026-11-25, while other work ran on it (load 5.5 to 6.7): milliseconds, medians of 5 runs, the three sides taken in
+turn so that the load fell on each. *Alone* is the time of the program itself, once its module is
 loaded; *command* the whole command, Node's start included.
 
 | Program | WebAssembly, alone | JavaScript, alone | WebAssembly, command | JavaScript, command | `cesia run`, command |
@@ -256,10 +257,6 @@ The loader, `NAME.js`, adds about 3,820 bytes, 1,525 with Brotli. A program that
 type the compiler doesn't know brings the printer of every value, most of the 11 KB above; the hand-written `points`
 was 469 bytes. JavaScript's source stays smaller, since its engine is in the browser already.
 
-## Next
-
-The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
-
 ## Further reading
 
 - Andreas Haas and others, *Bringing the Web up to Speed with WebAssembly*, 2017: the design of WebAssembly, its types
@@ -269,3 +266,7 @@ The next chapter, [C and C++](c.md), calls the libraries of the system from Cesi
   cache, which each read of a field keeps.
 
 Each with its link in [References](references.md#webassembly) and [The JIT](references.md#the-jit).
+
+## Next
+
+The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
