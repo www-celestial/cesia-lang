@@ -150,46 +150,104 @@ defn startsName(t)
   nameByte(c) and not (c >= 48 and c <= 57)
 end
 
-defn opening(t, k, tokens)
-  (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens
-      none, nor a struct or an interface written on one line. do opens one right after the ) of a call, before a name or
-      the line end: elsewhere it is a name. *)
-  n = value.Len(tokens)
-  rest = if k < n tokens[(k + 1)..n] else [] end
-  if t == "if"
-    not ((k > 1 and tokens[k - 1] == "else") or "->" in rest)
-  else if t == "struct" or t == "interface"
-    not ("{" in rest)
-  else if t == "do"
-    k > 1 and tokens[k - 1] == ")" and (k == n or startsName(tokens[k + 1]))
-  else
-    t in openers
+(* The words after which a value is still to come: none of them ends one. *)
+words = ["if", "else", "for", "in", "while", "break", "return", "defn", "match", "struct", "interface", "and", "or", "not", "then", "use", "do"]
+
+ends(t) = t in [")", "]", "}", "\"", "?", "!"] or (nameByte(text.Bytes(t)[1]) and not (t in words))   (** Does a token end a value? *)
+
+starts(t) = t in ["{", "\"", "return", "break", "for", "while", "match"] or (nameByte(text.Bytes(t)[1]) and not (t in words))   (** Does a token start a value, after one? *)
+
+defn elseOf(k, tokens)
+  (** Where the else of the a if c else b whose if is the k-th token of a line is, or 0 when none follows before an end
+      that isn't its own. *)
+  depth = 0
+  j = k + 1
+  while j <= value.Len(tokens)
+    t = tokens[j]
+    if t == "else" and depth == 0
+      return j
+    else if t == "end" and depth == 0
+      return 0
+    else if t == "end"
+      depth -= 1
+    else if t == "if" and tokens[j - 1] != "else"
+      depth += 1
+    end
+    j += 1
   end
+  0
 end
 
 defn blocksAfter(blocks, tokens, indent)
   (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one
-      that end closes, with the bodies above it. A do block on a line that starts with then, indented under its statement,
-      has its body under that line: it is a "t", after a "c" for each step of that indent, which its end closes too. *)
+      that end closes, with the bodies above it; missing when an end finds none. An if opens one, as the parser reads
+      it, but: after else, as one more arm of its if; before the -> of a match arm, as its guard; and after a value, out
+      of the head of a block, when it is the if of a if c else b with its else on the line, a guard return x if c with no
+      end after it, or one whose line goes on; else, as in Cesia 1.0, it starts a statement of its own. In the head of a
+      block, an if after a value starts the body; after the else of a if c else b, an if opens a block; break if c is a
+      guard with no end after it. A struct or an interface written on one line opens none. do opens one right after the
+      ) of a call, before a name or the line end: elsewhere it is a name. A do block on a line that starts with then,
+      indented under its statement, has its body under that line: it is a "t", after a "c" for each step of that indent,
+      which its end closes too. *)
   out = blocks
-  for k in 1..value.Len(tokens)
+  n = value.Len(tokens)
+  elses = []        (* the else of each a if c else b of the line *)
+  head = false      (* in the head of a block, before its body starts *)
+  returned = false  (* after a return *)
+  for k in 1..n
     t = tokens[k]
     if t == "end"
       j = value.Len(out)
       while j > 0 and out[j] != "k" and out[j] != "t"
         j -= 1
       end
-      out = if j == 0 [] else list.Take(j - 1, out) end
+      if j == 0
+        return missing
+      end
+      out = list.Take(j - 1, out)
       while value.Len(out) > 0 and list.Last(out) == "c"
         out = list.DropLast(1, out)
       end
-    else if opening(t, k, tokens) and t == "do" and tokens[1] == "then"
-      while 2 * value.Len(out) < indent
-        out = list.Append("c", out)
+    else if t in openers or t == "do"
+      before = if k > 1 tokens[k - 1] else "" end
+      rest = if k < n tokens[(k + 1)..n] else [] end
+      opens = true
+      if t == "if" and "->" in rest
+        opens = false
+      else if t == "if" and before == "else" and not ((k - 1) in elses)
+        opens = false
+        head = true
+      else if t == "if" and before == "break"
+        opens = "end" in rest
+      else if t == "if" and k > 1 and ends(before) and not head
+        e = elseOf(k, tokens)
+        if e > 0
+          elses = list.Append(e, elses)
+          opens = false
+        else
+          opens = not ((returned and not ("end" in rest)) or list.Last(tokens) in going)
+        end
+      else if t == "struct" or t == "interface"
+        opens = not ("{" in rest)
+      else if t == "do"
+        opens = before == ")" and (k == n or startsName(tokens[k + 1]))
       end
-      out = list.Append("t", out)
-    else if opening(t, k, tokens)
-      out = list.Append("k", out)
+      if opens and t != "defn" and t != "do"
+        head = true
+      end
+      if opens and t == "do" and tokens[1] == "then"
+        while 2 * value.Len(out) < indent
+          out = list.Append("c", out)
+        end
+        out = list.Append("t", out)
+      else if opens
+        out = list.Append("k", out)
+      end
+    else if head and k > 1 and starts(t) and ends(tokens[k - 1])
+      head = false
+    end
+    if t == "return"
+      returned = true
     end
   end
   out
@@ -210,8 +268,9 @@ trimEnd(s) = regex.Replace("[ \t\r]+$", "", s)   (** A text without the spaces a
 
 defn shaped(src)
   (** The lines of a source in the style, each {Text, Blank}, Blank for a blank line that may go: out of a text, a comment
-      and brackets. *)
+      and brackets; in {Lines, Even}, Even when each block fmt saw open was closed by an end, and each end closed one. *)
   out = []
+  lost = false    (* an end closed no block *)
   blocks = []     (* each open block: "k" for one that end closes, "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line *)
   shift = 0
   shifts = []     (* the shift of each then line whose do block is open: the lines after its end move as it did *)
@@ -247,7 +306,9 @@ defn shaped(src)
     end
     if body != ""
       before = thens(blocks)
-      blocks = blocksAfter(blocks, tokens, indent)
+      got = blocksAfter(blocks, tokens, indent)
+      lost = lost or value.IsMissing(got)
+      blocks = if value.IsMissing(got) [] else got end
       while value.Len(shifts) < thens(blocks)
         shifts = list.Append(shift, shifts)
       end
@@ -266,15 +327,16 @@ defn shaped(src)
       continued = line.Close > 0 or line.Out != "code" or (not value.IsMissing(last) and last in going)
     end
   end
-  out
+  {Lines: out, Even: not lost and value.Len(list.Filter(it == "k" or it == "t", blocks)) == 0}
 end
 
 defn formatted(src)
-  (** A source in the style: its lines, at most one blank line in a row and none at its start or end, and a line end at
-      its end. *)
+  (** A source in the style, in {Text, Even}: its lines, at most one blank line in a row and none at its start or end, and
+      a line end at its end; Even as shaped gives it. *)
   kept = []
   blank = true
-  for line in shaped(src)
+  shape = shaped(src)
+  for line in shape.Lines
     if not (line.Blank and blank)
       kept = list.Append(line, kept)
     end
@@ -283,7 +345,7 @@ defn formatted(src)
   while value.Len(kept) > 0 and list.Last(kept).Blank
     kept = list.DropLast(1, kept)
   end
-  if value.Len(kept) == 0 "" else "$(text.Join("\n", [l.Text for l in kept]))\n" end
+  {Text: if value.Len(kept) == 0 "" else "$(text.Join("\n", [l.Text for l in kept]))\n" end, Even: shape.Even}
 end
 
 visible(s) = regex.Replace("[ \t\r\n]+", "", s)   (** A text without its spaces and line ends. *)
@@ -291,13 +353,17 @@ visible(s) = regex.Replace("[ \t\r\n]+", "", s)   (** A text without its spaces 
 defn checked(file, src)
   (** The text of a file in the style, in an Ok, once it is sure to mean what the file means: the same tree, the same
       words and comments. An Err says why the file stays as it is. *)
-  out = formatted(src)
+  shape = formatted(src)
+  out = shape.Text
   if out == src
     return result.Ok(out)
   end
   same = cesia.SameTree(src, out)
   if result.IsErr(same)
     return result.Err("$file:$(same.Error.Line): $(same.Error.Message) fmt leaves the file as it is.")
+  end
+  if not shape.Even
+    return result.Err("$file: fmt can't tell where a block of this file ends, so it leaves it as it is. This is a bug of fmt.")
   end
   if not same.Value or visible(src) != visible(out)
     return result.Err("$file: fmt would change what this file means, so it leaves it as it is. This is a bug of fmt.")

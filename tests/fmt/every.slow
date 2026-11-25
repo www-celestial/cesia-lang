@@ -1,0 +1,1 @@
+Slow by nature: cesia fmt twice on some 1,200 files, about 10 s of one core. tools/check.sh runs it, past the change loop.
