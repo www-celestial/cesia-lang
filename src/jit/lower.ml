@@ -112,6 +112,10 @@ and dyn = {
       (* where the statement starts: its block and the instructions before it there, where its copies go when needed *)
   mutable vars : int list;  (* the registers of the variables the statement may assign *)
   mutable need : int ref option;  (* the words of allocation since the last [Reserve] *)
+  mutable rechecks : int ref list;
+      (* the room checked again after each call since the last [Reserve], whose nested frames may have taken it
+         ([Ir.Recheck]): an allocation adds its words to each, as any of them may be the last on its way here *)
+  mutable stopless : bool;  (* a region's call since then that can't bail: no allocation may follow before the next *)
   consts : t Vec.t;
   mutable known : (int * int * int * int) list;
       (* in the block being built: a register of a map or struct already checked, its constant or -1 - its shape, and the
@@ -558,13 +562,15 @@ let const st (v : t) =
   let rec find j = if j = Vec.length cs then (Vec.add_last cs v; j) else if same (Vec.get cs j) v then j else find (j + 1) in
   find 0
 
-(* Room for an allocation, in the words reserved at the last [Reserve]. *)
+(* Room for an allocation, in the words reserved at the last [Reserve], and in those checked again after each call since
+   ([Ir.Recheck]): conservative, each counts every allocation after it in the code. *)
 let alloc st words =
   match st.dyn.need with
-  | Some r ->
+  | Some r when not st.dyn.stopless ->
     r := !r + words;
+    List.iter (fun q -> q := !q + words) st.dyn.rechecks;
     if !r > 1024 then raise No
-  | None -> raise No
+  | _ -> raise No
 
 (* A number as a value: an Int or a Float, made in reserved room. *)
 let box st (x, k) =
@@ -1285,7 +1291,19 @@ and native_call st e (v : version) given =
   (* A parameter the call leaves out gets any number of its kind: the callee makes its default after its step. *)
   let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
   let call () =
-    fresh st (ret_kind v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back))
+    let r = fresh st (ret_kind v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back)) in
+    (* Its nested frames may take the room checked before: what is made after it checks again, at once, where the call
+       itself goes back: a region's statement bails as the call's would, a nested frame or a version as a whole stops;
+       after a region's call that can't bail, nothing is made. *)
+    (if st.dyn.need <> None then
+       let region = st.index = 0 && not st.unit.whole in
+       if region && back < 0 then st.dyn.stopless <- true
+       else begin
+         let q = ref 0 in
+         emit st (Ir.Recheck (q, if region then back else -1));
+         st.dyn.rechecks <- q :: st.dyn.rechecks
+       end);
+    r
   in
   let f = Cache.ready v.owner.func in
   let np = Array.length f.params in
@@ -2073,6 +2091,8 @@ and reserve ?resume st =
     let l = match resume with Some l -> l | None -> let l = block st in goto st l; l in
     emit st (Reserve (need, point st l))
   end;
+  st.dyn.rechecks <- [];
+  st.dyn.stopless <- false;
   st.dyn.need <- Some need
 
 (* Can these statements allocate, outside the loops inside them: a map or struct made, a number stored as a value. *)
@@ -2976,7 +2996,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
     fast = Hashtbl.create 1; twins = Hashtbl.create 8; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
     fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1); globals;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
-            vars = []; need = None; consts = unit.table; known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
+            vars = []; need = None; rechecks = []; stopless = false; consts = unit.table; known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
             inside = []; points = Vec.create (); copies = (false, false); colds = []; dead = false; starts = []; vslots = !vs; cells = [];
             moved = [] } }
 

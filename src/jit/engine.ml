@@ -105,12 +105,16 @@ let margin () = (Gc.get ()).minor_heap_size / 8
 let reserves (f : Ir.func) =
   Array.exists (fun (b : Ir.block) -> List.exists (function Ir.Reserve (n, _) -> !n > 0 | _ -> false) b.ins) f.blocks
 
+(* Does a function check room after a call, which stops a frame or a version as a whole. *)
+let rooms (f : Ir.func) =
+  Array.exists (fun (b : Ir.block) -> List.exists (function Ir.Recheck (n, k) -> !n > 0 && k < 0 | _ -> false) b.ins) f.blocks
+
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
   (* A nested frame short of room stops the run: a region's call then bails, and the interpreter makes its statement; a
      version as a whole goes back to the interpreter, which makes the call from its start, so its own frame must write
      nothing that shows and come back to its body at no point but its start. *)
-  let nested_room = Array.exists reserves (Array.sub fns 1 (Array.length fns - 1)) in
+  let nested_room = Array.exists reserves (Array.sub fns 1 (Array.length fns - 1)) || Array.exists rooms fns in
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
        come back through a call of the first function. *)
     if calls && (not pure) && fns.(0).loose then None
@@ -655,8 +659,10 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
     else if why = Ir.room_code && (code.rooms <- code.rooms + 1; code.rooms > 1) then begin
       (* A call whose nested frames were short of room twice, past the margin of the loop's turn: the loop is made again,
          that version's calls the interpreter's. *)
-      Lower.starve code.vers.(io.(Ir.io_b));
-      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ code.vers.(io.(Ir.io_b)).owner.pname ^ " short of room, its loop made again");
+      let k = io.(Ir.io_b) in
+      if k > 0 then Lower.starve code.vers.(k);
+      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
+        prerr_endline ("jit: " ^ (if k > 0 then code.vers.(k).owner.pname else "a loop's call") ^ " short of room, its loop made again");
       l.code <- None;
       dropped l code;
       l.seen <- 0

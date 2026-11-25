@@ -116,6 +116,11 @@ type ins =
       (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
           at the resume point, the interpreter's allocation collects, and the run comes back; a nested frame, which
           can't leave, stops ([room_out]) *)
+  | Recheck of int ref * int
+      (** [Recheck (need, k)]: right after a call, whose nested frames may have taken the room the last [Reserve]
+          checked, room for the allocations after it; when the young heap lacks it, a region's statement bails to [k]
+          ([room_code]), as the call itself would, and a nested frame or a version as a whole ([k] -1) stops
+          ([room_out]) *)
 
 type term =
   | Jump of int

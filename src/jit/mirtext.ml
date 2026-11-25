@@ -480,6 +480,21 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
       pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
     | Reserve _ -> ()
+    | Recheck (need, k) when !need > 0 ->
+      (* After a call: a region's statement goes back to the interpreter, a nested frame or a version as a whole
+         stops. *)
+      let back = if k >= 0 then Some (bail_to k) else None in
+      let short =
+        stub (fun s ->
+            match back with
+            | Some l -> Printf.bprintf s "  mov %s, %d\n  mov %s, -1\n  jmp %s\n" (cx Ir.io_code) Ir.room_code (cx Ir.io_b) l
+            | None ->
+              Printf.bprintf s "  mov %s, %d\n  mov %s, %d\n" (cx Ir.io_a) !need (cx Ir.io_b) index;
+              stop s Ir.room_out)
+      in
+      pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
+        (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) short
+    | Recheck _ -> ()
     | Elem_at (r, a, i, k) when fn.kinds.(r) = Kint ->
       pr "  mov r%d, i64:%d(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (8 * (k - 1)) (arr a) i r r
     | Elem_at (r, a, i, k) -> pr "  dmov r%d, d:%d(%s, r%d, 4)\n" r (8 * (k - 1)) (arr a) i

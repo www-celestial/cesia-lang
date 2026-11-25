@@ -363,8 +363,50 @@ let defaults st =
   p "  end\n  acc\nend\nio.Print(fuzzRun(%d))\n" turns;
   Buffer.contents b
 
+(* Versions as a whole that give values, called natively from a hot loop and from one the interpreter keeps: a test that
+   loops and gives a Bool, a search that gives an integer or missing, a parameter given back (two names of one map, then
+   a write through one), a recursion of Bools, trees of maps made by a recursion, now and then past the young heap; and
+   late in the loop a condition that is no Bool, an overflow, or a value of another kind. *)
+let values st =
+  let b = Buffer.create 2048 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let coin () = Random.State.bool st in
+  let turns = int 21000 30000 in
+  let late = int 15000 (turns + 5000) in
+  p "use std/io\nuse std/math\nuse std/value\n\n";
+  p "defn fuzzP(n)\n  if n < %d\n    return false\n  end\n  d = 2\n  while d * d <= n\n" (int 1 3);
+  p "    if math.Mod(n, d) == 0\n      return false\n    end\n    d = d + 1\n  end\n  true\nend\n\n";
+  p "defn fuzzFind(n, most)\n  for k in 1..most\n    if k * k > n\n      return %s\n    end\n  end\n  missing\nend\n\n"
+    (pick st [| "k"; "k * 0.5"; "k + n" |]);
+  p "fuzzSame(p) = p\n\n";
+  p "defn fuzzOdd(n)\n  if n == 0\n    return false\n  end\n  not fuzzOdd(n - 1)\nend\n\n";
+  p "defn fuzzTree(n)\n  if n == 0\n    return {L: missing, R: missing}\n  end\n  {L: fuzzTree(n - 1), R: fuzzTree(n - 1)}\nend\n\n";
+  p "defn fuzzCond(n)\n  v = if n == %d %s else n > %d end\n  if v\n    return 1\n  end\n  0\nend\n\n" late
+    (pick st [| "7"; "missing"; "\"t\""; "true" |]) (int 0 9);
+  p "defn fuzzRun(turns)\n  c = 0\n  total = 0\n  p = missing\n  q = missing\n  t = missing\n  for i in 1..turns\n";
+  if coin () then p "    if fuzzP(math.Mod(i, %d))\n      c = c + 1\n    end\n" (int 50 3000);
+  if coin () then p "    x = fuzzFind(math.Mod(i, %d), %d)\n    if x != missing\n      total = total + x\n    end\n" (int 10 5000) (int 1 80);
+  if coin () then p "    p = {X: i}\n    q = fuzzSame(p)\n";
+  if coin () then p "    if fuzzOdd(math.Mod(i, %d))\n      c = c + 2\n    end\n" (int 1 40);
+  if coin () then p "    c = c + fuzzCond(i)\n";
+  if coin () then p "    if math.Mod(i, %d) == 0\n      t = fuzzTree(%d)\n    end\n" (int 1 500) (int 1 7);
+  (match int 0 5 with
+   | 0 -> p "    if i == %d\n      t = fuzzTree(%d)\n    end\n" late (int 16 18)
+   | 1 -> p "    if i == %d\n      total = total + fuzzFind(4611686018427387903, 3)\n    end\n" late
+   | 2 -> p "    if i == %d\n      total = total + fuzzSame(\"t\")\n    end\n" late
+   | _ -> ());
+  p "  end\n  if value.IsDict(q)\n    q.X = 5\n  end\n  io.Print(c, total, value.IsMissing(t))\n  if value.IsDict(p)\n    io.Print(p.X)\n  end\nend\n\n";
+  (* From a loop the interpreter keeps, as it makes a text: the versions' own entries. *)
+  p "defn fuzzSlow(turns)\n  c = 0\n  s = \"\"\n  for i in 1..turns\n    if fuzzP(math.Mod(i, 97))\n      c = c + 1\n    end\n";
+  p "    t = fuzzTree(%d)\n    s = \"$i\"\n  end\n  io.Print(c, s)\nend\n\n" (int 1 6);
+  p "fuzzRun(%d)\n" turns;
+  if coin () then p "fuzzSlow(%d)\n" (int 1000 3000);
+  Buffer.contents b
+
 let shaped st =
-  match Random.State.int st 6 with 0 -> csc st | 1 -> thunks st | 2 -> tops st | 3 -> defaults st | _ -> odes st
+  match Random.State.int st 7 with
+  | 0 -> csc st | 1 -> thunks st | 2 -> tops st | 3 -> defaults st | 4 -> values st | _ -> odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"
