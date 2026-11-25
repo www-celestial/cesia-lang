@@ -24,11 +24,18 @@ let build (ctx : Types.ctx) path =
   in
   let base = Filename.remove_extension path in
   let name = Filename.basename base in
-  Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
   let glue = Glue.text in
+  (* A .js of that name that this build didn't write stays: it may be the program's own. *)
+  let first s = match String.index_opt s '\n' with Some i -> String.sub s 0 i | None -> s in
+  let js_path = base ^ ".js" in
+  if Sys.file_exists js_path && first (In_channel.with_open_bin js_path In_channel.input_all) <> first glue then begin
+    prerr_endline ("cesia: " ^ Messages.wasm_overwrite js_path);
+    exit 2
+  end;
+  Out_channel.with_open_bin (base ^ ".wasm") (fun oc -> Out_channel.output_string oc module_bytes);
   let rec find i = if String.sub glue i 6 = "@WASM@" then i else find (i + 1) in
   let at = find 0 in
   let js = String.sub glue 0 at ^ name ^ ".wasm" ^ String.sub glue (at + 6) (String.length glue - at - 6) in
-  Out_channel.with_open_bin (base ^ ".js") (fun oc -> Out_channel.output_string oc js)
+  Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js)
 
 let () = Loader.builder := Some build

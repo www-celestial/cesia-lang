@@ -439,6 +439,7 @@ let test_summary passed failed seed =
 let snapshot_new k = Printf.sprintf "new snapshot %d: review it, then cesia test --update" k
 let snapshot_changed k = Printf.sprintf "snapshot %d changed: cesia test --update keeps the new text" k
 let no_wasm_plugin reason = "cesia build needs its plugin, cesia_wasm.cmxs, beside the binary: " ^ reason
+let wasm_overwrite path = path ^ " is no loader that cesia build wrote: move it away, or build a file of another name"
 let wasm_unsupported what =
   hinted (Printf.sprintf "%s isn't compiled to WebAssembly yet." what) "cesia run runs it; cesia build --target wasm compiles part of Cesia for now."
 let no_test_plugin reason = "cesia test needs its plugin, cesia_testing.cmxs, beside the binary: " ^ reason
