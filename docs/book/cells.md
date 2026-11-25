@@ -651,5 +651,5 @@ nothing: `cells.Html("mean.ce")` is `cells.Html("mean.ce", allow = [], code = tr
 use std/cells
 use std/result
 use std/sys
-sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce", code = false)))
+sys.Write("mean.html", cells.Html("mean.ce", code = false)!)
 ```

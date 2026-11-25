@@ -698,5 +698,5 @@ comme Cemacs montre un fichier de cells comme une app (une application : ici, de
 use std/cells
 use std/result
 use std/sys
-sys.Write("mean.html", result.Unwrap(cells.Html("mean.ce", code = false)))
+sys.Write("mean.html", cells.Html("mean.ce", code = false)!)
 ```
