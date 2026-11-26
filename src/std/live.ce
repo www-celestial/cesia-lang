@@ -150,7 +150,7 @@ defn heard(m, send, c)
     end
     if version == 1 or version == 2
       metrics.Add("live_screens_total")
-      started(c, send, conn.Value, version == 2 and c.O.Resume > 0)
+      started(c, send, conn.Value, version)
     else
       conn.Value.Close()
     end
@@ -207,13 +207,14 @@ defn attached(p, send, conn, c)
   true
 end
 
-defn started(c, send, conn, resumable)
+defn started(c, send, conn, version)
   (** A new screen for a connection: its fiber, the fiber of its actions, and its token kept when it outlives a break. *)
+  resumable = version == 2 and c.O.Resume > 0
   ended = fiber.Channel()
   s = {Request: c.Request, Ended: ended}
   o = c.O
   w = if value.IsMissing(o.Who) missing else o.Who(s) end
-  sc = {Token: if resumable newToken() else missing end, Inbox: fiber.Channel(size = 64), Acts: fiber.Channel(size = 64), Heard: cell(0),
+  sc = {Token: if version == 2 newToken() else missing end, V2: version == 2, Inbox: fiber.Channel(size = 64), Acts: fiber.Channel(size = 64), Heard: cell(0),
     Request: cell(c.Request), Ended: ended, Resumable: resumable, Who: if value.IsText(w) w else missing end}
   put(sc, c.Bound)
   put(1, c.Epoch)
@@ -316,7 +317,7 @@ defn screening(sc, s, o, send, conn)
       that comes back with its token, before anything new. *)
   made = shown(o.Screen, s)
   if result.IsErr(made)
-    if sc.Resumable
+    if sc.V2
       _ = send(hello(sc, o, false))
     end
     failing(made.Error, send, sc, conn)
@@ -331,7 +332,7 @@ defn screening(sc, s, o, send, conn)
   pending = []
   busy = 0
   t = {Send: send, Conn: conn, Epoch: 1, Seq: 0, Kept: [], Bytes: 0, Lost: 0, Until: missing}
-  if sc.Resumable
+  if sc.V2
     t = wrote(hello(sc, o, false), t, o)
   end
   chs = list.Concat([sc.Inbox], sources)
@@ -514,7 +515,7 @@ defn ended(sc, o)
   if not isClosed(sc.Ended)
     fiber.Close(sc.Ended)
   end
-  if value.IsText(sc.Token)
+  if sc.Resumable
     kept = peek(o.Kept)
     put(dict.Drop(sc.Token, kept), o.Kept)
   end
