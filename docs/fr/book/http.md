@@ -767,16 +767,22 @@ l'autre.
   lui arrive en `s.Base`, pour que l'application refuse le changement d'une chose qui a changé entre-temps plutôt que
   de l'écraser.
 
+```cesia norun hide=code
+screen(s) = []
+acts = {}
+sameAccount(old, new) = true
+accountTag(r) = "w"
+```
 ```cesia norun
 app = http.App() then live.Route("/live", screen, actions = acts,
-  resume = 120, buffer = 1048576,                      (* l'écran gardé pendant une coupure, et ses trames *)
-  same = (old, new) -> sameAccount(old, new),          (* qui peut y revenir : par défaut les mêmes cookies et la même query *)
-  who = s -> accountTag(s.Request),                    (* l'étiquette qui marque les actions de la page *)
-  client = {PingEvery: 15, DeadAfter: 30, OutboxCount: 100})   (* les réglages de la page, envoyés avec son écran *)
+  resume = 120, buffer = 1048576,                      (* the screen kept through a break, and its frames *)
+  same = (old, new) -> sameAccount(old, new),          (* who may come back to it: by default the same cookies and query *)
+  who = s -> accountTag(s.Request),                    (* the tag that stamps the page's actions *)
+  client = {PingEvery: 15, DeadAfter: 30, OutboxCount: 100})   (* the page's settings, sent with its screen *)
 ```
 ```js
 const live = await connect("/live")
-live.onStatus(s => line.textContent = s.State === "down" ? `Hors ligne — ${s.Waiting} en attente` : s.State)
+live.onStatus(s => line.textContent = s.State === "down" ? `Offline — ${s.Waiting} waiting` : s.State)
 ```
 
 Le fil, version 2 (une page de version 1, `{"Hello": 1}`, reçoit l'écran d'avant, qui finit avec sa connexion) :

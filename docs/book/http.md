@@ -719,6 +719,12 @@ comes back by itself and goes on where it stopped, once, as Socket.IO's *connect
 - **What the page saw goes with its change**: `base`, the values the page saw of what an action changes, reaches it as
   `s.Base`, for the app to refuse a change of a thing that changed meanwhile rather than overwrite it.
 
+```cesia norun hide=code
+screen(s) = []
+acts = {}
+sameAccount(old, new) = true
+accountTag(r) = "w"
+```
 ```cesia norun
 app = http.App() then live.Route("/live", screen, actions = acts,
   resume = 120, buffer = 1048576,                      (* the screen kept through a break, and its frames *)
