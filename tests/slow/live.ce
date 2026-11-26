@@ -414,3 +414,224 @@ defn isNoHelloRefused()
   websocket.Close(d)
   value.Equal(first, []) and batch[1].Error.Message == "The page sent a message that live.js doesn't send."
 end
+
+(* ---- Version 2: a screen that outlives a break. *)
+
+defn openV2(address, token = missing, got = 0, cookie = missing)
+  (** A page of version 2: the connection to a screen, its hello sent, with the token of the screen it had. *)
+  c = websocket.Dial("ws://$address/live", headers = if value.IsMissing(cookie) [] else [{Name: "cookie", Value: cookie}] end)?
+  websocket.Send(json.Text(if value.IsMissing(token) {Hello: 2} else {Hello: 2, Token: token, Got: got} end), c)?
+  result.Ok(c)
+end
+
+defn followResumed(address, h, cuts)
+  (** A page of version 2 that follows a show through a network that cuts, to its last group: after each message its
+      rows are the source's at that group, each change after the last one seen (none twice), each frame after the last
+      (none replayed twice). {Ok, Opened, Resumed, Fresh}: the connections opened, and the hellos of a screen kept and
+      of a new one that the page read (a cut may come before the hello). *)
+  ok = true
+  opened = 0
+  resumed = 0
+  fresh = 0
+  token = missing
+  seq = 0
+  rows = []
+  g = -1
+  done = false
+  while not done and opened <= cuts + 50
+    c = openV2(address, token = token, got = seq)
+    opened += 1
+    if result.IsErr(c)
+      sys.Sleep(0.01)
+    else
+      batch = messages(c.Value)
+      while not value.IsMissing(batch) and not done
+        first = batch[1]
+        if "Token" in first
+          if first.Resumed
+            resumed += 1
+          else
+            fresh += 1
+            seq = 0
+          end
+          token = first.Token
+        else
+          if "Seq" in first
+            ok = ok and first.Seq == seq + 1
+            seq = first.Seq
+            if math.Mod(seq, 10) == 0
+              _ = websocket.Send(json.Text({Got: seq}), c.Value)
+            end
+          end
+          for m in batch
+            if "Show" in m
+              ok = ok and (if "Rows" in m m.Group >= g else g >= 0 and m.Group > g end)
+              rows = apply(rows, m)
+              g = m.Group
+              ok = ok and value.Equal(sorted(rows), h.At[m.Group])
+            end
+          end
+        end
+        done = g == value.Len(h.Steps)
+        batch = if done missing else messages(c.Value) end
+      end
+      websocket.Close(c.Value)
+    end
+  end
+  {Ok: ok and done, Opened: opened, Resumed: resumed, Fresh: fresh}
+end
+
+defn isResumedWithEachFrameOnce()
+  (** The network cuts each connection at a random byte: the page comes back to its screen, kept by the app, and gets
+      each frame it missed once, each change once, its rows the source's at every group. *)
+  h = history(150)
+  join = hub(h, 0.003)
+  app = serve(s -> [live.Show("a", watch(join, s))])?
+  got = followResumed(proxy(app, cut = 3000)?, h, 100)
+  got.Ok and got.Opened > 1 and got.Resumed > 0 and got.Fresh == 1
+end
+
+defn counted(ran, n)
+  (** An action that counts its runs by its argument, in a cell. *)
+  d = fiber.Receive(ran).Value
+  d[n] = dict.GetOr(n, 0, d) + 1
+  fiber.Send(d, ran)
+  result.Ok(n)
+end
+
+defn isEachActionRunOnceThroughBreaks()
+  (** 40 actions through a network that cuts each connection before 600 bytes: the page sends again, after
+      each resume, the actions after the last one the screen heard; each runs once, and every reply comes. *)
+  ran = fiber.Channel(size = 1)
+  fiber.Send(dict.Dict(), ran)
+  app = serve(s -> [], actions = {Count: (s, a) -> counted(ran, a)})?
+  address = proxy(app, cut = 600)?
+  acked = dict.Dict()
+  token = missing
+  seq = 0
+  tries = 0
+  sent = 0
+  while value.Len(acked) < 40 and tries < 2000
+    tries += 1
+    c = openV2(address, token = token, got = seq)
+    if result.IsOk(c)
+      batch = messages(c.Value, timeout = 2)
+      while not value.IsMissing(batch) and value.Len(acked) < 40
+        first = batch[1]
+        if "Token" in first
+          heard = if first.Resumed first.Heard else 0 end
+          seq = if first.Resumed seq else 0 end
+          token = first.Token
+          for n in (heard + 1)..40
+            if not (n in acked)
+              _ = websocket.Send(json.Text({Act: "Count", Id: n, Args: n, Key: "k$n"}), c.Value)
+              sent += 1
+            end
+          end
+        else
+          if "Seq" in first
+            seq = first.Seq
+          end
+          for m in batch
+            if "Ack" in m
+              acked[m.Ack] = m.Ok
+            end
+          end
+        end
+        batch = if value.Len(acked) < 40 messages(c.Value, timeout = 2) else missing end
+      end
+      websocket.Close(c.Value)
+    end
+  end
+  d = fiber.Receive(ran).Value
+  value.Len(acked) == 40 and list.All([dict.GetOr(n, 0, d) == 1 for n in 1..40]) and tries > 1
+end
+
+defn firstOf(c)
+  (** The first frame of a screen of version 2, its hello. *)
+  batch = messages(c)
+  if value.IsMissing(batch) missing else batch[1] end
+end
+
+defn isTokenOfAnotherPageRefused()
+  (** A page that comes back with the token of a screen of other cookies, or of another query, gets a screen of its
+      own, and the screen of the token goes on. *)
+  app = serve(s -> [])?
+  c = openV2(app, cookie = "sid=ana")?
+  t = firstOf(c).Token
+  websocket.Close(c)
+  sys.Sleep(0.05)
+  thief = openV2(app, token = t, cookie = "sid=bob")?
+  stolen = firstOf(thief)
+  websocket.Close(thief)
+  q = websocket.Dial("ws://$app/live?shows=other", headers = [{Name: "cookie", Value: "sid=ana"}])?
+  websocket.Send(json.Text({Hello: 2, Token: t, Got: 0}), q)?
+  other = firstOf(q)
+  websocket.Close(q)
+  back = openV2(app, token = t, cookie = "sid=ana")?
+  mine = firstOf(back)
+  websocket.Close(back)
+  stolen.Resumed == false and stolen.Token != t and other.Resumed == false and mine.Resumed == true and mine.Token == t
+end
+
+defn isKeptResumeSecondsAtMost()
+  (** A screen whose page went away is kept resume seconds, its Ended open; then it ends, and the page that comes
+      back gets a new screen. A page that says Bye ends its screen at once. *)
+  seen = fiber.Channel(size = 4)
+  screen = defn (s)
+    at = sys.Now()
+    fiber.Spawn(defn ()
+      _ = fiber.Receive(s.Ended, timeout = 10)
+      fiber.Send(sys.Now() - at, seen)
+    end)
+    []
+  end
+  l = net.Listen(0)?
+  fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", screen, resume = 0.5), listener = l))
+  app = "127.0.0.1:$(net.Port(l))"
+  c = openV2(app)?
+  t = firstOf(c).Token
+  websocket.Close(c)
+  kept = fiber.Receive(seen, timeout = 5)?
+  late = openV2(app, token = t)?
+  again = firstOf(late)
+  websocket.Send(json.Text({Bye: 1}), late)?
+  bye = fiber.Receive(seen, timeout = 5)?
+  websocket.Close(late)
+  kept >= 0.45 and kept < 2 and again.Resumed == false and bye < 0.5
+end
+
+defn isBufferBounded()
+  (** While its page is away, a screen keeps buffer bytes of frames at most: past them it ends, and the page that comes
+      back gets a new screen, whose answer replaces its rows. *)
+  h = history(60, size = 2000)
+  join = hub(h, 0.002)
+  l = net.Listen(0)?
+  fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", s -> [live.Show("a", watch(join, s))], buffer = 20000), listener = l))
+  app = "127.0.0.1:$(net.Port(l))"
+  c = openV2(app)?
+  t = firstOf(c).Token
+  _ = messages(c)
+  websocket.Close(c)
+  sys.Sleep(0.5)
+  back = openV2(app, token = t, got = 1)?
+  again = firstOf(back)
+  answer = messages(back)
+  websocket.Close(back)
+  again.Resumed == false and "Rows" in answer[2]
+end
+
+defn isActionOfAnotherWhoRefused()
+  (** With who, an action stamped with another who is refused, and the action gets s.Key and s.Base. *)
+  app = serve(s -> [], actions = {Echo: (s, a) -> result.Ok({Key: s.Key, Base: s.Base})})?
+  l = net.Listen(0)?
+  fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", s -> [], actions = {Echo: (s, a) -> result.Ok({Key: s.Key, Base: s.Base})}, who = s -> "w1"), listener = l))
+  address = "127.0.0.1:$(net.Port(l))"
+  c = openV2(address)?
+  first = firstOf(c)
+  websocket.Send(json.Text({Act: "Echo", Id: 1, Args: {}, Key: "k1", Base: {Total: 5}, Who: "w1"}), c)?
+  websocket.Send(json.Text({Act: "Echo", Id: 2, Args: {}, Key: "k2", Who: "w2"}), c)?
+  got = acks(c, 2)
+  websocket.Close(c)
+  first.Who == "w1" and got[1].Ok.Key == "k1" and got[1].Ok.Base.Total == 5 and got[2].Err.Status == 403
+end
