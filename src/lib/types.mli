@@ -60,7 +60,15 @@ and table = { mutable tslots : int array; mutable tkeys : t array; mutable tvals
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
 (** What a handle of std/fiber points to. *)
-and task = Job of job | Chan of chan
+and task = Job of job | Chan of chan | Cache of cache
+
+(** A table of std/fiber: values under texts, each [kept] until a time, its [due], [most] at most, in a hash table of
+    random seed, so that no choice of keys makes its chains long. [epoch]: the times it was emptied; [seq]: the writes,
+    which order the keys of one time ([written] of each); [now]: the latest time it was given; [sweep]: the size at which
+    a new key first drops those whose time passed. *)
+and cache = { most : int; held : (string, entry) Hashtbl.t; mutable epoch : int; mutable seq : int; mutable now : float; mutable sweep : int }
+
+and entry = { mutable kept : t; mutable due : float; mutable written : int }
 
 (** A task: its [result] once it ended, the fibers that wait for it, and its fiber while it runs. A task that ended
     lets go of its fiber, so its stacks are freed. *)

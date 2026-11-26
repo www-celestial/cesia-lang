@@ -1,0 +1,153 @@
+(* The tables of std/fiber: a value until its time, a flood of keys bounded, an epoch that keeps out a value read before
+   an Empty, GCRA all or none and the same as the state of a fiber that did it in Cesia, and fibers that count at once. *)
+use std/dict
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/result
+use std/test
+use std/value
+
+defn isKeptUntilItsTime()
+  (* a value read at the very time it ends is gone: a session read while it expires is never trusted *)
+  t = fiber.Table(10)
+  fiber.Remember("s", {User: 7}, 1060, t)
+  before = fiber.Recall("s", 1059.999, t)
+  at = fiber.Recall("s", 1060, t)
+  again = fiber.Recall("s", 1000, t)
+  before.User == 7 and value.IsMissing(at) and value.IsMissing(again)
+end
+
+defn isForgedKeyNobody()
+  (* a key is a whole text: one byte changed, one byte more or less, finds nothing *)
+  t = fiber.Table(10)
+  fiber.Remember("5f2a9c", "ana", 2000, t)
+  list.All([value.IsMissing(fiber.Recall(k, 1000, t)) for k in ["5f2a9d", "5f2a9", "5f2a9c ", "", "5F2A9C"]]) and fiber.Recall("5f2a9c", 1000, t) == "ana"
+end
+
+defn isFloodOfKeysBounded()
+  (* 10,000 keys, all fresh, in a table of 100: it holds 100 at most, the latest, and three quarters after each pruning *)
+  t = fiber.Table(100)
+  for k in 1..10000
+    fiber.Remember("k$k", k, 1e12, t)
+  end
+  held = [k for k in 1..10000 if not value.IsMissing(fiber.Recall("k$k", 0, t))]
+  value.Len(held) <= 100 and value.Len(held) >= 75 and list.Last(held) == 10000 and held[1] > 9900
+end
+
+defn isFloodOfEndedKeysFirst()
+  (* past most keys, those whose time passed go before any that is still fresh *)
+  t = fiber.Table(8)
+  fiber.Remember("fresh", 1, 5000, t)
+  for k in 1..20
+    fiber.Remember("old$k", k, 1001, t)
+  end
+  fiber.Recall("x", 1002, t)
+  for k in 1..7
+    fiber.Remember("new$k", k, 5000, t)
+  end
+  fiber.Recall("fresh", 1002, t) == 1 and fiber.Recall("new7", 1002, t) == 7
+end
+
+defn isEpochKeepsOutAnOldRead()
+  t = fiber.Table(10)
+  e = fiber.Epoch(t)
+  fiber.Remember("a", 1, 2000, t, epoch = e)
+  fiber.Empty(t)
+  fiber.Remember("b", 2, 2000, t, epoch = e)
+  fiber.Remember("c", 3, 2000, t, epoch = fiber.Epoch(t))
+  value.IsMissing(fiber.Recall("a", 1000, t)) and value.IsMissing(fiber.Recall("b", 1000, t)) and fiber.Recall("c", 1000, t) == 3 and e + 1 == fiber.Epoch(t)
+end
+
+defn isValueKeptAsGiven()
+  (* a map changed after it was kept is a copy: the table's stays as it was *)
+  t = fiber.Table(10)
+  m = {N: 1}
+  fiber.Remember("m", m, 2000, t)
+  m.N = 2
+  got = fiber.Recall("m", 1000, t)
+  got.N = 3
+  fiber.Recall("m", 1000, t).N == 1 and m.N == 2
+end
+
+defn isForgetOne()
+  t = fiber.Table(10)
+  fiber.Remember("a", 1, 2000, t)
+  fiber.Remember("b", 2, 2000, t)
+  fiber.Forget("a", t)
+  value.IsMissing(fiber.Recall("a", 1000, t)) and fiber.Recall("b", 1000, t) == 2
+end
+
+defn isAdmitAllOrNone()
+  (* the second key refuses: the first counted nothing, so its whole burst is still there *)
+  t = fiber.Table(100)
+  wide = {Per: 10, Period: 60, Burst: 3}
+  one = {Per: 1, Period: 60, Burst: 1}
+  first = fiber.Admit(["ip", "user"], [wide, one], 1000, t)
+  refused = [fiber.Admit(["ip", "user"], [wide, one], 1000, t) for k in 1..5]
+  alone = [fiber.Admit(["ip"], [wide], 1000, t).Ok for k in 1..3]
+  first.Ok and list.All([not r.Ok and r.Key == "user" and r.Retry == 60.0 for r in refused]) and value.Equal(alone, [true, true, false])
+end
+
+(** The rate limits of Centauri's state as they were written in Cesia, one dict of due times: the oracle of Admit. *)
+defn oldAllow(keys, rates, now, due)
+  ok = true
+  retry = 0
+  refused = missing
+  times = []
+  for k in 1..value.Len(keys)
+    gap = rates[k].Period / rates[k].Per
+    t = list.Max([dict.GetOr(keys[k], now, due), now])
+    if ok and t - now > gap * rates[k].Burst - gap
+      ok = false
+      retry = math.Ceil(t - now - gap * rates[k].Burst + gap)
+      refused = keys[k]
+    end
+    times = list.Append(t + gap, times)
+  end
+  if ok
+    for k in 1..value.Len(keys)
+      due[keys[k]] = times[k]
+    end
+  end
+  {Answer: {Ok: ok, Retry: retry, Key: refused}, Due: due}
+end
+
+defn sameAsBefore(steps)
+  (* random requests of three keys, one, two or three at once, at times that move forward by 0 to 9 seconds *)
+  rates = [{Per: 5, Period: 60, Burst: 2}, {Per: 3, Period: 10, Burst: 1}, {Per: 100, Period: 60, Burst: 25}]
+  t = fiber.Table(1000)
+  due = dict.Dict()
+  now = 1000
+  for s in steps
+    now += math.Mod(s, 10)
+    picked = [k for k in 1..3 if math.Mod(math.Div(s, 10 * 2 ^ (k - 1)), 2) == 1]
+    keys = ["k$k" for k in picked]
+    rs = [rates[k] for k in picked]
+    old = oldAllow(keys, rs, now, due)
+    due = old.Due
+    got = fiber.Admit(keys, rs, now, t)
+    if not value.Equal([got.Ok, got.Retry, got.Key], [old.Answer.Ok, old.Answer.Retry, old.Answer.Key])
+      return false
+    end
+  end
+  true
+end
+isAdmitAsTheStateDid() = test.ForAll(sameAsBefore, gen.List(gen.Int(0, 79), max = 60), cases = 300)
+
+defn isAdmitAtOnceAcrossFibers()
+  (* 50 fibers ask at once, each 20 times, yielding between: a burst of 100 passes exactly 100 *)
+  t = fiber.Table(10)
+  rate = {Per: 1, Period: 3600, Burst: 100}
+  tasks = [fiber.Spawn(() -> [fiber.Admit(["shared"], [rate], 1000, t).Ok for k in 1..20]) for f in 1..50]
+  passed = list.Flatten([result.Unwrap(fiber.Wait(x)) for x in tasks])
+  value.Len([p for p in passed if p]) == 100
+end
+
+defn isBadArgumentsPanic()
+  errs = [fiber.Wait(fiber.Spawn(f)) for f in [() -> fiber.Table(0), () -> fiber.Recall("k", 0, fiber.Channel()), () -> fiber.Recall(5, 0, fiber.Table(1)),
+    () -> fiber.Admit(["a"], [{Per: 0, Period: 60, Burst: 1}], 0, fiber.Table(1)), () -> fiber.Admit(["a", "b"], [{Per: 1, Period: 60, Burst: 1}], 0, fiber.Table(1)),
+    () -> fiber.Recall("k", 0 / 0, fiber.Table(1))]]
+  list.All([result.IsErr(e) and e.Error.Kind == "type" for e in errs])
+end
