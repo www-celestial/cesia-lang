@@ -1,0 +1,24 @@
+(* list.Order, Sort and SortBy compiled to WebAssembly (the runtime's merge sort, Rt "order") give what the
+   interpreter's give: floats with a NaN, integers, texts by their bytes, numbers of both kinds, equal keys in their
+   order, an empty list and one of one, a list long enough to be merged, one already in order, and the error of a
+   number with a text. *)
+use std/io
+use std/list
+use std/math
+use std/value
+
+io.Print(list.Order([3, 1, 2]))
+io.Print(list.Sort([2.5, math.Nan, -1.0, 0.5]))
+io.Print(list.Sort([5, -2, 9, 0, 3]))
+io.Print(list.Sort(["b", "a", "ab", "", "B", "é", "e"]))
+io.Print(list.Sort([1, 2.5, 0, -3.5]))
+io.Print(list.SortBy(x -> x.K, [{K: 1, N: "a"}, {K: 0, N: "b"}, {K: 1, N: "c"}, {K: 0, N: "d"}]))
+io.Print(list.Order([]))
+io.Print(list.Order([7]))
+io.Print(list.Order([math.Mod(k * 3, 17) for k in 1..40]))
+xs = [math.Mod(k * 7919, 1000) for k in 1..5000]
+s = list.Sort(xs)
+io.Print([s[1], s[2500], s[5000], value.Equal(s, list.Sort(s))])
+io.Print(list.Order(["c$(k)" for k in 1..20]))
+io.Print(list.MinBy(x -> x.K, [{K: 2}, {K: 1}, {K: 1, N: 2}]))
+io.Print(list.Sort([1, "a"]))

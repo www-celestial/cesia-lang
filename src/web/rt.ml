@@ -1432,6 +1432,89 @@ let () =
       @ [ Lget 0; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n;
           Lget l; Lget n; I32 1; i32_sub; Lget n; I32 (-1); call rt "pick" ])
 
+(* list.Order, as the interpreter's (Lists.order, Kernels.sort_range): the positions, from 1, that put the cells of a
+   list in increasing order, equal ones in their order; floats as Float.compare (a NaN before all), integers as
+   integers, numbers among values by their value and texts by their bytes, anything else the error of
+   Messages.cant_sort. The same merge sort of positions as the interpreter's, runs of 16 sorted by insertion, two
+   sorted halves merged only when they overlap: the same comparisons in the same order, so the same error, and a list
+   already in order is gone through once. No value is made while it sorts. *)
+let () =
+  (* Is x after y, as a comparison of the interpreter is above 0? Numbers by "cmp", texts by their bytes. *)
+  def "sort_gt" (fun rt -> [ v; v; I32 ], [ I32 ], fun _ ->
+      let isn x = [ Lget x; call rt "is_int"; Lget x; Test (false, T rt.boxf); i32_or ] in
+      isn 0 @ isn 1 @ [ i32_and; If (Bnone, [ I32 2; Lget 0; Lget 1; Lget 2; call rt "cmp"; g_true rt; ref_eq; ret ], []);
+                        Lget 0; Test (false, T rt.bytes); Lget 1; Test (false, T rt.bytes); i32_and;
+                        If (Bnone, [ Lget 0; Cast (false, T rt.bytes); Lget 1; Cast (false, T rt.bytes); call rt "text_cmp"; I32 0; i32_gt_s; ret ], []) ]
+      @ fail rt (Messages.cant_sort a1 a2) [ [ Lget 0; call rt "describe" ]; [ Lget 1; call rt "describe" ] ] [ Lget 2 ]);
+  (* The positions in a from lo to hi sorted, b the room of the merges; the cells by kind: 0 floats fs, 1 integers is,
+     2 values vs; the last parameter is the site. *)
+  def "sort_range" (fun rt -> [ nn rt.i32s; nn rt.i32s; I32; I32; I32; nl rt.f64s; nl rt.i64s; nl rt.vals; I32 ], [], fun fb ->
+      let i = local fb I32 and j = local fb I32 and k = local fb I32 and x = local fb I32 and mid = local fb I32 in
+      let p = local fb I32 and q = local fb I32 in
+      let a = 0 and b = 1 and lo = 2 and hi = 3 and kind = 4 and fs = 5 and is = 6 and vs = 7 and site = 8 in
+      let f l = [ Lget fs; Lget l; array_get rt.f64s ] in
+      (* Is the cell at position p after the one at q? *)
+      let gt =
+        [ Lget kind; I32 0; i32_eq;
+          If (Bval I32, f p @ f q @ [ f64_gt ] @ f q @ f q @ [ f64_ne ] @ f p @ f p @ [ f64_eq; i32_and; i32_or ],
+              [ Lget kind; I32 1; i32_eq;
+                If (Bval I32, [ Lget is; Lget p; array_get rt.i64s; Lget is; Lget q; array_get rt.i64s; i64_gt_s ],
+                    [ Lget vs; Lget p; array_get rt.vals; Lget vs; Lget q; array_get rt.vals; Lget site; call rt "sort_gt" ]) ]) ]
+      in
+      let insertion =
+        [ Lget lo; I32 1; i32_add; Lset i;
+          Block (Bnone, [ Loop (Bnone, [
+              Lget i; Lget hi; i32_ge_s; Br_if 1;
+              Lget a; Lget i; array_get rt.i32s; Lset x; Lget i; I32 1; i32_sub; Lset j;
+              Block (Bnone, [ Loop (Bnone, [
+                  Lget j; Lget lo; i32_lt_s; Br_if 1;
+                  Lget a; Lget j; array_get rt.i32s; Lset p; Lget x; Lset q ] @ gt @ [ i32_eqz; Br_if 1;
+                  Lget a; Lget j; I32 1; i32_add; Lget p; array_set rt.i32s;
+                  Lget j; I32 1; i32_sub; Lset j; Br 0 ]) ]);
+              Lget a; Lget j; I32 1; i32_add; Lget x; array_set rt.i32s;
+              Lget i; I32 1; i32_add; Lset i; Br 0 ]) ]) ]
+      in
+      let merge =
+        [ Lget lo; Lset i; Lget mid; Lset j; Lget lo; Lset k;
+          Block (Bnone, [ Loop (Bnone, [
+              Lget k; Lget hi; i32_ge_s; Br_if 1;
+              (* the left one while it lasts, unless the right one is before it *)
+              Lget i; Lget mid; i32_lt_s;
+              If (Bval I32, [ Lget j; Lget hi; i32_ge_s;
+                              If (Bval I32, [ I32 1 ], [ Lget b; Lget i; array_get rt.i32s; Lset p; Lget b; Lget j; array_get rt.i32s; Lset q ] @ gt @ [ i32_eqz ]) ],
+                  [ I32 0 ]);
+              If (Bnone, [ Lget a; Lget k; Lget b; Lget i; array_get rt.i32s; array_set rt.i32s; Lget i; I32 1; i32_add; Lset i ],
+                  [ Lget a; Lget k; Lget b; Lget j; array_get rt.i32s; array_set rt.i32s; Lget j; I32 1; i32_add; Lset j ]);
+              Lget k; I32 1; i32_add; Lset k; Br 0 ]) ]) ]
+      in
+      let rest = [ Lget kind; Lget fs; Lget is; Lget vs; Lget site; call rt "sort_range" ] in
+      [ Lget hi; Lget lo; i32_sub; I32 16; i32_le_s; If (Bnone, insertion @ [ ret ], []);
+        Lget hi; Lget lo; i32_sub; I32 1; Op 0x76 (* i32.shr_u *); Lget lo; i32_add; Lset mid;
+        Lget a; Lget b; Lget lo; Lget mid ] @ rest
+      @ [ Lget a; Lget b; Lget mid; Lget hi ] @ rest
+      @ [ Lget a; Lget mid; I32 1; i32_sub; array_get rt.i32s; Lset p; Lget a; Lget mid; array_get rt.i32s; Lset q ] @ gt
+      @ [ If (Bnone, [ Lget b; Lget lo; Lget a; Lget lo; Lget hi; Lget lo; i32_sub; array_copy rt.i32s rt.i32s ] @ merge, []) ]);
+  def "order" (fun rt -> [ v; I32 ], [ v ], fun fb ->
+      let l = local fb (nn rt.list) and n = local fb I32 and a = local fb (nn rt.i32s) and i = local fb I32 and kind = local fb I32 in
+      let fs = local fb (nl rt.f64s) and is = local fb (nl rt.i64s) and vs = local fb (nl rt.vals) and out = local fb (nn rt.i64s) in
+      [ Lget 0; Test (false, T rt.list); If (Bnone, [], fail rt (Messages.need_array "Order" a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
+        Lget 0; Cast (false, T rt.list); Lset l; Lget l; call rt "cells"; Lset n;
+        Lget n; array_new_default rt.i32s; Lset a ]
+      @ upto i n [ Lget a; Lget i; Lget i; array_set rt.i32s ]
+      @ [ Block (Bnone, [
+            Block (Bval (nn rt.f64s), [
+                Block (Bval (nn rt.i64s), [
+                    Lget l; struct_get rt.list l_store;
+                    Br_on_cast (0, false, Array, false, T rt.i64s);
+                    Br_on_cast (1, false, Array, false, T rt.f64s);
+                    Cast (false, T rt.vals); Lset vs; I32 2; Lset kind; Br 2 ]);
+                Lset is; I32 1; Lset kind; Br 1 ]);
+            Lset fs; I32 0; Lset kind ]);
+          Lget a; Lget n; array_new_default rt.i32s; I32 0; Lget n; Lget kind; Lget fs; Lget is; Lget vs; Lget 1; call rt "sort_range";
+          Lget n; array_new_default rt.i64s; Lset out ]
+      @ upto i n [ Lget out; Lget i; Lget a; Lget i; array_get rt.i32s; I32 1; i32_add; i64_extend_s; array_set rt.i64s ]
+      @ [ I32 1; Lget n; If (Bval I32, [ I32 1 ], [ I32 0 ]); Lget n; Lget out; I32 1; struct_new rt.list ])
+
 (* value.Size and matrix.Reshape, of one or two dimensions. *)
 let () =
   def "size" (fun rt -> [ v ], [ v ], fun fb ->

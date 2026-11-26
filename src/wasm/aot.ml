@@ -1624,6 +1624,9 @@ let () =
            arity fc pos args 2;
            expr fc args.(0) V @ expr fc args.(1) V @ site fc pos @ [ call fc.st.rt f ] @ convert fc ~from:V ~into:k))
     [ "Take", "take"; "Skip", "skip" ];
+  reg "list" "Order" (fun fc args pos k ->
+      arity fc pos args 1;
+      expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "order" ] @ convert fc ~from:V ~into:k);
   reg "list" "Reverse" (fun fc args pos k ->
       arity fc pos args 1;
       expr fc args.(0) V @ site fc pos @ [ call fc.st.rt "reverse" ] @ convert fc ~from:V ~into:k);

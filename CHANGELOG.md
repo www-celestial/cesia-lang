@@ -290,6 +290,13 @@
   `points` 53 instead of 148, `mandel` 58 instead of 91, and `bench/maps.ce`, 500,000 keys, 413 where it hadn't ended
   after 100 s (`cesia run` 342); JavaScript in the same Node takes 61, 142, 137, 34, 57 and 583. Chrome 158 and Firefox
   160 are measured too, in the book's chapter Compiling to WebAssembly.
+- `list.Order`, `Sort`, `SortBy`, `MinBy` and `MaxBy` compiled to WebAssembly sort by the runtime's own merge sort, the
+  interpreter's (`Kernels.sort_range`: runs of 16 by insertion, halves merged only where they overlap), on arrays of
+  positions, with no value made while it sorts; it was a merge sort written in Cesia. 100,000 texts of a client's name
+  in 55 ms instead of 330, 100,000 integers in 10 instead of 240, `SortBy` of 100,000 maps by a text 68 to 101 instead
+  of 336 to 412, and by a field already in order 8 to 14 instead of 190 (Node 26, 3 runs): a click on the title of a
+  column of Ceres's table of 100,000 rows in a browser no longer holds the page for a third of a second. The same
+  comparisons in the same order as the interpreter's give the same result and the same error (`tests/wasm/sorts.ce`).
 - Modules compiled to WebAssembly are smaller: only the types their code uses, the texts of messages a byte each from a
   data segment, and messages that name a value without the printer of arrays: hello world takes 322 bytes instead of
   431, `matmul` 10,879 instead of 11,194; the loader 3,149 bytes instead of 3,820, 1,313 with Brotli.
