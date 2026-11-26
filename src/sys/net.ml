@@ -154,10 +154,7 @@ let looked_up n ctx host =
     Unix.close writer
   in
   match Domain.spawn work with
-  | exception Failure _ ->
-    Unix.close reader;
-    Unix.close writer;
-    resolve host
+  | exception Failure _ -> List.iter Unix.close [ reader; writer ]; resolve host
   | domain ->
     Poll.watch n.poll reader;
     while Atomic.get answer = None do
@@ -165,7 +162,7 @@ let looked_up n ctx host =
     done;
     Poll.forget n.poll reader;
     Unix.close reader;
-    Domain.join domain;
+    Par.join domain;
     (match Atomic.get answer with
      | Some (Some addr) -> addr
      | _ -> raise Not_found)

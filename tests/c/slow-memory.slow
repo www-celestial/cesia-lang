@@ -1,0 +1,1 @@
+120,000 slow C calls, each on a domain that it starts: about 30 s alone, past the change loop.

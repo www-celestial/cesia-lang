@@ -6,20 +6,20 @@ let count =
 
 let cores () = Lazy.force count
 
+let sliced = ref 0.
+let join d =
+  Domain.join d;
+  let words = Gc.minor_words () in
+  if words -. !sliced > float (Gc.get ()).minor_heap_size /. 2. then (sliced := words; ignore (Gc.major_slice 0))
+
 (* The caller takes the last part. A domain that can't start only means that the caller does its part too. *)
 let each n f =
   if n = 1 then f 0
   else if n > 1 then begin
-    let start k =
-      match Domain.spawn (fun () -> f k) with
-      | d -> Some d
-      | exception Failure _ ->
-        f k;
-        None
-    in
+    let start k = match Domain.spawn (fun () -> f k) with d -> Some d | exception Failure _ -> f k; None in
     let started = List.init (n - 1) start in
     f (n - 1);
-    List.iter (Option.iter Domain.join) started
+    List.iter (Option.iter join) started
   end
 
 let ranges ?(grain = 1 lsl 17) n f =

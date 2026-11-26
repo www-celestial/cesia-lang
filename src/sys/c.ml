@@ -258,7 +258,7 @@ let away ctx address id slots texts mask keep =
       let finish =
         ctx.w.remote (fun () ->
             ignore (Sys.opaque_identity keep);
-            Option.iter Domain.join !domain;
+            Option.iter Par.join !domain;
             decr in_flight;
             leave ();
             wake ())
@@ -468,9 +468,7 @@ let encode st ctx slots structs texts k ty (v : Types.t) =
 
 let rethrow st =
   match st.pending with
-  | Some e ->
-    st.pending <- None;
-    raise e
+  | Some e -> st.pending <- None; raise e
   | None -> ()
 
 let ffi_function st ctx name address args ret fixed =

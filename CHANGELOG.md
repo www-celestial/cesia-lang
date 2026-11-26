@@ -696,6 +696,16 @@
   that turn, goes on with the code the JIT made again for it when a loop inside got hot there: the program ended with
   `Internal error: Cesia.Tier.Handoff`, as two calls of `ode.Solve` under `--limit depth=4` in the default mode, where
   a checkpoint comes at nearly every step; in any long run, the checkpoint of every million steps could fall there.
+- A C function bound with `slow = true`, as `crypto.HashPassword` and `crypto.CheckPassword` at each sign-in, no longer
+  leaks memory at each call, nor `net.Connect` at each name it looks up. Each runs on a domain of its own, whose end
+  empties the young heap of every domain, and OCaml 5.5 runs no slice of the major GC after that; the main domain asks
+  for one only when half its young heap is used, which never came when such calls were closer than 8 MB of allocation,
+  so the heap kept all that each end promoted: 0.6 to 0.8 KB a call, 79 MB after 100,000 slow calls, 3 major cycles in
+  all. The join of each domain now runs the slice that half a young heap of allocation asks for, at the pace of the
+  runtime itself: the same 100,000 calls add 5.6 MB, 4 of them the 40 bytes that OCaml 5.5 itself keeps of each domain,
+  its stack cache, which the OCaml after 5.5 frees. A slow call costs the same, 223 µs against 229 (medians of 21 runs,
+  the start of its domain nearly all of it); a slice at every join kept the heap as small, but ran a major cycle every
+  13 calls, each marking all that lives. `tests/c/slow-memory` checks the memory after 100,000 calls.
 
 ## 1.2.0
 

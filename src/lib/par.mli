@@ -4,6 +4,11 @@
 
 val cores : unit -> int
 
+(** Joins a domain. Its end emptied the young heap of every domain, and in OCaml 5.5 that runs no slice of the major GC,
+    which the main domain asks for only when half its young heap is used: never, when domains end more often, and the
+    heap kept all that their ends promoted. Here comes the slice that half a young heap of allocation asks for. *)
+val join : unit Domain.t -> unit
+
 (** Runs [f 0] to [f (n - 1)], each on its own core. *)
 val each : int -> (int -> unit) -> unit
 

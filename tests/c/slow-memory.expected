@@ -1,0 +1,2 @@
+memory after 100,000 slow calls, bounded: true
+exit 0
