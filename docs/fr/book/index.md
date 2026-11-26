@@ -57,11 +57,11 @@ construction : le livre ne peut donc pas s'écarter du langage.
 19. [Statistiques](statistics.md) : les lois de probabilité comme valeurs, leurs densités, leurs queues,
     leurs quantiles et leurs tirages, les moyennes de Monte-Carlo avec leur intervalle, les fonctions spéciales en
     dessous, avec ce que promet chaque méthode, à côté de R et de scipy.
-20. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
+20. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive ; CBOR, les données binaires des passkeys.
 21. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
     qui changent d'elles-mêmes), et le client.
 22. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
-    signatures, grâce à libsodium.
+    signatures, grâce à libsodium, et le RSA et l'ECDSA des ID tokens et des passkeys, grâce à OpenSSL.
 23. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.
 24. [SQLite](sqlite.md) : les tables, les lignes, les queries avec `?`, les transactions et les lignes comme structs.
 25. [Tests](tests.md) : les exemples dans la documentation, les fonctions de test, les propriétés, les snapshots,

@@ -1,13 +1,15 @@
 # Cryptographie
 
 Dans ce chapitre, vous gardez des secrets : vous rangez un mot de passe de façon que personne ne puisse le relire, vous
-vérifiez qu'un message n'a pas été modifié, vous le chiffrez pour une clé ou pour une personne, et vous le signez.
-[std/crypto] le fait par libsodium, une bibliothèque que des experts ont écrite et vérifiée, et son BLAKE2b par celui du
-runtime d'OCaml (ce qui accompagne un programme pendant qu'il tourne) ; rien n'en est écrit à la main en Cesia, sauf la
-comparaison de deux secrets, dix lignes, puisqu'une primitive de cryptographie (une brique de base, comme un chiffrement
-ou un hash) écrite par quelqu'un d'autre est le premier endroit que regarde une attaque. Il lui faut
-`--allow ffi=sodium`, et la libsodium d'une release (une version publiée de Cesia), que Cesia apporte avec lui :
-[Ce qui tourne où](#ce-qui-tourne-où) dit quel appel tourne dans quoi.
+vérifiez qu'un message n'a pas été modifié, vous le chiffrez pour une clé ou pour une personne, et vous le signez, comme
+signent une passkey et la connexion de Google. [std/crypto] le fait par libsodium, une bibliothèque que des experts ont
+écrite et vérifiée, par OpenSSL pour les signatures du web, et son BLAKE2b par celui du runtime d'OCaml (ce qui
+accompagne un programme pendant qu'il tourne) ; rien n'en est écrit à la main en Cesia, sauf la comparaison de deux
+secrets, dix lignes, et quelques octets de DER autour des nombres d'une clé, puisqu'une primitive de cryptographie (une
+brique de base, comme un chiffrement ou un hash) écrite par quelqu'un d'autre est le premier endroit que regarde une
+attaque. Il lui faut `--allow ffi=sodium`, et `ffi=crypto` pour OpenSSL, et les bibliothèques d'une release (une version
+publiée de Cesia), que Cesia apporte avec lui : [Ce qui tourne où](#ce-qui-tourne-où) dit quel appel tourne dans
+quoi.
 
 Les exemples de ce chapitre ne tournent pas quand le livre est construit, puisque ses pages ne peuvent appeler que la
 bibliothèque mathématique du C ; les mêmes exemples tournent dans la référence de chaque fonction, sous `cesia test`.
@@ -39,6 +41,12 @@ le font avec BLAKE2b les fingerprints (les empreintes) de `cesia.lock`.
 Un *HMAC*, [crypto.HmacSha256], est un hash sous une clé secrète : seul celui qui a la clé peut le fabriquer, si bien qu'il
 prouve qu'un message vient de lui et n'a pas été modifié, comme le fait la signature d'un webhook (un appel HTTP qu'un
 service envoie à votre serveur quand un événement arrive).
+
+[crypto.HmacSha1] est HMAC avec SHA-1, par OpenSSL, pour un seul usage : TOTP (RFC 6238), les codes de six chiffres
+qu'affiche une application d'authentification, que toutes les applications calculent avec lui. SHA-1 est cassé pour les
+signatures, où deux textes d'un même hash font une contrefaçon ; HMAC demande moins à son hash, que sa fonction de
+compression soit une fonction pseudo-aléatoire, pas que les collisions soient difficiles (Bellare, 2006), et aucune
+attaque contre HMAC-SHA-1 n'est connue. Pour tout ce qui est nouveau, [crypto.HmacSha256].
 
 ## Les mots de passe
 
@@ -108,9 +116,74 @@ use std/crypto
 use std/result
 s = crypto.Open()!
 pair = crypto.SignPair(s)
-sig = crypto.Sign("release 1.0", pair.secret, s)
-crypto.Verify(sig, "release 1.0", pair.public, s)     (* true *)
+sig = crypto.Sign("release 1.0", pair.Secret, s)
+crypto.Verify(sig, "release 1.0", pair.Public, s)     (* true *)
 ```
+
+## Les signatures du web : RS256, PS256 et ES256
+
+La connexion de Google, de Microsoft ou d'Apple envoie un *ID token* (un jeton d'identité), un JWT (un JSON signé) que
+le fournisseur signe avec RSA, et une passkey signe avec ECDSA sur la courbe P-256, ou avec RSA pour Windows Hello.
+libsodium n'a ni l'un ni l'autre, donc [crypto.OpenSsl] charge libcrypto, la bibliothèque d'OpenSSL 3, et donne l'`api`
+que [crypto.KeyPair], [crypto.SignWith], [crypto.VerifyWith] et [crypto.HmacSha1] prennent en dernier. Il lui faut
+`--allow ffi=crypto` ; [crypto.Open], et un programme qui n'a que `ffi=sodium`, restent comme ils étaient. Ed25519 reste
+à libsodium, [crypto.Sign] et [crypto.Verify] : une seule façon pour chaque algorithme.
+
+Un algorithme porte le nom que lui donne JOSE, le JSON signé des JWT, l'un de [crypto.Algorithms] : `"RS256"`,
+RSASSA-PKCS1-v1_5 avec SHA-256 (RFC 8017) ; `"PS256"`, RSASSA-PSS avec SHA-256, MGF1 avec SHA-256 et un salt (des
+octets au hasard mêlés à la signature) de 32 octets, comme le demandent la RFC 7518 et la RFC 8230 ; `"ES256"`, ECDSA sur
+P-256 avec SHA-256 (FIPS 186-5). Une clé publique est le DER (la forme binaire des structures d'ASN.1) d'une
+*SubjectPublicKeyInfo*, la forme que lisent OpenSSL, Java et Go ; une clé secrète le DER d'une PrivateKeyInfo de *PKCS #8*,
+ce qu'écrit `openssl pkey -outform DER`. [crypto.KeyPair] fait une paire, RSA de 2048 bits ou un point de P-256 :
+
+```cesia norun
+use std/crypto
+use std/result
+o = crypto.OpenSsl()!
+pair = crypto.KeyPair("ES256", o)!
+signature = crypto.SignWith("pay 10", pair.Secret, "ES256", o)!
+crypto.VerifyWith(signature, "pay 10", pair.Public, "ES256", o)    (* true *)
+crypto.VerifyWith(signature, "pay 99", pair.Public, "ES256", o)    (* false *)
+crypto.VerifyWith(signature, "pay 10", pair.Public, "RS256", o)    (* false *)
+```
+
+[crypto.VerifyWith] n'arrête jamais le programme, quels que soient les octets qu'il reçoit : tout ce qui n'est pas une
+signature du message sous la clé est `false`. Une clé d'un autre type que celui de l'algorithme l'est aussi, une clé EC
+donnée avec `"RS256"` : qui écrit l'algorithme d'un token ne peut pas faire lire une clé comme une autre sorte, l'attaque
+qu'on appelle *algorithm confusion* (la confusion d'algorithme). Une clé RSA de moins de 2048 bits est `false`, une clé
+EC hors de P-256 aussi, et une clé avec des octets après son DER. [crypto.SignWith] donne une `Err` pour une clé secrète
+qui n'est pas de l'algorithme, jamais une signature que personne n'accepterait.
+
+Un fournisseur publie ses clés en JWK (une clé en JSON), et une passkey envoie une COSE key, en [CBOR](json.md#cbor) :
+chacune contient les nombres de la clé, pas son DER. [crypto.RsaKey] fait le DER à partir du modulus `n` et de
+l'exposant `e`, et [crypto.EcKey] à partir des coordonnées `x` et `y` d'un point de P-256, chacun en octets big-endian
+(l'octet de poids fort d'abord), en Cesia lui-même. Un JWT contient une signature ES256 sous la forme des 64 octets de
+`r` et de `s` côte à côte (RFC 7518), là où OpenSSL et WebAuthn l'écrivent en DER : [crypto.EcdsaDer] passe de la
+première à la seconde, et [crypto.EcdsaRaw] revient. Un ID token vérifié par la clé de son fournisseur, dans le JWKS
+(le jeu de clés) qu'il publie :
+
+```cesia norun
+use std/crypto
+use std/encode
+use std/result
+use std/text
+use std/value
+
+defn signedBy(token, jwk, o)
+  (** Is the ID token signed by this key of the provider's JWKS, {"kty": "RSA", "n": "...", "e": "AQAB"}? *)
+  parts = text.Split(".", token)
+  if value.Len(parts) != 3
+    return result.Ok(false)
+  end
+  key = crypto.RsaKey(encode.Unbase64(jwk.n)?, encode.Unbase64(jwk.e)?)?
+  signature = encode.Unbase64(parts[3])?
+  result.Ok(crypto.VerifyWith(signature, "$(parts[1]).$(parts[2])", key, "RS256", o))
+end
+```
+
+L'algorithme vient du code, ici `"RS256"`, jamais du header (l'en-tête) du token lui-même : un token dit ce qu'il veut.
+`tests/crypto/openssl.ce` vérifie les vecteurs exacts de la RFC 7515, un JWS signé avec RS256 et un avec ES256, et les
+clés et les signatures qu'a faites la commande d'OpenSSL elle-même, une ligne pour chaque refus.
 
 ## Des octets au hasard
 
@@ -129,7 +202,13 @@ que peut prendre un résultat de [crypto.HashPassword], 128.
 [crypto.Blake2b] tourne dans le runtime d'OCaml, dont le BLAKE2b est le code de référence de la RFC 7693 : les mêmes
 octets que celui de libsodium à toutes les tailles de 16 à 64 et toutes les longueurs de texte de 0 à 260, ce que
 `tests/crypto/crypto.ce` vérifie avec le vecteur de la RFC, le BLAKE2b-512 de `"abc"`. [crypto.IsSame] tourne dans Cesia
-lui-même, comme [encode.Hex], qui donne à un hash sa forme imprimable. Tout le reste tourne dans libsodium :
+lui-même, comme [encode.Hex], qui donne à un hash sa forme imprimable, et de même [crypto.RsaKey], [crypto.EcKey],
+[crypto.EcdsaDer] et [crypto.EcdsaRaw], qui ne font qu'écrire ou lire quelques octets de DER autour des nombres, relus
+par OpenSSL. [crypto.KeyPair], [crypto.SignWith], [crypto.VerifyWith] et [crypto.HmacSha1] tournent dans la libcrypto
+d'OpenSSL : chaque clé et chaque contexte qu'elle fabrique est libéré sur tous les chemins, réussite ou refus, et les
+octets qu'elle écrit vont dans des blocs de Cesia dont la taille est demandée d'abord, jamais dans une mémoire
+qu'OpenSSL devrait libérer. Une clé RSA prend quelque 50 ms à fabriquer, sur un thread à elle, comme un hash de mot de
+passe. Tout le reste tourne dans libsodium :
 [crypto.Sha256], [crypto.Sha512] et [crypto.HmacSha256], puisqu'OCaml n'a pas de SHA-2 à lui et qu'un SHA-2 écrit ici
 serait une primitive écrite à la main ; [crypto.Random], du générateur du système ; le chiffrement de [crypto.Seal] et
 de [crypto.BoxSeal], les signatures de [crypto.Sign], et l'Argon2 de [crypto.HashPassword].
@@ -150,10 +229,34 @@ par [std/c] et écrivait l'hexadécimal en Cesia, et à côté de `hashlib.blake
 Python reste plus rapide là où il appelle son C tout de suite, de 0,1 à 0,3 µs : les appels de Cesia passent par
 l'interpréteur.
 
+Les signatures, mesurées le 2026-11-26 sur la même machine, un Intel Core i7-4720HQ, par `bench/signatures.ce` et
+`bench/signatures.js` : des microsecondes par appel, la moyenne de 2 000 appels après 200, puis la médiane de 21
+lancements alternés avec Node 26.13 et le plus bas et le plus haut, la charge moyenne (load average) entre 1,0 et 1,6.
+Le message a 400 octets, comme l'entrée signée d'un JWT ; les clés sont RSA de 2048 bits et P-256. Cesia appelle la
+libcrypto 3.5.9 du système, Node se lie à OpenSSL 4.1.0. La première colonne de Node lit sa clé une fois, dans un
+KeyObject (un objet de clé) ; la seconde prend le DER à chaque appel, comme le font [crypto.VerifyWith] et
+[crypto.SignWith] :
+
+| Appel | Cesia | Node, un KeyObject | Node, le DER à chaque appel |
+|---|---:|---:|---:|
+| [crypto.VerifyWith] RS256 | 76,1 [74,4, 81,5] | 36,9 [35,1, 38,3] | 64,0 [61,5, 74,5] |
+| [crypto.VerifyWith] ES256 | 145,0 [142,7, 184,9] | 102,7 [100,5, 106,8] | 128,3 [127,0, 138,0] |
+| [crypto.SignWith] ES256 | 98,1 [96,0, 151,2] | 41,7 [40,4, 44,3] | 92,2 [90,4, 95,2] |
+| [crypto.HmacSha1] de 8 octets, le compte de TOTP | 6,25 [5,95, 6,76] | 5,93 [5,62, 7,57] | |
+
+**Là où Node gagne, et pourquoi :** un KeyObject est lu une fois et garde ce qu'OpenSSL calcule pour une clé à sa
+première utilisation, la forme de Montgomery d'un modulus RSA, les tables d'un point ; [crypto.VerifyWith] prend sa clé
+en DER, un texte, la lit et la prépare à chaque appel, quelque 30 µs pour RSA. Face à Node à qui l'on donne le DER à
+chaque fois, Cesia est de 6 à 19 % plus lent : il copie la clé, la signature et le message dans des blocs de mémoire
+avant chaque appel, quelques µs pour ces 950 octets. Pour une connexion, une vérification de quelques dizaines de µs
+n'est rien à côté de l'aller-retour vers le fournisseur, ou des 70 ms de l'Argon2 d'un mot de passe.
+
 ## Pour aller plus loin
 
 Bernstein sur Salsa20 et Poly1305, Bernstein et al. sur Ed25519, Aumasson et al. sur BLAKE2, Biryukov et al. sur Argon2,
-le FIPS 180-4 du NIST pour SHA-2, et la RFC 2104 pour HMAC : voir [Références](references.md#cryptographie).
+le FIPS 180-4 du NIST pour SHA-2, la RFC 2104 pour HMAC et Bellare sur sa preuve, la RFC 8017 pour RSA, le FIPS 186-5
+pour ECDSA, les RFC 7515 et 7518 pour JWS, les RFC 8230 et 9053 pour COSE, et la RFC 6238 pour TOTP : voir
+[Références](references.md#cryptographie).
 
 ## La suite
 

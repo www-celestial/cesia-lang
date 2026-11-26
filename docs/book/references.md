@@ -281,6 +281,12 @@ and, as there, a C library is outside the sandbox.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.
   <https://www.rfc-editor.org/rfc/rfc4180>. [std/csv] and the CSV of [std/frame].
+- C. Bormann, P. Hoffman. "Concise Binary Object Representation (CBOR)", RFC 8949, STD 94, 2020.
+  <https://www.rfc-editor.org/rfc/rfc8949>. [std/cbor]: its examples of appendix A are checked both ways in
+  `tests/lang/cbor.ce`, and its floats of 16 bits are read as appendix D does. FIDO Alliance. "Client to Authenticator
+  Protocol (CTAP)", 2.1, 2021, section 8, "Message Encoding".
+  <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html>.
+  CTAP2's canonical CBOR, the order of the keys of a map that [cbor.Encode] writes, and no indefinite lengths.
 - S. Josefsson. "The Base16, Base32, and Base64 Data Encodings", RFC 4648, 2006. <https://www.rfc-editor.org/rfc/rfc4648>.
   Hexadecimal and Base64 in [std/encode].
 - T. Berners-Lee, R. Fielding, L. Masinter. "Uniform Resource Identifier (URI): Generic Syntax", RFC 3986, 2005.
@@ -394,8 +400,8 @@ BLAKE2 is under [Cryptography](#cryptography), QuickCheck and the shrinking of H
 
 ## Cryptography
 
-[std/crypto] calls libsodium, <https://doc.libsodium.org/>, and writes no primitive itself. The algorithms behind its
-functions:
+[std/crypto] calls libsodium, <https://doc.libsodium.org/>, and OpenSSL's libcrypto, <https://docs.openssl.org/3.0/>,
+and writes no primitive itself. The algorithms behind its functions, and the formats of their keys:
 
 - Daniel J. Bernstein. "The Salsa20 Family of Stream Ciphers". In *New Stream Cipher Designs*, LNCS 4986, 84–97, 2008.
   <https://doi.org/10.1007/978-3-540-68351-3_8>, and "The Poly1305-AES Message-Authentication Code". *FSE 2005*, LNCS 3557,
@@ -413,7 +419,33 @@ functions:
 - NIST. "Secure Hash Standard (SHS)", FIPS PUB 180-4, 2015. <https://doi.org/10.6028/NIST.FIPS.180-4>. SHA-256 and SHA-512:
   [crypto.Sha256], [crypto.Sha512].
 - H. Krawczyk, M. Bellare, R. Canetti. "HMAC: Keyed-Hashing for Message Authentication", RFC 2104, 1997.
-  <https://www.rfc-editor.org/rfc/rfc2104>. [crypto.HmacSha256].
+  <https://www.rfc-editor.org/rfc/rfc2104>. [crypto.HmacSha256] and [crypto.HmacSha1].
+- Mihir Bellare. "New Proofs for NMAC and HMAC: Security without Collision-Resistance". *CRYPTO 2006*, LNCS 4117,
+  602–619. <https://doi.org/10.1007/11818175_36>. HMAC is a pseudorandom function as soon as the compression function of
+  its hash is one, collisions or not: why the HMAC-SHA-1 of TOTP stands while SHA-1 is broken for signatures.
+- P. Cheng, R. Glenn. "Test Cases for HMAC-MD5 and HMAC-SHA-1", RFC 2202, 1997. <https://www.rfc-editor.org/rfc/rfc2202>.
+  The seven cases that `tests/crypto/openssl.ce` checks [crypto.HmacSha1] with.
+- D. M'Raihi, S. Machani, M. Pei, J. Rydell. "TOTP: Time-Based One-Time Password Algorithm", RFC 6238, 2011.
+  <https://www.rfc-editor.org/rfc/rfc6238>. The codes of authenticator apps, HMAC-SHA-1 of the count of 30 seconds: its
+  appendix B, the SHA-1 column, is checked in `tests/crypto/openssl.ce`.
+- K. Moriarty, B. Kaliski, J. Jonsson, A. Rusch. "PKCS #1: RSA Cryptography Specifications Version 2.2", RFC 8017, 2016.
+  <https://www.rfc-editor.org/rfc/rfc8017>. RSASSA-PKCS1-v1_5 and RSASSA-PSS with MGF1, the RS256 and PS256 of
+  [crypto.VerifyWith], and the RSAPublicKey that [crypto.RsaKey] writes.
+- NIST. "Digital Signature Standard (DSS)", FIPS 186-5, 2023. <https://doi.org/10.6028/NIST.FIPS.186-5>, and
+  "Recommendations for Discrete Logarithm-based Cryptography: Elliptic Curve Domain Parameters", SP 800-186, 2023.
+  <https://doi.org/10.6028/NIST.SP.800-186>. ECDSA, and the curve P-256 of ES256.
+- M. Jones, J. Bradley, N. Sakimura. "JSON Web Signature (JWS)", RFC 7515, 2015. <https://www.rfc-editor.org/rfc/rfc7515>,
+  and M. Jones. "JSON Web Algorithms (JWA)", RFC 7518, 2015. <https://www.rfc-editor.org/rfc/rfc7518>. The names RS256,
+  PS256 and ES256, the salt of PS256, the 64 bytes r and s of [crypto.EcdsaDer] and [crypto.EcdsaRaw]; the JWS of
+  appendices A.2 and A.3, checked byte for byte in `tests/crypto/openssl.ce`.
+- M. Jones. "Using RSA Algorithms with CBOR Object Signing and Encryption (COSE) Messages", RFC 8230, 2017.
+  <https://www.rfc-editor.org/rfc/rfc8230>, and J. Schaad. "CBOR Object Signing and Encryption (COSE): Initial
+  Algorithms", RFC 9053, 2022. <https://www.rfc-editor.org/rfc/rfc9053>. The keys of passkeys: the n and e, the x and
+  y that [crypto.RsaKey] and [crypto.EcKey] take.
+- S. Turner, D. Brown, K. Yiu, R. Housley, T. Polk. "Elliptic Curve Cryptography Subject Public Key Information", RFC
+  5480, 2009. <https://www.rfc-editor.org/rfc/rfc5480>, and B. Kaliski. "Public-Key Cryptography Standards (PKCS) #8:
+  Private-Key Information Syntax Specification Version 1.2", RFC 5208, 2008. <https://www.rfc-editor.org/rfc/rfc5208>.
+  The DER of the keys of [crypto.KeyPair].
 
 ## Editors
 

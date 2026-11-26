@@ -44,6 +44,39 @@
   address a name was found at, with no second lookup (against server-side request forgery and DNS rebinding).
 - `tls.Client` takes `ca`, the path of a PEM file of the authorities to trust instead of the system's, as a company's own.
 
+### Cryptography
+
+- `crypto.OpenSsl()` loads OpenSSL's libcrypto, version 3, with `--allow ffi=crypto`, for what libsodium lacks: the RSA
+  of ID tokens (Google, Microsoft, Apple) and the ECDSA P-256 of passkeys. `crypto.VerifyWith(signature, message,
+  public, alg, o)`, `crypto.SignWith(message, secret, alg, o)` and `crypto.KeyPair(alg, o)` take an algorithm of
+  `crypto.Algorithms`, `"RS256"`, `"PS256"` (salt of 32 bytes) or `"ES256"` (its signature in DER), a public key as the
+  DER of a SubjectPublicKeyInfo and a secret one as PKCS #8. `VerifyWith` gives `false`, never an error, for any bytes
+  that aren't a signature of the message, for a key of another type than the algorithm's (no algorithm confusion), an
+  RSA key under 2048 bits, an EC key off P-256, a key with bytes after its DER; `SignWith` gives an `Err` for a key that
+  isn't of the algorithm. Each OpenSSL object is freed on every path: 100,000 checks keep the same memory. An RSA key is
+  made on a thread of its own, as a password hash is. A check of RS256 takes 76 µs and one of ES256 145, a signature of
+  ES256 98, where Node 26.13 given the DER at each call takes 64, 128 and 92, and 37, 103 and 42 with a key parsed once
+  (medians of 21 runs alternated, `bench/signatures.ce`). `crypto.Open` and a program with only `ffi=sodium` are as
+  before; Ed25519 stays libsodium's.
+- `crypto.RsaKey(n, e)` and `crypto.EcKey(x, y)` give the DER of a public key from the numbers that a JWK or a COSE key
+  holds, and `crypto.EcdsaDer(raw)` and `crypto.EcdsaRaw(der)` turn an ES256 signature from the 64 bytes of a JWS to
+  DER and back: Cesia itself, a few bytes of DER, an `Err` for a wrong size or a DER that isn't strict.
+- `crypto.HmacSha1(key, message, o)`, through OpenSSL, for TOTP (RFC 6238) and the codes of authenticator apps: 6.3 µs,
+  Node 5.9.
+- `tests/crypto/openssl.ce` checks the JWS of RFC 7515 (RS256 signed again gives its bytes, ES256), RFC 2202's HMAC-SHA-1,
+  RFC 6238's TOTP, the keys and signatures of `openssl`'s command, and each refusal.
+
+### Formats
+
+- `std/cbor`, RFC 8949, for passkeys: `cbor.Read(bytes, at = 1)` decodes the item at a byte and gives `{Value, Next}`,
+  `cbor.Decode(bytes)` an item that takes all the bytes, `cbor.Encode(value)` writes CTAP2's canonical form, the fewest
+  bytes for each head and the keys of a map in order; `cbor.Bytes` marks a byte string, `cbor.Tagged` is a tag. Its input
+  comes from anyone: it nests `cbor.MaxDepth`, 16, levels at most, a length past the bytes left allocates nothing,
+  indefinite lengths are refused, and so are map keys that aren't integers or texts and keys twice; an Err gives the
+  byte of the mistake. The examples of RFC 8949's appendix A are checked both ways, and 100,000 random and mutated inputs
+  each give an Ok or an Err (`tests/lang/cbor.ce`). An attestation object of 311 bytes decodes in 8.1 µs, a COSE key in
+  6.3.
+
 ### Files
 
 - `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another

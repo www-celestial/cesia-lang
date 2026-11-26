@@ -228,6 +228,76 @@ encode.UrlDecode("a+b%26c") -->
 encode.ParseQuery("product=bread&units=2") -->
 ```
 
+## CBOR
+
+CBOR, RFC 8949, is data in bytes as JSON is data in text: numbers, texts, lists, maps, `true`, `false` and `null`, and
+byte strings besides. Each item starts with a byte of *head*: its *major type*, what it is, and its length, then comes
+its content. Passkeys speak it: WebAuthn's *attestation object*, what a browser sends when a passkey is made, and the
+COSE key inside it are CBOR. [cbor.Encode] writes a value, and [cbor.Decode] reads bytes that hold one item:
+
+```cesia
+use std/cbor
+use std/encode
+key = {1: 2, 3: -7, (-1): 1}
+bytes = cbor.Encode(key)
+encode.Hex(bytes) -->
+cbor.Decode(bytes) -->
+```
+
+The integers of a COSE key name its fields: 1 its type, 2 for a key on an elliptic curve; 3 its algorithm, -7 for
+ES256; -1 its curve, 1 for P-256. A negative key is written in parentheses in a dictionary of Cesia, `(-1)`.
+
+Each kind of CBOR becomes a value of Cesia: an integer an integer, of 63 bits at most, a larger one an `Err`; a byte
+string and a text string both a text, a text string checked as UTF-8; an array a list; a map a dictionary, whose keys
+must be integers or text strings, none twice; `null` and `undefined` `missing`; a float of 16, 32 or 64 bits a float; a
+*tag*, a number that gives an item a meaning, as 1 for a time in seconds, a [cbor.Tagged]. [cbor.Bytes] marks a text
+that [cbor.Encode] must write as a byte string, as the public key of a passkey is:
+
+```cesia
+use std/cbor
+use std/encode
+encode.Hex(cbor.Encode("hi")) -->
+encode.Hex(cbor.Encode(cbor.Bytes("hi"))) -->
+cbor.Decode(cbor.Encode(cbor.Bytes("hi"))) -->
+```
+
+The bytes of a passkey hold its public key followed by more bytes, its extensions. [cbor.Read] decodes the item that
+starts at a byte, `at`, 1 by default, and gives `Next`, the byte after it, where [cbor.Decode] wants the item to take all
+the bytes:
+
+```cesia
+use std/cbor
+data = "$(cbor.Encode(key))$(cbor.Encode({"credProtect": 2}))"
+first = cbor.Read(data)!
+first -->
+cbor.Read(data, at = first.Next) -->
+cbor.Decode(data) -->
+```
+
+These bytes come from a browser, so from anyone. [cbor.Read] and [cbor.Decode] nest [cbor.MaxDepth] levels of arrays,
+maps and tags at most. A head that claims more bytes or items than are left is an `Err` before anything is made, so a
+length of $2^{60}$ allocates nothing. The *indefinite lengths* of CBOR, items closed by an end byte, are an `Err` too:
+CTAP2's canonical form, the one security keys write, has none. A decode takes a time and a memory bounded by the length
+of its bytes, and `tests/lang/cbor.ce` gives it 100,000 random and broken inputs, each an `Ok` or an `Err`, never a
+stop:
+
+```cesia
+use std/cbor
+use std/text
+cbor.Decode(text.FromBytes([0x5B, 0x0F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])) -->
+cbor.Decode(text.FromBytes([0xA2, 0x01, 0x02, 0x01, 0x03])) -->
+```
+
+[cbor.Encode] writes each head in its fewest bytes, and the keys of a map in the order of CTAP2's canonical form:
+integers from 0, then negative ones, then texts, each kind the shorter first, so the same value always gives the same
+bytes, those an authenticator writes. A float is written in 64 bits. A text that isn't UTF-8 must be given as
+[cbor.Bytes], and a function has no form: [cbor.Encode] stops there, as those are bugs of the program, not of its input.
+
+[cbor.Decode] reads an attestation object of the format `packed`, 311 bytes, in 8.1 µs [7.9, 8.9], and a COSE key of
+P-256, 77 bytes, in 6.3 µs [6.0, 6.5]: the median of 21 runs of `bench/signatures.ce` on the machine of
+[Speed](speed.md#beside-the-giants), on 2026-11-26, with the lowest and the highest. A passkey's check costs a few µs
+of CBOR beside the 145 µs of its [ES256 signature](crypto.md#signatures-of-the-web-rs256-ps256-and-es256).
+
 ## Markdown
 
 [std/markdown] turns Markdown, the text format of READMEs, into HTML: the part of CommonMark that GitHub shows the same way,
@@ -274,8 +344,8 @@ makes JavaScript's own objects and numbers as it reads, 3.2 times faster than bo
 
 ## Further reading
 
-RFC 8259 for JSON, RFC 4180 for CSV, RFC 4648 for Base64 and hexadecimal, RFC 3986 for the escapes of URLs, and the
-CommonMark specification for Markdown: see [References](references.md#texts-and-formats).
+RFC 8259 for JSON, RFC 4180 for CSV, RFC 4648 for Base64 and hexadecimal, RFC 3986 for the escapes of URLs, RFC 8949
+and CTAP2 for CBOR, and the CommonMark specification for Markdown: see [References](references.md#texts-and-formats).
 
 ## Next
 

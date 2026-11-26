@@ -238,6 +238,83 @@ encode.UrlDecode("a+b%26c") -->
 encode.ParseQuery("product=bread&units=2") -->
 ```
 
+## CBOR
+
+CBOR, RFC 8949, ce sont des données en octets comme JSON est des données en texte : des nombres, des textes, des listes,
+des maps (des tables de clés et de valeurs), `true`, `false` et `null`, et en plus des byte strings (des suites
+d'octets). Chaque item (chaque élément) commence par un octet de *head* (d'en-tête) : son *major type* (son type
+principal), ce qu'il est, et sa longueur, puis vient son contenu. Les passkeys (les clés d'accès qui remplacent le mot
+de passe) le parlent : l'*attestation object* de WebAuthn, ce qu'envoie un navigateur quand une passkey est créée, et la
+COSE key (la clé publique au format de COSE) qu'il contient sont du CBOR. [cbor.Encode] écrit une valeur, et
+[cbor.Decode] lit des octets qui contiennent un item :
+
+```cesia
+use std/cbor
+use std/encode
+key = {1: 2, 3: -7, (-1): 1}
+bytes = cbor.Encode(key)
+encode.Hex(bytes) -->
+cbor.Decode(bytes) -->
+```
+
+Les entiers d'une COSE key nomment ses champs : 1 son type, 2 pour une clé sur une courbe elliptique ; 3 son
+algorithme, -7 pour ES256 ; -1 sa courbe, 1 pour P-256. Une clé négative s'écrit entre parenthèses dans un dictionnaire
+de Cesia, `(-1)`.
+
+Chaque sorte de CBOR devient une valeur de Cesia : un entier un entier, de 63 bits au plus, un plus grand une `Err` ;
+une byte string et une text string (une chaîne de texte) toutes deux un texte, la text string vérifiée en UTF-8 ; un
+array (un tableau) une liste ; une map un dictionnaire, dont les clés doivent être des entiers ou des text strings,
+aucune deux fois ; `null` et `undefined` `missing` ; un float de 16, 32 ou 64 bits un float ; un *tag* (une étiquette),
+un nombre qui donne un sens à un item, comme 1 pour une heure en secondes, un [cbor.Tagged]. [cbor.Bytes] marque un
+texte que [cbor.Encode] doit écrire en byte string, comme l'est la clé publique d'une passkey :
+
+```cesia
+use std/cbor
+use std/encode
+encode.Hex(cbor.Encode("hi")) -->
+encode.Hex(cbor.Encode(cbor.Bytes("hi"))) -->
+cbor.Decode(cbor.Encode(cbor.Bytes("hi"))) -->
+```
+
+Les octets d'une passkey contiennent sa clé publique suivie d'autres octets, ses extensions. [cbor.Read] décode l'item
+qui commence à un octet, `at`, 1 par défaut, et donne `Next`, l'octet d'après, là où [cbor.Decode] veut que l'item
+prenne tous les octets :
+
+```cesia
+use std/cbor
+data = "$(cbor.Encode(key))$(cbor.Encode({"credProtect": 2}))"
+first = cbor.Read(data)!
+first -->
+cbor.Read(data, at = first.Next) -->
+cbor.Decode(data) -->
+```
+
+Ces octets viennent d'un navigateur, donc de n'importe qui. [cbor.Read] et [cbor.Decode] imbriquent [cbor.MaxDepth]
+niveaux d'arrays, de maps et de tags au plus. Un head qui annonce plus d'octets ou d'items qu'il n'en reste est une
+`Err` avant que rien ne soit fabriqué, si bien qu'une longueur de $2^{60}$ n'alloue rien. Les *indefinite lengths* de
+CBOR (les longueurs indéfinies, des items fermés par un octet de fin) sont une `Err` aussi : la forme canonique de CTAP2,
+celle qu'écrivent les clés de sécurité, n'en a pas. Un décodage prend un temps et une mémoire bornés par la longueur de
+ses octets, et `tests/lang/cbor.ce` lui donne 100 000 entrées au hasard et cassées, chacune un `Ok` ou une `Err`, jamais
+un arrêt :
+
+```cesia
+use std/cbor
+use std/text
+cbor.Decode(text.FromBytes([0x5B, 0x0F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])) -->
+cbor.Decode(text.FromBytes([0xA2, 0x01, 0x02, 0x01, 0x03])) -->
+```
+
+[cbor.Encode] écrit chaque head en le moins d'octets possible, et les clés d'une map dans l'ordre de la forme canonique
+de CTAP2 : les entiers à partir de 0, puis les négatifs, puis les textes, chaque sorte la plus courte d'abord, si bien
+que la même valeur donne toujours les mêmes octets, ceux qu'écrit un authenticator (l'appareil qui garde la passkey). Un
+float s'écrit en 64 bits. Un texte qui n'est pas de l'UTF-8 doit être donné en [cbor.Bytes], et une fonction n'a pas de
+forme : [cbor.Encode] s'arrête là, puisque ce sont des bugs du programme, pas de ce qu'il reçoit.
+
+[cbor.Decode] lit un attestation object du format `packed`, 311 octets, en 8,1 µs [7,9, 8,9], et une COSE key de P-256,
+77 octets, en 6,3 µs [6,0, 6,5] : la médiane de 21 lancements de `bench/signatures.ce` sur la machine de
+[Vitesse](speed.md#à-côté-des-géants), le 2026-11-26, avec le plus bas et le plus haut. La vérification d'une passkey
+coûte quelques µs de CBOR à côté des 145 µs de sa [signature ES256](crypto.md#les-signatures-du-web--rs256-ps256-et-es256).
+
 ## Markdown
 
 [std/markdown] transforme du Markdown, le format de texte des README, en HTML : la partie de CommonMark que GitHub montre
@@ -287,7 +364,8 @@ moteur lui-même, qui fait les objets et les nombres de JavaScript au fil de sa 
 ## Pour aller plus loin
 
 La RFC 8259 pour JSON, la RFC 4180 pour CSV, la RFC 4648 pour Base64 et l'hexadécimal, la RFC 3986 pour les échappements
-des URL, et la spécification CommonMark pour Markdown : voir [Références](references.md#textes-et-formats).
+des URL, la RFC 8949 et CTAP2 pour CBOR, et la spécification CommonMark pour Markdown : voir
+[Références](references.md#textes-et-formats).
 
 ## La suite
 

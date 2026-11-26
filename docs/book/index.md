@@ -52,9 +52,10 @@ language.
 19. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, Monte
     Carlo means with their intervals, the special functions under them, with what each method promises, beside R and
     scipy.
-20. [JSON and CSV](json.md): reading, writing, and checking what comes in.
+20. [JSON and CSV](json.md): reading, writing, and checking what comes in; CBOR, the binary data of passkeys.
 21. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
-22. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
+22. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium,
+    and the RSA and ECDSA of ID tokens and passkeys, through OpenSSL.
 23. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 24. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
 25. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site

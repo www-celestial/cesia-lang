@@ -1,0 +1,43 @@
+(* The signatures and HMAC of std/crypto through OpenSSL, and std/cbor on what a passkey sends: microseconds per call,
+   the mean of a loop after a warm-up, one line per kind. bench/signatures.js does the same in Node, for the four of
+   crypto.
+     cesia run --allow ffi=crypto bench/signatures.ce [n] *)
+use std/cbor
+use std/crypto
+use std/io
+use std/result
+use std/sys
+use std/text
+use std/value
+
+o = crypto.OpenSsl()!
+n = if value.Len(sys.Args) == 0 2000 else text.Number(sys.Args[1]) end
+message = text.Repeat(400, "a")   (* about the signing input of a JWT *)
+rsa = crypto.KeyPair("RS256", o)!
+ec = crypto.KeyPair("ES256", o)!
+rs256 = crypto.SignWith(message, rsa.Secret, "RS256", o)!
+es256 = crypto.SignWith(message, ec.Secret, "ES256", o)!
+
+(* A COSE key of 77 bytes, and an attestation object of the format packed as a passkey makes one, 319 bytes. *)
+coseKey = cbor.Encode({1: 2, 3: -7, (-1): 1, (-2): cbor.Bytes(text.Repeat(32, "x")), (-3): cbor.Bytes(text.Repeat(32, "y"))})
+authData = "$(text.Repeat(32, "h"))$(text.FromBytes([0x45, 0, 0, 0, 1]))$(text.Repeat(16, "g"))$(text.FromBytes([0, 64]))$(text.Repeat(64, "i"))$coseKey"
+attestation = cbor.Encode({"fmt": "packed", "attStmt": {"alg": -7, "sig": cbor.Bytes(es256)}, "authData": cbor.Bytes(authData)})
+
+defn timed(name, size, f)
+  for i in 1..200
+    f()
+  end
+  start = sys.Now()
+  for i in 1..n
+    f()
+  end
+  io.Print(name, size, text.Decimals(2, (sys.Now() - start) * 1000000.0 / n))
+end
+
+timed("verify-rs256", 0, () -> crypto.VerifyWith(rs256, message, rsa.Public, "RS256", o))
+timed("verify-es256", 0, () -> crypto.VerifyWith(es256, message, ec.Public, "ES256", o))
+timed("sign-es256", 0, () -> crypto.SignWith(message, ec.Secret, "ES256", o))
+counter = text.FromBytes([0, 0, 0, 0, 2, 0x35, 0x23, 0xEC])   (* the count of 30 seconds at 1111111109, RFC 6238 *)
+timed("hmac-sha1", 0, () -> crypto.HmacSha1("12345678901234567890", counter, o))
+timed("cbor-attestation", text.ByteLength(attestation), () -> cbor.Decode(attestation))
+timed("cbor-cose-key", text.ByteLength(coseKey), () -> cbor.Decode(coseKey))
