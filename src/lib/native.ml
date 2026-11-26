@@ -394,15 +394,15 @@ let lbfgs_direction ctx (a : t array) =
     let y = pair ys !k in
     let al = Float.Array.get rho (!k - 1) *. Kernels.dot (pair ss !k) q in
     Float.Array.set alpha (!k - 1) al;
-    for i = 0 to n - 1 do Float.Array.set q i (Float.Array.get q i -. (al *. Float.Array.get y i)) done;
+    for i = 0 to n - 1 do let p = al *. Float.Array.get y i in Float.Array.set q i (Float.Array.get q i -. p) done;
     k := if !k = 1 then m else !k - 1
   done;
   let r = Float.Array.map (fun v -> gamma *. v) q in
   for _ = 1 to used do
     k := if !k = m then 1 else !k + 1;
     let s = pair ss !k in
-    let c = Float.Array.get alpha (!k - 1) -. (Float.Array.get rho (!k - 1) *. Kernels.dot (pair ys !k) r) in
-    for i = 0 to n - 1 do Float.Array.set r i (Float.Array.get r i +. (c *. Float.Array.get s i)) done
+    let p = Float.Array.get rho (!k - 1) *. Kernels.dot (pair ys !k) r in let c = Float.Array.get alpha (!k - 1) -. p in
+    for i = 0 to n - 1 do let p = c *. Float.Array.get s i in Float.Array.set r i (Float.Array.get r i +. p) done
   done;
   match a.(0) with Array x -> Arrays.like x (F r) | _ -> fail ()
 
@@ -545,7 +545,7 @@ let lu_factor ctx (a : t array) =
           let top = Float.Array.get d (cc + k) in
           for r = k + 1 to n - 1 do
             let f = Float.Array.get d (ck + r) in
-            if f <> 0. then Float.Array.set d (cc + r) (Float.Array.get d (cc + r) -. (f *. top))
+            if f <> 0. then (let p = f *. top in Float.Array.set d (cc + r) (Float.Array.get d (cc + r) -. p))
           done
         done;
         incr col
@@ -586,13 +586,13 @@ let lu_solve ctx (a : t array) =
             let xc = Float.Array.get x (o + col) in
             for r = col + 1 to n - 1 do
               let f = Float.Array.get lu ((col * n) + r) in
-              if f <> 0. then Float.Array.set x (o + r) (Float.Array.get x (o + r) -. (f *. xc))
+              if f <> 0. then (let p = f *. xc in Float.Array.set x (o + r) (Float.Array.get x (o + r) -. p))
             done
           done;
           for r = n - 1 downto 0 do
             let s = ref (Float.Array.get x (o + r)) in
             for k = r + 1 to n - 1 do
-              s := !s -. (Float.Array.get lu ((k * n) + r) *. Float.Array.get x (o + k))
+              let p = Float.Array.get lu ((k * n) + r) *. Float.Array.get x (o + k) in s := !s -. p
             done;
             Float.Array.set x (o + r) (!s /. Float.Array.get lu ((r * n) + r))
           done
@@ -1184,7 +1184,7 @@ let packages =
                 in
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "LogSumExp", nat ~params:[| "a"; "b" |] ~ret:(function [| TFA |] | [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "LogSumExp" 1 2 log_sum_exp;
-      "Pi", Float (4. *. atan 1.);
+      "Pi", Float Float.pi;
       "E", Float 2.718281828459045;
       "Nan", Float nan;
       "Inf", Float infinity;

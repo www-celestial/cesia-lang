@@ -71,15 +71,15 @@ let estimate ys zs n h kw gw natural place =
   let resk = ref 0. and resg = ref 0. and sum_abs = ref 0. in
   for i = 0 to n - 1 do
     let p = ys.(i) +. zs.(i) in
-    resk := !resk +. (kw.(i) *. p);
-    resg := !resg +. (gw.(i) *. p);
-    sum_abs := !sum_abs +. (kw.(i) *. (Float.abs ys.(i) +. Float.abs zs.(i)))
+    let kp = kw.(i) *. p in resk := !resk +. kp;
+    let gp = gw.(i) *. p in resg := !resg +. gp;
+    let ka = kw.(i) *. (Float.abs ys.(i) +. Float.abs zs.(i)) in sum_abs := !sum_abs +. ka
   done;
   let half = 0.5 *. !resk and asc = ref 0. in
   for j = 0 to n - 1 do
     let i = natural.(j) in
     let d = if i = 0 then Float.abs (ys.(0) -. half) else Float.abs (ys.(i) -. half) +. Float.abs (zs.(i) -. half) in
-    asc := !asc +. (kw.(i) *. d)
+    let kd = kw.(i) *. d in asc := !asc +. kd
   done;
   let ah = Float.abs h in
   let resabs = !sum_abs *. ah and resasc = !asc *. ah in
@@ -324,7 +324,7 @@ let engine ctx (a : t array) =
         let abserr = ref huge and best = ref !first and nrmax = ref 1 and ktmin = ref 0 in
         let extrap = ref false and noext = ref false in
         let iroff1 = ref 0 and iroff2 = ref 0 and iroff3 = ref 0 and ierro = ref 0 in
-        let ksgn = if Float.abs !first >= (1. -. (50. *. eps)) *. !defabs then 1 else -1 in
+        let ksgn = if Float.abs !first >= (let e = 50. *. eps in 1. -. e) *. !defabs then 1 else -1 in
         let erlarg = ref !errsum and ertest = ref !errbnd and correc = ref 0. in
         let small = ref (Float.abs (ends.(n0) -. ends.(0)) *. 0.375) and levmax = ref 1 in
         let last = ref n0 and cut = ref 0. and finished = ref Running in
@@ -364,7 +364,8 @@ let engine ctx (a : t array) =
           if !iroff1 + !iroff2 >= 10 || !iroff3 >= 20 then ier := 2;
           if !iroff2 >= 5 then ierro := 3;
           if last_ = limit then ier := 1;
-          if max2 (Float.abs a1) (Float.abs b2) <= (1. +. (100. *. eps)) *. (Float.abs a2 +. (1000. *. tiny)) then ier := 4;
+          if max2 (Float.abs a1) (Float.abs b2) <= (let e = 100. *. eps in 1. +. e) *. (let t = 1000. *. tiny in Float.abs a2 +. t)
+          then ier := 4;
           (* The piece of larger error keeps the place of the one cut; the other is the new last. *)
           if e2 > e1 then begin
             al.(!maxerr) <- a2;

@@ -442,6 +442,25 @@
 
 ### Fixes
 
+- A program gives the same floats on arm64 as on x86-64 and in WebAssembly. OCaml 5.5 compiles, on arm64 only, a product
+  written inside an add or a sub into one fused instruction (fmadd, fmsub, fnmsub), which rounds once where the others
+  round twice: `tests/jit/values-inlined.ce`, which looks for the root of `x * x - 2.0` with the interpreter's
+  instructions that do two operations at once, found 1.4142135623731342 on a Mac where Linux and a browser find
+  1.414213562373134, and `math.Cbrt`, `std/ode`, `std/quad`, `std/sparse`, the LU solve, the L-BFGS of `std/optimize`
+  and the dot products differed so in their last bits. Each product is now bound by a `let` before its add, 61 places in
+  `src/lib/` and the 36 instructions its generator makes, which costs nothing on x86-64: each function has the same
+  instructions as before, or fewer, in another order at most. `tests/fusion_test.ml` fails on a product written inside
+  an add or a sub in `src/`. The C of Cesia, MIR's included, and the SQLite of the releases are built with
+  `-ffp-contract=off`, for the same reason, with the same machine code on x86-64.
+- The examples of `std/` and the tests hold on every system: those that compared exactly a result of the system's C
+  library, whose last bits differ from glibc 2.35 to glibc 2.44 and macOS (`math.Sinh(710)`, `math.Asinh(-1e300)`,
+  `math.Acosh(2)`, `math.Degrees(math.Asin(0.5))`...), failed on the Linux and macOS of the nightly. They compare with
+  `math.Near` now, within 1e-15 for a call of the C library and 1e-13 for `std/special`, `std/stats`, `std/quad` and
+  `std/optimize`, and a count of calls within what one ulp moves it; each holds with glibc 2.44 as it is and with each
+  of its results moved one ulp up, then down. `math.Pi` is written in full, where it was 4 atan(1) from the C library.
+  The chapter Numbers says which functions give the same bits on every system and which follow the C library, and why,
+  in English and in French; `random.Seed` says that a draw computed with the C library, as `num.Normal`, may differ in
+  its last bits.
 - The golden tests compare a frame of a trace in `std/` with `N` for its line, `in Unwrap (std/result.ce:N)`, where
   ten of them broke each time a comment of `std/` grew above the frame's line, with no fault: the frame and its
   function are what they check, and the frames of a test's own files keep their lines.

@@ -42,3 +42,12 @@
  (name find_test)
  (modules find_test)
  (libraries cesia))
+
+; The products inside a + or a - of the OCaml of src/, which arm64 would fuse: tests/fusion_test.ml.
+(test
+ (name fusion_test)
+ (modules fusion_test)
+ (libraries compiler-libs.common)
+ (deps
+  (glob_files_rec %{project_root}/src/**.ml)
+  (glob_files_rec %{project_root}/src/**.ml.in)))

@@ -27,7 +27,7 @@ le journal d'un capteur nettoyé avec elles, les bords des floats et les constan
 use std/math
 math.Ceil(2.1) -->
 math.Sign(-3) -->
-math.Atan2(1.0, 1.0) * 4 --> math.Pi
+math.Atan2(1.0, 1.0) * 4 -->
 math.Log(math.Exp(2.0)) -->
 math.Sqrt([4, 9]) -->
 math.IsEven(10) -->
@@ -585,6 +585,58 @@ une fois sur huit. Les degrés de numpy, R et Octave sont faux aux multiples de 
 vaut 1.2e-16 au lieu de 0, une erreur d'une infinité d'ulps ; la réduction de Cesia les rend exacts, et se trompe d'au
 plus 1 ulp ailleurs, là où les radians sont arrondis une fois. [math.Log10] est le point faible de la bibliothèque C,
 2 ulps près de 1, partout.
+
+
+### Les mêmes bits sur chaque système
+
+Un float que Cesia calcule a les mêmes bits sous Linux, macOS, Windows et en WebAssembly, sur x86-64 comme sur arm64,
+quand il ne vient que de ceux-ci :
+
+| Exact sur chaque système | Pourquoi |
+|---|---|
+| `+`, `-`, `*`, `/` et [math.Sqrt] | IEEE 754 arrondit chacune correctement, sur chaque processeur |
+| [math.Cbrt], [math.Radians], [math.Degrees], [math.Round], [math.Floor], [math.Ceil], [math.Abs], [math.Clamp], [math.Step], [math.Epsilon], [math.NextAfter] | celles de Cesia, faites de ces opérations |
+| [math.SinDegrees], [math.CosDegrees] et [math.TanDegrees] aux multiples de 30 et de 45 | la réduction exacte de Cesia |
+| [math.Pi] et [math.E] | écrites en entier |
+| le texte d'un float, tel que `io.Print` l'écrit | celui de Cesia, les chiffres les plus courts qui se relisent (Ryu) |
+
+Les autres sont celles de la bibliothèque C du système, comme dans numpy, R et MATLAB, et en WebAssembly celles du
+moteur JavaScript, son `Math.exp` et les autres : [math.Exp], [math.Log], [math.Log10], [math.Log2], [math.Log1p],
+[math.Expm1], [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], [math.Atan2], [math.Sinh],
+[math.Cosh], [math.Tanh], [math.Asinh], [math.Acosh], [math.Atanh], [math.Hypot], [math.LogSumExp], `x ^ y` d'un float,
+les degrés hors de leurs points exacts, et ce qui calcule avec elles : [std/special], les lois de [std/stats],
+[std/quad] et [std/optimize] sur une telle fonction, et les tirages de [num.Normal]. IEEE 754-2019, dans sa clause 9.2,
+recommande ces fonctions correctement arrondies (correctly rounded : le float le plus proche de la valeur exacte), mais
+aucune bibliothèque C ne le promet pour toutes : le manuel de la glibc, dans sa section 19.7, dit qu'elle ne le vise
+pas, seulement « quelques ulps », et que ses tests ne signalent une erreur qu'au-delà de 9 ulps (l'analyse qu'il cite, «
+Accuracy of Mathematical Functions in Single, Double, Double Extended, and Quadruple Precision » de Gladman, Innocente,
+Mather et Zimmermann, mesure chacune). Leurs derniers bits diffèrent donc d'un système à l'autre : [math.Sinh] de 710
+vaut 1.1169973830808555e308, le float le plus proche, avec la glibc 2.44, et 1.1169973830808557e308 avec la glibc 2.35,
+celle d'Ubuntu 22.04 ; `math.Degrees(math.Asin(0.5))` vaut 30.000000000000004 avec la glibc et 29.999999999999996 sous
+macOS. Elles s'accordent là où la valeur exacte est un float (`math.Log10(1000)`, `math.Hypot(3, 4)`), aux points
+spéciaux de l'annexe F du C (`math.Sinh(-0.0)` vaut -0.0, `math.Tanh(math.Inf)` vaut 1), là où le résultat déborde
+(overflow), et là où un x minuscule revient tel quel.
+
+Les exemples de la référence et les tests de Cesia comparent les autres avec [math.Near] : à 1e-15 près de la valeur
+pour un appel de la bibliothèque C, 4.5 ulps ou plus ; à 1e-13 près pour [std/special], [std/stats], [std/quad] et
+[std/optimize], dont les méthodes font beaucoup d'appels ; un nombre d'appels, ou de morceaux d'une intégrale, à ce
+qu'un ulp de plus ou de moins y change près. Ils tiennent avec la glibc 2.44 telle quelle, et avec chacun de ses
+résultats décalé d'un ulp vers le haut, puis vers le bas.
+
+Le processeur lui-même ajouterait une différence. Sur arm64, OCaml 5.5 compile un produit de floats écrit dans une
+addition ou une soustraction en une seule instruction fusionnée (fused), fmadd, fmsub ou fnmsub, qui arrondit une fois
+là où x86-64 et WebAssembly arrondissent deux fois (asmcomp/arm64/selection.ml, lignes 184 à 196 de ses sources) :
+`x * x - 2.0`, dans les instructions de l'interpréteur qui font deux opérations d'un coup, donnait d'autres derniers
+bits sur un Mac. Le code de Cesia lie chaque produit par un `let` avant son addition, ce qui les garde séparés : sans
+flambda, le `let` d'un nom est Strict (lambda/matching.ml, ligne 4246), ce que Simplif garde (lambda/simplif.ml, ligne
+578) ; Closure le garde pour ce qui n'est pas une constante (middle_end/closure/closure.ml, lignes 1020 à 1033), Cmm
+aussi (asmcomp/cmmgen.ml, lignes 1273 et 1289) ; et la sélection des instructions le calcule d'abord dans un registre
+(asmcomp/selectgen.ml, lignes 615 à 618), si bien que l'addition voit une variable. tests/fusion_test.ml lit chaque
+fichier OCaml de src/ et échoue sur un produit écrit dans une addition ou une soustraction ; il échoue aussi avec un
+OCaml qui a flambda sur arm64, dont Un_anf remet un `let` utilisé une fois à sa place d'usage
+(middle_end/flambda/un_anf.ml, lignes 696 à 707). Le C de Cesia, celui de MIR compris, et le SQLite des releases sont
+compilés avec `-ffp-contract=off`, pour la même raison : GCC fusionne par défaut sur arm64, et Clang dans une
+expression. Sur x86-64, l'un et l'autre donnent les mêmes instructions qu'avant, ou moins, dans un autre ordre au plus.
 
 ### Ce qu'elles coûtent
 

@@ -595,7 +595,11 @@ defn reached(fx, want)
   false
 end
 
-isStarts() = list.Count(c -> math.Abs(sumOfSquares(c)(c.X0) - c.F0) > 4.0 * 2.2e-16 * c.F0, cases) == 0
+(* f at each start, within 16 eps, or 4096 for Gaussian's and the trigonometric function's, whose residuals are small
+   differences of exp and of cos: these and the powers of a float are the C library's, whose last bits differ from one
+   system to another; one ulp off, they make 5 eps of the others and 400 and 630 of those two (1.15 with glibc 2.44). *)
+startBound(c) = (if c.Name == "gaussian" or c.Name == "trigonometric-10" 4096.0 else 16.0 end) * 2.2e-16 * c.F0
+isStarts() = list.Count(c -> math.Abs(sumOfSquares(c)(c.X0) - c.F0) > startBound(c), cases) == 0
 isGradientsByHand() = list.Count(p -> relative(p.G(named(p.Name).X0), named(p.Name).G0) > 1.0e-14, gradients) == 0
 
 defn isGradientsByDifferences()
@@ -662,14 +666,16 @@ end
 defn isMinimizeCalls()
   (** The points where f and its gradient are evaluated, each 2n + 1 calls of f by differences: 3,772 on the 39 cases,
       where scipy's L-BFGS-B, given the gradient, takes 2,956; most of the gap is on Meyer, Powell's badly scaled and
-      Jennrich and Sampson's, where it stops far from the minimum. *)
+      Jennrich and Sampson's, where it stops far from the minimum. That is with glibc 2.44: the problems call the C
+      library's exp, cos and pow, whose last bits differ from one system to another and move the paths, to 3,805 and
+      3,982 when each is one ulp off; so 10% above at most. *)
   points = 0.0
   for k in 1..value.Len(cases)
     r = byDifferences[k]
     v = if result.IsOk(r) r.Value else r.Error.Best end
     points += v.Evaluations / (2.0 * value.Len(cases[k].X0) + 1.0)
   end
-  points <= 3800.0
+  points <= 4150.0
 end
 
 defn isSimplex()

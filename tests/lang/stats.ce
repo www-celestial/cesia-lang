@@ -91,7 +91,7 @@ isChiSquared2() = list.All([near(stats.ChiSquared(2).Cdf(x, upper = true), math.
 isChiSquared1() = list.All([near(stats.ChiSquared(1).Cdf(x), special.Erf(math.Sqrt(x / 2.0)), 8.0) for x in xs])
 isCauchy() = list.All([near(stats.StudentT(1).Cdf(t), 0.5 + math.Atan(t) / math.Pi, 8.0) for t in [-3.0, -0.5, 0.25, 1.0, 9.0]])
 isStudent2() = list.All([near(stats.StudentT(2).Cdf(t), 0.5 + t / (2.0 * math.Sqrt(2.0 + t * t)), 8.0) for t in [-3.0, -0.5, 0.25, 1.0, 9.0]])
-isBetaPower() = list.All([near(stats.Beta(2.5, 1).Cdf(x), x ^ 2.5, 8.0) for x in [0.01, 0.2, 0.5, 0.9]])
+isBetaPower() = list.All([near(stats.Beta(2.5, 1).Cdf(x), x ^ 2.5, 4.0 * (1.0 + 2.5 * math.Abs(math.Log(x)))) for x in [0.01, 0.2, 0.5, 0.9]])   (** exp(a log x), as special.BetaInc *)
 isBetaUniform() = list.All([near(stats.Beta(1, 1).Cdf(x), stats.Uniform(0, 1).Cdf(x), 8.0) for x in [0.01, 0.2, 0.5, 0.9]])
 isGammaExponential() = list.All([near(stats.Gamma(1, 2.5).Cdf(x), stats.Exponential(2.5).Cdf(x), 8.0) and near(stats.Gamma(1, 2.5).Pdf(x), stats.Exponential(2.5).Pdf(x), 8.0) for x in xs])
 isFisherBeta() = list.All([near(stats.FisherF(5, 9).Cdf(f), stats.Beta(2.5, 4.5).Cdf(5.0 * f / (5.0 * f + 9.0)), 16.0) for f in [0.1, 0.8, 1.0, 3.0]])
@@ -130,7 +130,8 @@ isFisherBack() = list.All(list.Flatten([[backThrough(stats.FisherF(a, b), 8192.0
 isGammaBack() = list.All([backThrough(stats.Gamma(a, 2.0), 8192.0) for a in [0.01, 0.5, 3.0, 2000.0]])
 isBetaBack() = list.All(list.Flatten([[backThrough(stats.Beta(a, b), 8192.0) for b in [0.3, 4.0, 1200.0]] for a in [0.05, 1.0, 7.0, 900.0]]))
 isExponentialBack() = backThrough(stats.Exponential(0.25), 64.0)
-isNormalQuantileExact() = stats.Normal(0, 1).Quantile(0.975) == 1.9599639845400536 and stats.Normal(0, 1).Quantile(1e-300) == -37.0470962993612
+(* The float nearest to the exact quantile with glibc 2.44; its log and exp may move it by a last bit elsewhere. *)
+isNormalQuantileNear() = near(stats.Normal(0, 1).Quantile(0.975), 1.9599639845400536, 4.0) and near(stats.Normal(0, 1).Quantile(1e-300), -37.0470962993612, 4.0)
 isStudentTiny() = stats.StudentT(0.24163878828558052).Quantile(6.0929166903934015e-62) < -1e251
 isQuantileEnds() = stats.Normal(0, 1).Quantile(0) == -1.0 / 0.0 and stats.Normal(0, 1).Quantile(1) == 1.0 / 0.0 and stats.ChiSquared(3).Quantile(0) == 0.0 and stats.ChiSquared(3).Quantile(1) == 1.0 / 0.0 and stats.Beta(2, 3).Quantile(1) == 1.0
 isQuantileOutside() = nan(stats.Normal(0, 1).Quantile(1.5)) and nan(stats.Gamma(2, 1).Quantile(-0.1)) and nan(stats.Binomial(10, 0.3).Quantile(2.0))

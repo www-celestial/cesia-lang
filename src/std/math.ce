@@ -1,5 +1,9 @@
-(** Numbers: arithmetic, rounding, trigonometry, bits and the tests of a number. Each function of one number also works on an
-    array, element by element. *)
+(** Numbers: arithmetic, rounding, trigonometry, bits and the tests of a number. Each function of one number also works
+    on an array, element by element. The arithmetic, Sqrt, Cbrt, Radians, Degrees, the rounding and the bits give the
+    same float on every system; Exp, the logarithms, the trigonometry in radians, the hyperbolic functions, Hypot,
+    LogSumExp and the power of a float are those of the system's C library, as in numpy, R and MATLAB, or in WebAssembly
+    of the JavaScript engine, and may differ from one system to another in their last bits: their examples compare with
+    Near, within 1e-15 of the value, 4.5 ulps or more. The chapter Numbers of the book says which is which, and why. *)
 
 (** One more, and one less. Both work on arrays, element by element.
 
@@ -65,13 +69,13 @@ IsFinite(x) = x - x == 0
     width of a degree of longitude there in kilometers:
 
       Radians(180) --> Pi
-      111.32 * Cos(Radians(48.8566)) --> 73.24253324592031 *)
+      Near(111.32 * Cos(Radians(48.8566)), 73.24253324592031, rel = 1e-15) --> true *)
 Radians(x) = x * 0.017453292519943295
 (** An angle in radians in degrees: x * (180 / pi), the bits of numpy.degrees, numpy.rad2deg and MATLAB's rad2deg. The
     angle of a ramp that rises 1 m over 12 m, from math.Atan, and the arc sine and arc tangent in degrees of MATLAB's asind
     and atand:
 
       Degrees(Pi) --> 180.0
-      Degrees(Atan(1 / 12)) --> 4.763641690726177
-      Degrees(Asin(0.5)) --> 30.000000000000004 *)
+      Near(Degrees(Atan(1 / 12)), 4.763641690726177, rel = 1e-15) --> true
+      Near(Degrees(Asin(0.5)), 30.000000000000004, rel = 1e-15) --> true *)
 Degrees(x) = x * 57.29577951308232

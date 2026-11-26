@@ -18,16 +18,18 @@ message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
 rootOf(r) = result.Unwrap(r).X
 within(x, want) = math.Abs(x - want) <= 2.0 * eps * math.Abs(want)   (** as close as Root promises *)
 
-(* Closed forms: the float nearest to the zero, or one of the two around it. *)
-isCubic() = rootOf(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0])) == 2.0945514815423265
-isCosine() = rootOf(optimize.Root(x -> math.Cos(x) - x, [0.0, 1.0])) == 0.7390851332151607
-isLog2() = rootOf(optimize.Root(x -> math.Exp(x) - 2.0, [0.0, 1.0])) == math.Log(2.0)
+(* Closed forms: the float nearest to the zero, or one of the two around it. A power of a float, math.Cos and math.Exp
+   are the C library's, whose last bits differ from one system to another, and so may the side of the zero that f's sign
+   gives: within Root's promise, not to the bit. *)
+isCubic() = within(rootOf(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0])), 2.0945514815423265)
+isCosine() = within(rootOf(optimize.Root(x -> math.Cos(x) - x, [0.0, 1.0])), 0.7390851332151607)
+isLog2() = within(rootOf(optimize.Root(x -> math.Exp(x) - 2.0, [0.0, 1.0])), 0.6931471805599453)
 isSqrt2Backwards() = within(rootOf(optimize.Root(x -> x * x - 2.0, [2.0, 0.0])), math.Sqrt(2.0))
 isEndIsRoot() = rootOf(optimize.Root(x -> x - 1.0, [1.0, 3.0])) == 1.0 and optimize.Root(x -> x - 1.0, [1.0, 3.0]).Value.Evaluations == 2
 isTolerance() = math.Abs(rootOf(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0], tol = 1.0e-6)) - 2.0945514815423265) <= 2.0e-6 + 2.0 * eps * 2.1
 
 (* From one start: a bracket is found first. *)
-isStartCosine() = rootOf(optimize.Root(x -> math.Cos(x) - x, 1.0)) == 0.7390851332151607
+isStartCosine() = within(rootOf(optimize.Root(x -> math.Cos(x) - x, 1.0)), 0.7390851332151607)
 isStartZero() = rootOf(optimize.Root(x -> x - 0.5, 0.0)) == 0.5
 isStartRoot() = optimize.Root(x -> x - 2.0, 2.0).Value == {X: 2.0, F: 0.0, Evaluations: 1}
 isStartPastNan() = within(rootOf(optimize.Root(x -> math.Sqrt(x) - 2.0, 1.0)), 4.0)
@@ -302,7 +304,9 @@ end
 defn isApsCalls()
   (** Never much slower than bisection, Brent's book says: here at most the square of bisection's count, n^2 with
       n = log2((b - a) / (2 eps |x|)) + 2, a loose bound that each problem meets; and their
-      total on the 154 problems, 2761, 8 more than scipy's brentq, which stops at 4 eps |x|. *)
+      total on the 154 problems, 2761 with glibc 2.44, 8 more than scipy's brentq, which stops at 4 eps |x|. The
+      problems call the C library's exp, log, sin and pow, whose last bits differ from one system to another, and move
+      the total with them: by 50 when each is one ulp off, so within 100 of it. *)
   total = 0
   for c in apsCases
     r = result.Unwrap(optimize.Root(aps(c.P, c.Args), [c.A, c.B]))
@@ -313,7 +317,7 @@ defn isApsCalls()
     end
     total += r.Evaluations
   end
-  total == 2761
+  math.Abs(total - 2761) <= 100
 end
 
 (* A property: a polynomial (x - r) (1 + c x^2) with one simple root r in a random bracket around it. *)
