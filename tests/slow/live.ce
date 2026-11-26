@@ -635,3 +635,94 @@ defn isActionOfAnotherWhoRefused()
   websocket.Close(c)
   first.Who == "w1" and got[1].Ok.Key == "k1" and got[1].Ok.Base.Total == 5 and got[2].Err.Status == 403
 end
+
+(* ---- live.js, the page's side in JavaScript, in Node (26 has WebSocket and fetch): skipped without it. *)
+
+page = "globalThis.location = { href: 'http://127.0.0.1:' + process.argv[1] + '/' }
+const js = await (await fetch(location.href + 'live/live.js')).text()
+const { connect } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
+const live = await connect('/live', { ReconnectFirst: 100, ReconnectMax: 400, PingEvery: 1, DeadAfter: 3 })
+let last = ''
+live.onStatus(s => { const k = s.State + (s.Last ? ':' + s.Last : ''); if (k !== last) { last = k; console.log('status ' + k) } })
+console.log('up')
+await new Promise(r => { const t = setInterval(() => { if (live.state === 'down') { clearInterval(t); r() } }, 20) })
+const asked = [live.act('Count', 1), live.act('Count', 2)]
+console.log('queued ' + live.status().Waiting)
+const got = await Promise.all(asked)
+console.log('acked ' + JSON.stringify(got) + ' last ' + live.status().Last)
+live.close()
+setTimeout(() => process.exit(0), 100)
+"
+
+defn untilLine(proc, words, seconds = 15)
+  (** The output of a process until a line holds words: all of it, or missing when it ended or took too long. *)
+  out = ""
+  until = sys.Now() + seconds
+  while sys.Now() < until and not text.Contains(words, out)
+    got = sys.ReadOutput(proc)
+    if result.IsErr(got) or got.Value == ""
+      return missing
+    end
+    out = "$out$(got.Value)"
+  end
+  if text.Contains(words, out) out else missing end
+end
+
+defn isLiveJsCarryingOnThroughABreak()
+  (** A page in JavaScript, live.js in Node, through a network the test cuts: it says it is down, keeps two actions
+      asked meanwhile, comes back to the screen the app kept once the network is back, and each action runs once. *)
+  node = sys.Run("sh", args = ["-c", "node -e 'process.exit(typeof WebSocket === \"function\" ? 0 : 1)'"])
+  if result.IsErr(node) or node.Value.Code != 0
+    return true   (* no Node with WebSocket here: nothing to run *)
+  end
+  ran = fiber.Channel(size = 1)
+  fiber.Send(dict.Dict(), ran)
+  app = serve(s -> [], actions = {Count: (s, a) -> counted(ran, a)})?
+  cuts = fiber.Channel(size = 1)
+  fiber.Send(false, cuts)
+  open = fiber.Channel()
+  l = net.Listen(0)?
+  parts = text.Split(":", app)
+  fiber.Spawn(defn ()
+    while true
+      p = net.Accept(l)?
+      down = fiber.Receive(cuts).Value
+      fiber.Send(down, cuts)
+      if down
+        net.Close(p)
+      else
+        a = net.Connect(parts[1], text.Number(parts[2]))?
+        fiber.Send([p, a], open)
+        fiber.Spawn(() -> pipe(p, a, missing, missing))
+        fiber.Spawn(() -> pipe(a, p, missing, missing))
+      end
+    end
+  end)
+  proc = sys.Start("sh", args = ["-c", "exec node --input-type=module -e \"$1\" \"$2\"", "sh", page, "$(net.Port(l))"])?
+  up = untilLine(proc, "up")
+  _ = fiber.Receive(cuts)
+  fiber.Send(true, cuts)
+  for pair in [x for x in drained(open)]
+    net.Close(pair[1])
+    net.Close(pair[2])
+  end
+  queued = untilLine(proc, "queued")
+  _ = fiber.Receive(cuts)
+  fiber.Send(false, cuts)
+  done = untilLine(proc, "last", seconds = 20)
+  sys.Stop(proc)
+  d = fiber.Receive(ran).Value
+  value.IsSome(up) and value.IsSome(queued) and text.Contains("queued 2", queued) and value.IsSome(done) and
+    text.Contains("acked [1,2] last resumed", done) and text.Contains("status down", "$queued$done") and dict.GetOr(1, 0, d) == 1 and dict.GetOr(2, 0, d) == 1
+end
+
+defn drained(ch)
+  (** The values waiting in a channel. *)
+  out = []
+  while true
+    got = fiber.Receive(ch, timeout = 0)
+    break if result.IsErr(got)
+    out = list.Append(got.Value, out)
+  end
+  out
+end

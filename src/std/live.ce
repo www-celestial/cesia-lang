@@ -65,7 +65,7 @@ defn Route(pattern, screen, a, actions = {}, resume = 120, buffer = 1048576, sam
         app({Method: "GET", Path: "/live", Query: "", Headers: other, Body: ""}).Status --> 403 *)
   o = {Screen: screen, Actions: actions, Resume: resume, Buffer: buffer, Same: if value.IsMissing(same) sameRequest else same end, Who: who,
     Client: client, Kept: cell(dict.Dict())}
-  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: client, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, o), r))
+  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: script, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, o), r))
 end
 
 defn sameRequest(old, new)
@@ -542,7 +542,7 @@ defn failing(e, send, sc, conn, last = missing)
 end
 
 (* live.js, the page's side, served at the path of Route and /live.js. *)
-client = "// live.js, the page's side of std/live: connect(url, options) opens a screen of the app; live.show(name, draw) draws a
+script = "// live.js, the page's side of std/live: connect(url, options) opens a screen of the app; live.show(name, draw) draws a
 // show's rows at each change; live.act(name, args, effects, base) asks the app for an action and shows its effect at
 // once; live.onStatus(f) tells the page the state of its connection.
 //
