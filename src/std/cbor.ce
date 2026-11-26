@@ -1,0 +1,291 @@
+(** CBOR, RFC 8949: data in bytes, as JSON is data in text. Passkeys send it: WebAuthn's attestation object and the COSE
+    keys inside it are CBOR, and so is CTAP2, the protocol of security keys. Read and Decode take bytes from anyone, a
+    browser's: nesting is bounded by MaxDepth, a head that claims more bytes or items than are left is refused before
+    anything is made, and indefinite lengths, which CTAP2's canonical CBOR never writes, are refused, so a decode takes a
+    time and a memory bounded by the length of its bytes. An unsigned or negative integer becomes an integer, a byte
+    string or a text string a text, an array a list, a map a dictionary, false and true themselves, null and undefined
+    missing, a float of 16, 32 or 64 bits a float, and a tag a Tagged. *)
+use std/bug
+use std/dict
+use std/encode
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
+
+(** A text that Encode writes as a byte string, major type 2: a plain text is a text string, major type 3, which must be
+    UTF-8. Decode gives both as texts.
+
+      encode.Hex(Encode(Bytes("hi"))) --> "426869"
+      encode.Hex(Encode("hi")) --> "626869" *)
+struct Bytes { Value }
+
+(** A tagged item, major type 6: Tag is the number of the tag, Value the item it marks, as tag 1 marks a time in seconds.
+    Decode gives one for each tag, without reading its meaning, and Encode writes it back.
+
+      Decode(text.FromBytes([0xC1, 0x1A, 0x51, 0x4B, 0x67, 0xB0])) --> result.Ok(Tagged(1, 1363896240)) *)
+struct Tagged { Tag, Value }
+
+(** How deep arrays, maps and tags may nest in what Read and Decode take: a WebAuthn attestation object nests 3 deep, a
+    COSE key 1. Deeper is an Err, never a stack that overflows.
+
+      deep = "$(text.Repeat(MaxDepth + 1, text.FromBytes([0x81])))$(text.Char(0))"
+      Decode(deep) then result.MapErr(it.Message) --> result.Err("Arrays, maps and tags nest deeper than 16.") *)
+MaxDepth = 16
+
+bad(message, at) = result.Err({Kind: "cbor", Message: message, At: at})   (* The Err of a mistake at byte at, from 1. *)
+
+defn Read(bytes, at = 1)
+  (** Decodes the one item that starts at byte at, from 1: an Ok of {Value, Next}, Next the byte after it, as a WebAuthn
+      credential's public key is followed by more bytes; or an Err {Kind: "cbor", Message, At}, At the byte of the head
+      that is wrong.
+
+        Read(text.FromBytes([0x18, 0x64, 0xF5])) --> result.Ok({Value: 100, Next: 3})
+        Read(text.FromBytes([0x18, 0x64, 0xF5]), at = 3) --> result.Ok({Value: true, Next: 4})
+        Read(text.FromBytes([0x5A, 0x40, 0, 0, 0])) then result.MapErr(it.Message) --> result.Err("This string is longer than the bytes left.") *)
+  bug.Assert(value.IsText(bytes), "cbor.Read needs its bytes in a text.")
+  bug.Assert(value.IsInt(at) and at >= 1, "cbor.Read needs at, a byte from 1.")
+  item(bytes, at, text.ByteLength(bytes), 0)
+end
+
+defn Decode(bytes)
+  (** Decodes one item that takes all the bytes: an Ok of its value, or an Err as Read gives one, bytes after the item
+      too.
+
+        Decode(text.FromBytes([0xA2, 0x01, 0x02, 0x20, 0x01])) --> result.Ok({1: 2, (-1): 1})
+        Decode(text.FromBytes([0x82, 0x01, 0x63, 0x61, 0x62, 0x63])) --> result.Ok([1, "abc"])
+        Decode(text.FromBytes([0x01, 0x02])) then result.MapErr(it.At) --> result.Err(2) *)
+  got = Read(bytes)?
+  if got.Next <= text.ByteLength(bytes)
+    return bad("Bytes follow the item.", got.Next)
+  end
+  result.Ok(got.Value)
+end
+
+widths = [1, 2, 4, 8]   (* The bytes of an argument after its head, for the additional information 24 to 27. *)
+
+defn item(s, at, n, depth)
+  (** The item at byte at of s, whose length is n: an Ok of {Value, Next}, or an Err. *)
+  if at > n
+    return bad("The bytes end before an item.", at)
+  end
+  lead = text.Byte(at, s)
+  major = math.Div(lead, 32)
+  info = lead - 32 * major
+  if major == 7
+    return simple(s, at, n, info)
+  end
+  size = info
+  next = at + 1
+  if info >= 24
+    if info == 31
+      return bad("Indefinite lengths aren't CTAP2's canonical CBOR.", at)
+    else if info > 27
+      return bad("This head uses a reserved value.", at)
+    end
+    width = widths[info - 23]
+    if at + width > n
+      return bad("The bytes end inside a head.", at)
+    end
+    if width == 8 and text.Byte(at + 1, s) >= 64
+      return bad("This number has more than 63 bits.", at)
+    end
+    size = 0
+    for k in 1..width
+      size = size * 256 + text.Byte(at + k, s)
+    end
+    next = at + width + 1
+  end
+  left = n - next + 1
+  if major == 0
+    result.Ok({Value: size, Next: next})
+  else if major == 1
+    result.Ok({Value: -1 - size, Next: next})
+  else if major <= 3
+    if size > left
+      return bad("This string is longer than the bytes left.", at)
+    end
+    t = text.ByteSlice(next, next + size - 1, s)
+    if major == 3 and not text.IsUtf8(t)
+      return bad("This text string isn't UTF-8.", at)
+    end
+    result.Ok({Value: t, Next: next + size})
+  else if depth >= MaxDepth
+    bad("Arrays, maps and tags nest deeper than $MaxDepth.", at)
+  else if major == 4
+    items(s, at, next, size, left, n, depth)
+  else if major == 5
+    entries(s, at, next, size, left, n, depth)
+  else
+    got = item(s, next, n, depth + 1)?
+    result.Ok({Value: Tagged(size, got.Value), Next: got.Next})
+  end
+end
+
+defn items(s, at, next, size, left, n, depth)
+  (** The size items of an array whose head is at byte at, from byte next: each takes one byte at least. *)
+  if size > left
+    return bad("This array has more items than the bytes left.", at)
+  end
+  out = list.Fill(missing, size)
+  for k in 1..size
+    got = item(s, next, n, depth + 1)?
+    out[k] = got.Value
+    next = got.Next
+  end
+  result.Ok({Value: out, Next: next})
+end
+
+defn entries(s, at, next, size, left, n, depth)
+  (** The size pairs of a map whose head is at byte at, from byte next: each key an integer or a text string, none twice. *)
+  if size > math.Div(left, 2)
+    return bad("This map has more entries than the bytes left.", at)
+  end
+  out = {}
+  for k in 1..size
+    if next > n
+      return bad("The bytes end before an item.", next)
+    end
+    kind = math.Div(text.Byte(next, s), 32)
+    if kind != 0 and kind != 1 and kind != 3
+      return bad("A map key must be an integer or a text string.", next)
+    end
+    key = item(s, next, n, depth + 1)?
+    if dict.Has(key.Value, out)
+      return bad("This map has a key twice.", next)
+    end
+    got = item(s, key.Next, n, depth + 1)?
+    out[key.Value] = got.Value
+    next = got.Next
+  end
+  result.Ok({Value: out, Next: next})
+end
+
+defn simple(s, at, n, info)
+  (** A simple value or a float, major type 7. *)
+  if info >= 20 and info <= 23
+    return result.Ok({Value: [false, true, missing, missing][info - 19], Next: at + 1})
+  end
+  if info < 25 or info > 27
+    return bad(if info == 31 "A break without an indefinite length." else "This simple value has no meaning here." end, at)
+  end
+  width = widths[info - 23]
+  if at + width > n
+    return bad("The bytes end inside a float.", at)
+  end
+  bits = text.ByteSlice(at + 1, at + width, s)
+  x = if width == 2 half(text.Byte(1, bits) * 256 + text.Byte(2, bits)) else text.Numbers(if width == 4 "f32" else "f64" end, flipped(bits))[1] end
+  result.Ok({Value: x, Next: at + width + 1})
+end
+
+flipped(bytes) = text.FromBytes(list.Reverse(text.Bytes(bytes)))   (* Big-endian, as CBOR writes, to little-endian, as text.Numbers reads, and back. *)
+
+defn half(bits)
+  (** A float of 16 bits, IEEE 754 binary16, as RFC 8949 appendix D decodes it. *)
+  exponent = math.Mod(math.Div(bits, 1024), 32)
+  mantissa = math.Mod(bits, 1024)
+  x = if exponent == 0
+    mantissa * 2.0 ^ -24
+  else if exponent < 31
+    (mantissa + 1024) * 2.0 ^ (exponent - 25)
+  else if mantissa == 0
+    math.Inf
+  else
+    math.Nan
+  end
+  if bits >= 32768 (-x) else x end
+end
+
+defn Encode(x)
+  (** The CBOR bytes of a value: an integer as an unsigned or negative integer, a text as a text string, Bytes as a byte
+      string, a list as an array, a dictionary or a struct's public fields as a map, true, false, missing as null, a float
+      in 64 bits, a Tagged as a tag. Each head takes its fewest bytes, and the keys of a map go in the order of CTAP2's
+      canonical CBOR, integers from 0 first, then negative ones, then texts, each kind the shorter key first, then the
+      lower bytes, so the same value always gives the same bytes.
+      Decode(Encode(x)) is x. A text that isn't UTF-8 must be Bytes, a key an integer or a text, and a function has no
+      form: those are bugs here.
+
+        encode.Hex(Encode({3: -7, 1: 2, "alg": "ES256"})) --> "a30102032663616c67654553323536"
+        encode.Hex(Encode({"a": 1, 1000: 2, (-1): 3})) --> "a31903e8022003616101"
+        Decode(Encode([1, "two", 3.5, missing, {X: true}])) --> result.Ok([1, "two", 3.5, missing, {X: true}]) *)
+  text.Join("", written(x, []))
+end
+
+defn written(x, parts)
+  (** The parts of the bytes of x, after those of parts. *)
+  match x
+    Bytes(t) -> bytesOf(t, parts)
+    Tagged(tag, v) -> tagged(tag, v, parts)
+    else -> plain(x, parts)
+  end
+end
+
+defn bytesOf(t, parts)
+  bug.Assert(value.IsText(t), "cbor.Bytes needs a text, not $t.")
+  list.Append(t, list.Append(head(2, text.ByteLength(t)), parts))
+end
+
+defn tagged(tag, v, parts)
+  bug.Assert(value.IsInt(tag) and tag >= 0, "A tag is an integer from 0, not $tag.")
+  written(v, list.Append(head(6, tag), parts))
+end
+
+defn plain(x, parts)
+  if value.IsInt(x)
+    list.Append(if x >= 0 head(0, x) else head(1, -1 - x) end, parts)
+  else if value.IsText(x)
+    bug.Assert(text.IsUtf8(x), "A text string is UTF-8: give these bytes as cbor.Bytes.")
+    list.Append(x, list.Append(head(3, text.ByteLength(x)), parts))
+  else if value.IsFloat(x)
+    list.Append(flipped(text.FromNumbers("f64", [x])), list.Append(text.FromBytes([0xFB]), parts))
+  else if value.IsBool(x)
+    list.Append(text.FromBytes([if x 0xF5 else 0xF4 end]), parts)
+  else if value.IsMissing(x)
+    list.Append(text.FromBytes([0xF6]), parts)
+  else if value.IsArray(x)
+    out = list.Append(head(4, value.Len(x)), parts)
+    for v in x
+      out = written(v, out)
+    end
+    out
+  else if value.IsDict(x)
+    mapped(x, parts)
+  else if value.IsStruct(x)
+    mapped(dict.Fields(x), parts)
+  else
+    bug.Panic("CBOR has no form for $x.")
+  end
+end
+
+defn mapped(d, parts)
+  (** A map, its keys in CTAP2's canonical order: by their major type, then their length, then their bytes, as the
+      text of the three sorts, the first byte's major type and the length in 4 bytes in front. *)
+  keys = dict.Keys(d)
+  for k in keys
+    bug.Assert(value.IsInt(k) or value.IsText(k), "A key of a CBOR map is an integer or a text, not $k.")
+  end
+  coded = [Encode(k) for k in keys]
+  sorted = list.Order(["$(text.FromBytes([math.Div(text.Byte(1, c), 32)]))$(flipped(text.FromNumbers("u32", [text.ByteLength(c)])))$c" for c in coded])
+  out = list.Append(head(5, value.Len(keys)), parts)
+  for i in sorted
+    out = written(d[keys[i]], list.Append(coded[i], out))
+  end
+  out
+end
+
+defn head(major, n)
+  (** The head of an item: its major type and its argument n in the fewest bytes. *)
+  first = 32 * major
+  if n < 24
+    text.FromBytes([first + n])
+  else if n < 256
+    text.FromBytes([first + 24, n])
+  else if n < 65536
+    text.FromBytes([first + 25, math.Div(n, 256), math.Mod(n, 256)])
+  else if n < 4294967296
+    "$(text.FromBytes([first + 26]))$(flipped(text.FromNumbers("u32", [n])))"
+  else
+    "$(text.FromBytes([first + 27]))$(flipped(text.FromNumbers("u32", [math.Div(n, 4294967296)])))$(flipped(text.FromNumbers("u32", [math.Mod(n, 4294967296)])))"
+  end
+end

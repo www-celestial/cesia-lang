@@ -1,0 +1,226 @@
+(** std/cbor: the examples of RFC 8949 appendix A, both ways, its refusals one by one, round trips of random values, and
+    100,000 random and mutated inputs that each give an Ok or an Err, never a panic. *)
+use std/cbor
+use std/dict
+use std/encode
+use std/fiber
+use std/list
+use std/math
+use std/random
+use std/result
+use std/text
+use std/value
+
+hex(s) = encode.Unhex(s)!
+decoded(h) = cbor.Decode(hex(h))
+refused(h) = cbor.Decode(hex(h)) then result.MapErr(it.Message)
+
+(* RFC 8949 appendix A: a value and its preferred encoding. Floats are written in 64 bits by Encode, so those of 16 and 32
+   bits are read only. *)
+both = [
+  [0, "00"], [1, "01"], [10, "0a"], [23, "17"], [24, "1818"], [25, "1819"], [100, "1864"], [1000, "1903e8"],
+  [1000000, "1a000f4240"], [1000000000000, "1b000000e8d4a51000"], [-1, "20"], [-10, "29"], [-100, "3863"], [-1000, "3903e7"],
+  [1.1, "fb3ff199999999999a"], [1.0e300, "fb7e37e43c8800759c"], [-4.1, "fbc010666666666666"],
+  [false, "f4"], [true, "f5"], [missing, "f6"],
+  [cbor.Tagged(0, "2013-03-21T20:04:00Z"), "c074323031332d30332d32315432303a30343a30305a"],
+  [cbor.Tagged(1, 1363896240), "c11a514b67b0"], [cbor.Tagged(1, 1363896240.5), "c1fb41d452d9ec200000"],
+  [cbor.Tagged(23, cbor.Bytes(hex("01020304"))), "d74401020304"], [cbor.Tagged(24, cbor.Bytes(hex("6449455446"))), "d818456449455446"],
+  [cbor.Tagged(32, "http://www.example.com"), "d82076687474703a2f2f7777772e6578616d706c652e636f6d"],
+  [cbor.Bytes(""), "40"], [cbor.Bytes(hex("01020304")), "4401020304"], ["", "60"], ["a", "6161"], ["IETF", "6449455446"],
+  ["\"\\", "62225c"], [hex("c3bc"), "62c3bc"], [hex("e6b0b4"), "63e6b0b4"], [hex("f0908591"), "64f0908591"],
+  [[], "80"], [[1, 2, 3], "83010203"], [[1, [2, 3], [4, 5]], "8301820203820405"],
+  [[k for k in 1..25], "98190102030405060708090a0b0c0d0e0f101112131415161718181819"],
+  [{}, "a0"], [{1: 2, 3: 4}, "a201020304"], [{"a": 1, "b": [2, 3]}, "a26161016162820203"], [["a", {"b": "c"}], "826161a161626163"],
+  [{"a": "A", "b": "B", "c": "C", "d": "D", "e": "E"}, "a56161614161626142616361436164614461656145"]
+]
+
+(* The value that Decode gives back: a byte string is a text. *)
+defn plain(x)
+  match x
+    cbor.Bytes(t) -> t
+    cbor.Tagged(tag, v) -> cbor.Tagged(tag, plain(v))
+    else -> if value.IsArray(x) [plain(v) for v in x] else if value.IsDict(x) dict.Dict([{Key: p.Key, Value: plain(p.Value)} for p in dict.Pairs(x)]) else x end
+  end
+end
+
+isRfcEncoded() = list.All([encode.Hex(cbor.Encode(p[1])) == p[2] for p in both])
+isRfcDecoded() = list.All([decoded(p[2]) == result.Ok(plain(p[1])) for p in both])
+
+defn isRfcFloats()
+  (** The floats of 16 and 32 bits of the appendix, and the infinities and NaN of each width. *)
+  read = [["f90000", 0.0], ["f98000", -0.0], ["f93c00", 1.0], ["f93e00", 1.5], ["f97bff", 65504.0], ["fa47c35000", 100000.0],
+    ["fa7f7fffff", 3.4028234663852886e38], ["f90001", 5.960464477539063e-8], ["f90400", 0.00006103515625], ["f9c400", -4.0],
+    ["f97c00", math.Inf], ["f9fc00", -math.Inf], ["fa7f800000", math.Inf], ["faff800000", -math.Inf],
+    ["fb7ff0000000000000", math.Inf], ["fbfff0000000000000", -math.Inf]]
+  nans = ["f97e00", "fa7fc00000", "fb7ff8000000000000"]
+  list.All([decoded(p[1]) == result.Ok(p[2]) for p in read]) and list.All([math.IsNan(decoded(h).Value) for h in nans]) and text.Byte(8, text.FromNumbers("f64", [decoded("f98000").Value])) == 128
+end
+
+isPast63Bits() = refused("1bffffffffffffffff") == result.Err("This number has more than 63 bits.") and refused("3bffffffffffffffff") == result.Err("This number has more than 63 bits.") and decoded("1b3fffffffffffffff") == result.Ok(math.MaxInt) and decoded("3b3fffffffffffffff") == result.Ok(-math.MaxInt - 1)
+
+defn isEveryHeadSize()
+  (** The edges of each width of a head, for integers of both signs, strings, arrays and maps. *)
+  sizes = [0, 23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, math.MaxInt]
+  ints = list.Concat(sizes, [-1 - n for n in sizes])
+  same = list.All([cbor.Decode(cbor.Encode(n)) == result.Ok(n) for n in ints])
+  widths = [text.ByteLength(cbor.Encode(n)) for n in sizes]
+  strings = [cbor.Decode(cbor.Encode(text.Repeat(n, "a"))) == result.Ok(text.Repeat(n, "a")) for n in [0, 23, 24, 255, 256, 65536]]
+  same and value.Equal(widths, [1, 1, 2, 2, 3, 3, 5, 5, 9, 9]) and list.All(strings)
+end
+
+defn isRefusals()
+  (** Each mistake, its message, and the byte where it is. *)
+  cases = [
+    ["", "The bytes end before an item."],
+    ["18", "The bytes end inside a head."],
+    ["1a0000", "The bytes end inside a head."],
+    ["1c", "This head uses a reserved value."], ["1d", "This head uses a reserved value."], ["1e", "This head uses a reserved value."],
+    ["5f4101ff", "Indefinite lengths aren't CTAP2's canonical CBOR."], ["7f6161ff", "Indefinite lengths aren't CTAP2's canonical CBOR."],
+    ["9f01ff", "Indefinite lengths aren't CTAP2's canonical CBOR."], ["bf6161 01ff", "Indefinite lengths aren't CTAP2's canonical CBOR."],
+    ["ff", "A break without an indefinite length."],
+    ["f0", "This simple value has no meaning here."], ["f8ff", "This simple value has no meaning here."], ["fc", "This simple value has no meaning here."],
+    ["f97c", "The bytes end inside a float."], ["fb3ff1", "The bytes end inside a float."],
+    ["4401", "This string is longer than the bytes left."], ["5b0fffffffffffffff", "This string is longer than the bytes left."],
+    ["62c328", "This text string isn't UTF-8."], ["63eda080", "This text string isn't UTF-8."],
+    ["821801", "The bytes end before an item."], ["8201", "This array has more items than the bytes left."], ["9b3fffffffffffffff00", "This array has more items than the bytes left."],
+    ["a201", "This map has more entries than the bytes left."], ["a3010203", "This map has more entries than the bytes left."],
+    ["a201020103", "This map has a key twice."], ["a2010218010203", "This map has a key twice."],
+    ["a1416101", "A map key must be an integer or a text string."], ["a1f93c0001", "A map key must be an integer or a text string."],
+    ["a1800101", "A map key must be an integer or a text string."], ["a1c10101", "A map key must be an integer or a text string."],
+    ["a1f501", "A map key must be an integer or a text string."], ["a1f601", "A map key must be an integer or a text string."],
+    ["0000", "Bytes follow the item."], ["8000", "Bytes follow the item."]
+  ]
+  list.All([refused(text.Replace(" ", "", c[1])) == result.Err(c[2]) for c in cases])
+end
+
+isPlaces() = value.Equal([cbor.Decode(hex(h)) then result.MapErr(it.At) for h in ["8201", "820118", "a201020103", "0102", "83016261"]], [result.Err(1), result.Err(3), result.Err(4), result.Err(2), result.Err(3)])
+
+defn isDepth()
+  (** 16 levels of arrays, maps or tags, and no more. *)
+  nested(head, n) = hex("$(text.Repeat(n, head))00")
+  arrays = cbor.Decode(nested("81", 16)) then result.IsOk
+  maps = cbor.Decode(hex("$(text.Repeat(16, "a101"))00")) then result.IsOk
+  tags = cbor.Decode(nested("c1", 16)) then result.IsOk
+  over = [cbor.Decode(nested(h, 17)) then result.MapErr(it.Message) for h in ["81", "c1"]]
+  deep = cbor.Decode(nested("81", 100000)) then result.MapErr(it.At)
+  arrays and maps and tags and value.Equal(over, [result.Err("Arrays, maps and tags nest deeper than 16."), result.Err("Arrays, maps and tags nest deeper than 16.")]) and deep == result.Err(17)
+end
+
+defn isEveryPrefixRefused()
+  (** Each prefix of a valid encoding misses bytes: an Err, never a value. *)
+  whole = cbor.Encode({1: 2, 3: -7, (-1): 1, (-2): cbor.Bytes(text.Repeat(32, "x")), (-3): cbor.Bytes(text.Repeat(32, "y")), "list": [1.5, "é", true, missing]})
+  list.All([result.IsErr(cbor.Decode(text.ByteSlice(1, n, whole))) for n in 0..text.ByteLength(whole) - 1]) and result.IsOk(cbor.Decode(whole))
+end
+
+defn isReadThenNext()
+  (** A COSE key followed by more bytes, as in a WebAuthn credential: Read gives where it ends. *)
+  key = cbor.Encode({1: 2, 3: -7, (-1): 1, (-2): cbor.Bytes(text.Repeat(32, "x")), (-3): cbor.Bytes(text.Repeat(32, "y"))})
+  data = "head$key$(cbor.Encode({"credProtect": 2}))"
+  first = cbor.Read(data, at = 5)!
+  second = cbor.Read(data, at = first.Next)!
+  first.Value[3] == -7 and first.Value[-2] == text.Repeat(32, "x") and first.Next == 5 + text.ByteLength(key) and second.Value == {"credProtect": 2} and second.Next == text.ByteLength(data) + 1 and result.IsErr(cbor.Read(data, at = text.ByteLength(data) + 1))
+end
+
+defn isAttestationObject()
+  (** An attestation object as a passkey's authenticator writes it: fmt, attStmt and authData, in the canonical order of
+      its keys. *)
+  object = {"authData": cbor.Bytes(text.Repeat(37, text.Char(1))), "fmt": "none", "attStmt": {}}
+  bytes = cbor.Encode(object)
+  text.ByteSlice(1, 16, encode.Hex(bytes)) == "a363666d74646e6f" and cbor.Decode(bytes) == result.Ok(plain(object))
+end
+
+defn isTextKeysAndIntegerKeysApart()
+  (** The key 1 and the key "1" are two keys, in a dictionary as in CBOR. *)
+  cbor.Decode(hex("a20101613102")) == result.Ok({1: 1, "1": 2})
+end
+
+failure(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+
+defn isEncodeBugs()
+  (** What CBOR can't hold here stops the fiber: a bug of the program, not of its input. *)
+  messages = [failure(() -> cbor.Encode(text.FromBytes([255]))), failure(() -> cbor.Encode({1.5: 1})), failure(() -> cbor.Encode(x -> x)), failure(() -> cbor.Encode(cbor.Bytes(1))), failure(() -> cbor.Encode(cbor.Tagged(-1, 0)))]
+  value.Equal(messages, [result.Err("A text string is UTF-8: give these bytes as cbor.Bytes."), result.Err("A key of a CBOR map is an integer or a text, not 1.5."), result.Err("CBOR has no form for function <anonymous>."), result.Err("cbor.Bytes needs a text, not 1."), result.Err("A tag is an integer from 0, not -1.")])
+end
+
+isStructAsMap() = cbor.Decode(cbor.Encode(result.Ok(3))) == result.Ok({Value: 3})
+
+(* Random values for the round trips: each with the value Decode gives back. *)
+specials = [0, 23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, math.MaxInt, -1, -24, -25, -257, -65537, -4294967297, -math.MaxInt - 1]
+texts = ["", "a", "é", hex("e6b0b4"), hex("f0908591"), "hello world", text.Repeat(30, "x"), text.Repeat(300, "y")]
+
+defn randomBytes(n)
+  text.FromBytes([random.Int(0, 255) for k in 1..n])
+end
+
+defn randomValue(depth)
+  k = random.Int(1, if depth >= 3 6 else 9 end)
+  if k == 1
+    random.Int(-100000, 100000)
+  else if k == 2
+    random.Pick(specials)
+  else if k == 3
+    random.Pick(texts)
+  else if k == 4
+    cbor.Bytes(randomBytes(random.Int(0, 40)))
+  else if k == 5
+    random.Pick([random.Float() * 1.0e6 - 5.0e5, 0.0, 1.0e300, -2.5e-300, math.Inf, -math.Inf, 0.1])
+  else if k == 6
+    random.Pick([true, false, missing])
+  else if k == 7
+    [randomValue(depth + 1) for i in 1..random.Int(0, 5)]
+  else if k == 8
+    d = {}
+    for i in 1..random.Int(0, 5)
+      d[random.Pick([random.Int(-30, 30), random.Pick(texts), "k$i"])] = randomValue(depth + 1)
+    end
+    d
+  else
+    cbor.Tagged(random.Int(0, 70000), randomValue(depth + 1))
+  end
+end
+
+defn isRoundTrips()
+  (** Decode(Encode(x)) is x, a byte string given back as a text. *)
+  list.All([cbor.Decode(cbor.Encode(x)) == result.Ok(plain(x)) for x in [randomValue(0) for i in 1..3000]])
+end
+
+defn mutated(s)
+  (** s with one change: a byte replaced, one put in, one taken out, or the end cut. *)
+  n = text.ByteLength(s)
+  if n == 0
+    return randomBytes(random.Int(0, 8))
+  end
+  at = random.Int(1, n)
+  k = random.Int(1, 4)
+  before = text.ByteSlice(1, at - 1, s)
+  after = text.ByteSlice(at + 1, n, s)
+  if k == 1
+    "$before$(randomBytes(1))$after"
+  else if k == 2
+    "$before$(randomBytes(1))$(text.ByteSlice(at, n, s))"
+  else if k == 3
+    "$before$after"
+  else
+    before
+  end
+end
+
+defn isFuzz()
+  (** 100,000 inputs: random bytes, and valid encodings changed once or a few times. Each gives an Ok or an Err. *)
+  corpus = list.Concat([hex(p[2]) for p in both], [cbor.Encode(randomValue(0)) for i in 1..300])
+  oks = 0
+  errs = 0
+  for i in 1..100000
+    input = if math.Mod(i, 4) == 0 randomBytes(random.Int(0, 24)) else mutated(random.Pick(corpus)) end
+    if math.Mod(i, 7) == 0
+      input = mutated(mutated(input))
+    end
+    got = cbor.Decode(input)
+    if result.IsOk(got)
+      oks += 1
+    else if result.IsErr(got) and got.Error.Kind == "cbor" and value.IsInt(got.Error.At)
+      errs += 1
+    end
+  end
+  oks + errs == 100000 and oks > 1000 and errs > 1000
+end
