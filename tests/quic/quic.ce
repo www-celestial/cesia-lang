@@ -1,5 +1,6 @@
-(* QUIC alone: a stream each way, the end of a stream, 300 KB echoed, 50 streams at once on one connection, a protocol
-   the server doesn't speak refused in the handshake, a port where no one listens refused. *)
+(* QUIC alone: a stream each way, the end of a stream, 300 KB echoed, 50 streams at once on one connection, 40 clients
+   that come while others are served and leave, a protocol the server doesn't speak refused in the handshake, a port
+   where no one listens refused. *)
 use std/quic
 use std/sys
 use std/fiber
@@ -26,6 +27,7 @@ defn echo(conn)
     end
     got = conn.Accept()
   end
+  conn.Close(0)
 end
 
 defn asked(conn, message)
@@ -42,6 +44,14 @@ defn asked(conn, message)
   result.Ok(text.Join("", parts))
 end
 
+defn client(api, port, k)
+  (** One client: a connection, a stream, its end. *)
+  conn = quic.Dial("127.0.0.1", port, api, alpn = ["echo"], verify = false)?
+  got = asked(conn, "c$k")
+  conn.Close(0)
+  got
+end
+
 defn main()
   api = quic.Open()?
   server = quic.Server(sys.Args[1], sys.Args[2], api, port = 0, alpn = ["echo"], validate = false)?
@@ -55,6 +65,11 @@ defn main()
   answers = [fiber.Wait(t)? for t in tasks]
   io.Print(value.Len([k for k in 1..50 if result.IsOk(answers[k]) and text.EndsWith(": n$k", answers[k].Value)]))
   conn.Close(0)
+  (* Handshakes while other connections read, write and close: OpenSSL runs a handshake, and its choice of protocol
+     that calls back into Cesia, only from the engine's pass, never from a read or a close of another connection. *)
+  many = [fiber.Spawn(() -> client(api, server.Port, k)) for k in 1..40]
+  done = [fiber.Wait(t)? for t in many]
+  io.Print(value.Len([k for k in 1..40 if result.IsOk(done[k]) and text.EndsWith(": c$k", done[k].Value)]))
   (* The server ends it at once; OpenSSL's client hears nothing of it, and gives up at its timeout. *)
   io.Print(quic.Dial("127.0.0.1", server.Port, api, alpn = ["other"], verify = false, timeout = 1) then result.MapErr(it.Kind))
   quic.Close(server)

@@ -62,6 +62,7 @@ defn loaded(major)
     Timeout: fn("SSL_get_event_timeout", ["ptr", "ptr", "ptr"], "i32", ssl)?,
     (* OpenSSL may run the handshake of a connection as it hands it over: this one may call back too. *)
     AcceptConnection: c.Fn("SSL_accept_connection", ["ptr", "u64"], "ptr", ssl, callsBack = true)?,
+    Pending: fn("SSL_get_accept_connection_queue_len", ["ptr"], "u64", ssl)?,
     AcceptStream: fn("SSL_accept_stream", ["ptr", "u64"], "ptr", ssl)?,
     DefaultStream: fn("SSL_set_default_stream_mode", ["ptr", "u32"], "i32", ssl)?,
     StreamPolicy: fn("SSL_set_incoming_stream_policy", ["ptr", "i32", "u64"], "i32", ssl)?,
@@ -101,6 +102,11 @@ defn loaded(major)
     SocketConnect: fn("BIO_connect", ["i32", "ptr", "i32"], "i32", lib)?,
     NonBlocking: fn("BIO_socket_nbio", ["i32", "i32"], "i32", lib)?,
     CloseSocket: fn("BIO_closesocket", ["i32"], "i32", lib)?,
+    (* A datagram BIO on the same socket, in peek mode (BIO_CTRL_DGRAM_SET_PEEK_MODE): its reads leave the datagram. *)
+    NewDgram: fn("BIO_new_dgram", ["i32", "i32"], "ptr", lib)?,
+    BioControl: fn("BIO_ctrl", ["ptr", "i32", "i64", "ptr"], "i64", lib)?,
+    BioRead: fn("BIO_read", ["ptr", "ptr", "i32"], "i32", lib)?,
+    BioFree: fn("BIO_free", ["ptr"], "i32", lib)?,
     SockInfo: fn("BIO_sock_info", ["i32", "i32", "ptr"], "i32", lib)?,
     AddrNew: fn("BIO_ADDR_new", [], "ptr", lib)?,
     AddrFree: fn("BIO_ADDR_free", ["ptr"], "void", lib)?,
@@ -192,7 +198,7 @@ end
     for the engine's next pass, and the objects to free; Closed a cell set once the endpoint closes. Block, Scratch and
     Flag are the memory of the calls: one of each for all streams, since no fiber switch comes between a call and the
     copy of what it wrote. *)
-struct Engine { Api, Ssl, Fd, Ctx, Wake, Waits, Block, Scratch, Flag, Zero, Closed, Alpn }
+struct Engine { Api, Ssl, Fd, Ctx, Wake, Waits, Block, Scratch, Flag, Zero, Closed, Alpn, Peek }
 
 defn cell(v)
   (** A value that fibers share: a channel that always holds one. *)
@@ -219,7 +225,9 @@ defn engine(api, ssl, fd, ctx, alpn)
   if not watch(fd)
     return failed("QUIC isn't served on Windows yet.")
   end
-  e = Engine(api, ssl, fd, ctx, fiber.Channel(size = 1), fiber.Channel(), c.Alloc(chunk), c.Alloc(48), c.Alloc(8), c.Alloc(16), cell(false), alpn)
+  peek = api.NewDgram(fd, 0)
+  api.BioControl(peek, 71, 1, missing)
+  e = Engine(api, ssl, fd, ctx, fiber.Channel(size = 1), fiber.Channel(), c.Alloc(chunk), c.Alloc(48), c.Alloc(8), c.Alloc(16), cell(false), alpn, peek)
   fiber.Spawn(() -> reading(e))
   result.Ok(e)
 end
@@ -245,6 +253,8 @@ defn wait(e, ssl, kind, owner = missing)
 end
 
 kick(e) = put(true, e.Wake)   (* Asks the engine for a pass: a stream wrote, and OpenSSL sends on a pass. *)
+
+queued(e) = e.Api.BioRead(e.Peek, e.Flag, 1) > 0   (* Does a datagram wait in the socket? It stays there. *)
 
 (* The events of SSL_poll (OpenSSL 3.3) that let each kind of wait go on: R and ER, readable or reset, for "read"; ISB
    and ISU, a stream to accept, for "accept" and "stop"; W and EW for "write"; OSB and OSU, room for one more stream of
@@ -321,11 +331,30 @@ defn run(e, accepted)
     if heard
       e.Api.ClearErrors()
       e.Api.Tick(e.Ssl)
+      (* A run of OpenSSL reads at most 32 datagrams, and the socket wakes the reader only when one more comes (epoll
+         is edge-triggered): those left would wait for the next datagram or timer. Up to 16 runs more while one waits;
+         past them the engine gives the other fibers a turn and comes back at once. *)
+      runs = 0
+      while runs < 16 and queued(e)
+        e.Api.Tick(e.Ssl)
+        runs += 1
+      end
+      if runs == 16 and queued(e)
+        kick(e)
+        sys.Sleep(0)
+      end
       if not value.IsMissing(accepted)
-        newcomer = e.Api.AcceptConnection(e.Ssl, 1)
-        while not value.IsMissing(newcomer)
-          accepted(newcomer)
+        (* Only when one waits: SSL_accept_connection with none runs OpenSSL twice more. *)
+        while e.Api.Pending(e.Ssl) > 0
           newcomer = e.Api.AcceptConnection(e.Ssl, 1)
+          if value.IsMissing(newcomer)
+            break
+          end
+          (* SSL_VALUE_EVENT_HANDLING_MODE, EXPLICIT, before any other call on it: a read, a write or a shutdown of
+             the connection or its streams then never runs OpenSSL, whose handshake of another client calls back into
+             Cesia (the choice of ALPN), which only Tick and AcceptConnection may do. Its streams inherit it. *)
+          e.Api.SetValue(newcomer, 0, 6, 2)
+          accepted(newcomer)
         end
       end
       waiting = woken(e, list.Concat(waiting, fresh), true)
@@ -362,6 +391,7 @@ end
 defn release(e)
   (** What an endpoint holds, given back once its engine stopped. *)
   e.Api.SslFree(e.Ssl)
+  e.Api.BioFree(e.Peek)
   e.Api.CtxFree(e.Ctx)
   e.Api.CloseSocket(e.Fd)
   c.Free(e.Block)
@@ -419,8 +449,8 @@ defn Server(certificate, key, api, port = 443, host = "127.0.0.1", alpn = ["h3"]
   listener = api.NewListener(ctx, if validate 0 else 2 end)
   api.SetFd(listener, fd)
   api.Blocking(listener, 0)
-  (* SSL_VALUE_EVENT_HANDLING_MODE, EXPLICIT: only Tick moves OpenSSL on, so only it calls back into Cesia. *)
-  api.SetValue(listener, 0, 6, 2)
+  (* No event mode here: OpenSSL takes SSL_VALUE_EVENT_HANDLING_MODE only on a connection or a stream, so run sets it
+     on each connection it accepts. *)
   api.Listen(listener)
   e = engine(api, listener, fd, ctx, protocols.Block)?
   result.Ok({Port: boundPort(api, fd), Engine: e})
