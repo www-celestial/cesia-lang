@@ -174,6 +174,19 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. Le backend (la partie d'un
   compilateur qui produit le code machine) qui fabrique le code machine de Cesia à partir du texte de son IR (la forme du
   programme entre sa source et le code machine), copié dans `src/sys/mir/`.
+- Le manuel d'OCaml, version 5.5, chapitre *Interfacing C with OCaml*, sections *Living in harmony with the garbage
+  collector* et *Advanced topic: callbacks from C to OCaml*. <https://ocaml.org/manual/5.5/intfc.html>. Une valeur
+  tenue à travers une allocation ou un appel d'OCaml est déclarée au collector, `CAMLparam`, `CAMLlocal`, `CAMLlocalN`,
+  car le collector déplace les valeurs jeunes ; une exception saute le code C entre elle et l'OCaml qui l'a appelé. Le
+  code machine de Cesia tient ses valeurs dans un bloc de local roots (des racines locales) de cette forme autour de
+  chaque appel d'OCaml, et rattrape chaque exception avant qu'elle atteigne le C.
+- Le manuel d'OCaml, version 5.5, chapitre *Effect handlers*, section *Semantics*.
+  <https://ocaml.org/manual/5.5/effects.html>. « It is not possible for an effect to cross a call to caml_callback » (un
+  effect ne peut pas traverser un appel de `caml_callback`) : pourquoi une native qui gare une fiber n'est jamais appelée
+  depuis le code machine.
+- Alfred V. Aho, Monica S. Lam, Ravi Sethi, Jeffrey D. Ullman. *Compilers: Principles, Techniques, and Tools*, 2e
+  édition, Addison-Wesley, 2006, section 9.2.5, *Live-Variable Analysis*. L'analyse en arrière qui dit quelles valeurs
+  un programme lit après un point : celles que le code machine de Cesia garde comme racines autour d'un appel d'OCaml.
 
 ## WebAssembly
 

@@ -320,6 +320,20 @@
   helper of texts doesn't load the JIT for nothing. A server's request path stays interpreted, as it calls natives,
   builds texts and holds closures at every step, which machine code can't: a request of Centauri takes the time it took.
   The book's How Cesia works tells it, in English and in French.
+- Machine code calls OCaml's natives, those of `std/` that ask for no permission and never wait, as the interpreter
+  calls them: a loop of arithmetic that calls `dict.Has` at each turn, which the call kept interpreted, is machine code
+  now, 243 ms instead of 491 for 10^6 turns of 60 operations (medians of 21 runs, alternated). Around each call that may
+  collect, machine code holds the values it needs after it in a block of OCaml's local roots, as `CAMLlocalN` does, and
+  reads them back; an exception or a limit raised in the native comes back through its error path, with the
+  interpreter's message and trace; its stacks grow and its room is made where they lack, and nothing is made twice. The
+  way into OCaml and back costs about 100 ns more than the interpreter's call, so a unit is machine code only when it
+  makes at least 24 operations for each call of a native: a loop made only of such calls stays interpreted, as fast as
+  before. A native that waits, as those of `std/fiber`, `sys.Sleep` and those of packages, stays the interpreter's, as
+  an effect of OCaml can't cross the C frames of machine code; a callback that waits makes its fiber wait where it is.
+  `CESIA_JIT_SHOW=1` says why a hot version or loop stays interpreted. Centauri's request path still gets no machine
+  code: each of its versions stops now at the next thing the JIT doesn't make, a closure, a text made of parts, a
+  `match`, a field read in a version as a whole. The book's How Cesia works tells it, in English and in French;
+  `tests/jit` checks it under a young heap of 4,096 words, with errors, fibers and recursions through the calls.
 - `encode.Base64` makes its digits as numbers and the text by one call of `text.FromBytes`, instead of a text of four
   pieces for each three bytes: 125 bytes in 24 µs instead of 56, as the cursor of a page of Centauri, which writes one
   for each page; its output is the same, as RFC 4648's vectors and a property test against the version before check.

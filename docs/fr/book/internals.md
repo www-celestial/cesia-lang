@@ -963,13 +963,14 @@ type n'importe quoi, et elles tournent dans l'interpréteur, qui met alors chaqu
 
 ### Les appels de natives
 
-Une native, une fonction de `std/` écrite en OCaml, comme `math.Abs` ou `text.ByteLength`, est déjà du code machine,
-mais le code machine ne l'appelle jamais : le code natif ne rappelle jamais OCaml, pour que rien ne collecte pendant une
-exécution, et une boucle avec une instruction qui en appelle une reste dans l'interpréteur. Le JIT en fait certaines
+Une native, une fonction de `std/` écrite en OCaml, comme `math.Abs` ou `text.ByteLength`, est déjà du code machine.
+Jusqu'au 2026-11-26 le code machine ne l'appelait jamais, pour que rien ne collecte pendant une exécution, et une boucle
+avec une instruction qui en appelait une restait dans l'interpréteur ; le code machine l'appelle maintenant à travers
+OCaml quand ça paie ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)). Le JIT en fait certaines
 lui-même, sur place : celles de libm, comme `math.Sqrt`, `math.Log10` à `math.Atanh` et `math.Hypot`, les angles en
 degrés, `math.SinDegrees`, `math.CosDegrees` et `math.TanDegrees`, réduits par `fmod` et `round` de libm comme
 l'interpréteur les réduit, et `math.Abs`, `math.Div`, `math.Mod`, `list.Max` et `list.Min` de deux nombres,
-`value.Len`, `random.Float`, et quelques-unes sur de petits arrays de floats. `math.Cbrt` est la racine cubique propre à
+`value.Len` d'un array, `random.Float`, et quelques-unes sur de petits arrays de floats. `math.Cbrt` est la racine cubique propre à
 Cesia, correctly rounded (le float le plus proche de la vraie racine), et pas une fonction de libm : une boucle qui
 l'appelle reste dans l'interpréteur, et un array la prend en un seul appel. L'appel des autres par l'interpréteur
 prenait 28 à 36 ns. Un *sampling profiler* (un outil qui arrête le programme à intervalles
@@ -1034,7 +1035,8 @@ de la longueur d'un texte, 268, contre Python 641, Node 50,6, où la longueur es
 et LuaJIT 11,4 ; de `math.Sqrt`, que le code machine de Cesia fait lui-même, 49,2, contre 763, 53,2, 205 et 11,4.
 L'interpréteur de Lua appelle `string.len` en 24 ns par tour, contre 27 pour Cesia : son appel passe les arguments sur
 sa pile, là où celui de Cesia fait un array et les met dans des boîtes, comme une native les prend. Node et LuaJIT font
-de tels appels du code machine ; Cesia ne le fait que pour les natives que son JIT connaît.
+de tels appels du code machine ; Cesia ne le fait sur place que pour les natives que son JIT connaît, et appelle les
+autres à travers OCaml ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)).
 
 ### Les versions qui donnent des valeurs
 
@@ -1064,7 +1066,8 @@ qu'elle donne :
   compréhension ou une fonction littérale, est refusée tout de suite, avant que les versions qu'elle appelle ne soient
   traduites pour rien.
 
-Le difficile est la mémoire. Le code natif ne rappelle jamais OCaml, donc rien ne collecte pendant qu'il tourne : chaque
+Le difficile est la mémoire. Le code natif n'appelle OCaml que comme le dit la partie suivante, donc rien d'autre ne
+collecte pendant qu'il tourne : chaque
 tour d'une boucle *réserve* les mots qu'il va faire, et quand le minor heap (le petit tas où vont les nouveaux blocs) en
 manque, l'exécution sort, l'allocation de l'interpréteur collecte, et l'exécution revient. Une frame imbriquée, la frame
 d'un appel que fait le code natif, ne peut pas sortir, car les registres de son appelant seraient perdus. Une frame
@@ -1108,31 +1111,162 @@ dépassement de chaque `d * d` et compte ses pas. Les arbres sont à Cesia : une
 en déplaçant un pointeur, faite entière, donc sans write barrier (le travail que demande au collector l'écriture d'un
 pointeur dans un vieux bloc), et une exécution ne collecte rien avant sa fin.
 
-Ce qui garde encore une version dehors est dans la partie suivante. Le code d'un serveur en est le cas : le chemin d'une
+Ce qui garde encore une version dehors est dans [Ce qui reste dans l'interpréteur](#ce-qui-reste-dans-linterpréteur). Le
+code d'un serveur en est le cas : le chemin d'une
 requête de Centauri, sa porte, sa session et sa route, appelle des natives à chaque pas, `dict.GetOr`, `text.Contains`,
 `sys.Now`, les fonctions de `std/http`, fait des textes et tient des closures (des fonctions qui gardent des variables
 d'ailleurs), et aucune de ses versions ne se lower, avant comme maintenant : une requête publique prend 19,2 µs, comme
 avec le binaire de main (médianes de 21 exécutions de 20 000 requêtes chacune, sans le réseau), et un serveur de
 Centauri répond à 13 000 requêtes de `/hello` par seconde sur un cœur, à côté de 28 000 pour `std/http` seul et de 28
-000 par cœur pour le `net/http` de Go. Le code natif devrait appeler OCaml pour elles, avec chaque valeur qu'il tient
-écrite dans la frame avant, car le collector peut la déplacer, les piles relues après, car un appel peut les agrandir,
-et une native qui attend, comme une fiber attend le réseau, jamais appelée de là, car une attente ne peut pas quitter
-une frame C : un appel d'OCaml depuis le code natif est du C, au-delà du budget de la colle.
+000 par cœur pour le `net/http` de Go. Le code machine appelle maintenant OCaml pour ses natives, et ses versions ne se
+lowerent toujours pas : la fin de la partie suivante dit ce qui garde chacune dehors.
+
+### Le code machine qui appelle OCaml
+
+Jusqu'au 2026-11-26, le code machine n'appelait jamais OCaml : rien ne collectait pendant qu'il tournait, et une unité
+qui appelait une native de `std/` restait dans l'interpréteur, comme la boucle autour de l'appel. Maintenant le code
+machine appelle une native comme l'interpréteur le fait : avec ses arguments en valeurs, à son site, depuis sa frame.
+L'appel passe par la colle C, `cesia_jit_native` dans `src/sys/jit.c`, qui exécute une fonction OCaml du JIT, et cette
+fonction exécute la native.
+
+**Quelles natives.** Celles de `std/` qui ne demandent aucune permission et n'attendent jamais. Une attente gare une
+fiber par un effect d'OCaml (un effet : le mécanisme d'OCaml 5 qui suspend un calcul pour le reprendre plus tard), et un
+effect ne peut pas traverser un appel de C vers OCaml : il lève `Effect.Unhandled` là où il est fait (le manuel d'OCaml,
+*Effect handlers*, *Semantics*). Donc les natives de `std/fiber`, de `std/websocket`, dont les sockets rappellent, de
+`std/cells`, `std/debug` et `std/sqlite3`, `sys.Sleep`, celles qui demandent une permission (fichiers, réseau,
+processus, C) et celles des packages, comme celles de Cepheus, qui peuvent attendre un serveur, restent à
+l'interpréteur, et l'unité avec elles : `CESIA_JIT_SHOW=1` nomme la native. Une native qui rappelle Cesia, comme
+`value.Len` appelle le `len` d'une struct, peut quand même atteindre une attente : sa fiber attend alors là où elle
+est, en faisant tourner le scheduler (l'ordonnanceur, qui choisit la fiber suivante) comme le programme principal,
+plutôt que de se garer.
+
+**Comment le collector et le code machine s'accordent.** Le code machine garde des valeurs dans des registres, et MIR
+les garde à travers un appel dans les registres que l'appel préserve, ou dans ses slots de pile, comme le dit la
+convention d'appel de C sur la plateforme (System V sur Linux et macOS, le x64 de Microsoft sur Windows) : le
+collector (le garbage collector, qui libère la mémoire que plus rien ne tient) ne regarde aucun d'eux. Les règles
+d'OCaml pour le C disent pourquoi c'est important (le manuel d'OCaml, *Interfacing C with OCaml*, *Living in harmony
+with the garbage collector*) : une collection déplace les valeurs du young heap (le tas des valeurs jeunes, où elles
+naissent) et n'écrit leurs nouvelles adresses que là où elle les connaît, donc une fonction C déclare chaque valeur
+qu'elle tient à travers une allocation ou un appel d'OCaml, ses paramètres avec `CAMLparam`, ses variables avec
+`CAMLlocal`, un array d'entre elles avec `CAMLlocalN`. Le code machine suit la même règle. Autour de chaque appel qui
+peut collecter, une native, un appel d'une autre fonction de son unité, qui peut en appeler une, et les chemins lents
+de la place et de la pile plus bas, il écrit les valeurs dont il a besoin après l'appel dans un bloc de local roots
+(des racines locales : les cellules que le collector lit et met à jour) sur sa propre pile, disposé comme ces macros
+disposent les leurs (`caml/memory.h` : le bloc suivant, le nombre de tables, le nombre de valeurs, les tables), le lie
+à la liste du domain (le domaine : un cœur d'OCaml 5 et son tas) pour l'appel seulement, et relit les valeurs depuis
+lui après : le collector les y lit, les déplace, et écrit où elles sont allées. Quelles valeurs : celles qu'une analyse
+de liveness (de vivacité : quelles valeurs seront encore lues) en arrière sur les blocs de l'IR dit lues après l'appel
+(Aho, Lam, Sethi et Ullman, *Compilers*, 2e édition, 9.2.5), chaque variable, qu'un retour à l'interpréteur écrit dans
+son slot, et les premiers champs des constantes. Chaque registre de valeur tient une valeur dès le début de sa
+fonction, l'entier 0 avant tout le reste, pour que le collector ne lise jamais un mot égaré. L'optimiseur de MIR ne
+recharge rien d'une copie périmée : un appel efface ce qu'il sait de la mémoire, et un bloc dont l'adresse s'échappe
+n'est jamais supposé privé.
+
+Les piles bougent aussi : celles d'une nouvelle fiber tiennent 8 entrées et celles du programme principal 256, donc
+elles sont dans le young heap jusqu'à ce qu'elles grandissent, et une native qui rappelle peut les agrandir. Le code
+machine relit leurs adresses après chaque tel appel, et la colle C lui donne les nouvelles, depuis le contexte.
+
+**Les erreurs.** Une exception que lève du code OCaml saute le code C entre elle et l'OCaml qui l'a appelé (le manuel,
+*Callbacks from C to OCaml*) : ici elle sauterait les frames du code machine, leurs liens jamais écrits et leur bloc de
+racines laissé dans la liste. Donc la fonction du JIT rattrape chaque exception, et la colle C dit au code machine
+qu'il a échoué : le code machine prend alors son chemin d'erreur, chaque frame écrivant son lien pour la trace en
+revenant, et le moteur relève l'exception, depuis la frame où elle a été levée. Le message, la ligne et la trace sont
+ceux de l'interpréteur (`tests/jit/natives-errors.ce` et `natives-deep.ce`, dans les trois modes).
+
+**Les pas et la profondeur.** Avant l'appel, le fuel de l'interpréteur (le compte de pas qui reste avant le prochain
+checkpoint) est mis à ce qu'il serait après les pas que l'exécution a faits, pour que la native compte ses propres
+pas, et ceux de ce qu'elle rappelle, comme l'interpréteur le fait : une limite de pas tombe au même pas, au même site
+(31 limites sur une boucle de `text.Repeat`, dans les trois modes) ; l'exécution continue après depuis ce qui reste. Le
+lien de chaque frame est écrit avant l'appel, pour que les frames de l'interpréteur rappelées au-dessus comptent les
+frames du code machine, comme la limite de profondeur le doit, et qu'une trace prise là les contienne. Au-delà de 64
+natives appelées depuis le code machine à la fois, ce qu'elles rappellent tourne dans l'interpréteur : chaque niveau
+garde les frames du code machine et de la colle sur la pile du système, 8 MB sur Linux et 1 MB sur Windows, là où les
+frames de l'interpréteur sont celles d'OCaml, sur une pile qui grandit (`natives-deep.ce` descend de 40 000 niveaux à
+travers `value.Len`).
+
+**Jamais deux fois.** L'effet d'une native se voit, et l'interpréteur ne doit jamais la refaire : rien après une native
+dans son instruction ne peut revenir à l'interpréteur, et un appel d'une fonction d'une unité qui appelle des natives
+compte comme une. Une unité qui appelle des natives ne recommence donc jamais : là où ses piles sont courtes elle les
+agrandit, et là où le young heap manque de place elle collecte, les deux par le même appel d'OCaml, ses valeurs
+tenues.
+
+**Ce que ça coûte.** Le chemin vers OCaml et retour est le prix : `caml_callback`, son changement de pile et son
+handler (le gestionnaire d'exception qu'il installe), et le travail du moteur autour de la native. Il coûte environ
+100 ns de plus que l'appel propre de l'interpréteur à la même native, mesuré sur cette machine : une boucle de 20
+opérations de floats prend 27 ns par tour en code machine et 137 dans l'interpréteur, et 200 et 210 avec un appel de
+`dict.Has` à chaque tour. Donc une unité n'est du code machine que si elle fait au moins 24 opérations pour chacun de
+ses appels de natives ; sinon l'interpréteur la garde, et `CESIA_JIT_SHOW=1` dit combien il en a comptées. Une boucle
+faite seulement de tels appels reste où elle était.
+
+Mesuré le 2026-11-26, profil `release`, 21 exécutions de chacun en alternance avec le binaire de main, le processus
+entier, pendant que d'autres travaux tournaient sur la machine (charge 6,3 à 9,4) ; la médiane, puis l'exécution la plus
+rapide et la plus lente, en ms :
+
+| Programme | Avant | Maintenant | Interpréteur seul |
+|---|---:|---:|---:|
+| 10^7 appels de `text.ByteLength`, 2 opérations par appel | 513,6 (354,7–642,8) | 526,8 (373,2–630,1) | 464,8 |
+| 10^7 appels de `dict.Has` | 792,8 (554,5–1 122,5) | 792,3 (543,8–1 180,4) | 769,8 |
+| 10^7 appels de `sys.Now` | 504,6 (403,5–648,9) | 498,5 (400,7–593,8) | 488,3 |
+| 10^7 fois `text.ByteLength(text.Slice(2, 4, s))` | 2 167,8 (1 498,0–3 112,4) | 2 270,0 (1 528,8–3 082,2) | 2 111,8 |
+| 10^6 tours de 20 opérations de floats et un `dict.Has` | 218,0 (157,9–329,8) | 220,6 (158,6–347,0) | 210,1 |
+| 10^6 tours de 60 opérations de floats et un `dict.Has` | 490,9 (358,4–589,0) | 243,0 (173,6–332,9) | 490,0 |
+
+Les cinq premiers restent dans l'interpréteur, avant comme maintenant : ce qui les sépare est dans le bruit de la
+machine. Le dernier est maintenant du code machine, deux fois plus rapide. Node et LuaJIT font les appels de leurs
+fonctions intégrées dans leur code machine, et Go compile sa bibliothèque avec le programme : chez aucun d'eux un tel
+appel ne passe d'un runtime (le système qui exécute le programme) à un autre, comme celui de Cesia passe du code
+machine que fait MIR à OCaml.
+
+**Centauri.** Son chemin de requête, la route publique, une chose par son id et une page, n'a pas encore de code
+machine : une requête publique prend 22,9 µs, contre 23,8 avec le binaire de main, une chose par son id 40,9 contre
+41,9, une page 149,0 contre 149,0 (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, charge 3,6 à
+4,8), et sous charge un serveur répond à 11 880 requêtes de `/hello` par seconde, contre 11 985, sur 0,94 cœur, à côté
+de 26 021 pour `std/http` seul et de 76 176 pour le `net/http` de Go sur 2,88 cœurs (21 mesures de 2 s chacune, 256
+connexions gardées, charge 4,1 à 10,4). Les natives étaient la première chose qui gardait ses versions hot dehors ;
+maintenant chacune s'arrête à la chose suivante que le JIT ne fait pas (`CESIA_JIT_SHOW=1`, sur `bench/micro.ce` de
+Centauri) :
+
+| Ce qui la garde dehors | Versions et boucles |
+|---|---:|
+| une closure : le handler d'une route, comme `r -> {Text: "Hello"}` | 18 |
+| une lecture de champ, ou un calcul sur une valeur sans type, dans une version entière : pas de frame sur laquelle parier | 6 |
+| une instruction que le JIT ne fait pas, comme une écriture dans un champ | 5 |
+| une cellule d'une liste qui n'est pas une variable de sa frame, comme `parts[2]` d'une liste reçue | 5 |
+| un texte fait de morceaux, `"$x"` | 5 |
+| un `match` | 4 |
+| une fonction littérale | 4 |
+| un `if` qui donne une valeur, ou une autre forme d'expression qu'il ne fait pas | 3 |
+| une native qui attend, de `std/fiber` | 3 |
+| une native d'un package, celles de Cepheus | 3 |
+| un `in` | 2 |
+| une comprehension (une liste faite par `[f(x) for x in xs]`) | 2 |
+| le plus grand ou le plus petit de deux valeurs qui ne sont pas des nombres | 2 |
+| trop peu d'opérations pour ses appels de natives | 2 |
+| un `?` | 1 |
+| une map vide, `{}` | 1 |
+| un appel d'une fonction tenue dans un champ | 1 |
+| une variable qu'une closure partage | 1 |
+
+Avant, le premier refus de 32 d'entre elles était une native. Ce qui ferait entrer le chemin de Centauri dans le code
+machine est la partie suivante du JIT : une lecture de champ et une closure dans une version entière, qui demandent un
+retour à l'interpréteur au milieu d'un appel, et les textes faits de morceaux.
 
 ### Le contrat
 
 Le même programme donne la même sortie, les mêmes erreurs aux mêmes lignes et les mêmes limites, dans l'interpréteur et
 en code machine. Le code machine compte les pas comme l'interpréteur, vérifie les bornes et l'overflow comme lui, et
-part vers l'interpréteur à chaque checkpoint complet, où les autres fibers ont leur tour. Il n'exécute jamais le garbage
-collector : chaque tour d'une boucle compilée réserve d'abord la mémoire dont il aura besoin, et part s'il n'y en a pas
-assez, donc le collector tourne en OCaml comme d'habitude. Les tests exécutent toute la suite dans les deux niveaux, et
+part vers l'interpréteur à chaque checkpoint complet, où les autres fibers ont leur tour. Il n'exécute le garbage
+collector qu'à travers un appel d'OCaml, ses valeurs tenues comme local roots d'OCaml : chaque tour d'une boucle compilée
+réserve d'abord la mémoire dont il aura besoin, et part s'il n'y en a pas assez, ou, dans une unité qui appelle des
+natives, fait la place là où il est. Les tests exécutent toute la suite dans les deux niveaux, et
 une différence est un bug du JIT.
 
 ### Ce qui reste dans l'interpréteur
 
-- un appel d'une native, une fonction de `std/` écrite en OCaml, comme [text.Split], sauf celles que le JIT fait
-  lui-même ([Les appels de natives](#les-appels-de-natives)) : la native est déjà du code machine, et la boucle autour
-  de l'appel reste interprétée, ou l'instruction seule dans une branche de ses ifs ;
+- un appel d'une native qui attend, demande une permission ou vient d'un package, et une unité dont les appels de
+  natives viennent trop souvent pour ce qu'elle calcule, moins de 24 opérations par appel
+  ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)) : l'interpréteur appelle une native pour
+  moins cher ;
 - `for x in xs` sur les éléments d'une liste, et un appel à travers une valeur qui a atteint cinq fonctions ou plus, ou
   une fonction qui a capturé des variables ;
 - dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme un `return` d'une struct ou un
@@ -1141,12 +1275,11 @@ une différence est un bug du JIT.
 - les arrays de plus de 15 floats faits dans une boucle : les opérations de l'interpréteur sur eux, qui travaillent sur
   beaucoup de cellules à la fois, coûtent déjà peu par cellule ;
 - une map lue ou écrite avec une clé calculée pendant que le programme tourne, comme `m["key$k"]`, et le texte construit
-  pour elle. Le code natif ne rappelle jamais OCaml : rien ne collecte pendant une exécution, ce qui permet aux valeurs
-  qu'il tient de rester dans des registres, où le collector ne pourrait pas les trouver pour les déplacer. Le hash, le
-  probe de la table, sa croissance et le nouveau texte demanderaient chacun un tel appel, avec chaque valeur réécrite
-  dans son slot avant et relue après ; ce que le code natif pourrait épargner, c'est la part propre de l'interpréteur
-  dans `bench/maps.ce`, un dixième de son temps dans son profil (la mesure de l'endroit où passe le temps), et ces appels
-  en reprendraient une bonne partie ;
+  pour elle. Le hash, le probe de la table, sa croissance et le nouveau texte seraient chacun un appel d'OCaml, qui
+  coûte environ 100 ns de plus que celui de l'interpréteur
+  ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)) ; ce que le code natif pourrait épargner,
+  c'est la part propre de l'interpréteur dans `bench/maps.ce`, un dixième de son temps dans son profil (la mesure de
+  l'endroit où passe le temps), et ces appels la reprendraient toute ;
 - une boucle du haut d'un fichier qui affecte une variable du module qu'une fonction qu'elle appelle, sans l'inliner
   (sans copier son corps sur place), lit : cette fonction lirait la variable dans son module pendant que le code machine
   la tient dans un registre ;
