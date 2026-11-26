@@ -1,0 +1,54 @@
+(* HTTP/3 beside HTTP/1.1: the same app, its routes unchanged, served both ways; Fetch learns the Alt-Svc of the first
+   answer and asks over QUIC from then on; a streamed body, a body sent, a HEAD, a 404, a handler that panics, a body
+   too large, and the 425 of RFC 8470 on both paths. *)
+use std/http
+use std/http3
+use std/quic
+use std/tls
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
+use std/bug
+use std/dict
+
+served = net.Listen(0, host = "127.0.0.1")!
+port = net.Port(served)
+
+defn rows(send)
+  send("a,b\n")?
+  send("c,d\n")
+end
+
+defn main()
+  api = tls.Open()?
+  q = quic.Open()?
+  how(r) = if http.HeaderValue("connection", r.Headers) == "close" "tcp" else "h3" end
+  a = http.App() then http.Get("/", r -> http.Plain("$(how(r)) $(r.Method) $(r.Peer) $(http.HeaderValue("host", r.Headers) == "127.0.0.1:$port") $(dict.Get("q", r.Query))"))
+    then http.Post("/echo", r -> http.Plain("$(how(r)) $(text.ByteLength(r.Body))")) then http.Get("/rows", r -> http.Stream(rows))
+    then http.Get("/panic", r -> bug.Panic("no"))
+  h3 = http3.Server(sys.Args[1], sys.Args[2], q, port = port, validate = false)?
+  fiber.Spawn(() -> http.Serve(a, listener = served, wrap = tls.Server(sys.Args[1], sys.Args[2], api)?, http3 = h3, maxBody = 200000))
+  sys.Sleep(0.05)
+  client = http3.Client(q, verify = false)
+  insecure = tls.Client(api, verify = false)
+  ask(path, method = "GET", body = "", headers = []) = http.Fetch("https://127.0.0.1:$port$path", method = method, body = body, headers = headers, secure = insecure, http3 = client)
+  first = ask("/?q=1")?
+  io.Print(first.Status, first.Body, http.HeaderValue("alt-svc", first.Headers) == "h3=\":$port\"; ma=86400")
+  again = ask("/?q=2")?
+  io.Print(again.Status, again.Body)
+  io.Print(ask("/echo", method = "POST", body = text.Repeat(150000, "x")).Value.Body)
+  io.Print(ask("/echo", method = "POST", body = text.Repeat(250000, "x")).Value.Status)
+  io.Print(ask("/rows").Value.Body)
+  io.Print(ask("/nowhere").Value.Status, ask("/panic").Value.Status)
+  head = ask("/", method = "HEAD")?
+  io.Print(head.Status, head.Body == "", http.HeaderValue("content-length", head.Headers))
+  io.Print(ask("/echo", method = "POST", body = "pay", headers = [{Name: "Early-Data", Value: "1"}]).Value.Status, ask("/?q=3", headers = [{Name: "Early-Data", Value: "1"}]).Value.Status)
+  io.Print(http.Fetch("https://127.0.0.1:$port/echo", method = "POST", body = "pay", headers = [{Name: "Early-Data", Value: "1"}], secure = insecure).Value.Status)
+  io.Print(http3.Server(sys.Args[1], sys.Args[2], q, port = port) then result.MapErr(it.Kind))
+  result.Ok(missing)
+end
+
+io.Print(main())

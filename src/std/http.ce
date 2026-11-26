@@ -58,6 +58,7 @@ Reason(status) = match status
   408 -> "Request Timeout"
   409 -> "Conflict"
   422 -> "Unprocessable Content"
+  425 -> "Too Early"
   429 -> "Too Many Requests"
   400 -> "Bad Request"
   404 -> "Not Found"
@@ -172,7 +173,7 @@ end
 defn answer(handle, request, left, chunked, last = false)
   (** The response of a handler to a request, ready to send, within left seconds. A panic in the handler stops its own
       fiber only, and answers 500. A handler that takes longer gets a 503, and the connection closes while it runs on. *)
-  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD", chunked, last = last)), timeout = list.Max(0, left))
+  match fiber.Wait(fiber.Spawn(() -> ready(if tooEarly(request) Plain("Too Early", status = 425) else handle(request) end, request.Method == "HEAD", chunked, last = last)), timeout = list.Max(0, left))
     result.Ok(done) -> done
     result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Stream: missing, Chunked: chunked, Close: true}
   end
@@ -491,18 +492,47 @@ defn waitForConnections(deadline)
   end
 end
 
-defn serve(handle, port, host, timeout, maxBody, wrap, listener, streams = missing)
+defn serve(handle, port, host, timeout, maxBody, wrap, listener, streams = missing, http3 = missing, webtransport = false)
   (** Serves the requests to handle until a stop signal, then lets those in progress end, each by its deadline.
       handle(request) receives {Method, Path, Query, Headers, Body, Peer}, Peer the address of the client as net.Peer
       gives it, and returns {Status, Body}, with optional headers, and
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
-      after the response. *)
+      after the response. With http3, the same handler answers HTTP/3 too, and each response of TCP tells where (Alt-Svc,
+      RFC 7838): a browser that hears it asks over QUIC next, and comes back to TCP by itself when UDP doesn't pass. *)
   listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end
+  quic = missing
+  served = handle
+  if not value.IsMissing(http3)
+    quic = fiber.Spawn(() -> http3.Serve(r -> if tooEarly(r) Plain("Too Early", status = 425) else handle(r) end,
+      {Timeout: timeout, MaxBody: maxBody, Streams: streams, Date: () -> dateValue(), WebTransport: webtransport}))
+    offer = "h3=\":$(http3.Port)\"; ma=86400"
+    served = r -> WithHeader("alt-svc", offer, handle(r))
+  end
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
-  acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end, Streams: streams})?
+  acceptLoop(served, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end, Streams: streams})?
   net.Close(listener)
   waitForConnections(sys.Now() + timeout)
+  if not value.IsMissing(quic)
+    _ = fiber.Wait(quic, timeout = timeout + 2)
+  end
   result.Ok(missing)
+end
+
+dateValue() = text.Trim(text.ByteSlice(7, text.ByteLength(dateLine()), dateLine()))   (* The value of the Date line. *)
+
+(* The methods that change nothing, which a request sent in TLS's early data may be (RFC 9110, section 9.2.1). *)
+safeMethods = ["GET", "HEAD", "OPTIONS"]
+
+defn tooEarly(request)
+  (** Is this a request that a proxy in front took in TLS's early data, which an attacker can send again (RFC 8470,
+      section 5.2: the proxy says so with Early-Data: 1), and that would change something? A payment replayed would be
+      paid twice: it gets 425 Too Early, and the client sends it again after the handshake. The method is looked at
+      first: a GET pays one comparison. *)
+  if not value.IsMissing(list.IndexOf(request.Method, safeMethods))
+    return false
+  end
+  flag = HeaderValue("early-data", request.Headers)
+  value.IsText(flag) and text.Trim(flag) == "1"
 end
 
 failed(message) = result.Err({Kind: "http", Message: message})   (** An Err of the kind "http" with a message. *)
@@ -671,7 +701,7 @@ defn hostOf(target)
   if target.Port == (if target.Secure 443 else 80 end) target.Host else "$(target.Host):$(target.Port)" end
 end
 
-defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing)
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing, http3 = missing)
   (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
       answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api). A server
       silent for timeout seconds, as it starts TLS or between two reads of its response, gives an Err of kind
@@ -682,7 +712,9 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
       sent, those of TLS too: an Err it gives closes the connection, and Fetch gives that Err. A server named by its
       host is thus checked by the very address it was found at, with no second lookup that a server of names could
       answer otherwise (DNS rebinding): what a program asks for another, at an address it was given, can't reach this
-      machine or its network when peer refuses their addresses.
+      machine or its network when peer refuses their addresses. With http3 = http3.Client(api), an https server that
+      said it speaks HTTP/3 (its Alt-Svc header) is asked over QUIC from then on, and over TCP again at once if that
+      fails; peer checks that address too.
 
         Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http")
         l = net.Listen(0)!
@@ -696,6 +728,26 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
   if target.Secure and value.IsMissing(secure)
     return failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
   end
+  quic = if target.Secure and not value.IsMissing(http3) http3.Offered(target.Host, target.Port) else missing end
+  if not value.IsMissing(quic)
+    asked = http3.Ask(target.Host, quic, method, target.Path, headers, body, timeout, maxBody, peer)
+    if result.IsOk(asked)
+      return asked
+    end
+    http3.Broken(target.Host, target.Port)
+  end
+  got = overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
+  if target.Secure and not value.IsMissing(http3) and result.IsOk(got)
+    offer = HeaderValue("alt-svc", got.Value.Headers)
+    if value.IsText(offer)
+      http3.Learn(target.Host, target.Port, offer)
+    end
+  end
+  got
+end
+
+defn overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
+  (** A request of Fetch over TCP, with TLS for https. *)
   c = net.Connect(target.Host, target.Port)?
   if not value.IsMissing(peer)
     allowed = peer(net.Peer(c))
@@ -942,7 +994,7 @@ end
       broken({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 500 *)
 Handler(a) = chain(router([r.Method for r in a.Routes], [r.Parts for r in a.Routes]), a, value.Len(a.Middleware))
 
-defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
+defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing, http3 = missing, webtransport = false)
   (** Serves an application until a stop signal, TERM, INT or HUP: then it accepts no more, lets the requests in progress
       end, each by its deadline, with a response that tells its client that the connection closes, and gives Ok. It listens
       on port, on this machine only unless host says otherwise. timeout is the seconds a connection has for each request,
@@ -950,12 +1002,15 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody
       largest body read, in bytes, but for a route that takes its body in pieces (Route's stream); the bodies read at
       once take at most a quarter of the memory limit, and past it a request gets a 503 at once. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
-      net.Port, takes the place of port and host.
+      net.Port, takes the place of port and host. http3, what http3.Server gives, serves HTTP/3 beside it, on UDP, with
+      the same handlers: an application's routes don't change; webtransport lets the routes of std/live take
+      WebTransport sessions there. A request that a proxy took in TLS's early data (Early-Data: 1, RFC 8470) and that
+      would change something, any method but GET, HEAD and OPTIONS, gets 425 Too Early, on either path.
 
         l = net.Listen(0)!
         fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
         Fetch("http://localhost:$(net.Port(l))/").Value.Body --> "hi" *)
-  serve(Handler(a), port, host, timeout, maxBody, wrap, listener, streams = streams(a))
+  serve(Handler(a), port, host, timeout, maxBody, wrap, listener, streams = streams(a), http3 = http3, webtransport = webtransport)
 end
 
 defn streams(a)

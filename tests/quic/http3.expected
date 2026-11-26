@@ -1,0 +1,14 @@
+200 tcp GET 127.0.0.1 true 1 true
+200 h3 GET 127.0.0.1 true 2
+h3 150000
+413
+a,b
+c,d
+
+404 500
+200 true 30
+425 200
+425
+Err("quic")
+Ok(missing)
+exit 0

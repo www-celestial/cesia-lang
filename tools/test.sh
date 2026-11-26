@@ -81,6 +81,7 @@ skip() {  # folder, reason
 command -v g++ > /dev/null || skip tests/cpp "no g++"
 pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
+"$cesia" run --allow ffi=ssl,ffi=crypto tests/quic/has-quic.ce > /dev/null 2>&1 || skip tests/quic "no OpenSSL with QUIC, 3.6 or later"
 "$cesia" run tests/sqlite/has-sqlite.ce > /dev/null 2>&1 || skip tests/sqlite "no SQLite"
 { command -v python3 && command -v prlimit && unshare -rn true; } > /dev/null 2>&1 || skip tests/tabs "no python3, prlimit or unshare -rn"
 "$cesia" run --allow ffi=SDL3_ttf,read=/usr/share/fonts tests/fonts/has-font.ce > /dev/null 2>&1 || skip tests/fonts "no SDL3_ttf or JetBrains Mono"

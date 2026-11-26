@@ -44,3 +44,6 @@ val http_natives : t -> (string * Types.t) list
 
 (** The natives that only std/quic sees: it waits on the UDP socket that OpenSSL made, by its number. *)
 val quic_natives : t -> (string * Types.t) list
+
+(** Of std/http3: a Huffman string of HPACK and QPACK, from its bytes and the codes and lengths of its 257 symbols. *)
+val huffman : Types.ctx -> Types.t array -> Types.t

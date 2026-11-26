@@ -669,6 +669,38 @@ let quic_natives n =
     "forget", Native.nat "forget" 1 1 (on (fun fd _ -> Poll.forget n.poll fd));
     "stopping", Native.nat "stopping" 0 0 (fun _ _ -> Value.of_bool n.stopping) ]
 
+(* HPACK's Huffman code (RFC 7541, appendix B), which HTTP/3 shares (RFC 9204, section 4.1.2), decoded a bit at a time:
+   in Cesia the 400 bytes of a browser's request took 145 us. std/http3 gives the codes and lengths of the 257 symbols;
+   the tree is made at the first call, node k's children at 2k and 2k + 1, a symbol s as -1 - s. Missing for bits that
+   are no code, the end of string (256), or a padding that isn't 1s or is 8 bits or more. *)
+let huff = ref [||]
+
+let huffman ctx (a : Types.t array) =
+  let s = Native.text_arg ctx "huffman" a.(0) in
+  let int k = function Array x when x.rows * x.cols = 257 -> Arrays.whole_index ctx (Value.elt x k) | v -> Runtime.fail ctx Type (Messages.need_array "huffman" (Value.describe v)) in
+  if !huff = [||] then begin
+    let t = Array.make 1024 0 and next = ref 1 in
+    for sym = 0 to 256 do
+      let code = int sym a.(1) and n = int sym a.(2) and node = ref 0 in
+      for b = n - 1 downto 0 do
+        let slot = (2 * !node) + ((code lsr b) land 1) in
+        if b = 0 then t.(slot) <- -1 - sym
+        else (if t.(slot) = 0 then (t.(slot) <- !next; incr next); node := t.(slot))
+      done
+    done;
+    huff := t
+  end;
+  Runtime.pay_bytes ctx (String.length s);
+  let t = !huff and out = Buffer.create (2 * String.length s) and node = ref 0 and pad = ref 0 and ones = ref true and bad = ref false in
+  String.iter (fun ch -> for k = 7 downto 0 do
+      let bit = (Char.code ch lsr k) land 1 in
+      let v = t.((2 * !node) + bit) in
+      incr pad; if bit = 0 then ones := false;
+      if v = 0 || v = -257 then bad := true
+      else if v > 0 then node := v
+      else (Buffer.add_char out (Char.chr (-1 - v)); node := 0; pad := 0; ones := true) done) s;
+  if !bad || !pad > 7 || not !ones then Missing else Text (Buffer.contents out)
+
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =
   [ "arm", Native.nat "arm" 2 2 (arm n);

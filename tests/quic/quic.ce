@@ -1,0 +1,66 @@
+(* QUIC alone: a stream each way, the end of a stream, 300 KB echoed, 50 streams at once on one connection, a protocol
+   the server doesn't speak refused in the handshake, a port where no one listens refused. *)
+use std/quic
+use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
+
+defn echo(conn)
+  got = conn.Accept()
+  while result.IsOk(got)
+    st = got.Value
+    fiber.Spawn() do
+      parts = []
+      piece = st.Read()
+      while result.IsOk(piece) and piece.Value != ""
+        parts = list.Append(piece.Value, parts)
+        piece = st.Read()
+      end
+      st.Write("$(st.Id): $(text.Join("", parts))")
+      st.End()
+      st.Free()
+    end
+    got = conn.Accept()
+  end
+end
+
+defn asked(conn, message)
+  st = conn.Open(false)?
+  st.Write(message)?
+  st.End()?
+  parts = []
+  piece = st.Read()?
+  while piece != ""
+    parts = list.Append(piece, parts)
+    piece = st.Read()?
+  end
+  st.Free()
+  result.Ok(text.Join("", parts))
+end
+
+defn main()
+  api = quic.Open()?
+  server = quic.Server(sys.Args[1], sys.Args[2], api, port = 0, alpn = ["echo"], validate = false)?
+  fiber.Spawn(() -> quic.Serve(server, echo))
+  conn = quic.Dial("127.0.0.1", server.Port, api, alpn = ["echo"], verify = false)?
+  io.Print(conn.Alpn, conn.Peer)
+  io.Print(asked(conn, "hello"))
+  big = asked(conn, text.Repeat(300000, "z"))?
+  io.Print(text.ByteLength(big))
+  tasks = [fiber.Spawn(() -> asked(conn, "n$k")) for k in 1..50]
+  answers = [fiber.Wait(t)? for t in tasks]
+  io.Print(value.Len([k for k in 1..50 if result.IsOk(answers[k]) and text.EndsWith(": n$k", answers[k].Value)]))
+  conn.Close(0)
+  (* The server ends it at once; OpenSSL's client hears nothing of it, and gives up at its timeout. *)
+  io.Print(quic.Dial("127.0.0.1", server.Port, api, alpn = ["other"], verify = false, timeout = 1) then result.MapErr(it.Kind))
+  quic.Close(server)
+  sys.Sleep(0.05)
+  io.Print(quic.Dial("127.0.0.1", server.Port, api, alpn = ["echo"], verify = false, timeout = 2) then result.MapErr(it.Kind))
+  result.Ok(missing)
+end
+
+io.Print(main())

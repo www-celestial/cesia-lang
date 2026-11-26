@@ -62,7 +62,6 @@ defn loaded(major)
     Timeout: fn("SSL_get_event_timeout", ["ptr", "ptr", "ptr"], "i32", ssl)?,
     AcceptConnection: fn("SSL_accept_connection", ["ptr", "u64"], "ptr", ssl)?,
     AcceptStream: fn("SSL_accept_stream", ["ptr", "u64"], "ptr", ssl)?,
-    StreamQueue: fn("SSL_get_accept_stream_queue_len", ["ptr"], "u64", ssl)?,
     DefaultStream: fn("SSL_set_default_stream_mode", ["ptr", "u32"], "i32", ssl)?,
     StreamPolicy: fn("SSL_set_incoming_stream_policy", ["ptr", "i32", "u64"], "i32", ssl)?,
     NewStream: fn("SSL_new_stream", ["ptr", "u64"], "ptr", ssl)?,
@@ -70,7 +69,7 @@ defn loaded(major)
     StreamType: fn("SSL_get_stream_type", ["ptr"], "i32", ssl)?,
     ReadEx: fn("SSL_read_ex", ["ptr", "ptr", "u64", "ptr"], "i32", ssl)?,
     WriteEx: fn("SSL_write_ex", ["ptr", "ptr", "u64", "ptr"], "i32", ssl)?,
-    Pending: fn("SSL_pending", ["ptr"], "i32", ssl)?,
+    Poll: fn("SSL_poll", ["ptr", "u64", "u64", "ptr", "u64", "ptr"], "i32", ssl)?,
     GetError: fn("SSL_get_error", ["ptr", "i32"], "i32", ssl)?,
     ReadState: fn("SSL_get_stream_read_state", ["ptr"], "i32", ssl)?,
     ReadCode: fn("SSL_get_stream_read_error_code", ["ptr", "ptr"], "i32", ssl)?,
@@ -192,7 +191,7 @@ end
     for the engine's next pass, and the objects to free; Closed a cell set once the endpoint closes. Block, Scratch and
     Flag are the memory of the calls: one of each for all streams, since no fiber switch comes between a call and the
     copy of what it wrote. *)
-struct Engine { Api, Ssl, Fd, Ctx, Wake, Waits, Block, Scratch, Flag, Closed, Alpn }
+struct Engine { Api, Ssl, Fd, Ctx, Wake, Waits, Block, Scratch, Flag, Zero, Closed, Alpn }
 
 defn cell(v)
   (** A value that fibers share: a channel that always holds one. *)
@@ -219,7 +218,7 @@ defn engine(api, ssl, fd, ctx, alpn)
   if not watch(fd)
     return failed("QUIC isn't served on Windows yet.")
   end
-  e = Engine(api, ssl, fd, ctx, fiber.Channel(size = 1), fiber.Channel(), c.Alloc(chunk), c.Alloc(48), c.Alloc(8), cell(false), alpn)
+  e = Engine(api, ssl, fd, ctx, fiber.Channel(size = 1), fiber.Channel(), c.Alloc(chunk), c.Alloc(48), c.Alloc(8), c.Alloc(16), cell(false), alpn)
   fiber.Spawn(() -> reading(e))
   result.Ok(e)
 end
@@ -234,23 +233,51 @@ end
 
 defn wait(e, ssl, kind)
   (** Waits for the engine's next pass that lets this stream or connection go on: kind "read" until it has bytes or its
-      end, "accept" until it has a stream to accept or ends, "any" for the next pass. *)
+      end, "accept" until it has a stream to accept or ends, "stop" as accept or at a stop signal, "write" until its
+      buffer has room, "bidi" and "uni" until the other side allows one more stream of that kind, "net" until OpenSSL
+      heard from the network or a timer. Each wakes only when it can go on, never at every pass: two fibers that wait
+      could otherwise wake each other for ever, and the program would never get back to its sockets. False when the
+      stream was freed or the endpoint closed meanwhile: it may then not be touched again. *)
   poke = fiber.Channel(size = 1)
   fiber.Send({Ssl: ssl, Kind: kind, Poke: poke}, e.Waits)
-  _ = fiber.Receive(poke)
+  fiber.Receive(poke).Value
 end
 
 kick(e) = put(true, e.Wake)   (* Asks the engine for a pass: a stream wrote, and OpenSSL sends on a pass. *)
 
-defn able(e, w)
-  (** Can a waiting stream or connection go on? A check of a few calls, so that a pass wakes only those. *)
-  if w.Kind == "read"
-    e.Api.Pending(w.Ssl) > 0 or e.Api.ReadState(w.Ssl) != 1
-  else if w.Kind == "accept"
-    e.Api.StreamQueue(w.Ssl) > 0 or ended(e, w.Ssl)
-  else
-    true
+(* The events of SSL_poll (OpenSSL 3.3) that let each kind of wait go on: R and ER, readable or reset, for "read"; ISB
+   and ISU, a stream to accept, for "accept" and "stop"; W and EW for "write"; OSB and OSU, room for one more stream of
+   this side; and EC, the connection's end, for all. "net" has none: it goes on when OpenSSL heard from the network. *)
+events = {read: 84, accept: 1540, stop: 1540, write: 164, bidi: 2052, uni: 4100, net: 0}
+
+defn woken(e, waiting, heard)
+  (** Wakes the waiting streams and connections that can go on, those SSL_poll finds ready in one call, without
+      running OpenSSL (SSL_POLL_FLAG_NO_HANDLE_EVENTS): the others wait on. heard: did OpenSSL just hear from the
+      network or a timer? A check of SSL_pending alone misses the end of a stream that comes after its bytes. *)
+  n = value.Len(waiting)
+  if n == 0
+    return waiting
   end
+  items = c.Alloc(32 * n)
+  for k in 1..n
+    at = 32 * (k - 1)
+    c.Set("u32", at, 2, items)
+    c.Set("ptr", at + 8, waiting[k].Ssl, items)
+    c.Set("u64", at + 16, events[waiting[k].Kind], items)
+  end
+  e.Api.Poll(items, n, 32, e.Zero, 1, e.Flag)
+  still = []
+  for k in 1..n
+    w = waiting[k]
+    at = 32 * (k - 1)
+    if c.Get("u64", at + 24, items) != 0 or heard and w.Kind == "net" or w.Kind == "stop" and stopping()
+      fiber.Send(true, w.Poke)
+    else
+      still = list.Append(w, still)
+    end
+  end
+  c.Free(items)
+  still
 end
 
 ended(e, conn) = e.Api.CloseInfo(conn, e.Scratch, 40) == 1   (* Has a connection ended, or begun to end? *)
@@ -275,7 +302,7 @@ defn taken(e, m, waiting)
   still = []
   for w in waiting
     if value.Equal(w.Ssl, m.Free)
-      fiber.Send(true, w.Poke)
+      fiber.Send(false, w.Poke)
     else
       still = list.Append(w, still)
     end
@@ -289,28 +316,25 @@ defn run(e, accepted)
       listener), the streams that can go on are woken, then it waits for a datagram, a stream that wrote or waits, or
       OpenSSL's next timer. It ends once the endpoint is closed, and wakes every stream left. *)
   waiting = []
+  heard = true
   while not peek(e.Closed)
-    e.Api.ClearErrors()
-    e.Api.Tick(e.Ssl)
-    if not value.IsMissing(accepted)
-      newcomer = e.Api.AcceptConnection(e.Ssl, 1)
-      while not value.IsMissing(newcomer)
-        accepted(newcomer)
+    if heard
+      e.Api.ClearErrors()
+      e.Api.Tick(e.Ssl)
+      if not value.IsMissing(accepted)
         newcomer = e.Api.AcceptConnection(e.Ssl, 1)
+        while not value.IsMissing(newcomer)
+          accepted(newcomer)
+          newcomer = e.Api.AcceptConnection(e.Ssl, 1)
+        end
       end
     end
-    still = []
-    for w in waiting
-      if able(e, w)
-        fiber.Send(true, w.Poke)
-      else
-        still = list.Append(w, still)
-      end
-    end
-    waiting = still
+    waiting = woken(e, waiting, heard)
     t = nextTimer(e)
     got = if value.IsMissing(t) fiber.Select([e.Wake, e.Waits]) else fiber.Select([e.Wake, e.Waits], timeout = t) end
-    if result.IsOk(got) and not value.IsBool(got.Value.Value)
+    (* A datagram, a stream that wrote, or a timer: OpenSSL runs. A fiber that waits: only the check of it. *)
+    heard = result.IsErr(got) or value.IsBool(got.Value.Value)
+    if not heard
       waiting = taken(e, got.Value.Value, waiting)
     end
     more = fiber.Receive(e.Waits, timeout = 0)
@@ -320,7 +344,7 @@ defn run(e, accepted)
     end
   end
   for w in waiting
-    fiber.Send(true, w.Poke)
+    fiber.Send(false, w.Poke)
   end
 end
 
@@ -332,6 +356,7 @@ defn release(e)
   c.Free(e.Block)
   c.Free(e.Scratch)
   c.Free(e.Flag)
+  c.Free(e.Zero)
   c.Free(e.Alpn)
 end
 
@@ -415,9 +440,13 @@ defn connection(e, conn, server)
   e.Api.PeerAddr(conn, peer)
   at = nameOf(e.Api, peer)
   e.Api.AddrFree(peer)
-  {Peer: at, Alpn: selected(e, conn), Accept: () -> accept(e, conn), Open: uni -> open(e, conn, uni),
-    Close: code -> closing(e, conn, code, server), Ended: () -> ended(e, conn)}
+  gone = cell(false)
+  told = cell(false)
+  {Peer: at, Alpn: selected(e, conn), Accept: () -> accept(e, conn, gone, told), Open: uni -> open(e, conn, uni, gone),
+    Close: code -> closing(e, conn, code, server, gone), Ended: () -> lost(e, gone) or ended(e, conn)}
 end
+
+lost(e, gone) = peek(gone) or peek(e.Closed)   (* May this object no longer be touched? *)
 
 defn selected(e, conn)
   (** The protocol the handshake agreed on, or missing. *)
@@ -427,32 +456,39 @@ defn selected(e, conn)
   if n == 0 or value.IsMissing(p) missing else text.FromBytes([c.Get("u8", k - 1, p) for k in 1..n]) end
 end
 
-defn accept(e, conn)
-  (** The next stream the other side opened, or an Err once the connection ended. *)
-  while true
+defn accept(e, conn, gone, told)
+  (** The next stream the other side opened, or an Err once the connection ended; once, at a stop signal, an Err of
+      the kind "stopped", as net.Read gives it: a server then tells its client to go. *)
+  while not lost(e, gone)
     s = e.Api.AcceptStream(conn, 1)
     if not value.IsMissing(s)
       return result.Ok(stream(e, s))
     end
-    if ended(e, conn) or peek(e.Closed)
-      return failed("The connection ended.")
+    if ended(e, conn)
+      break
     end
-    wait(e, conn, "accept")
+    if stopping() and not peek(told)
+      put(true, told)
+      return result.Err({Kind: "stopped", Message: "The program is stopping."})
+    end
+    wait(e, conn, if peek(told) "accept" else "stop" end)
   end
+  failed("The connection ended.")
 end
 
-defn open(e, conn, uni)
+defn open(e, conn, uni, gone)
   (** A new stream of this side, once the other side allows one more (its MAX_STREAMS). *)
-  while true
+  while not lost(e, gone)
     s = e.Api.NewStream(conn, if uni streamUni + noBlock else noBlock end)
     if not value.IsMissing(s)
       return result.Ok(stream(e, s))
     end
-    if ended(e, conn) or peek(e.Closed)
-      return failed("The connection ended.")
+    if ended(e, conn)
+      break
     end
-    wait(e, conn, "any")
+    wait(e, conn, if uni "uni" else "bidi" end)
   end
+  failed("The connection ended.")
 end
 
 defn stream(e, s)
@@ -460,12 +496,24 @@ defn stream(e, s)
       whether it goes both ways); Read(), an Ok of the next bytes, of "" at its end, or an Err when it was reset or the
       connection ended; Write(bytes); End(), the end of what this side sends; Reset(code), which abandons it; Free(),
       once done with it. *)
-  {Id: e.Api.StreamId(s), Read: () -> read(e, s), Write: bytes -> write(e, s, bytes), End: () -> conclude(e, s),
-    Reset: code -> reset(e, s, code), Free: () -> fiber.Send({Free: s}, e.Waits)}
+  gone = cell(false)
+  {Id: e.Api.StreamId(s), Read: () -> read(e, s, gone), Write: bytes -> write(e, s, bytes, gone), End: () -> conclude(e, s, gone),
+    Reset: code -> reset(e, s, code, gone), Free: () -> freed(e, s, gone)}
 end
 
-defn read(e, s)
+defn freed(e, s, gone)
+  (** Gives a stream back, once: no fiber that wakes after this touches it, and the engine frees it at its next pass. *)
+  if not peek(gone)
+    put(true, gone)
+    fiber.Send({Free: s}, e.Waits)
+  end
+end
+
+defn read(e, s, gone)
   while true
+    if lost(e, gone)
+      return failed("The stream was closed.")
+    end
     e.Api.ClearErrors()
     if e.Api.ReadEx(s, e.Block, chunk, e.Scratch) == 1
       return result.Ok(c.Load(0, c.Get("u64", 0, e.Scratch), e.Block))
@@ -477,17 +525,17 @@ defn read(e, s)
     if why != wantRead
       return failed(if e.Api.ReadState(s) == 5 "The stream was reset." else "The connection ended." end)
     end
-    if peek(e.Closed)
-      return failed("The connection ended.")
-    end
     wait(e, s, "read")
   end
 end
 
-defn write(e, s, bytes)
+defn write(e, s, bytes, gone)
   size = text.ByteLength(bytes)
   at = 0
   while at < size
+    if lost(e, gone)
+      return failed("The stream was closed.")
+    end
     piece = if at == 0 and size <= chunk bytes else text.ByteSlice(at + 1, list.Min(at + chunk, size), bytes) end
     c.Store(piece, 0, e.Block)
     e.Api.ClearErrors()
@@ -496,25 +544,27 @@ defn write(e, s, bytes)
       kick(e)
     else
       why = e.Api.GetError(s, 0)
-      if why != wantWrite and why != wantRead or peek(e.Closed)
+      if why != wantWrite and why != wantRead
         return failed("A QUIC write failed: the stream was reset or the connection ended.")
       end
-      kick(e)
-      wait(e, s, "any")
+      wait(e, s, "write")
     end
   end
   result.Ok(missing)
 end
 
-defn conclude(e, s)
-  if e.Api.Conclude(s, 0) != 1
+defn conclude(e, s, gone)
+  if lost(e, gone) or e.Api.Conclude(s, 0) != 1
     return failed("This stream can't be ended.")
   end
   kick(e)
   result.Ok(missing)
 end
 
-defn reset(e, s, code)
+defn reset(e, s, code, gone)
+  if lost(e, gone)
+    return missing
+  end
   args = c.Alloc(8)
   c.Set("u64", 0, code, args)
   e.Api.Reset(s, args, 8)
@@ -522,17 +572,24 @@ defn reset(e, s, code)
   kick(e)
 end
 
-defn closing(e, conn, code, server)
+defn closing(e, conn, code, server, gone)
   (** Ends a connection with an application error code, waits at most 2 s for OpenSSL to say it is done, and frees it;
-      a client's endpoint closes with it. *)
+      a client's endpoint closes with it. Once: a second Close does nothing. *)
+  if lost(e, gone)
+    return missing
+  end
   args = c.Alloc(16)
   c.Set("u64", 0, code, args)
   deadline = sys.Now() + 2
-  while e.Api.ShutdownEx(conn, 4, args, 16) == 0 and sys.Now() < deadline and not peek(e.Closed)
-    kick(e)
-    wait(e, conn, "any")
+  (* The first call sends CONNECTION_CLOSE at the next pass; the others only ask whether the other side heard it. *)
+  done = e.Api.ShutdownEx(conn, 4, args, 16) != 0
+  kick(e)
+  while not done and sys.Now() < deadline and not peek(e.Closed)
+    wait(e, conn, "net")
+    done = e.Api.ShutdownEx(conn, 4, args, 16) != 0
   end
   c.Free(args)
+  put(true, gone)
   if server
     fiber.Send({Free: conn}, e.Waits)
   else
@@ -595,6 +652,7 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   e = engine(api, ssl, fd, ctx, protocols.Block)?
   task = fiber.Spawn(() -> run(e, missing))
   deadline = sys.Now() + timeout
+  first = true
   while true
     e.Api.ClearErrors()
     r = api.Connect(ssl)
@@ -609,11 +667,15 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
       release(e)
       return failed(if sys.Now() > deadline "$host:$port gave no QUIC handshake in $timeout seconds." else "The QUIC handshake with $host:$port failed: $why" end)
     end
-    kick(e)
-    wait(e, ssl, "any")
+    if first
+      kick(e)
+      first = false
+    end
+    wait(e, ssl, "net")
   end
   conn = connection(e, ssl, false)
-  conn.Close = code -> ending(e, ssl, code, task)
+  gone = cell(false)
+  conn.Close = code -> ending(e, ssl, code, task, gone)
   result.Ok(conn)
 end
 
@@ -623,9 +685,12 @@ defn reason(api)
   if code == 0 "no reason given" else api.ErrorText(code, missing) end
 end
 
-defn ending(e, ssl, code, task)
+defn ending(e, ssl, code, task, gone)
   (** Closes a client's connection, then its endpoint. *)
-  closing(e, ssl, code, false)
+  if lost(e, gone)
+    return missing
+  end
+  closing(e, ssl, code, false, gone)
   _ = fiber.Wait(task)
   release(e)
 end
