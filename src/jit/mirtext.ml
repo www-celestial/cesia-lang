@@ -1127,7 +1127,7 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
 
 let used =
   [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow"; "log10"; "log2"; "log1p"; "expm1";
-    "sinh"; "cosh"; "tanh"; "asinh"; "acosh"; "atanh"; "hypot"; "fmod"; "round"; "caml_modify"; "cesia_jit_native" ]
+    "sinh"; "cosh"; "tanh"; "asinh"; "acosh"; "atanh"; "hypot"; "fmod"; "round"; "caml_modify" ]
 
 (* The unit as one module: each function, and the single entry [e] of the first one, which the C glue calls with the
    context and which gives the status. *)
@@ -1136,11 +1136,11 @@ let emit (fns : Ir.func array) =
   let prefix = Printf.sprintf "u%d_" !units in
   let b = Buffer.create 4096 in
   let pr fmt = Printf.bprintf b fmt in
-  pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " used);
-  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
-  pr "pnat: proto i64, p:cx, p:a, i64:n, i64:k, i64:at, i64:s, i64:f\n";
   (* A unit that calls OCaml: every function keeps its values around the calls that may collect. *)
   let bridged = Array.exists (fun (fn : Ir.func) -> Array.exists (fun (bk : Ir.block) -> List.exists (function Ir.Native _ -> true | _ -> false) bk.ins) fn.blocks) fns in
+  pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " (if bridged then used @ [ "cesia_jit_native" ] else used));
+  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
+  if bridged then pr "pnat: proto i64, p:cx, p:a, i64:n, i64:k, i64:at, i64:s, i64:f\n";
   Array.iteri
     (fun k (fn : Ir.func) ->
        pr "P%s%d: proto i64, %s\n" prefix k (args_of ~nested:false fn);

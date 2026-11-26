@@ -61,27 +61,6 @@ let runs : run list ref = ref []
 let nested = ref 0
 let most_nested = 64
 
-(* A call of a native from machine code costs about 100 ns more than the interpreter's, the way into OCaml and back
-   (2026-11-26: a loop of 20 operations of floats takes 27 ns a turn in machine code, 137 interpreted; with a call of
-   dict.Has, 200 and 210), and an operation of machine code saves about 5.5 ns on the interpreter's: a unit is made
-   only when its operations are at least [bridge_ops] for each of its calls of natives, else the interpreter, which calls
-   natives for less, keeps it (the same loop three times over, 60 operations a call: 220 ms against 420). A call of a
-   function of the unit counts as 4, as the interpreter's costs that. CESIA_JIT=always makes every unit, for tests. *)
-let bridge_ops = 24
-
-let work (f : Ir.func) =
-  Array.fold_left
-    (fun (w, n) (b : Ir.block) ->
-       List.fold_left
-         (fun (w, n) -> function
-            | Ir.Native _ -> w, n + 1
-            | Call _ -> w + 4, n
-            | Move _ | Incr _ | Bump _ | Tick _ | Steps _ | Burn | Frame _ | Enter _ | Enter_or_bail _ | Keep _ | Reserve _
-            | Recheck _ | Share _ | Value _ | Len _ | Dim _ ->
-              w, n
-            | _ -> w + 1, n)
-         (w, n) b.ins)
-    (0, 0) f.blocks
 
 (* What the bridge gives when the native raised: a block that no native gives. The exception the last one raised, with
    the base of the frame it was raised in, which [fail] raises again. *)
@@ -162,13 +141,7 @@ let make (w : world) (ver : version) fns start loops =
        come back through a call of the first function. *)
     (* A unit that calls natives never starts again: its stacks grow and its room is made where they lack. *)
     let bridged = fns.(0).natives <> [||] in
-    let ops, natives = Array.fold_left (fun (w, n) f -> let a, b = work f in w + a, n + b) (0, 0) fns in
-    if bridged && ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
-      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
-        prerr_endline (Printf.sprintf "jit: %s interpreted: %d operations for %d calls of natives" ver.owner.pname ops natives);
-      None
-    end
-    else if (not bridged) && calls && (not pure) && fns.(0).loose then None
+    if (not bridged) && calls && (not pure) && fns.(0).loose then None
     else if (not bridged) && nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
     else begin
       (* The room the outermost frame checks at its start and at each turn of its loops covers what nested frames make

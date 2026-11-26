@@ -3109,6 +3109,28 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
        fn.sites.(j) <- Vec.length s - 1)
     pos
 
+(* A call of a native from machine code costs about 100 ns more than the interpreter's, the way into OCaml and back
+   (2026-11-26: a loop of 20 operations of floats takes 27 ns a turn in machine code, 137 interpreted; with a call of
+   dict.Has, 200 and 210), and an operation of machine code saves about 5.5 ns on the interpreter's: a unit is made
+   only when its operations are at least [bridge_ops] for each of its calls of natives, else the interpreter, which calls
+   natives for less, keeps it (the same loop three times over, 60 operations a call: 220 ms against 420). A call of a
+   function of the unit counts as 4, as the interpreter's costs that. CESIA_JIT=always makes every unit, for tests. *)
+let bridge_ops = 24
+
+let work (f : Ir.func) =
+  Array.fold_left
+    (fun (w, n) (b : Ir.block) ->
+       List.fold_left
+         (fun (w, n) -> function
+            | Ir.Native _ -> w, n + 1
+            | Call _ -> w + 4, n
+            | Move _ | Incr _ | Bump _ | Tick _ | Steps _ | Burn | Frame _ | Enter _ | Enter_or_bail _ | Keep _ | Reserve _
+            | Recheck _ | Share _ | Value _ | Len _ | Dim _ ->
+              w, n
+            | _ -> w + 1, n)
+         (w, n) b.ins)
+    (0, 0) f.blocks
+
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
 let rec lower_unit ?(calls_show = false) ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
   let u = { versions = Vec.create (); moving = Vec.create (); whole = first = None; table = Vec.create (); natives = Vec.create (); calls_show } in
@@ -3130,7 +3152,13 @@ let rec lower_unit ?(calls_show = false) ?ctx ?scope ?values ?cold (w : world) (
     if Vec.length u.natives > 0 && List.exists (fun ((f : Ir.func), _) -> f.arrays <> [||] || f.vslots > 0) (Vec.to_list out) then
       no "a native beside an array read in place"
   with
-  | () when Vec.length u.natives > 0 && not calls_show -> lower_unit ~calls_show:true ?ctx ?scope ?values ?cold w ver first
+  | () when Vec.length u.natives > 0 && not calls_show ->
+    let ops, natives = List.fold_left (fun (w, n) ((f : Ir.func), _) -> let a, b = work f in w + a, n + b) (0, 0) (Vec.to_list out) in
+    if ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
+      why := Printf.sprintf "%d operations for %d calls of natives" ops natives;
+      None
+    end
+    else lower_unit ~calls_show:true ?ctx ?scope ?values ?cold w ver first
   | () ->
     let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
