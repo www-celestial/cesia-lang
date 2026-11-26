@@ -46,10 +46,14 @@ get_sqlite() {  # file, sha3
 }
 
 # The amalgamation, with what Cesia doesn't use left out: no extension loading, no shared cache, no double-quoted texts.
+# -ffp-contract=off, as for Cesia's own C (the file dune): no product fused with an add into one rounding, which GCC on
+# arm64 and Clang on macOS do by default, so that its floats, read from a text, written or computed, have the same bits
+# on every system. Cesia reads no float from libsodium or OpenSSL; OpenBLAS picks its kernels, in assembly, by processor
+# at run time, so that its sums follow the processor whatever the flags of its C.
 build_sqlite() {  # output file, then the flags that name it
   get_sqlite "sqlite-amalgamation-$sqlite.zip" "$sqlite_sha3"
   unzip -q "sqlite-amalgamation-$sqlite.zip"
-  cc -O2 -fPIC -shared -DSQLITE_DQS=0 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_DEPRECATED \
+  cc -O2 -ffp-contract=off -fPIC -shared -DSQLITE_DQS=0 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_DEPRECATED \
     -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_MATH_FUNCTIONS -DSQLITE_THREADSAFE=1 \
     "sqlite-amalgamation-$sqlite/sqlite3.c" -o "$lib/$1" "${@:2}" -lpthread -lm
 }

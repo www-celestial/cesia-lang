@@ -238,12 +238,21 @@ defn isFamiliesWithinTolerance()
   end
   value.Len(cases) == 42
 end
-(* The same work as QUADPACK's own code: the same pieces cut in the same order. *)
-isFamiliesSameWorkAsQuadpack() = list.All([result.Unwrap(solved[i]).Evaluations == cases[i].Calls and result.Unwrap(solved[i]).Intervals == cases[i].Pieces for i in 1..value.Len(cases)])
-(* And the same numbers: scipy's value and error estimate, to the last bit, as on all 42 when this was written; here
-   three of them. *)
-isSameBitsAsQuadpack() = result.Unwrap(quad.Integral(x -> x ^ (-0.5) * math.Log(1.0 / x), 0.0, 1.0)) == {Value: 4.000000000000071, Error: 2.1582735598713043e-13, Evaluations: 315, Intervals: 8}
-isSameBitsInfinite() = result.Unwrap(quad.Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf)) == {Value: 1.772453850905516, Error: 1.0306805682733654e-12, Evaluations: 390, Intervals: 7}
+(* The same work as QUADPACK's own code: the same pieces cut in the same order, on all 42 with glibc 2.44. The integrands
+   call the C library's pow, log, exp, sin and cos, whose last bits differ from one system to another, and a case whose
+   error estimate is near its tolerance then cuts a piece more or less, as scipy's would there: three cases, by one or
+   two pieces, when each is one ulp off. So the same work on 39 of the 42 at least, and within two pieces on each. *)
+sameWork(i) = result.Unwrap(solved[i]).Evaluations == cases[i].Calls and result.Unwrap(solved[i]).Intervals == cases[i].Pieces
+isFamiliesSameWorkAsQuadpack() = list.Count(sameWork, [i for i in 1..value.Len(cases)]) >= 39 and list.All([math.Abs(result.Unwrap(solved[i]).Intervals - cases[i].Pieces) <= 2 for i in 1..value.Len(cases)])
+(* And the same numbers: scipy's value and error estimate, to the last bit with glibc 2.44, as on all 42 when this was
+   written: {Value: 4.000000000000071, Error: 2.1582735598713043e-13} and {Value: 1.772453850905516, Error:
+   1.0306805682733654e-12} for these two. Their integrands call the C library's pow, log and exp, whose last bits differ
+   from one system to another, and the estimate of the error, a small difference, moves with them, from 5e-13 to
+   1.4e-12 for the first when each is one ulp off: here the same work on every system, and a value within its estimate
+   of the exact one, 4 and the square root of pi. *)
+bounded(r, exact, calls, pieces) = r.Evaluations == calls and r.Intervals == pieces and math.Abs(r.Value - exact) <= r.Error
+isSameWorkAsQuadpack() = bounded(result.Unwrap(quad.Integral(x -> x ^ (-0.5) * math.Log(1.0 / x), 0.0, 1.0)), 4.0, 315, 8)
+isSameWorkInfinite() = bounded(result.Unwrap(quad.Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf)), math.Sqrt(math.Pi), 390, 7)
 
 (* An odd f on an interval centred on 0: the pairs f(-x) + f(x) cancel exactly. *)
 isOddIsZero() = quad.Integral(x -> x ^ 3 * math.Exp(-x * x), -1.0, 1.0).Value.Value == 0.0
@@ -262,7 +271,10 @@ never() = 1 / 0
 
 (* The Errs, with the best estimate. Each of QUADPACK's flags, on integrands that raise it in its own code too. *)
 isLimit() = quad.Integral(x -> 1.0 / x, 0.0, 1.0, limit = 20) == result.Err({Kind: "quad", Message: "quad.Integral: the error estimate 9.350560373140297 is above the tolerance 2.0882425258589698e-9 after 20 pieces, the limit; raise limit, or give in points the places where f jumps or is singular.", Value: 20.882425258589677, Error: 9.350560373140297})
-isDivergent() = quad.Integral(x -> x ^ (-1.1), 0.0, 1.0).Error == {Kind: "quad", Message: "quad.Integral: the integral looks divergent, or converges too slowly to be computed.", Value: -9.999999999996493, Error: 1.1652900866465643e-11}
+(* Its best estimate, -9.999999999996493 with glibc 2.44, is near -10, the value of the integral from 0 to 1 of the
+   part of x^-1.1 that converges, and moves with the C library's pow. *)
+divergent = quad.Integral(x -> x ^ (-1.1), 0.0, 1.0).Error
+isDivergent() = divergent.Kind == "quad" and divergent.Message == "quad.Integral: the integral looks divergent, or converges too slowly to be computed." and math.Near(divergent.Value, -10.0, rel = 1e-11) and divergent.Error < 1e-10
 isDivergentInfinite() = text.Contains("divergent", quad.Integral(x -> x, 0.0, math.Inf).Error.Message)
 isRoundoff() = text.Contains("roundoff stops the error estimate", quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 1.2e-14, atol = 0.0).Error.Message)
 isExtrapolationFails() = text.Contains("the extrapolation does not converge", quad.Integral(x -> math.Sin(x), 0.0, math.Inf).Error.Message)

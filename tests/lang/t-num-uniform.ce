@@ -6,6 +6,7 @@ use std/list
 use std/num
 use std/random
 use std/result
+use std/text
 use std/value
 
 message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
@@ -21,4 +22,8 @@ io.Print(random.Float(), random.Int(1, 6))
 for n in [-1, 2.5, "x", [2], 1e300]
   io.Print(message(() -> num.Uniform(n)))
 end
-io.Print(list.Sum(num.Normal(1000)), num.Normal(2))
+(* num.Normal computes with the C library's log and cos, whose last bits differ from one system to another: its draws
+   to 6 and 12 decimals. *)
+total = list.Sum(num.Normal(1000))
+normals = num.Normal(2)
+io.Print(text.Decimals(6, total), text.Decimals(12, normals[1]), text.Decimals(12, normals[2]))

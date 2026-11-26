@@ -408,7 +408,7 @@ use std/test
     solution of 3.2e-4 mol/L of hydrogen ions is 3.49:
 
       10 * math.Log10(1000) --> 30.0
-      -math.Log10(3.2e-4) --> 3.494850021680094
+      math.Near(-math.Log10(3.2e-4), 3.494850021680094, rel = 1e-15) --> true
       math.Log10([1, 10, 100]) --> [0.0, 1.0, 2.0] *)
 
 (** math.Log2(x)
@@ -417,23 +417,23 @@ use std/test
     440 Hz up to 48 kHz:
 
       math.Ceil(math.Log2(1000)) --> 10.0
-      math.Log2(48000 / 440) --> 6.769387071858584 *)
+      math.Near(math.Log2(48000 / 440), 6.769387071858584, rel = 1e-15) --> true *)
 
 (** math.Log1p(x)
     log(1 + x), as a float, element by element for an array, without the digits that 1 + x loses when x is small: the
     C library's log1p, as numpy.log1p, R's log1p and MATLAB's log1p. The continuous rate of 3% a year, and of a rate of
     1e-12, where math.Log(1 + 1e-12) is wrong from its fifth digit:
 
-      math.Log1p(0.03) --> 0.0295588022415444
-      math.Log1p(1e-12) --> 9.999999999995e-13
-      math.Log(1 + 1e-12) --> 1.000088900581841e-12 *)
+      math.Near(math.Log1p(0.03), 0.0295588022415444, rel = 1e-15) --> true
+      math.Near(math.Log1p(1e-12), 9.999999999995e-13, rel = 1e-15) --> true
+      math.Near(math.Log(1 + 1e-12), 1.000088900581841e-12, rel = 1e-15) --> true *)
 
 (** math.Expm1(x)
     exp(x) - 1, as a float, element by element for an array, without the digits lost near 0: the C library's expm1, as
     numpy.expm1, R's expm1 and MATLAB's expm1. What 1 earns in a year at a continuous 2%, and at 1e-12:
 
-      math.Expm1(0.02) --> 0.02020134002675581
-      math.Expm1(1e-12) --> 1.0000000000005e-12 *)
+      math.Near(math.Expm1(0.02), 0.02020134002675581, rel = 1e-15) --> true
+      math.Near(math.Expm1(1e-12), 1.0000000000005e-12, rel = 1e-15) --> true *)
 
 (** math.Cbrt(x)
     The cube root, as a float, element by element for an array, negative for a negative x: correctly rounded, the float
@@ -452,39 +452,39 @@ use std/test
     numpy.sinh, R's sinh and MATLAB's sinh. A cable hung between two poles 100 m apart, of catenary y = a cosh(x / a)
     with a = 80 m, is 2 a sinh(50 / a) long:
 
-      2 * 80 * math.Sinh(50 / 80) --> 106.63876231305858 *)
+      math.Near(2 * 80 * math.Sinh(50 / 80), 106.63876231305858, rel = 1e-15) --> true *)
 
 (** math.Cosh(x)
     The hyperbolic cosine, (e^x + e^-x) / 2, as a float, element by element for an array: the C library's cosh, as
     numpy.cosh, R's cosh and MATLAB's cosh. The sag in meters of the cable of math.Sinh, a (cosh(50 / a) - 1):
 
-      80 * (math.Cosh(50 / 80) - 1) --> 16.140295438048504 *)
+      math.Near(80 * (math.Cosh(50 / 80) - 1), 16.140295438048504, rel = 1e-14) --> true *)
 
 (** math.Tanh(x)
     The hyperbolic tangent, as a float from -1 to 1, element by element for an array: the C library's tanh, as
     numpy.tanh, R's tanh and MATLAB's tanh. A parachutist of terminal speed 55 m/s falls at 55 tanh(g t / 55) after
     t = 3 s:
 
-      55 * math.Tanh(9.81 * 3 / 55) --> 26.909464018847224 *)
+      math.Near(55 * math.Tanh(9.81 * 3 / 55), 26.909464018847224, rel = 1e-15) --> true *)
 
 (** math.Asinh(x)
     The inverse of math.Sinh, as a float, element by element for an array: the C library's asinh, as numpy.arcsinh, R's
     asinh and MATLAB's asinh, which keeps its digits far out where log(x + sqrt(x^2 + 1)) overflows:
 
-      math.Asinh(1) --> 0.881373587019543
-      math.Asinh(-1e300) --> -691.4686750787737 *)
+      math.Near(math.Asinh(1), 0.881373587019543, rel = 1e-15) --> true
+      math.Near(math.Asinh(-1e300), -691.4686750787737, rel = 1e-15) --> true *)
 
 (** math.Acosh(x)
     The inverse of math.Cosh, from x = 1 up, as a float, element by element for an array; NaN below 1: the C library's
     acosh, as numpy.arccosh, R's acosh and MATLAB's acosh. The rapidity of a particle whose Lorentz factor is 2:
 
-      math.Acosh(2) --> 1.3169578969248168 *)
+      math.Near(math.Acosh(2), 1.3169578969248168, rel = 1e-15) --> true *)
 
 (** math.Atanh(x)
     The inverse of math.Tanh, for x from -1 to 1, as a float, element by element for an array: the C library's atanh,
     as numpy.arctanh, R's atanh and MATLAB's atanh. Fisher's z of a correlation of 0.6, (1/2) log((1 + r) / (1 - r)):
 
-      math.Atanh(0.6) --> 0.6931471805599453 *)
+      math.Near(math.Atanh(0.6), 0.6931471805599453, rel = 1e-15) --> true *)
 
 (** math.SinDegrees(x)
     The sine of an angle in degrees, element by element for an array: the angle reduced exactly to -45..45 first, so
@@ -507,7 +507,7 @@ use std/test
     The tangent of an angle in degrees, element by element for an array, reduced as math.SinDegrees: 1 at 45 and an
     infinity at 90. MATLAB's tand, R's tanpi(x / 180). The height of a tree seen at 35 degrees from 20 m away:
 
-      20 * math.TanDegrees(35) --> 14.004150764194193
+      math.Near(20 * math.TanDegrees(35), 14.004150764194193, rel = 1e-15) --> true
       math.TanDegrees(45) --> 1.0 *)
 
 (** math.Epsilon(x)
@@ -531,8 +531,8 @@ use std/test
     element by element for arrays, an array with a number too. The C library's hypot, as numpy.hypot, MATLAB's hypot and
     R's Mod(complex(real = x, imaginary = y)). From Paris to Lyon, 188 km east and 342.8 km south on a flat map:
 
-      math.Hypot(188.0, -342.8) --> 390.96782476311273
-      math.Hypot(1e300, 1e300) --> 1.4142135623730952e300
+      math.Near(math.Hypot(188.0, -342.8), 390.96782476311273, rel = 1e-15) --> true
+      math.Near(math.Hypot(1e300, 1e300), 1.4142135623730952e300, rel = 1e-15) --> true
       math.Hypot([3, 5], [4, 12]) --> [5.0, 13.0] *)
 
 (** math.Clamp(lo, hi, x)
@@ -1093,7 +1093,9 @@ use std/test
 
 (** random.Seed()
     The seed of this run: the one cesia run --seed N gave, or else the one taken from the system at the first draw. The same seed
-    gives the same numbers, on every version of Cesia and every system.
+    gives the same numbers, on every version of Cesia and every system: the same integers and uniform floats. A draw that
+    computes with the C library, as num.Normal and the Samples of std/stats do with its log and cos, may differ in its
+    last bits from one system to another.
 
       value.IsInt(random.Seed()) --> true *)
 
