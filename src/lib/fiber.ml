@@ -481,7 +481,7 @@ let rate_names = Array.map (fun n -> Trie.hash (Text n), Types.Text n) [| "Per";
    comes no later than now plus (Burst - 1) * Period / Per; all of them, or none counted. *)
 let admit ctx (a : Types.t array) =
   let items v = match v with Array l -> let l = Value.trim l in Array.init (l.rows * l.cols) (Value.elt l) | v -> Runtime.fail ctx Type (Messages.admit_rates (Value.describe v)) in
-  let keys = Array.map (Native.text_arg ctx "Admit") (items a.(0)) and rates = items a.(1) in
+  let keys = items a.(0) and rates = items a.(1) in
   let now = time_arg ctx "Admit" a.(2) and c = table_arg ctx "Admit" a.(3) in
   if Array.length rates <> Array.length keys then Runtime.fail ctx Type (Messages.admit_rates (Value.describe a.(1)));
   if now > c.now then c.now <- now;
@@ -493,17 +493,22 @@ let admit ctx (a : Types.t array) =
     | _ -> Runtime.fail ctx Type (Messages.admit_rates (Value.describe r))
   in
   let refused = ref (-1) and late = ref 0. in
-  let times =
-    Array.mapi (fun k key ->
-        let gap = field rates.(k) 1 /. field rates.(k) 0 in
-        let t = match Hashtbl.find_opt c.held key with Some e when e.due > now -> e.due | _ -> now in
-        let over = t -. now -. (gap *. (field rates.(k) 2 -. 1.)) in
-        if !refused < 0 && over > 0. then (refused := k; late := over);
-        t +. gap) keys
-  in
-  if !refused < 0 then Array.iteri (fun k key -> put c key (Float times.(k)) times.(k)) keys;
+  let found = Array.make (Array.length keys) None and times = Array.make (Array.length keys) 0. in
+  Array.iteri (fun k key ->
+      let key = Native.text_arg ctx "Admit" key and gap = field rates.(k) 1 /. field rates.(k) 0 in
+      let e = Hashtbl.find_opt c.held key in
+      let t = match e with Some e when e.due > now -> e.due | _ -> now in
+      let over = t -. now -. (gap *. (field rates.(k) 2 -. 1.)) in
+      if !refused < 0 && over > 0. then (refused := k; late := over);
+      found.(k) <- e;
+      times.(k) <- t +. gap) keys;
+  if !refused < 0 then
+    Array.iteri (fun k key ->
+        match found.(k) with
+        | Some e -> c.seq <- c.seq + 1; e.kept <- Float times.(k); e.due <- times.(k); e.written <- c.seq
+        | None -> put c (Native.text_arg ctx "Admit" key) (Float times.(k)) times.(k)) keys;
   Trie.record admit_keys
-    (if !refused < 0 then [| True; Int 0; Missing |] else [| False; Float (Float.ceil !late); Text keys.(!refused) |])
+    (if !refused < 0 then [| True; Int 0; Missing |] else [| False; Float (Float.ceil !late); keys.(!refused) |])
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
