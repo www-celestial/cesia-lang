@@ -384,11 +384,84 @@ only its owner can open, deleted after it.
 
 ### Colors of other languages
 
-A block of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`, `toml`, `ini` or `css`, a tab or not,
-takes the colors of Cesia's code: keywords, called names, texts, numbers and comments, and the variables of a shell, the
-keys and sections of `toml` and `ini`, and the properties of `css`. The site colors it when it builds, with no script, by
-one small reader set for each language; it reads what a book shows, not every corner of each language, and what it can't
-tell stays plain. A block of another language, as `text` or `output`, is shown as it is.
+A block of any language takes the colors of Cesia's code, a tab or not: keywords, called names, texts, numbers, comments,
+and fields, which are the names after a dot, as in Cesia, the keys of JSON, YAML, TOML and INI, the variables of a shell
+and the properties of CSS. The site colors it when it builds, with no script, by one small reader that a table sets for
+each language. It reads what a book shows, not every corner of each language, and what it can't tell stays plain; every
+character of the block stays, in its order. It reads a block once, from left to right: 1 MB of Python takes 2.5 s, four
+times 250 KB.
+
+![Four blocks of a page of the site, colored as Cesia's code: Java, SQL, JSON and a diff. Keywords are dark blue, texts green, numbers blue, comments gray and in italics, fields purple, as the names after a dot, the keys of JSON and the parameter $1 of SQL; the diff shows its added line green, its removed line purple and its hunk @@ teal.](images/colors-languages.png)
+
+These languages are read fully, under the name after the fence or one of the others of its row:
+
+| Language | Other names | What it reads besides keywords, texts, numbers and comments |
+|---|---|---|
+| `bash` | `sh`, `shell`, `zsh`, `ksh` | variables, `$(...)` in texts, heredocs `<<EOF`, a `#` that is a comment only after a blank, so not in an address |
+| `console` | `shell-session`, `shellsession`, `terminal` | the prompt as a comment, `$`, `#`, `%` or `>` alone or after a word as `ana@box:~/shop$`; its command as `bash`, continued after a `\`; the output plain |
+| `c` | `h` | directives, `#include <stdio.h>` |
+| `cpp` | `c++`, `cxx`, `cc`, `hpp` | directives, raw texts `R"x(...)x"`, numbers as `1'000` |
+| `csharp` | `cs`, `c#` | directives, texts `@"..."`, `$"...{x}..."` and `"""..."""` |
+| `cmake` | | commands in any case, variables `${...}`, comments `#[[ ]]` |
+| `css` | | properties, `@media` and the other at-rules |
+| `dart` | | `${...}` in texts, raw texts `r'...'`, annotations |
+| `diff` | `patch` | an added line as a text, a removed line as a field, a hunk `@@` as a called name, the heads as keywords |
+| `dockerfile` | `docker`, `containerfile` | instructions, variables, heredocs |
+| `elixir` | `ex`, `exs` | `#{...}` in texts, atoms `:ok`, attributes `@doc` |
+| `erlang` | `erl` | characters `$a`, comments `%` |
+| `fortran` | `f90`, `f95`, `f03` | keywords in any case, comments `!` |
+| `go` | `golang` | raw texts between backquotes |
+| `graphql` | `gql` | variables `$id`, directives `@include`, fields |
+| `haskell` | `hs` | nested comments `{- -}`, names with a prime as `x'`, an operator `-->` that is no comment |
+| `html` | `htm`, `xhtml`, `svg` | tags, attributes, entities as `&amp;`, the text of `<script>` as `js` and of `<style>` as `css` |
+| `http` | | the request or status line, the headers, a body as `json` |
+| `ini` | `cfg`, `conf`, `gitconfig` | sections, keys |
+| `java` | | text blocks `"""`, annotations `@Override` |
+| `js` | `javascript`, `mjs`, `cjs`, `node` | templates and their `${...}`, regular expressions, decorators |
+| `json` | `jsonc`, `json5` | keys as fields, `true`, `false` and `null`, comments `//` and `/* */` |
+| `julia` | `jl` | `$(...)` in texts, nested comments `#= =#`, symbols, macros `@time`, the transpose `A'` |
+| `kotlin` | `kt`, `kts` | `${...}` in texts, raw texts `"""`, nested comments, annotations |
+| `latex` | `tex` | commands, formulas between `$` |
+| `lisp` | `clojure`, `clj`, `cljs`, `edn`, `scheme`, `scm`, `racket`, `elisp`, `emacs-lisp` | the name called right after `(`, keywords `:k`, characters `\a` and `#\a`, nested block comments |
+| `lua` | | long texts and comments `[==[ ]==]` |
+| `makefile` | `make`, `mk` | variables `$(CC)` and `$@`, targets and assignments |
+| `markdown` | `md` | headings, code, each fenced block in its own language |
+| `matlab` | `m`, `octave` | the transpose `A'`, a quote twice in a text, `'it''s'` |
+| `nginx` | `nginxconf` | directives, variables |
+| `nix` | | `${...}` in texts, texts `''...''`, attributes |
+| `ocaml` | `ml`, `mli` | nested comments, types `'a`, characters `'x'` |
+| `perl` | `pl` | variables `$x`, `@xs` and `%h`, POD, regular expressions, heredocs |
+| `php` | | variables, `{$x}` in texts, heredocs `<<<` |
+| `powershell` | `ps1`, `pwsh`, `ps` | variables, `$(...)` in texts, here-strings `@"..."@`, keywords in any case |
+| `properties` | | keys, comments `#` and `!` first on their line |
+| `protobuf` | `proto` | types as keywords |
+| `python` | `py`, `python3` | f-strings and their `{...}`, the prefixes as `r` and `b`, `"""`, decorators |
+| `r` | | `TRUE`, `NA` and the other constants |
+| `ruby` | `rb` | `#{...}` in texts, symbols, variables `@x` and `$x`, heredocs, regular expressions, `=begin` |
+| `rust` | `rs` | lifetimes `'a`, characters `'x'`, raw texts `r#"..."#`, `b"..."`, nested comments, attributes `#[...]`, macros `println!` |
+| `scala` | | `s"..."` and `f"..."` with `${...}`, nested comments |
+| `sql` | `psql`, `postgresql`, `postgres`, `plpgsql`, `mysql`, `sqlite` | keywords in any case, texts `$$...$$` of PostgreSQL, `'it''s'`, parameters `$1` and `:name`, nested comments |
+| `swift` | | `\(...)` in texts, `#"..."#`, nested comments, attributes `@MainActor` |
+| `toml` | | sections, keys |
+| `typescript` | `ts` | as `js`, and its types |
+| `tsx`, `jsx` | | as `typescript` and `js`, and the tags of JSX, their attributes and their code in braces |
+| `xml` | | tags, attributes, entities, `CDATA` |
+| `yaml` | `yml` | keys, anchors `&a` and aliases `*a`, the indented text after `>` or a pipe |
+| `zig` | | texts `\\` to the end of the line, builtins `@import` |
+
+A language the table doesn't hold is read the generic way, so that no block is bare: texts between double quotes, and
+between single quotes when no letter stands right before the first, as in don't; numbers; and the comments whose marks
+can't be anything else, `#` or `//` first on their line, and `/* */` when it closes. A block of `text` or `output`, or
+`txt`, `plain` and `plaintext`, is shown as it is: it is what a program printed.
+
+A block that names no language after its fence is shown as it is too, and the build names it on the standard error, its
+file and line, then goes on: a book that built before still builds.
+
+![A terminal: cesia doc --site writes docs/book/index.md:32, the line of a block that names no language, says that it is shown without colors and how to name its language, then writes the 895 files of the site: the build went on.](images/colors-warning.png)
+
+Cesia's own book is held to more: `tools/check.sh` and the CI of the site read what the build of its site writes on the
+standard error, and stop at that warning. The rule is in those two scripts of Cesia's repository, not in
+`cesia doc --site`, so no other project fails on it.
 
 ### Formulas
 

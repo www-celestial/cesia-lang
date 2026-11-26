@@ -61,56 +61,144 @@ end
 
 codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
 
-(* ---- Other languages: a block of python, r, matlab, ocaml, a shell, toml and the others below, colored with the roles of
-   Cesia's code, by one small reader that a table sets for each: comments, texts, numbers, keywords and called names. It
-   reads what a book shows, not every corner of each language: what it can't tell stays plain, and every character stays. *)
+(* ---- Other languages: a block of any language but cesia, colored with the roles of Cesia's code by one reader that a
+   table sets for each language: comments, texts, numbers, keywords, called names and fields. It reads what a book shows,
+   not every corner of each language: what it can't tell stays plain, and every byte of the block stays, in its order. It
+   reads the bytes of a block once, from left to right, and skips a run of bytes that can start nothing at once, so a block
+   of 1 MB takes as long as ten of 100 KB. A language that the table doesn't hold is read the generic way, below. *)
 
-(** How a language is read. Line: the marks of a comment to the end of the line, which in a shell start only after a space
-    or at the start (Spaced). Blocks: the [open, close] of longer comments, which nest when Nest. Texts: the marks that open
-    and close a text, longest first, a backslash escaping the next character but in those of Raw. Keys: the keywords, read
-    in any case when Fold. Calls: a name right before ( is called. Vars: the mark of a variable, $ in a shell. Pairs: a
-    [section] and a key before =, at the start of a line, as in TOML. Props: a name before :, a property of CSS. Ticks: a
-    quote right after a name or a bracket is an operator, the transpose of MATLAB. Chars: a quote opens a text only as a
-    character, 'a' or '\n', as in OCaml, where 'a is a type. *)
-langBase = {Line: [], Spaced: false, Blocks: [], Nest: false, Texts: [], Raw: [], Keys: [], Fold: false, Calls: true, Vars: "",
-  Pairs: false, Props: false, Ticks: false, Chars: false}
-lang(fields) = dict.Merge(langBase, fields)
-shellKeys = ["if", "then", "else", "elif", "fi", "case", "esac", "for", "select", "while", "until", "do", "done", "in", "function",
-  "time", "return", "export", "local", "readonly", "declare", "set", "unset", "shift", "exit", "break", "continue", "source",
-  "alias", "true", "false"]
-shell = lang({Line: ["#"], Spaced: true, Texts: ["\"", "'"], Raw: ["'"], Keys: shellKeys, Calls: false, Vars: "$"})
-languages = {
-  python: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Keys: ["False", "None", "True", "and", "as", "assert",
-    "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
-    "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "try",
-    "while", "with", "yield"]}),
-  r: lang({Line: ["#"], Texts: ["\"", "'"], Keys: ["if", "else", "repeat", "while", "function", "for", "in", "next", "break",
-    "return", "TRUE", "FALSE", "NULL", "Inf", "NaN", "NA", "NA_integer_", "NA_real_", "NA_character_"]}),
-  matlab: lang({Line: ["%"], Texts: ["\"", "'"], Raw: ["'", "\""], Ticks: true, Keys: ["break", "case", "catch", "classdef",
-    "continue", "else", "elseif", "end", "for", "function", "global", "if", "otherwise", "parfor", "persistent", "return",
-    "switch", "try", "while", "true", "false"]}),
-  ocaml: lang({Blocks: [["(*", "*)"]], Nest: true, Texts: ["\""], Chars: true, Calls: false, Keys: ["and", "as", "assert",
-    "begin", "class", "do", "done", "downto", "else", "end", "exception", "external", "false", "for", "fun", "function",
-    "functor", "if", "in", "include", "lazy", "let", "match", "method", "module", "mutable", "new", "nonrec", "not", "object",
-    "of", "open", "or", "private", "rec", "sig", "struct", "then", "to", "true", "try", "type", "val", "virtual", "when",
-    "while", "with"]}),
-  js: lang({Line: ["//"], Blocks: [["/*", "*/"]], Texts: ["\"", "'", "`"], Keys: ["async", "await", "break", "case", "catch",
-    "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "false", "finally",
-    "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "super", "switch",
-    "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "yield"]}),
-  lua: lang({Line: ["--"], Blocks: [["--[[", "]]"]], Texts: ["[[", "\"", "'"], Keys: ["and", "break", "do", "else", "elseif",
-    "end", "false", "for", "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true",
-    "until", "while"]}),
-  bash: shell,
-  sh: shell,
-  powershell: lang({Line: ["#"], Blocks: [["<#", "#>"]], Texts: ["\"", "'"], Raw: ["'"], Fold: true, Vars: "$", Keys: ["begin",
-    "break", "catch", "class", "continue", "do", "else", "elseif", "end", "exit", "filter", "finally", "for", "foreach",
-    "function", "if", "in", "param", "process", "return", "switch", "throw", "trap", "try", "until", "while"]}),
-  toml: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Raw: ["'''", "'"], Keys: ["true", "false"], Calls: false,
-    Pairs: true}),
-  ini: lang({Line: [";", "#"], Spaced: true, Calls: false, Pairs: true}),
-  css: lang({Blocks: [["/*", "*/"]], Texts: ["\"", "'"], Calls: false, Props: true})
-}
+(** How a language is read: each field serves the languages that need it, and is off in the others.
+
+    Comments. Line: the marks of a comment to the end of the line. One counts only after a blank, a ; or at the start of a
+    line when Spaced, as # in a shell; only first on its line when Lead, as # in a .properties file; and -- only when no
+    symbol follows its dashes when Dashes, as in Haskell, where --> is an operator. Blocks: the [open, close] of longer
+    comments, which nest when Nest, and count only when they close when Shut.
+
+    Texts: the marks that open and close a text, longest first, or an [open, close]. A backslash escapes the next byte but
+    in the texts of Raw. A text ends with its line unless its mark is in Multi: one that doesn't close on its line is no
+    text, and its quote stays plain. Prefixes: the letters that may stand right before a mark and belong to the text, as
+    the r, b and f of Python; RawPrefix: those of them that make it raw, as the r of Rust. Holes: for a mark or a prefix,
+    the marks that open code inside the text, up to the bracket that closes them, the texts inside skipped: ${ in a
+    template of JavaScript, { in an f-string. The text holds its holes, as a text of Cesia holds its $(...). Delims: texts
+    whose close follows from their open, hashes for r#"..."# in Rust and #"..."# in Swift, dollars for $tag$...$tag$ in
+    PostgreSQL, long for [==[...]==] in Lua, a comment too after a mark of Line, parens for R"x(...)x" in C++. Heredocs:
+    <<EOF, <<-EOF, <<~EOF and <<<EOF open a text of the lines that follow, up to the line EOF. LineTexts: the marks of a
+    text to the end of its line, \\ in Zig.
+
+    Words. Keys: the keywords, read in any case when Fold. Names: the bytes a name may hold besides letters, digits and _,
+    as - in CSS. A name right after a dot is a field when Dots, as in Cesia; right before ( it is called when Calls; right
+    after ( when Lisp; before : and a blank inside braces it is a field when Props, a property of CSS, where a:hover is
+    none; first on its line it is a keyword when Leads, a directive of nginx. Numbers: digits make a number, but in prose.
+    Vars: the marks of a variable, $ in a shell, before a name, {...}, or a bracket of VarOpens. At: the marks of an
+    annotation, @name or #[...], as a called name. Atoms: :name is a field, a symbol of Ruby. CharMarks: the marks of one
+    character, $a in Erlang, \a in Clojure. Commands: \name is a keyword, as in TeX. Directives: # first on its line opens
+    a directive, a keyword, as in C. Regex: /.../ where a value goes is a text, as in JavaScript. Ticks: a quote right after
+    a name or a bracket is an operator, the transpose of MATLAB. Chars: a quote opens a text only as one character, 'a' or
+    '\n', as in OCaml, where 'a is a type.
+
+    Lines. Sections: a [section] first on its line is a keyword. Pairs: the bytes that may follow a key first on its line,
+    which makes it a field: = in TOML, : in YAML, which takes a blank after it. Keyed: the bytes after a text that make it a
+    key, a field, : in JSON. Scalars: after | or > at the end of a line, the lines indented more are a text, as in YAML.
+    Heads: [mark, class] for a line that starts with mark, all of it of that class, as + in a diff; Plain: the other lines
+    stay plain. Prompts: a line that starts with a prompt, as $ followed by a blank, is a command in the language Command,
+    and its prompt a comment. Body: after the first empty line, the rest is in that language, the body of HTTP. Fences:
+    the fenced blocks of Markdown, each in its own language. Tags: "markup" reads tags, attributes and entities, the text
+    between them plain, as in HTML; "jsx" the same tags inside code, as in React. Embeds: the language of the text inside
+    a tag, js in <script>. *)
+langBase = {Line: [], Spaced: false, Lead: false, Dashes: false, Blocks: [], Nest: false, Shut: false, Texts: [], Raw: [],
+  Multi: [], Prefixes: "", RawPrefix: "", Holes: {}, Delims: [], Heredocs: false, LineTexts: [], Keys: [], Fold: false,
+  Names: "", Dots: false, Calls: true, Lisp: false, Props: false, Leads: false, Numbers: true, Vars: [], VarOpens: "{",
+  At: [], Atoms: false, CharMarks: [], Commands: false, Directives: false, Regex: false, Ticks: false, Chars: false,
+  Sections: false, Pairs: "", Keyed: "", Scalars: false, Heads: [], Plain: false, Prompts: false, Command: "", Body: "",
+  Fences: false, Tags: "", Embeds: {}}
+
+(* The bytes of a name: _, digits, letters, and those of the characters beyond ASCII. *)
+nameBase = list.Concat([95], list.Concat([b for b in 48..57], list.Concat([b for b in 65..90], list.Concat([b for b in 97..122], [b for b in 128..255]))))
+blanks = " \t\r"
+(* Bytes after the end of a block: a newline, which ends every search of a line, then bytes no rule looks for, so that a
+   look a few bytes ahead never leaves the text. *)
+pad = text.FromBytes(list.Concat([10], [0 for k in 1..15]))
+nameDigits = text.FromBytes([b for b in nameBase if b < 128])   (** The bytes of a name of ASCII. *)
+letters = text.FromBytes([b for b in nameBase if (b >= 97 and b <= 122) or (b >= 65 and b <= 90)])
+pairBytes = text.Str(text.FromBytes(nameBase), "-.")   (** The bytes of a key first on its line. *)
+tagNameBytes = text.Str(text.FromBytes(nameBase), "-:.")   (** The bytes of the name of a tag. *)
+
+firstByte(t) = text.Byte(1, t)   (** The first byte of a mark. *)
+bytesOf(a, b, s) = if b >= a text.ByteSlice(a, b, s) else "" end   (** The bytes of s from a to b, none when b comes before a. *)
+
+defn textRule(l, t)
+  (** A text of the language l, from an entry of its Texts. *)
+  open = if value.IsText(t) t else t[1] end
+  {Open: open, Close: if value.IsText(t) t else t[2] end, Raw: open in l.Raw, Multi: open in l.Multi, Holes: dict.GetOr(open, [], l.Holes)}
+end
+
+noRules = [[] for b in 1..256]   (** No rule at any byte: each language starts from it. *)
+
+defn lang(fields)
+  (** A language read with these fields, those it doesn't give as in langBase, and what the reader draws from them: the
+      rules that may start at each byte, in their order, and the bytes where a rule, a name or a number may start. *)
+  l = dict.Merge(langBase, fields)
+  keys = if l.Fold [text.Lower(k) for k in l.Keys] else l.Keys end
+  texts = [textRule(l, t) for t in l.Texts]
+  rules = noRules
+  marks = []
+  for b in l.Blocks
+    marks = list.Append({Kind: "block", Open: b[1], Close: b[2]}, marks)
+  end
+  marks = list.Concat(marks, [{Kind: "linetext", Open: m} for m in l.LineTexts])
+  marks = list.Concat(marks, [{Kind: "line", Open: m} for m in l.Line])
+  if "hashes" in l.Delims and l.RawPrefix == ""
+    marks = list.Append({Kind: "hashes", Open: "#"}, marks)
+  end
+  if "dollars" in l.Delims
+    marks = list.Append({Kind: "dollars", Open: "$$"}, marks)
+  end
+  if "long" in l.Delims
+    marks = list.Append({Kind: "long", Open: "["}, marks)
+  end
+  marks = list.Concat(marks, [{Kind: "prefix", Open: c} for c in text.Chars(l.Prefixes)])
+  marks = list.Concat(marks, [{Kind: "text", Open: t.Open, Rule: t} for t in texts])
+  if l.Heredocs
+    marks = list.Append({Kind: "heredoc", Open: "<"}, marks)
+  end
+  marks = list.Concat(marks, [{Kind: "var", Open: m} for m in l.Vars])
+  marks = list.Concat(marks, [{Kind: "at", Open: m} for m in l.At])
+  marks = list.Concat(marks, [{Kind: "charmark", Open: m} for m in l.CharMarks])
+  if l.Atoms
+    marks = list.Append({Kind: "atom", Open: ":"}, marks)
+  end
+  if l.Commands
+    marks = list.Append({Kind: "command", Open: "\\"}, marks)
+  end
+  if l.Directives
+    marks = list.Append({Kind: "directive", Open: "#"}, marks)
+  end
+  if l.Regex
+    marks = list.Append({Kind: "regex", Open: "/"}, marks)
+  end
+  if l.Chars
+    marks = list.Append({Kind: "char", Open: "'"}, marks)
+  end
+  if l.Tags != ""
+    marks = list.Concat(marks, [{Kind: "tag", Open: "<"}, {Kind: "entity", Open: "&"}])
+  end
+  if l.Props or l.Tags != ""
+    marks = list.Concat(marks, [{Kind: "brace", Open: "{"}, {Kind: "brace", Open: "}"}])
+  end
+  for m in marks
+    rules[firstByte(m.Open) + 1] = list.Append(dict.Merge(m, {Size: text.ByteLength(m.Open)}), rules[firstByte(m.Open) + 1])
+  end
+  words = l.Numbers or l.Calls or l.Dots or l.Lisp or l.Props or l.Leads or value.Len(l.Keys) > 0
+  stops = list.Concat([b - 1 for b in 1..256 if value.Len(rules[b]) > 0], [10])
+  stops = list.Concat(stops, if words nameBase else [] end)
+  stops = list.Concat(stops, if l.Numbers [46] else [] end)
+  dict.Merge(l, {KeySet: dict.Zipmap(keys, [true for k in keys]), Rules: rules, TextRules: texts, Words: words,
+    Stops: text.FromBytes(stops), NameBytes: text.Str(text.FromBytes(nameBase), l.Names),
+    TextFirsts: text.Join("", list.Unique([text.ByteSlice(1, 1, t.Open) for t in texts])), Tracks: l.Regex or l.Tags == "jsx",
+    Long: "long" in l.Delims, AfterPrefix: text.Str(text.Join("", [text.ByteSlice(1, 1, t.Open) for t in texts]), "#'\""),
+    LineWork: l.Fences or value.Len(l.Heads) > 0 or l.Prompts or l.Plain or l.Body != "" or l.Sections or l.Pairs != "" or l.Scalars})
+end
+
 (* The roles of Cesia's code, as classes: see classes. *)
 keyClass = "k"
 callClass = "n"
@@ -119,220 +207,1246 @@ numberClass = "m"
 commentClass = "c"
 fieldClass = "f"
 
-isDigitChar(c) = c >= "0" and c <= "9"
-isWordChar(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or isDigitChar(c) or text.ByteLength(c) > 1
-isBlank(c) = c == " " or c == "\t" or c == "\r"
+isDigit(b) = b >= 48 and b <= 57
+isLetter(b) = (b >= 97 and b <= 122) or (b >= 65 and b <= 90)
+isStart(b) = isLetter(b) or b == 95 or b >= 128   (** Can a name start with byte b? *)
+isNameByte(b) = isStart(b) or isDigit(b)
+isBlankByte(b) = b == 32 or b == 9 or b == 13
+isAt(s, i, mark) = text.ByteSlice(i, i + text.ByteLength(mark) - 1, s) == mark   (** Does mark start at byte i of s? *)
 
-defn isAt(cs, i, mark)
-  (** Does mark start at character i of cs? *)
-  k = 1
-  for m in text.Chars(mark)
-    if cs[i + k - 1] != m
-      return false
-    end
-    k += 1
-  end
-  true
-end
-
-defn markAt(cs, i, marks)
-  (** The first of marks that starts at character i, or missing. *)
+defn markAt(s, i, marks)
+  (** The first of marks that starts at byte i, or missing. *)
   for m in marks
-    if isAt(cs, i, m)
+    if isAt(s, i, m)
       return m
     end
   end
   missing
 end
 
-defn wordEnd(cs, i, n)
-  (** The first character after the word that starts at i. *)
-  j = i
-  while j <= n and isWordChar(cs[j])
-    j += 1
-  end
-  j
+defn upTo(k, n)
+  (** A position that a search gave, or the end when there was none: never past n + 1. *)
+  if value.IsMissing(k) or k > n + 1 n + 1 else k end
 end
 
-defn lineEnd(cs, i, n)
-  (** The newline that ends the line of character i, or past the last character. *)
-  j = i
-  while j <= n and cs[j] != "\n"
-    j += 1
-  end
-  j
-end
+lineEnd(s, i, n) = upTo(text.ByteFind("\n", i, s), n)   (** The newline that ends the line of byte i, or n + 1. *)
+blanksEnd(s, i, n) = upTo(text.ByteFindAny(blanks, i, s, not = true), n)   (** The first byte from i that is no blank. *)
+nameEnd(s, i, bytes, n) = upTo(text.ByteFindAny(bytes, i, s, not = true), n)   (** The first byte from i that is none of bytes. *)
 
-defn closeOf(cs, i, n, close, raw)
-  (** The first character after close, read from i, a backslash escaping the next character unless raw; past the end if
-      it never comes. *)
+defn textEnd(l, s, i, n, close, raw, multi, holes, nesting)
+  (** After the open mark of a text, from byte i: the first byte after its close, a backslash escaping the next byte
+      unless raw, where a quote twice is one, as in 'it''s' of SQL, each hole read to its bracket. -1 when a newline comes before the close and the text isn't multi; one
+      that is multi and never closes goes to the end. *)
+  stops = text.Str(text.ByteSlice(1, 1, close), if raw "" else "\\" end, if multi "" else "\n" end, text.Join("", [text.ByteSlice(1, 1, h) for h in holes]))
   j = i
-  while j <= n
-    if not raw and cs[j] == "\\"
-      j += 2
-    else if isAt(cs, j, close)
-      return j + value.Len(text.Chars(close))
+  while true
+    k = text.ByteFindAny(stops, j, s)
+    if value.IsMissing(k) or k > n
+      return if multi n + 1 else -1 end
+    end
+    h = if value.Len(holes) > 0 and nesting < 8 markAt(s, k, holes) else missing end
+    if value.IsSome(h) and h == "{" and text.Byte(k + 1, s) == 123
+      j = k + 2
+    else if value.IsSome(h)
+      e = holeEnd(l, s, k + text.ByteLength(h), n, text.Byte(text.ByteFindAny("{([", 1, h), h), multi, nesting + 1)
+      if e < 0
+        return if multi n + 1 else -1 end
+      end
+      j = e
+    else if raw and text.ByteLength(close) == 1 and text.Byte(k + 1, s) == text.Byte(k, s)
+      j = k + 2
+    else if isAt(s, k, close)
+      return k + text.ByteLength(close)
+    else if text.Byte(k, s) == 92 and not raw
+      j = k + 2
+    else if text.Byte(k, s) == 10 and not multi
+      return -1
     else
-      j += 1
+      j = k + 1
     end
   end
-  n + 1
 end
 
-defn blockEnd(cs, i, n, open, close, nest)
-  (** The first character after the comment that opens at i, nested ones inside when nest. *)
+defn holeEnd(l, s, i, n, open, multi, nesting)
+  (** After the opening bracket of a hole of a text, from byte i: the first byte after its closing bracket, the brackets
+      and texts inside it read on the way; -1 when it never closes, or when a newline comes in a text that isn't multi.
+      A quote that opens no text there is skipped, once a line for each mark. *)
+  shut = if open == 123 125 else if open == 40 41 else 93 end
+  stops = text.Str(text.FromBytes([open, shut]), l.TextFirsts, if multi "" else "\n" end)
+  failed = {}
   depth = 1
-  j = i + value.Len(text.Chars(open))
-  while j <= n and depth > 0
-    if nest and isAt(cs, j, open)
+  j = i
+  while true
+    k = text.ByteFindAny(stops, j, s)
+    if value.IsMissing(k) or k > n
+      return -1
+    end
+    b = text.Byte(k, s)
+    t = if b == open or b == shut or b == 10 missing else list.FindFirst(r -> isAt(s, k, r.Open), l.TextRules) end
+    if b == open
       depth += 1
-      j += value.Len(text.Chars(open))
-    else if isAt(cs, j, close)
+      j = k + 1
+    else if b == shut
       depth -= 1
-      j += value.Len(text.Chars(close))
+      if depth == 0
+        return k + 1
+      end
+      j = k + 1
+    else if b == 10
+      return -1
+    else if value.IsMissing(t) or dict.GetOr(t.Open, 0, failed) > k
+      j = k + 1
     else
-      j += 1
+      e = textEnd(l, s, k + text.ByteLength(t.Open), n, t.Close, t.Raw, t.Multi, t.Holes, nesting)
+      if e < 0
+        failed[t.Open] = lineEnd(s, k, n)
+        j = k + 1
+      else
+        j = e
+      end
     end
   end
-  list.Min(j, n + 1)
 end
 
-defn numberAfter(cs, i, n)
-  (** The first character after the number that starts at i: letters, digits, _ and dots before a digit, and a sign after
-      the e of an exponent. *)
-  hex = cs[i] == "0" and (cs[i + 1] == "x" or cs[i + 1] == "X")
-  j = i + 1
-  while j <= n and numberGoes(cs, j, hex)
-    j += 1
+defn blockEnd(s, i, n, open, close, nest)
+  (** The first byte after the comment that opens at byte i, nested ones inside when nest; -1 when it never closes. *)
+  if not nest
+    k = text.ByteFind(close, i + text.ByteLength(open), s)
+    return if value.IsMissing(k) or k > n (-1) else k + text.ByteLength(close) end
+  end
+  depth = 1
+  j = i + text.ByteLength(open)
+  nextOpen = upTo(text.ByteFind(open, j, s), n)
+  while depth > 0
+    k = text.ByteFind(close, j, s)
+    if value.IsMissing(k) or k > n
+      return -1
+    end
+    if nextOpen < k
+      depth += 1
+      j = nextOpen + text.ByteLength(open)
+      nextOpen = upTo(text.ByteFind(open, j, s), n)
+    else
+      depth -= 1
+      j = k + text.ByteLength(close)
+      if nextOpen < j
+        nextOpen = upTo(text.ByteFind(open, j, s), n)
+      end
+    end
   end
   j
 end
 
-(** Does a number go on at character j? *)
-numberGoes(cs, j, hex) = isWordChar(cs[j]) or (cs[j] == "." and isDigitChar(cs[j + 1])) or (not hex and exponentSign(cs, j))
-exponentSign(cs, j) = (cs[j] == "+" or cs[j] == "-") and (cs[j - 1] == "e" or cs[j - 1] == "E") and isDigitChar(cs[j + 1])
-
-defn charEnd(cs, i, n)
-  (** After a quote at i in OCaml: the end of a character, 'a' or '\n' and the like, or missing for the quote of a type. *)
-  if cs[i + 1] == "\\"
-    j = i + 2
-    while j <= n and j < i + 6 and cs[j] != "'"
-      j += 1
+defn numberEnd(s, i, n)
+  (** The first byte after the number that starts at byte i: letters, digits and _, a dot before a digit, the sign of an
+      exponent, and a quote between two digits, as in 1'000 of C++. *)
+  hex = text.Byte(i, s) == 48 and (text.Byte(i + 1, s) == 120 or text.Byte(i + 1, s) == 88)
+  j = nameEnd(s, i, nameDigits, n)
+  while j <= n
+    c = text.Byte(j, s)
+    after = text.Byte(j + 1, s)
+    before = text.Byte(j - 1, s)
+    if (c == 46 and isDigit(after)) or (c == 39 and isNameByte(before) and isNameByte(after))
+      j = nameEnd(s, j + 1, nameDigits, n)
+    else if (c == 43 or c == 45) and not hex and (before == 101 or before == 69) and isDigit(after)
+      j = nameEnd(s, j + 1, nameDigits, n)
+    else
+      break
     end
-    return if cs[j] == "'" j + 1 else missing end
   end
-  if cs[i + 1] != "" and cs[i + 1] != "'" and cs[i + 2] == "'" i + 3 else missing end
+  j
 end
 
-defn wordClass(l, keys, word, after)
-  (** The class of a word of language l, given its keywords and the character after it. *)
-  if dict.Has(if l.Fold text.Lower(word) else word end, keys)
-    keyClass
-  else if l.Calls and after == "("
-    callClass
-  else if l.Props and after == ":"
-    fieldClass
-  else
-    ""
+defn charEnd(s, i, n)
+  (** After a quote at byte i that opens a text only as one character: the first byte after it, as 'a', 'é' or '\n', or -1
+      for the quote of a type, a lifetime or a name. *)
+  c = text.Byte(i + 1, s)
+  if c == 92
+    k = text.ByteFindAny("'\n", i + 2, s)
+    return if value.IsSome(k) and k <= n and k <= i + 12 and text.Byte(k, s) == 39 and k > i + 2 k + 1 else -1 end
+  end
+  size = if c < 128 1 else if c >= 240 4 else if c >= 224 3 else 2 end
+  if c == 39 or c == 10 or c == 0 or text.Byte(i + 1 + size, s) != 39 (-1) else i + size + 2 end
+end
+
+defn regexEnd(s, i, n)
+  (** After the / that opens a regular expression, from byte i: the first byte after its close and its flags, a \ escaping
+      the next byte and a / inside [ ] staying; -1 when the line ends first. *)
+  j = i
+  inClass = false
+  while true
+    k = text.ByteFindAny("/\\[]\n", j, s)
+    if value.IsMissing(k) or k > n
+      return -1
+    end
+    b = text.Byte(k, s)
+    if b == 10
+      return -1
+    else if b == 92
+      j = k + 2
+    else if b == 91
+      inClass = true
+      j = k + 1
+    else if b == 93
+      inClass = false
+      j = k + 1
+    else if inClass
+      j = k + 1
+    else
+      return nameEnd(s, k + 1, letters, n)
+    end
   end
 end
 
-defn spanAdd(cls, words, out)
-  (** Adds words of a class to the spans, plain words after plain words in one. *)
-  last = value.Len(out)
-  if cls == "" and last > 0 and out[last][1] == ""
-    out[last] = ["", text.Str(out[last][2], words)]
-    out
-  else
-    list.Append([cls, words], out)
+defn bracketEnd(s, i, n, open, shut)
+  (** From the bracket open at byte i: the first byte after the bracket that closes it, -1 when the line ends first. *)
+  stops = text.FromBytes([open, shut, 10])
+  depth = 0
+  j = i
+  while true
+    k = text.ByteFindAny(stops, j, s)
+    if value.IsMissing(k) or k > n or text.Byte(k, s) == 10
+      return -1
+    end
+    depth += if text.Byte(k, s) == open 1 else -1 end
+    if depth == 0
+      return k + 1
+    end
+    j = k + 1
   end
 end
 
-defn LangSpans(name, code)
-  (** The code of a block in the language name, as [class, words] in order, all of its characters: a class of the roles of
-      Cesia's code, or "" for plain. A language not in languages gives missing.
-
-        LangSpans("python", "def f(x): # x\n    return 1") --> [["k", "def"], ["", " "], ["n", "f"], ["", "(x): "], ["c", "# x"], ["", "\n    "], ["k", "return"], ["", " "], ["m", "1"]] *)
-  if not dict.Has(name, languages)
+defn heredocMark(s, i, n)
+  (** At a < of a shell, Ruby, Perl or PHP: the heredoc that opens there, {End, Tag, Indented}, or missing. *)
+  if not isAt(s, i, "<<")
     return missing
   end
-  l = languages[name]
-  words = if l.Fold [text.Lower(k) for k in l.Keys] else l.Keys end
-  keys = dict.Zipmap(words, [true for k in words])
-  textMarks = l.Texts
-  cs = list.Concat([""], list.Concat(text.Chars(code), ["", "", "", ""]))
-  n = value.Len(cs) - 4
-  out = []
-  i = 2
-  starts = true
-  while i <= n
-    c = cs[i]
-    start = i
-    before = cs[i - 1]
-    cls = ""
-    block = list.FindFirst(b -> isAt(cs, i, b[1]), l.Blocks)
-    line = if l.Spaced and not (before == "" or isBlank(before) or before == "\n" or before == ";") missing else markAt(cs, i, l.Line) end
-    mark = if l.Ticks and (isWordChar(before) or before == ")" or before == "]" or before == "}" or before == "'" or before == ".") missing else markAt(cs, i, textMarks) end
-    if value.IsSome(block)
-      i = blockEnd(cs, i, n, block[1], block[2], l.Nest)
-      cls = commentClass
-    else if value.IsSome(line)
-      i = lineEnd(cs, i, n)
-      cls = commentClass
-    else if l.Chars and c == "'"
-      e = charEnd(cs, i, n)
-      if value.IsSome(e)
-        i = e
-        cls = textClass
+  q = i + 2
+  php = text.Byte(q, s) == 60
+  q += if php 1 else 0 end
+  indented = php or text.Byte(q, s) == 45 or text.Byte(q, s) == 126
+  q += if text.Byte(q, s) == 45 or text.Byte(q, s) == 126 1 else 0 end
+  quote = text.Byte(q, s)
+  quoted = quote == 39 or quote == 34
+  q += if quoted 1 else 0 end
+  if not isStart(text.Byte(q, s))
+    return missing
+  end
+  e = nameEnd(s, q, nameDigits, n)
+  if quoted and text.Byte(e, s) != quote
+    return missing
+  end
+  {End: if quoted e + 1 else e end, Tag: text.ByteSlice(q, e - 1, s), Indented: indented}
+end
+
+defn heredocsEnd(s, i, n, docs)
+  (** From byte i, the start of the line after the marks of heredocs: the newline that ends the line of the last of their
+      tags, or n + 1 when one never comes. A tag ends its text alone on its line, after blanks for an indented one, a ;
+      or , after it allowed, as in PHP. *)
+  j = i
+  for d in docs
+    found = false
+    while not found and j <= n
+      e = lineEnd(s, j, n)
+      t = if d.Indented blanksEnd(s, j, n) else j end
+      after = t + text.ByteLength(d.Tag)
+      if isAt(s, t, d.Tag) and after <= e and not isNameByte(text.Byte(after, s))
+        found = true
+      end
+      j = if found e else e + 1 end
+    end
+    if not found
+      return n + 1
+    end
+    j += 1
+  end
+  j - 1
+end
+
+defn fenceAt(s, i, n, nesting)
+  (** At the start of a line of Markdown: the fenced block that opens there, {Parts, End}, its fences as comments and its
+      code in its own language, or missing. *)
+  q = i
+  while q < i + 3 and text.Byte(q, s) == 32
+    q += 1
+  end
+  c = text.Byte(q, s)
+  if c != 96 and c != 126
+    return missing
+  end
+  r = upTo(text.ByteFindAny(text.FromBytes([c]), q, s, not = true), n)
+  size = r - q
+  e = lineEnd(s, q, n)
+  info = text.Trim(text.ByteSlice(r, e - 1, s))
+  if size < 3 or (c == 96 and text.Contains("`", info))
+    return missing
+  end
+  name = if info == "" "" else text.Split(" ", info)[1] end
+  k = e
+  close = missing
+  while value.IsMissing(close) and k <= n
+    ls = k + 1
+    le = lineEnd(s, ls, n)
+    a = ls
+    while a < ls + 3 and text.Byte(a, s) == 32
+      a += 1
+    end
+    rr = upTo(text.ByteFindAny(text.FromBytes([c]), a, s, not = true), n)
+    if text.Byte(a, s) == c and rr - a >= size and blanksEnd(s, rr, n) >= le
+      close = [ls, le]
+    end
+    k = le
+  end
+  parts = [[commentClass, text.ByteSlice(i, e - 1, s)]]
+  if e <= n
+    parts = list.Append(["", "\n"], parts)
+  end
+  if value.IsMissing(close)
+    return {Parts: list.Concat(parts, spansFor(name, bytesOf(e + 1, n, s), nesting)), End: n + 1}
+  end
+  if close[1] - 1 > e
+    parts = list.Concat(parts, list.Append(["", "\n"], spansFor(name, bytesOf(e + 1, close[1] - 2, s), nesting)))
+  end
+  parts = list.Append([commentClass, text.ByteSlice(close[1], close[2] - 1, s)], parts)
+  {Parts: parts, End: if value.IsMissing(close) n + 1 else close[2] end}
+end
+
+defn promptEnd(s, i, e)
+  (** At the start of a line of a shell session: the first byte after its prompt, a $, #, % or > followed by a blank, alone
+      or after a word as ana@box:~/shop and a (venv) before it; missing for a line of output. *)
+  q = i
+  if text.Byte(q, s) == 40
+    k = text.ByteFind(")", q, s)
+    if value.IsMissing(k) or k >= e or text.Byte(k + 1, s) != 32
+      return missing
+    end
+    q = k + 2
+  end
+  k = text.ByteFindAny("$#%> \t", q, s)
+  if value.IsMissing(k) or k >= e or not (text.Byte(k, s) in [36, 35, 37, 62]) or not (text.Byte(k + 1, s) == 32 or k + 1 == e)
+    return missing
+  end
+  if text.Byte(k + 1, s) == 32 k + 2 else k + 1 end
+end
+
+defn tagAt(l, s, i, n, nesting)
+  (** At a < of markup: the tag that opens there, {Parts, End, Name, Kind}, its name and brackets keywords, its attributes
+      fields and their values texts, Kind "open", "close", "self" or "other"; or missing when < opens no tag. In JSX an
+      attribute in braces is code. *)
+  c = text.Byte(i + 1, s)
+  if c == 33 or c == 63
+    if isAt(s, i, "<![CDATA[")
+      k = text.ByteFind("]]>", i + 9, s)
+      e = if value.IsMissing(k) or k > n n + 1 else k + 3 end
+      return {Parts: [[textClass, text.ByteSlice(i, e - 1, s)]], End: e, Name: "", Kind: "other"}
+    end
+    k = text.ByteFind(">", i, s)
+    if value.IsMissing(k) or k > n
+      return missing
+    end
+    return {Parts: [[keyClass, text.ByteSlice(i, k, s)]], End: k + 1, Name: "", Kind: "other"}
+  end
+  closing = c == 47
+  q = if closing i + 2 else i + 1 end
+  if not (isLetter(text.Byte(q, s)) or (l.Tags == "jsx" and text.Byte(q, s) == 62))
+    return missing
+  end
+  ne = nameEnd(s, q, tagNameBytes, n)
+  parts = [[keyClass, text.ByteSlice(i, ne - 1, s)]]
+  j = ne
+  kind = "open"
+  valueNext = false
+  while j <= n
+    a = upTo(text.ByteFindAny(" \t\r\n", j, s, not = true), n)
+    if a > j
+      parts = list.Append(["", text.ByteSlice(j, a - 1, s)], parts)
+      j = a
+    end
+    if j > n
+      break
+    end
+    b = text.Byte(j, s)
+    if b == 62
+      parts = list.Append([keyClass, ">"], parts)
+      j += 1
+      kind = if closing "close" else "open" end
+      break
+    else if b == 47 and text.Byte(j + 1, s) == 62
+      parts = list.Append([keyClass, "/>"], parts)
+      j += 2
+      kind = "self"
+      break
+    else if b == 123 and l.Tags == "jsx"
+      e = if nesting < 8 holeEnd(l, s, j + 1, n, 123, true, 1) else -1 end
+      if e < 0
+        parts = list.Append(["", bytesOf(j, n, s)], parts)
+        e = n + 1
       else
-        i += 1
+        parts = list.Append(["", "}"], list.Concat(list.Append(["", "{"], parts), readSpans(l, bytesOf(j + 1, e - 2, s), nesting + 1)))
       end
-    else if value.IsSome(mark)
-      close = if mark == "[[" "]]" else mark end
-      i = closeOf(cs, i + value.Len(text.Chars(mark)), n, close, mark in l.Raw)
-      cls = textClass
-    else if l.Pairs and starts and c == "["
-      i = lineEnd(cs, i, n)
-      cls = keyClass
-    else if l.Pairs and starts and (isWordChar(c) or c == "-")
-      j = i
-      while j <= n and (isWordChar(cs[j]) or cs[j] == "-" or cs[j] == ".")
-        j += 1
-      end
-      k = j
-      while k <= n and isBlank(cs[k])
-        k += 1
-      end
-      i = j
-      cls = if cs[k] == "=" fieldClass else "" end
-    else if l.Vars != "" and c == l.Vars and cs[i + 1] == "{"
-      i = closeOf(cs, i + 2, n, "}", true)
-      cls = fieldClass
-    else if l.Vars != "" and c == l.Vars and (isWordChar(cs[i + 1]) or cs[i + 1] in ["@", "*", "#", "?", "!"])
-      i = if isWordChar(cs[i + 1]) wordEnd(cs, i + 1, n) else i + 2 end
-      cls = fieldClass
-    else if isDigitChar(c) or (c == "." and isDigitChar(cs[i + 1]))
-      i = numberAfter(cs, i, n)
-      cls = numberClass
-    else if isWordChar(c)
-      i = wordEnd(cs, i, n)
-      word = text.Join("", cs[start..i - 1])
-      cls = wordClass(l, keys, word, cs[i])
+      j = e
+      valueNext = false
+    else if b == 34 or b == 39
+      k = text.ByteFind(text.FromBytes([b]), j + 1, s)
+      e = if value.IsMissing(k) or k > n n + 1 else k + 1 end
+      parts = list.Append([textClass, text.ByteSlice(j, e - 1, s)], parts)
+      j = e
+      valueNext = false
+    else if b == 61
+      parts = list.Append(["", "="], parts)
+      j += 1
+      valueNext = true
     else
-      i += 1
+      e = upTo(text.ByteFindAny(" \t\r\n=>\"'{", j + 1, s), n)
+      e = if b == 47 j + 1 else e end
+      parts = list.Append([if valueNext textClass else fieldClass end, text.ByteSlice(j, e - 1, s)], parts)
+      j = e
+      valueNext = false
     end
-    starts = if c == "\n" true else if isBlank(c) starts else false end
-    if cls != ""
-      starts = false
+  end
+  {Parts: parts, End: j, Name: text.Lower(text.ByteSlice(q, ne - 1, s)), Kind: kind}
+end
+
+defn entityEnd(s, i, n)
+  (** After a & of markup: the first byte after the entity it opens, as &amp; or &#233;, or -1. *)
+  k = text.ByteFindAny(";& \t\r\n<", i + 1, s)
+  if value.IsMissing(k) or k > n or k > i + 32 or text.Byte(k, s) != 59 or k == i + 1
+    return -1
+  end
+  k + 1
+end
+
+(* Tables of bytes, by byte + 1: those of a name, the closing brackets, and those after which a quote is a transpose. *)
+nameTable = [b - 1 in nameBase for b in 1..256]
+closeTable = [b - 1 in [41, 93, 125] for b in 1..256]
+tickTable = [nameTable[b] or b - 1 in [41, 93, 125, 39, 46] for b in 1..256]
+
+defn readSpans(l, code, nesting)
+  (** The spans of code read as the language l, each [class, words], with every byte of code in its order. *)
+  s = text.Str("\n", code, pad)
+  n = text.ByteLength(code) + 1
+  rules = l.Rules
+  stops = l.Stops
+  nameBytes = l.NameBytes
+  keySet = l.KeySet
+  fold = l.Fold
+  words = l.Words
+  numbers = l.Numbers
+  dots = l.Dots
+  calls = l.Calls
+  lisp = l.Lisp
+  props = l.Props
+  leads = l.Leads
+  tracks = l.Tracks
+  lines = l.LineWork
+  keyed = l.Keyed
+  out = []
+  from = 2
+  i = 2
+  head = 2
+  first = 2
+  keyAt = 2
+  depth = 0
+  valued = false
+  docs = []
+  fails = {}
+  scalar = -1
+  bodied = false
+  jsx = 0
+  while i <= n
+    start = i
+    cls = ""
+    j = i + 1
+    parts = missing
+    hooked = false
+    if i == head
+      first = text.ByteFindAny(blanks, i, s, not = true)
+      keyAt = first
+      if lines
+        (* The start of a line: the rules that read lines whole. *)
+        r = lineStart(l, s, i, n, nesting, scalar, bodied, first)
+        scalar = r.Scalar
+        bodied = r.Bodied
+        keyAt = r.KeyAt
+        if r.Hooked
+          hooked = true
+          start = r.Start
+          cls = r.Cls
+          j = r.End
+          parts = r.Parts
+          first = if r.Whole (-1) else first end
+        end
+      end
     end
-    out = spanAdd(cls, text.Join("", cs[start..list.Min(i, n + 1) - 1]), out)
+    if not hooked and jsx > 0
+      (* The text between the tags of JSX: plain, but for its tags, its entities and its code in braces. *)
+      b = text.Byte(i, s)
+      if b == 60
+        t = tagAt(l, s, i, n, nesting)
+        if value.IsSome(t)
+          parts = t.Parts
+          j = t.End
+          jsx += if t.Kind == "open" 1 else if t.Kind == "close" (-1) else 0 end
+          valued = true
+        end
+      else if b == 123 and nesting < 8
+        e = holeEnd(l, s, i + 1, n, 123, true, 1)
+        if e > 0
+          parts = list.Concat(list.Concat([["", "{"]], readSpans(l, bytesOf(i + 1, e - 2, s), nesting + 1)), [["", "}"]])
+          j = e
+        end
+      else if b == 38
+        e = entityEnd(s, i, n)
+        if e > 0
+          cls = numberClass
+          j = e
+        end
+      else
+        j = upTo(text.ByteFindAny("<{&", i + 1, s), n)
+      end
+    else if not hooked
+      b = text.Byte(i, s)
+      before = text.Byte(i - 1, s)
+      done = false
+      for r in rules[b + 1]
+        k = r.Kind
+        if k == "block"
+          if (r.Size == 1 or isAt(s, i, r.Open)) and dict.GetOr(r.Open, 0, fails) <= i
+            e = blockEnd(s, i, n, r.Open, r.Close, l.Nest)
+            if e < 0 and l.Shut
+              fails[r.Open] = n + 2
+            else
+              cls = commentClass
+              j = if e < 0 n + 1 else e end
+              done = true
+              break
+            end
+          end
+        else if k == "line"
+          if (r.Size == 1 or isAt(s, i, r.Open)) and (not l.Spaced or isBlankByte(before) or before == 10 or before == 59) and (not l.Lead or i == first) and (not l.Dashes or dashesComment(s, i))
+            long = if l.Long longOpen(s, i + r.Size) else missing end
+            cls = commentClass
+            j = if value.IsMissing(long) text.ByteFind("\n", i, s) else upTo(text.ByteFind(long.Close, long.End, s), n) end
+            j = if value.IsSome(long) and j <= n j + text.ByteLength(long.Close) else j end
+            done = true
+            break
+          end
+        else if k == "text"
+          t = r.Rule
+          if (r.Size == 1 or isAt(s, i, r.Open)) and not (l.Ticks and tickTable[before + 1]) and dict.GetOr(t.Open, 0, fails) <= i
+            e = textEnd(l, s, i + r.Size, n, t.Close, t.Raw, t.Multi, t.Holes, 0)
+            if e < 0
+              fails[t.Open] = text.ByteFind("\n", i, s)
+            else
+              cls = if keyed != "" and text.Contains(text.FromBytes([text.Byte(text.ByteFindAny(blanks, e, s, not = true), s)]), keyed) fieldClass else textClass end
+              j = e
+              done = true
+              break
+            end
+          end
+        else if k == "prefix"
+          e = prefixedEnd(l, s, i, n, fails)
+          if e[1] > 0
+            cls = textClass
+            j = e[1]
+            done = true
+            break
+          else if e[2] != ""
+            fails[e[2]] = text.ByteFind("\n", i, s)
+          end
+        else if k == "regex"
+          if not valued and dict.GetOr("/", 0, fails) <= i
+            e = regexEnd(s, i + 1, n)
+            if e < 0
+              fails["/"] = text.ByteFind("\n", i, s)
+            else
+              cls = textClass
+              j = e
+              done = true
+              break
+            end
+          end
+        else
+          m = markEnd(l, r, s, i, n, before, first, valued, nesting)
+          if value.IsSome(m)
+            cls = m.Cls
+            parts = m.Parts
+            j = m.End
+            if value.IsSome(m.Doc)
+              docs = list.Append(m.Doc, docs)
+            end
+            jsx = if m.Jsx 1 else jsx end
+            done = true
+            break
+          end
+          if k == "brace"
+            depth += if b == 123 1 else if depth > 0 (-1) else 0 end
+          end
+        end
+      end
+      if done
+        valued = cls != commentClass and (cls != keyClass or value.IsSome(parts))
+      else if b == 10
+        if l.Scalars and first > 0
+          scalar = scalarAfter(s, head, i, first, keyAt, scalar)
+        end
+        head = i + 1
+        if value.Len(docs) > 0
+          e = heredocsEnd(s, i + 1, n, docs)
+          docs = []
+          if e > i + 1
+            parts = [["", "\n"], [textClass, text.ByteSlice(i + 1, e - 1, s)]]
+            j = e
+            head = -1
+          end
+        end
+      else if numbers and ((b >= 48 and b <= 57) or (b == 46 and isDigit(text.Byte(i + 1, s)) and not nameTable[before + 1]))
+        cls = numberClass
+        j = numberEnd(s, i, n)
+        valued = true
+      else if words and nameTable[b + 1]
+        j = text.ByteFindAny(nameBytes, i, s, not = true)
+        word = text.ByteSlice(i, j - 1, s)
+        after = text.Byte(j, s)
+        cls = if dots and before == 46 and text.Byte(i - 2, s) != 46 fieldClass
+        else if dict.Has(if fold text.Lower(word) else word end, keySet) keyClass
+        else if (calls and after == 40) or (lisp and before == 40) callClass
+        else if props and depth > 0 and propColon(s, j) fieldClass
+        else if leads and i == first keyClass
+        else "" end
+        valued = cls != keyClass
+      else
+        j = upTo(text.ByteFindAny(stops, i + 1, s), n)
+        if tracks
+          k = j - 1
+          while k >= i and isBlankByte(text.Byte(k, s))
+            k -= 1
+          end
+          if k >= i
+            valued = closeTable[text.Byte(k, s) + 1]
+          end
+        end
+      end
+    end
+    if value.IsSome(parts)
+      if start > from
+        out = list.Append(["", text.ByteSlice(from, start - 1, s)], out)
+      end
+      for p in parts
+        if p[2] != ""
+          out = list.Append(p, out)
+        end
+      end
+      from = j
+    else if cls != ""
+      if start > from
+        out = list.Append(["", text.ByteSlice(from, start - 1, s)], out)
+      end
+      out = list.Append([cls, text.ByteSlice(start, j - 1, s)], out)
+      from = j
+    end
+    i = j
+  end
+  if from <= n
+    out = list.Append(["", text.ByteSlice(from, n, s)], out)
   end
   out
 end
 
+defn lineStart(l, s, i, n, nesting, scalar, bodied, first)
+  (** At the start of a line, byte i, its first byte that is no blank first: what the rules that read lines whole make of
+      it, {Hooked, Whole, Start, Cls, End, Parts, Scalar, Bodied, KeyAt}. *)
+  e = text.ByteFind("\n", i, s)
+  out = {Hooked: false, Whole: false, Start: i, Cls: "", End: e, Parts: missing, Scalar: scalar, Bodied: bodied, KeyAt: first}
+  if scalar >= 0
+    if first >= e
+      return dict.Merge(out, {Hooked: true, Whole: true})
+    else if first - i > scalar
+      return dict.Merge(out, {Hooked: true, Whole: true, Cls: textClass})
+    end
+    out.Scalar = -1
+  end
+  if l.Fences
+    f = fenceAt(s, i, n, nesting)
+    if value.IsSome(f)
+      return dict.Merge(out, {Hooked: true, Whole: true, End: f.End, Parts: f.Parts})
+    end
+  end
+  for h in l.Heads
+    if isAt(s, i, h[1])
+      return dict.Merge(out, {Hooked: true, Whole: true, Cls: h[2]})
+    end
+  end
+  if l.Prompts
+    p = promptEnd(s, i, e)
+    if value.IsSome(p)
+      stop = e
+      while stop <= n and text.Byte(stop - 1, s) == 92
+        stop = text.ByteFind("\n", stop + 1, s)
+      end
+      parts = [[commentClass, text.ByteSlice(i, p - 1, s)]]
+      parts = if p < stop list.Concat(parts, spansFor(l.Command, text.ByteSlice(p, stop - 1, s), nesting)) else parts end
+      return dict.Merge(out, {Hooked: true, Whole: true, End: stop, Parts: parts})
+    end
+  end
+  if l.Plain
+    return dict.Merge(out, {Hooked: true, Whole: true})
+  end
+  if l.Body != "" and not bodied and (e == i or (e == i + 1 and text.Byte(i, s) == 13))
+    out.Bodied = true
+    if e < n
+      parts = list.Concat([["", text.ByteSlice(i, e, s)]], spansFor(l.Body, text.ByteSlice(e + 1, n, s), nesting))
+      return dict.Merge(out, {Hooked: true, Whole: true, End: n + 1, Parts: parts})
+    end
+  end
+  keyAt = first
+  if l.Pairs != ""
+    while text.Byte(keyAt, s) == 45 and isBlankByte(text.Byte(keyAt + 1, s))
+      keyAt = text.ByteFindAny(blanks, keyAt + 1, s, not = true)
+    end
+  end
+  out.KeyAt = keyAt
+  b = text.Byte(keyAt, s)
+  if l.Sections and b == 91
+    k = text.ByteFind("]", keyAt, s)
+    if value.IsSome(k) and k < e
+      return dict.Merge(out, {Hooked: true, Start: keyAt, Cls: keyClass, End: if text.Byte(k + 1, s) == 93 k + 2 else k + 1 end})
+    end
+  else if l.Pairs != "" and (nameTable[b + 1] or b == 45 or b == 46)
+    ke = text.ByteFindAny(pairBytes, keyAt, s, not = true)
+    a = text.ByteFindAny(blanks, ke, s, not = true)
+    sep = text.Byte(a, s)
+    next = text.Byte(a + 1, s)
+    ok = if sep == 58 isBlankByte(next) or next == 10 or next == 61 else if sep == 63 or sep == 43 next == 61 else if sep == 61 next != 61 else sep != 10 and sep != 0 end
+    if ok and text.Contains(text.FromBytes([sep]), l.Pairs)
+      return dict.Merge(out, {Hooked: true, Start: keyAt, Cls: fieldClass, End: ke})
+    end
+  end
+  out
+end
+
+defn scalarAfter(s, head, i, first, keyAt, scalar)
+  (** At the newline i that ends the line from head: the indent past which the lines that follow are a text of YAML, when
+      the line ends with | or >, or scalar as it was. *)
+  k = i - 1
+  while k > head and isBlankByte(text.Byte(k, s))
+    k -= 1
+  end
+  while k > head and k > i - 4 and text.Contains(text.FromBytes([text.Byte(k, s)]), "+-0123456789")
+    k -= 1
+  end
+  c = text.Byte(k, s)
+  if (c == 124 or c == 62) and (k == head or isBlankByte(text.Byte(k - 1, s)))
+    (if k == keyAt first else keyAt end) - head
+  else
+    scalar
+  end
+end
+
+defn propColon(s, j)
+  (** After a name at byte j: a : and a blank, as in color: red, which a selector a:hover hasn't? *)
+  k = text.ByteFindAny(blanks, j, s, not = true)
+  text.Byte(k, s) == 58 and (isBlankByte(text.Byte(k + 1, s)) or text.Byte(k + 1, s) == 10)
+end
+
+defn dashesComment(s, i)
+  (** Do the dashes at byte i open a comment of Haskell, with no symbol after them? *)
+  d = text.ByteFindAny("-", i, s, not = true)
+  not text.Contains(text.FromBytes([text.Byte(d, s)]), "!#$$%&*+./<=>?@\\^|~:")
+end
+
+defn prefixedEnd(l, s, i, n, fails)
+  (** At a byte of the prefixes of l: [the first byte after the text that the prefix opens, as f"..." or r#"..."#, or -1
+      when it opens none; the mark of a text that opened and didn't close on its line, or ""]. *)
+  p = 0
+  while p < 3 and text.Contains(text.FromBytes([text.Byte(i + p, s)]), l.Prefixes)
+    p += 1
+  end
+  q = i + p
+  c = text.Byte(q, s)
+  if not text.Contains(text.FromBytes([c]), l.AfterPrefix)
+    return [-1, ""]
+  end
+  prefix = text.ByteSlice(i, q - 1, s)
+  raw = list.Any([text.Contains(x, l.RawPrefix) for x in text.Chars(prefix)])
+  d = prefixed(l, s, q, prefix, raw)
+  if value.IsSome(d)
+    return [d, ""]
+  end
+  t = list.FindFirst(x -> isAt(s, q, x.Open), l.TextRules)
+  if value.IsMissing(t) or dict.GetOr(t.Open, 0, fails) > i
+    return [-1, ""]
+  end
+  holes = list.Concat(t.Holes, list.FlatMap(x -> dict.GetOr(x, [], l.Holes), text.Chars(prefix)))
+  e = textEnd(l, s, q + text.ByteLength(t.Open), n, t.Close, t.Raw or raw, t.Multi, holes, 0)
+  [e, if e < 0 t.Open else "" end]
+end
+
+defn markEnd(l, r, s, i, n, before, first, valued, nesting)
+  (** What a rule of the rarer kinds reads at byte i: {Cls, Parts, End, Doc, Jsx}, or missing when it reads nothing. *)
+  k = r.Kind
+  done(cls, e) = {Cls: cls, Parts: missing, End: e, Doc: missing, Jsx: false}
+  if k == "linetext"
+    if isAt(s, i, r.Open)
+      return done(textClass, text.ByteFind("\n", i, s))
+    end
+  else if k == "hashes" or k == "dollars" or k == "long"
+    d = if k == "hashes" hashOpen(s, i) else if k == "dollars" dollarOpen(s, i) else longOpen(s, i) end
+    if value.IsSome(d)
+      e = upTo(text.ByteFind(d.Close, d.End, s), n)
+      return done(textClass, if e <= n e + text.ByteLength(d.Close) else n + 1 end)
+    end
+  else if k == "heredoc"
+    h = heredocMark(s, i, n)
+    if value.IsSome(h)
+      return {Cls: textClass, Parts: missing, End: h.End, Doc: h, Jsx: false}
+    end
+  else if k == "var"
+    q = i + r.Size
+    c = text.Byte(q, s)
+    if not isAt(s, i, r.Open) or nameTable[before + 1] or before == firstByte(r.Open)
+      return missing
+    end
+    e = if (c == 123 or c == 40) and text.Contains(text.FromBytes([c]), l.VarOpens) bracketEnd(s, q, n, c, if c == 123 125 else 41 end)
+    else if nameTable[c + 1] text.ByteFindAny(nameDigits, q, s, not = true)
+    else if r.Open == "$" and c in [64, 42, 35, 63, 33, 36, 45, 94, 60, 43, 124] q + 1
+    else (-1) end
+    if e > q
+      return done(fieldClass, e)
+    end
+  else if k == "at"
+    if isAt(s, i, r.Open) and not nameTable[before + 1]
+      q = i + r.Size
+      e = if r.Open == "@" atEnd(s, q, n) else bracketEnd(s, q - 1, n, 91, 93) end
+      if e > q
+        return done(callClass, e)
+      end
+    end
+  else if k == "atom"
+    if isStart(text.Byte(i + 1, s)) and not nameTable[before + 1] and before != 58
+      return done(fieldClass, text.ByteFindAny(l.NameBytes, i + 1, s, not = true))
+    end
+  else if k == "charmark"
+    q = i + r.Size
+    c = text.Byte(q, s)
+    if isAt(s, i, r.Open) and q <= n and c != 10 and c != 0 and not (r.Open == "\\" and nameTable[before + 1])
+      size = if c < 128 1 else if c >= 240 4 else if c >= 224 3 else 2 end
+      e = q + size
+      e = if c == 92 and r.Open != "\\" e + 1 else if isLetter(c) text.ByteFindAny(nameDigits, e, s, not = true) else e end
+      return done(textClass, list.Min(e, n + 1))
+    end
+  else if k == "command"
+    c = text.Byte(i + 1, s)
+    if i + 1 <= n and c != 10
+      return done(keyClass, if isLetter(c) text.ByteFindAny(letters, i + 1, s, not = true) else i + 2 end)
+    end
+  else if k == "directive"
+    if i == first
+      q = text.ByteFindAny(blanks, i + 1, s, not = true)
+      e = text.ByteFindAny(nameDigits, q, s, not = true)
+      word = text.ByteSlice(q, e - 1, s)
+      a = text.ByteFindAny(blanks, e, s, not = true)
+      shut = if text.Byte(a, s) == 60 and word in ["include", "import", "include_next"] text.ByteFind(">", a, s) else missing end
+      if value.IsSome(shut) and shut < text.ByteFind("\n", i, s)
+        return {Cls: "", Parts: [[keyClass, text.ByteSlice(i, e - 1, s)], ["", bytesOf(e, a - 1, s)], [textClass, text.ByteSlice(a, shut, s)]], End: shut + 1, Doc: missing, Jsx: false}
+      end
+      return done(keyClass, e)
+    end
+  else if k == "char"
+    e = if l.Ticks and tickTable[before + 1] (-1) else charEnd(s, i, n) end
+    if e > 0
+      return done(textClass, e)
+    end
+  else if k == "tag"
+    t = if l.Tags == "markup" or not valued tagAt(l, s, i, n, nesting) else missing end
+    if value.IsSome(t)
+      parts = t.Parts
+      j = t.End
+      embed = dict.Get(t.Name, l.Embeds)
+      if t.Kind == "open" and value.IsSome(embed)
+        shut = upTo(text.ByteFind("</$(t.Name)", j, s, fold = true), n)
+        if shut > j
+          parts = list.Concat(parts, spansFor(embed, text.ByteSlice(j, shut - 1, s), nesting))
+        end
+        j = shut
+      end
+      return {Cls: "", Parts: parts, End: j, Doc: missing, Jsx: l.Tags == "jsx" and t.Kind == "open"}
+    end
+  else if k == "entity"
+    e = if l.Tags == "markup" entityEnd(s, i, n) else (-1) end
+    if e > 0
+      return done(numberClass, e)
+    end
+  end
+  missing
+end
+
+defn prefixed(l, s, q, prefix, raw)
+  (** After the prefix of a text, at byte q: the end of a text whose close follows from its open, r#"..."# of Rust or
+      R"x(...)x" of C++, or of a character as b'a'; missing for any other. *)
+  n = text.ByteLength(s) - 16
+  c = text.Byte(q, s)
+  if "hashes" in l.Delims and raw and c == 35
+    d = hashOpen(s, q)
+    if value.IsSome(d)
+      e = upTo(text.ByteFind(d.Close, d.End, s), n)
+      return if e <= n e + text.ByteLength(d.Close) else n + 1 end
+    end
+  end
+  if "parens" in l.Delims and c == 34 and text.EndsWith("R", prefix)
+    k = text.ByteFindAny("( )\\\n", q + 1, s)
+    if value.IsSome(k) and k <= q + 17 and text.Byte(k, s) == 40
+      close = text.Str(")", text.ByteSlice(q + 1, k - 1, s), "\"")
+      e = upTo(text.ByteFind(close, k + 1, s), n)
+      return if e <= n e + text.ByteLength(close) else n + 1 end
+    end
+  end
+  if l.Chars and c == 39
+    e = charEnd(s, q, n)
+    return if e > 0 e else missing end
+  end
+  missing
+end
+
+defn hashOpen(s, i)
+  (** At a # that may open a text: {End, Close} for #"...", "#, ##"... "##, or missing. *)
+  k = upTo(text.ByteFindAny("#", i, s, not = true), text.ByteLength(s))
+  if k > i and text.Byte(k, s) == 34 {End: k + 1, Close: text.Str("\"", text.ByteSlice(i, k - 1, s))} else missing end
+end
+
+defn dollarOpen(s, i)
+  (** At a $ of SQL: {End, Close} for $$ or $tag$, which closes the same, or missing. *)
+  if text.Byte(i + 1, s) == 36
+    return {End: i + 2, Close: "$$$$"}
+  end
+  if not isStart(text.Byte(i + 1, s))
+    return missing
+  end
+  k = upTo(text.ByteFindAny(text.FromBytes(nameBase), i + 1, s, not = true), text.ByteLength(s))
+  if text.Byte(k, s) == 36 {End: k + 1, Close: text.ByteSlice(i, k, s)} else missing end
+end
+
+defn longOpen(s, i)
+  (** At a [ of Lua: {End, Close} for [[, [=[ and the like, which close with ]], ]=], or missing. *)
+  if text.Byte(i, s) != 91
+    return missing
+  end
+  k = upTo(text.ByteFindAny("=", i + 1, s, not = true), text.ByteLength(s))
+  if text.Byte(k, s) == 91 {End: k + 1, Close: text.Str("]", text.ByteSlice(i + 1, k - 1, s), "]")} else missing end
+end
+
+defn atEnd(s, q, n)
+  (** After the @ of an annotation, from byte q: the end of its name, its dotted parts included, as @app.route. *)
+  if not isStart(text.Byte(q, s))
+    return q
+  end
+  j = nameEnd(s, q, nameDigits, n)
+  while text.Byte(j, s) == 46 and isStart(text.Byte(j + 1, s))
+    j = nameEnd(s, j + 1, nameDigits, n)
+  end
+  j
+end
+
+defn cesiaSpans(code)
+  (** Cesia code as spans, by std/syntax, line by line. *)
+  state = syntax.FirstState
+  out = []
+  k = 0
+  for line in text.Split("\n", code)
+    if k > 0
+      out = list.Append(["", "\n"], out)
+    end
+    r = syntax.Tokens(line, state)
+    state = r.State
+    for t in r.Tokens
+      out = list.Append([classes[t[1]], t[2]], out)
+    end
+    k += 1
+  end
+  out
+end
+
+(* The languages: each read by the fields it needs, those of langBase for the rest. *)
+shellKeys = ["if", "then", "else", "elif", "fi", "case", "esac", "for", "select", "while", "until", "do", "done", "in", "function",
+  "time", "return", "export", "local", "readonly", "declare", "set", "unset", "shift", "exit", "break", "continue", "source",
+  "alias", "true", "false"]
+shell = lang({Line: ["#"], Spaced: true, Texts: ["\"", "'"], Raw: ["'"], Multi: ["\"", "'"], Holes: {"\"": ["$$(", "${"]},
+  Heredocs: true, Keys: shellKeys, Calls: false, Vars: ["$$"]})
+cKeys = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for",
+  "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
+  "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex",
+  "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local", "alignas", "alignof", "bool", "constexpr", "false",
+  "nullptr", "static_assert", "thread_local", "true", "typeof", "NULL"]
+cLike = {Line: ["//"], Blocks: [["/*", "*/"]], Texts: ["\"", "'"], Dots: true}
+jsKeys = ["async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else",
+  "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of",
+  "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "yield"]
+js = {Line: ["//"], Blocks: [["/*", "*/"]], Texts: ["`", "\"", "'"], Multi: ["`"], Holes: {"`": ["${"]}, Regex: true, At: ["@"],
+  Dots: true, Keys: jsKeys}
+tsKeys = list.Concat(jsKeys, ["abstract", "any", "as", "asserts", "bigint", "boolean", "declare", "enum", "implements", "infer",
+  "interface", "is", "keyof", "module", "namespace", "never", "number", "object", "override", "private", "protected", "public",
+  "readonly", "satisfies", "string", "symbol", "type", "unique", "unknown"])
+lispLang = lang({Line: [";"], Blocks: [["#|", "|#"]], Nest: true, Texts: ["\""], Multi: ["\""], CharMarks: ["#\\", "\\"],
+  Atoms: true, Names: "-!?*+<>=/.:'&%$$^~", Calls: false, Lisp: true, Keys: ["def", "defn", "defn-", "defmacro", "defmulti",
+  "defmethod", "defprotocol", "defrecord", "deftype", "defonce", "fn", "let", "letfn", "loop", "recur", "if", "if-not", "when",
+  "when-not", "when-let", "if-let", "cond", "condp", "case", "do", "doto", "ns", "require", "import", "quote", "try", "catch",
+  "finally", "throw", "new", "and", "or", "not", "nil", "true", "false", "define", "lambda", "let*", "letrec", "begin", "set!",
+  "defun", "defvar", "defparameter", "defconstant", "defclass", "defgeneric", "progn", "setq", "setf", "unless", "dolist",
+  "dotimes", "else", "t"]})
+markupLang = {Blocks: [["<!--", "-->"]], Calls: false, Numbers: false, Tags: "markup"}
+languages = {
+  python: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Multi: ["\"\"\"", "'''"], Prefixes: "rRbBuUfFtT",
+    Holes: {"f": ["{"], "F": ["{"], "t": ["{"], "T": ["{"]}, At: ["@"], Dots: true, Keys: ["False", "None", "True", "and", "as",
+    "assert", "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for",
+    "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "try",
+    "while", "with", "yield"]}),
+  r: lang({Line: ["#"], Texts: ["\"", "'"], Multi: ["\"", "'"], Dots: false, Keys: ["if", "else", "repeat", "while", "function",
+    "for", "in", "next", "break", "return", "TRUE", "FALSE", "NULL", "Inf", "NaN", "NA", "NA_integer_", "NA_real_",
+    "NA_character_"]}),
+  matlab: lang({Line: ["%"], Blocks: [["%{", "%}"]], Texts: ["\"", "'"], Raw: ["'", "\""], Ticks: true, Dots: true,
+    Keys: ["break", "case", "catch", "classdef", "continue", "else", "elseif", "end", "for", "function", "global", "if",
+    "otherwise", "parfor", "persistent", "return", "switch", "try", "while", "true", "false"]}),
+  ocaml: lang({Blocks: [["(*", "*)"]], Nest: true, Texts: ["\""], Multi: ["\""], Chars: true, Names: "'", Calls: false,
+    Dots: true, Keys: ["and", "as", "assert", "begin", "class", "do", "done", "downto", "else", "end", "exception", "external",
+    "false", "for", "fun", "function", "functor", "if", "in", "include", "lazy", "let", "match", "method", "module", "mutable",
+    "new", "nonrec", "not", "object", "of", "open", "or", "private", "rec", "sig", "struct", "then", "to", "true", "try",
+    "type", "val", "virtual", "when", "while", "with"]}),
+  js: lang(js),
+  typescript: lang(dict.Merge(js, {Keys: tsKeys})),
+  jsx: lang(dict.Merge(js, {Tags: "jsx"})),
+  tsx: lang(dict.Merge(js, {Keys: tsKeys, Tags: "jsx"})),
+  lua: lang({Line: ["--"], Texts: ["\"", "'"], Delims: ["long"], Dots: true, Keys: ["and", "break", "do", "else", "elseif",
+    "end", "false", "for", "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true",
+    "until", "while"]}),
+  bash: shell,
+  powershell: lang({Line: ["#"], Blocks: [["<#", "#>"]], Texts: [["@\"", "\"@"], ["@'", "'@"], "\"", "'"],
+    Raw: ["@'", "'"], Multi: ["@\"", "@'", "\"", "'"], Holes: {"\"": ["$$("], "@\"": ["$$("]}, Fold: true, Vars: ["$$"], Dots: true,
+    Keys: ["begin", "break", "catch", "class", "continue", "do", "else", "elseif", "end", "exit", "filter", "finally", "for",
+    "foreach", "function", "if", "in", "param", "process", "return", "switch", "throw", "trap", "try", "until", "while"]}),
+  toml: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Raw: ["'''", "'"], Multi: ["\"\"\"", "'''"], Keys: ["true", "false"],
+    Calls: false, Sections: true, Pairs: "=", Keyed: "="}),
+  ini: lang({Line: [";", "#"], Spaced: true, Calls: false, Sections: true, Pairs: "=:"}),
+  css: lang({Blocks: [["/*", "*/"]], Texts: ["\"", "'"], Names: "-", Calls: false, Props: true, At: ["@"]}),
+  java: lang(dict.Merge(cLike, {Texts: ["\"\"\"", "\"", "'"], Multi: ["\"\"\""], At: ["@"], Keys: ["abstract", "assert", "boolean",
+    "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends",
+    "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native",
+    "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch",
+    "synchronized", "this", "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null", "var",
+    "record", "sealed", "permits", "yield"]})),
+  kotlin: lang(dict.Merge(cLike, {Nest: true, Texts: ["\"\"\"", "\"", "'"], Raw: ["\"\"\""], Multi: ["\"\"\""],
+    Holes: {"\"": ["${"], "\"\"\"": ["${"]}, At: ["@"], Keys: ["as", "break", "class", "continue", "do", "else", "false", "for",
+    "fun", "if", "in", "interface", "is", "null", "object", "package", "return", "super", "this", "throw", "true", "try",
+    "typealias", "typeof", "val", "var", "when", "while", "by", "catch", "constructor", "finally", "import", "init", "where",
+    "abstract", "actual", "annotation", "companion", "const", "crossinline", "data", "enum", "expect", "external", "final",
+    "infix", "inline", "inner", "internal", "lateinit", "noinline", "open", "operator", "out", "override", "private",
+    "protected", "public", "reified", "sealed", "suspend", "tailrec", "vararg"]})),
+  scala: lang(dict.Merge(cLike, {Nest: true, Texts: ["\"\"\"", "\"", "'"], Raw: ["\"\"\""], Multi: ["\"\"\""], Prefixes: "sf",
+    Holes: {"s": ["${"], "f": ["${"]}, At: ["@"], Keys: ["abstract", "case", "catch", "class", "def", "do", "else", "extends", "false",
+    "final", "finally", "for", "forSome", "if", "implicit", "import", "lazy", "match", "new", "null", "object", "override",
+    "package", "private", "protected", "return", "sealed", "super", "this", "throw", "trait", "true", "try", "type", "val", "var",
+    "while", "with", "yield", "given", "using", "enum", "export", "then", "end", "extension", "inline", "opaque", "transparent",
+    "derives"]})),
+  c: lang(dict.Merge(cLike, {Prefixes: "uUL8", Directives: true, Keys: cKeys})),
+  cpp: lang(dict.Merge(cLike, {Prefixes: "uUL8R", Delims: ["parens"], Directives: true, Keys: list.Concat(cKeys, ["and",
+    "and_eq", "asm", "bitand", "bitor", "catch", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "consteval",
+    "constinit", "const_cast", "co_await", "co_return", "co_yield", "decltype", "delete", "dynamic_cast", "explicit", "export",
+    "friend", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "operator", "or", "or_eq", "private", "protected",
+    "public", "reinterpret_cast", "requires", "static_cast", "template", "this", "throw", "try", "typeid", "typename", "using",
+    "virtual", "wchar_t", "xor", "xor_eq", "override", "final", "import", "module"])})),
+  csharp: lang(dict.Merge(cLike, {Texts: ["\"\"\"", "\"", "'"], Multi: ["\"\"\""], Prefixes: "@$$", RawPrefix: "@",
+    Holes: {"$$": ["{"]}, Directives: true, Keys: ["abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+    "checked", "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit",
+    "extern", "false", "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
+    "internal", "is", "lock", "long", "namespace", "new", "null", "object", "operator", "out", "override", "params", "private",
+    "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static", "string",
+    "struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
+    "virtual", "void", "volatile", "while", "async", "await", "dynamic", "get", "init", "nameof", "partial", "record",
+    "required", "set", "var", "when", "where", "with", "yield", "and", "or", "not"]})),
+  go: lang(dict.Merge(cLike, {Texts: ["`", "\"", "'"], Raw: ["`"], Multi: ["`"], Keys: ["break", "case", "chan", "const",
+    "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map",
+    "package", "range", "return", "select", "struct", "switch", "type", "var", "true", "false", "nil", "iota"]})),
+  rust: lang(dict.Merge(cLike, {Nest: true, Texts: ["\""], Multi: ["\""], Chars: true, Prefixes: "brc", RawPrefix: "r",
+    Delims: ["hashes"], At: ["#![", "#["], Names: "!", Keys: ["as", "async", "await", "break", "const", "continue", "crate", "dyn",
+    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while",
+    "abstract", "become", "box", "do", "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "try",
+    "union", "macro_rules!"]})),
+  swift: lang(dict.Merge(cLike, {Nest: true, Texts: ["\"\"\"", "\""], Multi: ["\"\"\""], Holes: {"\"": ["\\("], "\"\"\"": ["\\("]},
+    Delims: ["hashes"], At: ["@"], Keys: ["associatedtype", "class", "deinit", "enum", "extension", "fileprivate", "func",
+    "import", "init", "inout", "internal", "let", "open", "operator", "private", "precedencegroup", "protocol", "public",
+    "rethrows", "static", "struct", "subscript", "typealias", "var", "break", "case", "catch", "continue", "default", "defer",
+    "do", "else", "fallthrough", "for", "guard", "if", "in", "repeat", "return", "throw", "switch", "where", "while", "Any",
+    "as", "await", "false", "is", "nil", "self", "Self", "super", "throws", "true", "try", "async", "actor", "some", "any",
+    "convenience", "dynamic", "final", "indirect", "lazy", "mutating", "nonmutating", "optional", "override", "required",
+    "unowned", "weak", "willSet", "didSet", "get", "set"]})),
+  zig: lang({Line: ["//"], LineTexts: ["\\\\"], Texts: ["\"", "'"], At: ["@"], Dots: true, Keys: ["addrspace", "align",
+    "allowzero", "and", "anyframe", "anytype", "asm", "async", "await", "break", "callconv", "catch", "comptime", "const",
+    "continue", "defer", "else", "enum", "errdefer", "error", "export", "extern", "fn", "for", "if", "inline", "linksection",
+    "noalias", "noinline", "nosuspend", "opaque", "or", "orelse", "packed", "pub", "resume", "return", "struct", "suspend",
+    "switch", "test", "threadlocal", "try", "union", "unreachable", "usingnamespace", "var", "volatile", "while", "true",
+    "false", "null", "undefined"]}),
+  dart: lang(dict.Merge(cLike, {Nest: true, Texts: ["\"\"\"", "'''", "\"", "'"], Multi: ["\"\"\"", "'''"], Prefixes: "r",
+    RawPrefix: "r", Holes: {"\"\"\"": ["${"], "'''": ["${"], "\"": ["${"], "'": ["${"]}, At: ["@"], Keys: ["abstract", "as",
+    "assert", "async", "await", "base", "break", "case", "catch", "class", "const", "continue", "covariant", "default",
+    "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external", "factory", "false", "final",
+    "finally", "for", "Function", "if", "implements", "import", "in", "interface", "is", "late", "library", "mixin", "new",
+    "null", "operator", "part", "required", "rethrow", "return", "sealed", "static", "super", "switch", "sync", "this",
+    "throw", "true", "try", "typedef", "var", "void", "when", "while", "with", "yield"]})),
+  php: lang({Line: ["//", "#"], Blocks: [["/*", "*/"]], Texts: ["\"", "'"], Multi: ["\"", "'"], Holes: {"\"": ["{$$", "${"]},
+    Heredocs: true, Vars: ["$$"], Fold: true, Keys: ["abstract", "and", "array", "as", "break", "callable", "case", "catch",
+    "class", "clone", "const", "continue", "declare", "default", "do", "echo", "else", "elseif", "empty", "enddeclare", "endfor",
+    "endforeach", "endif", "endswitch", "endwhile", "enum", "eval", "exit", "extends", "final", "finally", "fn", "for",
+    "foreach", "function", "global", "goto", "if", "implements", "include", "include_once", "instanceof", "insteadof",
+    "interface", "isset", "list", "match", "namespace", "new", "or", "print", "private", "protected", "public", "readonly",
+    "require", "require_once", "return", "static", "switch", "throw", "trait", "try", "unset", "use", "var", "while", "xor",
+    "yield", "true", "false", "null", "self", "parent", "php"]}),
+  ruby: lang({Line: ["#"], Blocks: [["=begin", "=end"]], Texts: ["\"", "'", "`"], Multi: ["\"", "'", "`"],
+    Holes: {"\"": ["#{"], "`": ["#{"]}, Heredocs: true, Vars: ["@@", "@", "$$"], Atoms: true, Names: "?!", Regex: true,
+    Dots: true, Keys: ["BEGIN", "END", "alias", "and", "begin", "break", "case", "class", "def", "defined?", "do", "else",
+    "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next", "nil", "not", "or", "redo", "rescue", "retry",
+    "return", "self", "super", "then", "true", "undef", "unless", "until", "when", "while", "yield", "__FILE__", "__LINE__",
+    "__method__", "require", "require_relative", "attr_accessor", "attr_reader", "attr_writer", "include", "extend",
+    "private", "protected", "public", "raise"]}),
+  perl: lang({Line: ["#"], Blocks: [["=pod", "=cut"], ["=head1", "=cut"], ["=head2", "=cut"], ["=begin", "=cut"]],
+    Texts: ["\"", "'", "`"], Multi: ["\"", "'", "`"], Heredocs: true, Vars: ["$$", "@", "%"], Regex: true, Keys: ["my", "our",
+    "local", "sub", "if", "elsif", "else", "unless", "while", "until", "for", "foreach", "do", "last", "next", "redo", "return",
+    "use", "require", "no", "package", "BEGIN", "END", "and", "or", "not", "xor", "eq", "ne", "lt", "gt", "le", "ge", "cmp",
+    "print", "printf", "die", "warn", "eval", "defined", "undef", "wantarray", "__PACKAGE__", "__FILE__", "__LINE__",
+    "__END__", "__DATA__"]}),
+  elixir: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Multi: ["\"\"\"", "'''", "\"", "'"],
+    Holes: {"\"\"\"": ["#{"], "'''": ["#{"], "\"": ["#{"], "'": ["#{"]}, Atoms: true, Names: "?!", At: ["@"], Dots: true,
+    Keys: ["after", "alias", "and", "case", "catch", "cond", "def", "defcallback", "defdelegate", "defexception", "defguard",
+    "defimpl", "defmacro", "defmacrop", "defmodule", "defoverridable", "defp", "defprotocol", "defstruct", "do", "else", "end",
+    "false", "fn", "for", "if", "import", "in", "nil", "not", "or", "quote", "raise", "receive", "require", "rescue", "reraise",
+    "super", "throw", "true", "try", "unless", "unquote", "unquote_splicing", "use", "when", "with"]}),
+  erlang: lang({Line: ["%"], Texts: ["\"", "'"], Multi: ["\""], CharMarks: ["$$"], Keys: ["after", "and", "andalso", "band",
+    "begin", "bnot", "bor", "bsl", "bsr", "bxor", "case", "catch", "cond", "div", "end", "fun", "if", "let", "not", "of", "or",
+    "orelse", "receive", "rem", "try", "when", "xor", "maybe", "else"]}),
+  haskell: lang({Line: ["--"], Dashes: true, Blocks: [["{-", "-}"]], Nest: true, Texts: ["\""], Chars: true, Names: "'",
+    Calls: false, Dots: true, Keys: ["case", "class", "data", "default", "deriving", "do", "else", "foreign", "if", "import",
+    "in", "infix", "infixl", "infixr", "instance", "let", "module", "newtype", "of", "then", "type", "where", "qualified", "as",
+    "hiding", "forall", "mdo", "family", "pattern"]}),
+  lisp: lispLang,
+  julia: lang({Line: ["#"], Blocks: [["#=", "=#"]], Nest: true, Texts: ["\"\"\"", "\"", "`"], Multi: ["\"\"\""],
+    Holes: {"\"": ["$$("], "\"\"\"": ["$$("]}, Chars: true, Ticks: true, Atoms: true, At: ["@"], Names: "!", Dots: true,
+    Keys: ["baremodule", "begin", "break", "catch", "const", "continue", "do", "else", "elseif", "end", "export", "false",
+    "finally", "for", "function", "global", "if", "import", "let", "local", "macro", "module", "quote", "return", "struct",
+    "true", "try", "using", "while", "where", "abstract", "type", "primitive", "mutable", "nothing", "missing", "in", "isa"]}),
+  fortran: lang({Line: ["!"], Texts: ["\"", "'"], Raw: ["\"", "'"], Fold: true, Keys: ["program", "end", "module", "contains",
+    "use", "implicit", "none", "integer", "real", "double", "precision", "complex", "character", "logical", "parameter",
+    "dimension", "allocatable", "intent", "in", "out", "inout", "subroutine", "function", "call", "return", "if", "then",
+    "else", "elseif", "endif", "do", "enddo", "while", "select", "case", "default", "exit", "cycle", "stop", "print", "write",
+    "read", "open", "close", "format", "type", "interface", "procedure", "pure", "elemental", "recursive", "result",
+    "allocate", "deallocate", "associate", "block", "where", "forall", "concurrent", "true", "false", "and", "or", "not",
+    "eq", "ne", "lt", "gt", "le", "ge"]}),
+  sql: lang({Line: ["--"], Blocks: [["/*", "*/"]], Nest: true, Texts: ["'", "\""], Raw: ["'", "\""], Multi: ["'", "\""],
+    Prefixes: "eEnNbBxXuU", Delims: ["dollars"], Fold: true, Dots: true, Vars: ["$$", ":", "@"], Keys: ["select", "from",
+    "where", "and", "or", "not", "insert", "into", "values", "update", "set", "delete", "create", "table", "drop", "alter",
+    "add", "column", "index", "primary", "key", "foreign", "references", "unique", "null", "is", "in", "exists", "between",
+    "like", "ilike", "join", "inner", "left", "right", "full", "outer", "cross", "natural", "on", "using", "group", "by",
+    "order", "having", "limit", "offset", "fetch", "as", "distinct", "all", "any", "some", "union", "intersect", "except",
+    "case", "when", "then", "else", "end", "begin", "commit", "rollback", "savepoint", "transaction", "returning", "with",
+    "recursive", "view", "materialized", "trigger", "function", "procedure", "returns", "return", "language", "if", "replace",
+    "default", "constraint", "check", "cascade", "restrict", "grant", "revoke", "to", "asc", "desc", "nulls", "first", "last",
+    "true", "false", "do", "declare", "int", "integer", "bigint", "smallint", "text", "varchar", "char", "boolean", "serial",
+    "bigserial", "numeric", "decimal", "real", "double", "precision", "date", "time", "timestamp", "timestamptz", "interval",
+    "uuid", "json", "jsonb", "bytea", "array", "over", "partition", "window", "rows", "range", "lateral", "filter",
+    "conflict", "nothing", "vacuum", "analyze", "explain", "extension", "schema", "sequence", "temporary", "temp", "copy",
+    "truncate", "pragma", "without", "rowid", "strict", "autoincrement", "glob", "escape", "collate", "for", "of", "share",
+    "nowait", "skip", "locked", "row", "only", "current_timestamp", "current_date", "localtimestamp", "generated", "always",
+    "identity", "stored", "bool"]}),
+  json: lang({Line: ["//"], Blocks: [["/*", "*/"]], Texts: ["\""], Keyed: ":", Calls: false, Keys: ["true", "false", "null"]}),
+  yaml: lang({Line: ["#"], Spaced: true, Texts: ["\"", "'"], Raw: ["'"], Multi: ["\"", "'"], Pairs: ":", Keyed: ":",
+    Scalars: true, Heads: [["---", keyClass], ["...", keyClass]], Vars: ["&", "*"], Calls: false, Keys: ["true", "false",
+    "null", "True", "False", "Null", "TRUE", "FALSE", "NULL", "yes", "no", "on", "off"]}),
+  html: lang(dict.Merge(markupLang, {Embeds: {script: "js", style: "css"}})),
+  xml: lang(markupLang),
+  markdown: lang({Fences: true, Heads: [["#", keyClass]], Blocks: [["<!--", "-->"]], Texts: ["``", "`"], Raw: ["``", "`"],
+    Calls: false, Numbers: false}),
+  properties: lang({Line: ["#", "!"], Lead: true, Calls: false, Pairs: "=:"}),
+  dockerfile: lang({Line: ["#"], Lead: true, Texts: ["\"", "'"], Raw: ["'"], Heredocs: true, Vars: ["$$"], Calls: false,
+    Keys: list.Concat(["FROM", "RUN", "CMD", "LABEL", "MAINTAINER", "EXPOSE", "ENV", "ADD", "COPY", "ENTRYPOINT", "VOLUME",
+    "USER", "WORKDIR", "ARG", "ONBUILD", "STOPSIGNAL", "HEALTHCHECK", "SHELL", "AS"], shellKeys)}),
+  makefile: lang({Line: ["#"], Texts: ["\"", "'"], Raw: ["'"], Vars: ["$$"], VarOpens: "{(", Pairs: "=:?+", Calls: false,
+    Keys: list.Concat(["include", "sinclude", "ifeq", "ifneq", "ifdef", "ifndef", "endif", "define", "endef", "unexport",
+    "override", "vpath"], shellKeys)}),
+  cmake: lang({Blocks: [["#[[", "]]"]], Line: ["#"], Texts: ["\""], Multi: ["\""], Vars: ["$$"], Fold: true, Keys: ["if",
+    "elseif", "else", "endif", "foreach", "endforeach", "while", "endwhile", "function", "endfunction", "macro", "endmacro",
+    "return", "break", "continue", "public", "private", "interface", "required", "components", "static", "shared", "version",
+    "and", "or", "not", "defined", "on", "off", "true", "false"]}),
+  nginx: lang({Line: ["#"], Spaced: true, Texts: ["\"", "'"], Vars: ["$$"], Calls: false, Leads: true}),
+  http: lang({Keys: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "CONNECT", "TRACE", "HTTP"], Pairs: ":",
+    Body: "json", Calls: false}),
+  graphql: lang({Line: ["#"], Texts: ["\"\"\"", "\""], Multi: ["\"\"\""], Vars: ["$$"], At: ["@"], Props: true, Keys: ["query",
+    "mutation", "subscription", "fragment", "on", "type", "interface", "union", "enum", "input", "scalar", "schema", "extend",
+    "directive", "implements", "repeatable", "true", "false", "null"]}),
+  protobuf: lang(dict.Merge(cLike, {Calls: false, Keys: ["syntax", "edition", "package", "import", "option", "message", "enum",
+    "service", "rpc", "returns", "repeated", "optional", "required", "oneof", "map", "reserved", "extend", "extensions",
+    "stream", "public", "weak", "to", "max", "true", "false", "double", "float", "int32", "int64", "uint32", "uint64", "sint32",
+    "sint64", "fixed32", "fixed64", "sfixed32", "sfixed64", "bool", "string", "bytes"]})),
+  nix: lang({Line: ["#"], Blocks: [["/*", "*/"]], Texts: ["''", "\""], Raw: ["''"], Multi: ["''", "\""], Holes: {"\"": ["${"],
+    "''": ["${"]}, Pairs: "=", Names: "-'", Calls: false, Dots: true, Keys: ["let", "in", "with", "rec", "inherit", "if", "then",
+    "else", "assert", "import", "builtins", "true", "false", "null", "or"]}),
+  latex: lang({Line: ["%"], Commands: true, Texts: ["$$$$", "$$"], Raw: ["$$$$", "$$"], Multi: ["$$$$"], Calls: false,
+    Numbers: false}),
+  diff: lang({Heads: [["diff ", keyClass], ["index ", keyClass], ["--- ", keyClass], ["+++ ", keyClass], ["@@", callClass],
+    ["+", textClass], ["-", fieldClass], ["\\", commentClass]], Plain: true, Calls: false}),
+  console: lang({Prompts: true, Command: "bash", Plain: true, Calls: false})
+}
+
+(* What a book may write after the ``` of a block for a language above. *)
+aliases = {"py": "python", "python3": "python", "rb": "ruby", "javascript": "js", "mjs": "js", "cjs": "js", "node": "js", "ts": "typescript",
+  "yml": "yaml", "sh": "bash", "shell": "bash", "zsh": "bash", "ksh": "bash", "shell-session": "console", "shellsession": "console",
+  "terminal": "console", "ps1": "powershell", "pwsh": "powershell", "ps": "powershell", "c++": "cpp", "cxx": "cpp", "cc": "cpp", "hpp": "cpp",
+  "h": "c", "cs": "csharp", "c#": "csharp", "golang": "go", "jsonc": "json", "json5": "json", "htm": "html", "xhtml": "html", "svg": "html",
+  "kt": "kotlin", "kts": "kotlin", "rs": "rust", "hs": "haskell", "ex": "elixir", "exs": "elixir", "erl": "erlang", "clojure": "lisp",
+  "clj": "lisp", "cljs": "lisp", "edn": "lisp", "scheme": "lisp", "scm": "lisp", "racket": "lisp", "elisp": "lisp", "emacs-lisp": "lisp",
+  "jl": "julia", "f90": "fortran", "f95": "fortran", "f03": "fortran", "pl": "perl", "docker": "dockerfile", "containerfile": "dockerfile",
+  "make": "makefile", "mk": "makefile", "nginxconf": "nginx", "gql": "graphql", "proto": "protobuf", "tex": "latex", "patch": "diff",
+  "md": "markdown", "cfg": "ini", "conf": "ini", "gitconfig": "ini", "psql": "sql", "postgresql": "sql", "postgres": "sql", "plpgsql": "sql",
+  "mysql": "sql", "sqlite": "sql", "m": "matlab", "octave": "matlab", "ml": "ocaml", "mli": "ocaml", "lisp": "lisp"}
+
+(* The outputs, and a block that names no language: shown as they are. *)
+plainNames = ["", "text", "output", "txt", "plain", "plaintext"]
+
+(** The generic reading, for a language the table doesn't hold: texts between double quotes, or between single quotes when
+    no letter stands right before the first, as in don't; numbers; and the comments whose marks can't be anything else, #
+    or // first on its line, /* */ when it closes. *)
+generic = lang({Line: ["#", "//"], Lead: true, Blocks: [["/*", "*/"]], Shut: true, Texts: ["\"", "'"], Ticks: true, Calls: false})
+
+defn langOf(name)
+  (** The language a block names after its ```, or missing for a block shown as it is. *)
+  key = text.Lower(name)
+  if key in plainNames
+    return missing
+  end
+  dict.GetOr(dict.GetOr(key, key, aliases), generic, languages)
+end
+
+defn spansFor(name, code, nesting)
+  (** The spans of a block in the language name, of Cesia too, at a depth of nesting inside another block; one plain span
+      for a block shown as it is, or too deep. *)
+  if text.Lower(name) == "cesia"
+    return cesiaSpans(code)
+  end
+  l = langOf(name)
+  if value.IsMissing(l) or nesting > 8
+    return [["", code]]
+  end
+  readSpans(l, code, nesting + 1)
+end
+
+defn LangSpans(name, code)
+  (** The code of a block in the language name, as [class, words] in order, all of its bytes: a class of the roles of
+      Cesia's code, or "" for plain; missing for a block shown as it is, of text or output.
+
+        LangSpans("python", "def f(x): # x\n    return 1") --> [["k", "def"], ["", " "], ["n", "f"], ["", "(x): "], ["c", "# x"], ["", "\n    "], ["k", "return"], ["", " "], ["m", "1"]] *)
+  if value.IsMissing(langOf(name)) missing else spansFor(name, code, 0) end
+end
+
 defn langInner(name, code)
   (** The HTML inside the code of a block of another language: its words in spans of their classes, or escaped alone for a
-      language that languages doesn't hold. A last newline goes, as in the block of Cesia. *)
+      block shown as it is. A last newline goes, as in the block of Cesia. *)
   trimmed = if text.EndsWith("\n", code) text.ByteSlice(1, text.ByteLength(code) - 1, code) else code end
   spans = LangSpans(name, trimmed)
   if value.IsMissing(spans)
@@ -341,9 +1455,9 @@ defn langInner(name, code)
   text.Join("", [if s[1] == "" escape(s[2]) else "<span class=$quote$(s[1])$quote>$(escape(s[2]))</span>" end for s in spans])
 end
 
-(** A block of another language as HTML, colored, or missing for one that languages doesn't hold, which the reader of
-    Markdown writes as it is. *)
-langBlock(name, code) = if dict.Has(name, languages) "<pre><code class=$(quote)language-$(escape(name))$quote>$(langInner(name, code))</code></pre>\n" else missing end
+(** A block of another language as HTML, colored, or missing for one shown as it is, which the reader of Markdown writes as
+    it is. *)
+langBlock(name, code) = if value.IsSome(langOf(name)) "<pre><code class=$(quote)language-$(escape(name))$quote>$(langInner(name, code))</code></pre>\n" else missing end
 
 defn oldSlug(s)
   (** The id a heading had before the build took GitHub's: its letters and digits in lower case, words joined by -. A page
@@ -2034,6 +3148,16 @@ defn titleOf(blocks, file)
   file
 end
 
+defn untagged(blocks, at)
+  (** Warns of each block of code of the page at whose ``` names no language: it is shown as it is, without colors, and
+      the build goes on, as it did before the site colored every language. *)
+  for b in codeBlocks(blocks)
+    if text.Trim(b.Info) == ""
+      io.PrintError("$at:$(b.Line): this block names no language, so it is shown without colors: write one after its ```, as ```text for an output, ```bash for a command or ```cesia.")
+    end
+  end
+end
+
 defn pagesOf(root, name, prefix, site)
   (** The pages of the book of docs/name, its index first, then in the order of the links of its index.md, each {File,
       Source, Path, Title, Text, Blocks, Runs, Lines, Broken, Book, Index, Files}: Path is prefix and the page. Mistakes go
@@ -2060,6 +3184,7 @@ defn pagesOf(root, name, prefix, site)
   for f in files
     source = sys.Read("$dir/$f").Value
     blocks = markdown.Parse(source)
+    untagged(blocks, "$at/$f")
     runs = []
     broken = false
     for b in codeBlocks(blocks)
@@ -2171,6 +3296,7 @@ defn readmeOf(root, file, path, lang, english = missing)
   end
   source = sys.Read("$root/$file").Value
   blocks = markdown.Parse(source)
+  untagged(blocks, file)
   {File: file, Source: file, Path: path, Title: "README", Text: source, Blocks: blocks, Runs: [], Lines: text.Lines(source), Broken: false,
     Book: "", Index: path, Files: "", Lang: lang, Translated: true, Readme: true, KeyText: if value.IsMissing(english) source else text.Str(source, "\n", english.Text) end, En: english,
     Ids: headingIds(blocks)}
@@ -2204,6 +3330,7 @@ defn frenchOf(root, en, site)
   end
   source = sys.Read("$root/$file").Value
   blocks = markdown.Parse(source)
+  untagged(blocks, file)
   {File: en.File, Source: file, Path: path, Title: titleOf(blocks, en.File), Text: source, Blocks: blocks, Runs: runsOf(blocks), Lines: text.Lines(source),
     Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: true, Readme: false, KeyText: text.Str(source, "\n", en.Text), En: en,
     Ids: headingIds(blocks)}

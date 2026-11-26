@@ -1,0 +1,428 @@
+docs/book/index.md:646: this block names no language, so it is shown without colors: write one after its ```, as ```text for an output, ```bash for a command or ```cesia.
+built: 0
+<main id="text">
+<h1 id="colors">Colors</h1>
+<p>A block of each language the site reads, then the generic reading, an output and a block that names no language.</p>
+<p>java:</p>
+<pre><code class="language-java"><span class="c">// A record and a text block</span>
+<span class="n">@Override</span>
+<span class="k">public</span> <span class="k">static</span> <span class="k">int</span> <span class="n">count</span>(String s) { <span class="c">/* note: &quot;not a text&quot; */</span>
+    <span class="k">var</span> t = <span class="s">&quot;&quot;&quot;
+        Hello, &quot;world&quot;
+        &quot;&quot;&quot;</span>;
+    <span class="k">char</span> c = <span class="s">&#39;\n&#39;</span>;
+    <span class="k">return</span> s.<span class="f">length</span>() + <span class="m">0x1F</span> + <span class="m">1_000L</span> + <span class="m">3.5e-2</span>; <span class="c">// done</span>
+}</code></pre>
+<p>kotlin:</p>
+<pre><code class="language-kotlin"><span class="c">/* outer /* nested */ still a comment */</span>
+<span class="k">fun</span> <span class="n">greet</span>(name: String) = <span class="s">&quot;Hi ${name.uppercase()} and ${&quot;inner&quot;}&quot;</span>
+<span class="k">val</span> raw = <span class="s">&quot;&quot;&quot;C:\path\${x}&quot;&quot;&quot;</span>
+<span class="n">@JvmStatic</span> <span class="k">val</span> n = <span class="m">42</span></code></pre>
+<p>scala:</p>
+<pre><code class="language-scala"><span class="k">object</span> Main { <span class="c">// entry</span>
+  <span class="k">def</span> <span class="n">main</span>(args: Array[String]): Unit =
+    <span class="n">println</span>(<span class="s">s&quot;sum ${1 + 2} of ${args.length}&quot;</span>)
+  <span class="k">val</span> t = <span class="s">&quot;&quot;&quot;raw \n&quot;&quot;&quot;</span> <span class="c">/* c */</span>
+}</code></pre>
+<p>c:</p>
+<pre><code class="language-c"><span class="k">#include</span> <span class="s">&lt;stdio.h&gt;</span>
+<span class="k">#define</span> MAX <span class="m">10</span> <span class="c">// a macro</span>
+<span class="k">int</span> <span class="n">main</span>(<span class="k">void</span>) {
+    <span class="k">char</span> *url = <span class="s">&quot;http://x//y&quot;</span>; <span class="c">/* // inside */</span>
+    <span class="n">printf</span>(<span class="s">&quot;%d\n&quot;</span>, <span class="s">&#39;a&#39;</span> + MAX);
+    <span class="k">return</span> <span class="m">0</span>;
+}</code></pre>
+<p>cpp:</p>
+<pre><code class="language-cpp"><span class="k">#include</span> <span class="s">&lt;vector&gt;</span>
+<span class="k">template</span> &lt;<span class="k">typename</span> T&gt; T <span class="n">twice</span>(T x) { <span class="k">return</span> x * <span class="m">2</span>; }
+<span class="k">auto</span> s = <span class="s">R&quot;json({&quot;a&quot;: &quot;b\n&quot;})json&quot;</span>;
+<span class="k">int</span> big = <span class="m">1&#39;000&#39;000</span>; <span class="c">// digit separators</span>
+std::vector&lt;<span class="k">int</span>&gt; v{<span class="m">1</span>, <span class="m">2</span>};</code></pre>
+<p>csharp:</p>
+<pre><code class="language-csharp"><span class="k">#region</span> Main
+[Serializable]
+<span class="k">public</span> <span class="k">class</span> P { <span class="c">// a class</span>
+    <span class="k">string</span> path = <span class="s">@&quot;C:\dir\&quot;</span>;
+    <span class="k">string</span> msg = <span class="s">$&quot;Hi {name}, {{braces}} {x + 1}&quot;</span>;
+    <span class="k">string</span> raw = <span class="s">&quot;&quot;&quot;a &quot;quoted&quot; b&quot;&quot;&quot;</span>;
+    <span class="k">char</span> c = <span class="s">&#39;x&#39;</span>;
+}
+<span class="k">#endregion</span></code></pre>
+<p>go:</p>
+<pre><code class="language-go"><span class="k">package</span> main
+
+<span class="k">import</span> <span class="s">&quot;fmt&quot;</span>
+
+<span class="k">func</span> <span class="n">main</span>() {
+    s := <span class="s">`raw \n &quot;quoted&quot;`</span>
+    r := <span class="s">&#39;x&#39;</span>
+    fmt.<span class="f">Println</span>(<span class="s">&quot;hi // not a comment&quot;</span>, s, r, <span class="m">0x2A</span>)
+}</code></pre>
+<p>rust:</p>
+<pre><code class="language-rust"><span class="c">// Lifetimes, chars and raw texts</span>
+<span class="n">#[derive(Debug, Clone)]</span>
+<span class="k">fn</span> first&lt;&#39;a&gt;(s: &amp;&#39;a str) -&gt; char {
+    <span class="k">let</span> c = <span class="s">&#39;x&#39;</span>; <span class="k">let</span> n = <span class="s">&#39;\n&#39;</span>; <span class="k">let</span> u = <span class="s">&#39;\u{1F600}&#39;</span>;
+    <span class="k">let</span> r = <span class="s">r#&quot;a &quot;quoted&quot; \ text&quot;#</span>;
+    <span class="k">let</span> b = <span class="s">b&quot;bytes&quot;</span>; <span class="k">let</span> bc = <span class="s">b&#39;a&#39;</span>;
+    <span class="c">/* outer /* nested */ still */</span>
+    <span class="n">println!</span>(<span class="s">&quot;{} {}&quot;</span>, s, <span class="m">1_000u32</span>);
+    &#39;outer: <span class="k">loop</span> { <span class="k">break</span> &#39;outer; }
+    c
+}</code></pre>
+<p>swift:</p>
+<pre><code class="language-swift"><span class="k">import</span> Foundation
+<span class="c">/* outer /* nested */ comment */</span>
+<span class="n">@MainActor</span> <span class="k">func</span> <span class="n">hi</span>(_ n: String) -&gt; String {
+    <span class="k">let</span> raw = <span class="s">#&quot;a &quot;quoted&quot; \(n) text&quot;#</span>
+    <span class="k">return</span> <span class="s">&quot;Hello, \(n.uppercased()) \(&quot;x&quot;)&quot;</span>
+}</code></pre>
+<p>zig:</p>
+<pre><code class="language-zig"><span class="k">const</span> std = <span class="n">@import</span>(<span class="s">&quot;std&quot;</span>);
+<span class="c">// a comment</span>
+<span class="k">pub</span> <span class="k">fn</span> <span class="n">main</span>() void {
+    <span class="k">const</span> s =
+        <span class="s">\\a multiline &quot;text&quot;</span>
+        <span class="s">\\second line</span>
+    ;
+    std.<span class="f">debug</span>.<span class="f">print</span>(<span class="s">&quot;{s} {c}\n&quot;</span>, .{ s, <span class="s">&#39;z&#39;</span> });
+}</code></pre>
+<p>dart:</p>
+<pre><code class="language-dart"><span class="k">void</span> <span class="n">main</span>() {
+  <span class="k">var</span> name = <span class="s">&#39;Bob&#39;</span>; <span class="c">// a comment</span>
+  <span class="n">print</span>(<span class="s">&quot;Hi ${name.toUpperCase()} and $name&quot;</span>);
+  <span class="k">var</span> raw = <span class="s">r&#39;C:\path\$x&#39;</span>;
+  <span class="k">var</span> multi = <span class="s">&quot;&quot;&quot;three
+  lines&quot;&quot;&quot;</span>;
+}</code></pre>
+<p>typescript:</p>
+<pre><code class="language-typescript"><span class="k">interface</span> User { name: <span class="k">string</span>; age?: <span class="k">number</span> }
+<span class="k">const</span> re = <span class="s">/a\/b[/]c/g</span>, half = total / <span class="m">2</span> / <span class="m">3</span>;
+<span class="k">export</span> <span class="k">function</span> <span class="n">greet</span>(u: User): <span class="k">string</span> {
+  <span class="k">return</span> <span class="s">`Hi ${u.name.trim()} ${`nested ${1}`}`</span>; <span class="c">// template</span>
+}</code></pre>
+<p>tsx:</p>
+<pre><code class="language-tsx"><span class="k">export</span> <span class="k">const</span> App = ({ items }: Props) =&gt; (
+  <span class="k">&lt;ul</span> <span class="f">className</span>=<span class="s">&quot;list&quot;</span> <span class="f">data-x</span>={items.<span class="f">length</span> &gt; <span class="m">1</span> ? <span class="s">&quot;many&quot;</span> : <span class="s">&quot;one&quot;</span>}<span class="k">&gt;</span>
+    {items.<span class="f">map</span>((i) =&gt; <span class="k">&lt;li</span> <span class="f">key</span>={i}<span class="k">&gt;</span>Don&#39;t {i} <span class="m">&amp;amp;</span> more<span class="k">&lt;/li</span><span class="k">&gt;</span>)}
+  <span class="k">&lt;/ul</span><span class="k">&gt;</span>
+);
+<span class="k">const</span> lt = a &lt; b;</code></pre>
+<p>php:</p>
+<pre><code class="language-php">&lt;?<span class="k">php</span>
+<span class="c">// a comment</span>
+<span class="c"># another</span>
+<span class="f">$name</span> = <span class="s">&quot;World&quot;</span>;
+<span class="k">echo</span> <span class="s">&quot;Hello {$name} and ${name}\n&quot;</span>; <span class="c">/* block */</span>
+<span class="f">$doc</span> = <span class="s">&lt;&lt;&lt;EOT</span>
+<span class="s">  Heredoc with $name
+  EOT;</span>
+<span class="k">function</span> <span class="n">f</span>(<span class="k">array</span> <span class="f">$xs</span>): int { <span class="k">return</span> <span class="n">count</span>(<span class="f">$xs</span>); }</code></pre>
+<p>ruby:</p>
+<pre><code class="language-ruby"><span class="c"># a comment</span>
+<span class="k">def</span> <span class="n">greet</span>(name = <span class="s">&quot;you&quot;</span>)
+  puts <span class="s">&quot;Hi #{name.upcase} #{&quot;nested&quot;}&quot;</span>
+  <span class="f">:symbol</span>; <span class="f">@ivar</span> = <span class="m">1</span>; <span class="f">$global</span> = <span class="m">2</span>
+  re = <span class="s">/a#b/i</span>
+  text = <span class="s">&lt;&lt;~EOS</span>
+<span class="s">    heredoc #{name}
+  EOS</span>
+  <span class="k">return</span> name.<span class="f">empty?</span>
+<span class="k">end</span>
+<span class="c">=begin
+block comment
+=end</span></code></pre>
+<p>perl:</p>
+<pre><code class="language-perl"><span class="c">#!/usr/bin/perl</span>
+<span class="k">use</span> strict;
+<span class="k">my</span> <span class="f">$name</span> = <span class="s">&quot;World&quot;</span>; <span class="k">my</span> <span class="f">@xs</span> = (<span class="m">1</span>, <span class="m">2</span>); <span class="k">my</span> <span class="f">%h</span> = (a =&gt; <span class="m">1</span>);
+<span class="k">print</span> <span class="s">&quot;Hello, $name\n&quot;</span> <span class="k">if</span> <span class="f">$name</span> =~ <span class="s">/W(or)ld/</span>;
+<span class="c">=pod
+Documentation
+=cut</span>
+<span class="k">sub</span> f { <span class="k">return</span> <span class="m">10</span> % <span class="m">3</span>; }</code></pre>
+<p>elixir:</p>
+<pre><code class="language-elixir"><span class="k">defmodule</span> Hi <span class="k">do</span>
+  <span class="n">@moduledoc</span> <span class="s">&quot;A module&quot;</span>
+  <span class="k">def</span> <span class="n">greet</span>(name) <span class="k">when</span> <span class="n">is_binary</span>(name) <span class="k">do</span>
+    IO.<span class="f">puts</span>(<span class="s">&quot;Hi #{String.upcase(name)}&quot;</span>) <span class="c"># comment</span>
+    {<span class="f">:ok</span>, name}
+  <span class="k">end</span>
+<span class="k">end</span></code></pre>
+<p>erlang:</p>
+<pre><code class="language-erlang">-<span class="n">module</span>(hi).
+-<span class="n">export</span>([greet/<span class="m">1</span>]).
+<span class="c">% a comment</span>
+<span class="n">greet</span>(Name) -&gt;
+    C = <span class="s">$&quot;</span>, D = <span class="s">$\n</span>,
+    io:<span class="n">format</span>(<span class="s">&quot;Hi ~s~n&quot;</span>, [Name]), <span class="s">&#39;quoted atom&#39;</span>.</code></pre>
+<p>haskell:</p>
+<pre><code class="language-haskell"><span class="c">{- outer {- nested -} still -}</span>
+<span class="k">module</span> Main <span class="k">where</span>
+<span class="k">import</span> <span class="k">qualified</span> Data.<span class="f">Map</span> <span class="k">as</span> M
+<span class="c">-- a comment</span>
+main :: IO ()
+main = <span class="k">do</span>
+  <span class="k">let</span> x&#39; = foldl&#39; (+) <span class="m">0</span> [<span class="m">1</span>, <span class="m">2</span>, <span class="m">3</span>] --&gt; not a comment
+  putStrLn (<span class="s">&quot;sum: &quot;</span> ++ show x&#39; ++ [<span class="s">&#39;a&#39;</span>])</code></pre>
+<p>clojure:</p>
+<pre><code class="language-clojure"><span class="c">; a comment</span>
+(<span class="k">ns</span> hi.core)
+(<span class="k">defn</span> greet [name]
+  (<span class="n">println</span> (<span class="n">str</span> <span class="s">&quot;Hi &quot;</span> name) <span class="s">\a</span> <span class="s">\newline</span> <span class="s">\&quot;</span>)
+  {<span class="f">:name</span> name, <span class="f">:age</span> <span class="m">42</span>})
+#_(<span class="n">ignored</span> form)</code></pre>
+<p>scheme:</p>
+<pre><code class="language-scheme"><span class="c">#| block #| nested |# comment |#</span>
+(<span class="k">define</span> (<span class="n">square</span> x) (* x x)) <span class="c">; inline</span>
+(<span class="n">display</span> <span class="s">#\a</span>)
+(<span class="n">let-values</span> ([(<span class="n">q</span> r) (<span class="n">floor/</span> <span class="m">7</span> <span class="m">2</span>)]) (<span class="n">list</span> q r))</code></pre>
+<p>julia:</p>
+<pre><code class="language-julia"><span class="c">#= block #= nested =# comment =#</span>
+<span class="k">function</span> <span class="n">f</span>(x::Vector{Float64})
+    A = [<span class="m">1</span> <span class="m">2</span>; <span class="m">3</span> <span class="m">4</span>]&#39;   <span class="c"># transpose, not a text</span>
+    c = <span class="s">&#39;a&#39;</span>
+    <span class="n">@time</span> <span class="n">println</span>(<span class="s">&quot;sum $(sum(x)) of $x&quot;</span>)
+    <span class="k">return</span> <span class="f">:done</span>
+<span class="k">end</span></code></pre>
+<p>fortran:</p>
+<pre><code class="language-fortran"><span class="k">program</span> hi
+  <span class="k">implicit</span> <span class="k">none</span>
+  <span class="k">integer</span> :: i <span class="c">! a comment</span>
+  <span class="k">real</span>(<span class="m">8</span>) :: x = <span class="m">1.5d0</span>
+  <span class="k">print</span> *, <span class="s">&#39;it&#39;&#39;s&#39;</span>, .<span class="k">true</span>.
+  <span class="k">do</span> i = <span class="m">1</span>, <span class="m">10</span>
+  <span class="k">end</span> <span class="k">do</span>
+<span class="k">end</span> <span class="k">program</span> hi</code></pre>
+<p>sql:</p>
+<pre><code class="language-sql"><span class="c">-- a comment</span>
+<span class="k">SELECT</span> u.<span class="f">name</span>, <span class="n">count</span>(*) <span class="k">AS</span> n <span class="k">FROM</span> users u
+<span class="k">WHERE</span> u.<span class="f">note</span> = <span class="s">&#39;it&#39;&#39;s&#39;</span> <span class="k">AND</span> u.<span class="f">id</span> = <span class="f">$1</span> <span class="c">/* block /* nested */ */</span>
+<span class="k">GROUP</span> <span class="k">BY</span> u.<span class="f">name</span> <span class="k">ORDER</span> <span class="k">BY</span> n <span class="k">DESC</span>;
+<span class="k">CREATE</span> <span class="k">FUNCTION</span> <span class="n">f</span>() <span class="k">RETURNS</span> <span class="k">int</span> <span class="k">AS</span> <span class="s">$$ SELECT &#39;x&#39;; $$</span> <span class="k">LANGUAGE</span> sql;
+<span class="k">create</span> <span class="k">table</span> t (id <span class="k">serial</span> <span class="k">primary</span> <span class="k">key</span>, body <span class="k">text</span> <span class="k">default</span> <span class="s">&#39;a&#39;</span>, t <span class="k">timestamptz</span>);
+<span class="k">SELECT</span> x::<span class="k">int</span>, <span class="f">:name</span> <span class="k">FROM</span> t;</code></pre>
+<p>json:</p>
+<pre><code class="language-json">{
+  <span class="f">&quot;name&quot;</span>: <span class="s">&quot;cesia&quot;</span>, <span class="f">&quot;version&quot;</span>: <span class="m">1.3</span>, <span class="f">&quot;tags&quot;</span>: [<span class="s">&quot;a&quot;</span>, <span class="s">&quot;b&quot;</span>],
+  <span class="f">&quot;ok&quot;</span>: <span class="k">true</span>, <span class="f">&quot;none&quot;</span>: <span class="k">null</span>, <span class="f">&quot;url&quot;</span>: <span class="s">&quot;http://x//y&quot;</span>,
+  <span class="f">&quot;nested&quot;</span>: {<span class="f">&quot;key&quot;</span>: <span class="s">&quot;a \&quot;quoted\&quot; value&quot;</span>} <span class="c">// jsonc comment</span>
+}</code></pre>
+<p>yaml:</p>
+<pre><code class="language-yaml"><span class="c"># a comment</span>
+<span class="f">name</span>: build
+<span class="f">on</span>: [push]
+<span class="f">anchors</span>: <span class="f">&amp;base</span>
+  <span class="f">key</span>: <span class="s">&quot;a # not a comment&quot;</span>
+  <span class="f">other</span>: <span class="s">&#39;single &#39;&#39;quoted&#39;&#39;&#39;</span>
+<span class="f">jobs</span>:
+  <span class="f">test</span>:
+    - <span class="f">run</span>: |
+<span class="s">        echo &quot;a shell line: not yaml&quot;</span>
+<span class="s">        exit 0</span>
+      <span class="f">shell</span>: bash
+<span class="f">ref</span>: <span class="f">*base</span>
+<span class="f">url</span>: http://example.com/#frag
+<span class="k">---</span></code></pre>
+<p>html:</p>
+<pre><code class="language-html"><span class="k">&lt;!DOCTYPE html&gt;</span>
+<span class="c">&lt;!-- a comment --&gt;</span>
+<span class="k">&lt;p</span> <span class="f">class</span>=<span class="s">&quot;note&quot;</span> <span class="f">data-x</span>=<span class="s">&#39;1&#39;</span><span class="k">&gt;</span>Fish <span class="m">&amp;amp;</span> chips <span class="m">&amp;lt;</span> 5 <span class="m">&amp;#233;</span><span class="k">&lt;/p</span><span class="k">&gt;</span>
+<span class="k">&lt;script</span><span class="k">&gt;</span><span class="k">const</span> x = <span class="s">&quot;&lt;/p&gt;&quot;</span>; <span class="c">// js</span>
+<span class="k">&lt;/script</span><span class="k">&gt;</span>
+<span class="k">&lt;style</span><span class="k">&gt;</span>p { <span class="f">color</span>: red; }<span class="k">&lt;/style</span><span class="k">&gt;</span></code></pre>
+<p>xml:</p>
+<pre><code class="language-xml"><span class="k">&lt;?xml version=&quot;1.0&quot;?&gt;</span>
+<span class="k">&lt;root</span> <span class="f">xmlns:a</span>=<span class="s">&quot;urn:a&quot;</span><span class="k">&gt;</span><span class="k">&lt;a:item</span> <span class="f">id</span>=<span class="s">&quot;1&quot;</span><span class="k">/&gt;</span><span class="s">&lt;![CDATA[ &lt;raw&gt; &amp; stuff ]]&gt;</span><span class="k">&lt;/root</span><span class="k">&gt;</span></code></pre>
+<p>markdown:</p>
+<pre><code class="language-markdown"><span class="k"># A title</span>
+
+Some <span class="s">`code`</span> and text with 2 numbers.
+
+<span class="c">```python</span>
+<span class="k">def</span> <span class="n">f</span>(): <span class="k">return</span> <span class="m">1</span>
+<span class="c">```</span>
+
+<span class="c">```cesia</span>
+x = <span class="m">1</span> + <span class="m">2</span> --&gt;
+<span class="c">```</span>
+<span class="c">&lt;!-- a comment --&gt;</span></code></pre>
+<p>properties:</p>
+<pre><code class="language-properties"><span class="c"># a comment</span>
+<span class="c">! another</span>
+<span class="f">server.port</span>=<span class="m">8080</span>
+<span class="f">spring.datasource.url</span>: jdbc:postgresql://localhost/db
+<span class="f">greeting</span>=Hello # not a comment</code></pre>
+<p>dockerfile:</p>
+<pre><code class="language-dockerfile"><span class="c"># syntax=docker/dockerfile:1</span>
+<span class="k">FROM</span> alpine:<span class="m">3.20</span> <span class="k">AS</span> build
+<span class="k">RUN</span> apk add --no-cache curl &amp;&amp; echo <span class="s">&quot;done # not a comment&quot;</span>
+<span class="k">ENV</span> PATH=/app/bin:<span class="f">$PATH</span>
+<span class="k">COPY</span> --from=build /app <span class="f">${DEST}</span>
+<span class="k">CMD</span> [<span class="s">&quot;./app&quot;</span>, <span class="s">&quot;--port&quot;</span>, <span class="s">&quot;8080&quot;</span>]</code></pre>
+<p>makefile:</p>
+<pre><code class="language-makefile"><span class="c"># a comment</span>
+<span class="f">CC</span> := gcc
+<span class="f">CFLAGS</span> ?= -O2
+<span class="f">all</span>: main.o util.o
+    <span class="f">$(CC)</span> <span class="f">$(CFLAGS)</span> -o app <span class="f">$^</span> <span class="c"># recipe</span>
+<span class="f">.PHONY</span>: clean
+<span class="f">clean</span>:
+    rm -f *.o</code></pre>
+<p>cmake:</p>
+<pre><code class="language-cmake"><span class="n">cmake_minimum_required</span>(<span class="k">VERSION</span> <span class="m">3.20</span>)
+<span class="n">project</span>(Hi LANGUAGES C)
+<span class="c">#[[ a block
+comment ]]</span>
+<span class="n">add_executable</span>(hi main.c) <span class="c"># inline</span>
+<span class="k">if</span>(<span class="k">NOT</span> <span class="k">DEFINED</span> X)
+  <span class="n">set</span>(X <span class="s">&quot;${CMAKE_SOURCE_DIR}/x&quot;</span>)
+<span class="k">endif</span>()</code></pre>
+<p>nginx:</p>
+<pre><code class="language-nginx"><span class="k">server</span> {
+    <span class="k">listen</span> <span class="m">80</span>;  <span class="c"># a comment</span>
+    <span class="k">server_name</span> example.com;
+    <span class="k">location</span> / {
+        <span class="k">proxy_pass</span> http://<span class="m">127.0.0.1</span>:<span class="m">8080</span>;
+        <span class="k">proxy_set_header</span> Host <span class="f">$host</span>;
+    }
+}</code></pre>
+<p>http:</p>
+<pre><code class="language-http"><span class="k">POST</span> /api/users <span class="k">HTTP</span>/<span class="m">1.1</span>
+<span class="f">Host</span>: example.com
+<span class="f">Content-Type</span>: application/json
+
+{<span class="f">&quot;name&quot;</span>: <span class="s">&quot;Ana&quot;</span>, <span class="f">&quot;age&quot;</span>: <span class="m">31</span>}</code></pre>
+<p>graphql:</p>
+<pre><code class="language-graphql"><span class="c"># a comment</span>
+<span class="k">query</span> <span class="n">User</span>(<span class="f">$id</span>: ID!) {
+  <span class="n">user</span>(<span class="f">id</span>: <span class="f">$id</span>) <span class="n">@include</span>(<span class="f">if</span>: <span class="k">true</span>) {
+    name
+    <span class="n">friends</span>(<span class="f">first</span>: <span class="m">10</span>) { name }
+  }
+}</code></pre>
+<p>protobuf:</p>
+<pre><code class="language-protobuf"><span class="k">syntax</span> = <span class="s">&quot;proto3&quot;</span>;
+<span class="k">package</span> hi;
+<span class="c">// a comment</span>
+<span class="k">message</span> User {
+  <span class="k">string</span> name = <span class="m">1</span>;
+  <span class="k">repeated</span> <span class="k">int32</span> ids = <span class="m">2</span> [packed = <span class="k">true</span>];
+}</code></pre>
+<p>nix:</p>
+<pre><code class="language-nix">{ pkgs ? <span class="k">import</span> &lt;nixpkgs&gt; {} }:
+<span class="c"># a comment</span>
+<span class="k">let</span>
+  <span class="f">name</span> = <span class="s">&quot;hi-${pkgs.lib.version}&quot;</span>;
+  <span class="f">script</span> = <span class="s">&#39;&#39;
+    echo &quot;in ${name}&quot;
+  &#39;&#39;</span>;
+<span class="k">in</span> pkgs.<span class="f">mkShell</span> { buildInputs = [ pkgs.<span class="f">hello</span> ]; }</code></pre>
+<p>latex:</p>
+<pre><code class="language-latex"><span class="k">\documentclass</span>{article}
+<span class="c">% a comment</span>
+<span class="k">\begin</span>{document}
+Price: 50<span class="k">\%</span> off, <span class="s">$x^2 + y^2$</span> and
+<span class="s">$$\frac{1}{2}$$</span>
+<span class="k">\end</span>{document}</code></pre>
+<p>diff:</p>
+<pre><code class="language-diff"><span class="k">diff --git a/x.ce b/x.ce</span>
+<span class="k">index 1a2b3c4..5d6e7f8 100644</span>
+<span class="k">--- a/x.ce</span>
+<span class="k">+++ b/x.ce</span>
+<span class="n">@@ -1,3 +1,3 @@</span>
+ x = 1
+<span class="f">-y = 2</span>
+<span class="s">+y = 3</span>
+<span class="c">\ No newline at end of file</span></code></pre>
+<p>console:</p>
+<pre><code class="language-console"><span class="c">$ </span>cesia run hello.ce
+Hello, world!
+<span class="c">ana@box:~/shop$ </span>curl -s https://x.com/#a | jq <span class="s">&#39;.name&#39;</span> <span class="c"># a comment</span>
+&quot;shop&quot;
+<span class="c">$ </span>echo <span class="s">&quot;a long \
+&gt;   line&quot;</span>
+total 42</code></pre>
+<p>bash:</p>
+<pre><code class="language-bash"><span class="c">#!/bin/sh</span>
+<span class="c"># a comment</span>
+url=https://x.com/#not-a-comment
+echo <span class="s">&quot;Hi $USER, today is $(date +%A) and ${HOME}&quot;</span> <span class="c"># yes</span>
+cat &gt; notes.txt <span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<span class="s">Text with $no expansion # and no comment
+EOF</span>
+<span class="k">for</span> f <span class="k">in</span> *.ce; <span class="k">do</span> echo <span class="s">&quot;$f&quot;</span>; <span class="k">done</span></code></pre>
+<p>lua:</p>
+<pre><code class="language-lua"><span class="c">-- a comment</span>
+<span class="c">--[==[ a long
+comment ]==]</span>
+<span class="k">local</span> s = <span class="s">[[a long
+text]]</span> .. <span class="s">&quot;x&quot;</span>
+<span class="n">print</span>(string.<span class="f">format</span>(<span class="s">&quot;%d&quot;</span>, <span class="m">10</span>))</code></pre>
+<p>ocaml:</p>
+<pre><code class="language-ocaml"><span class="c">(* outer (* nested *) comment *)</span>
+<span class="k">let</span> <span class="k">rec</span> map f = <span class="k">function</span> [] -&gt; [] | x :: xs -&gt; f x :: map f xs
+<span class="k">type</span> &#39;a tree = Leaf | Node <span class="k">of</span> &#39;a tree * &#39;a * &#39;a tree
+<span class="k">let</span> c = <span class="s">&#39;x&#39;</span> <span class="k">and</span> n = <span class="s">&#39;\n&#39;</span> <span class="k">and</span> x&#39; = <span class="m">1</span></code></pre>
+<p>css:</p>
+<pre><code class="language-css"><span class="c">/* a comment */</span>
+<span class="n">@media</span> (max-width: <span class="m">600px</span>) {
+  a:hover { <span class="f">font-size</span>: <span class="m">1.5em</span>; <span class="f">color</span>: #fff; }
+  .note::before { <span class="f">content</span>: <span class="s">&quot;a: b&quot;</span>; --<span class="f">main-color</span>: red; }
+}</code></pre>
+<p>powershell:</p>
+<pre><code class="language-powershell"><span class="c"># a comment</span>
+<span class="c">&lt;# a block #&gt;</span>
+<span class="f">$name</span> = <span class="s">&quot;World&quot;</span>
+Write-Host <span class="s">&quot;Hello $name, $($name.Length)&quot;</span>
+<span class="f">$doc</span> = <span class="s">@&quot;
+here string $name
+&quot;@</span></code></pre>
+<p>r:</p>
+<pre><code class="language-r"><span class="c"># a comment</span>
+x &lt;- <span class="n">c</span>(<span class="m">1</span>, <span class="m">2</span>, <span class="m">3.5e2</span>)
+f &lt;- <span class="k">function</span>(n) <span class="n">paste0</span>(<span class="s">&quot;n = &quot;</span>, n, <span class="s">&#39;!&#39;</span>)
+<span class="k">if</span> (<span class="k">TRUE</span>) <span class="n">print</span>(<span class="n">f</span>(x[<span class="m">1</span>]))</code></pre>
+<p>matlab:</p>
+<pre><code class="language-matlab"><span class="c">% a comment</span>
+A = [<span class="m">1</span> <span class="m">2</span>; <span class="m">3</span> <span class="m">4</span>]&#39;;
+s = <span class="s">&#39;it&#39;&#39;s&#39;</span>;
+<span class="n">disp</span>(<span class="n">sprintf</span>(<span class="s">&quot;%d&quot;</span>, <span class="n">A</span>(<span class="m">1</span>)))</code></pre>
+<p>toml:</p>
+<pre><code class="language-toml"><span class="c"># a comment</span>
+<span class="k">[project]</span>
+<span class="f">name</span> = <span class="s">&quot;shop&quot;</span>
+<span class="f">&quot;quoted key&quot;</span> = <span class="m">1</span>
+<span class="k">[[peer]]</span>
+<span class="f">path</span> = <span class="s">&#39;C:\raw&#39;</span>
+<span class="f">when</span> = <span class="m">1979</span>-<span class="m">05</span>-<span class="m">27T07</span>:<span class="m">32</span>:<span class="m">00Z</span></code></pre>
+<p>ini:</p>
+<pre><code class="language-ini"><span class="c">; a comment</span>
+<span class="k">[section]</span>
+<span class="f">key</span>=value <span class="c">; inline</span>
+<span class="f">path</span>: /usr/bin</code></pre>
+<p>python:</p>
+<pre><code class="language-python"><span class="n">@app.route</span>(<span class="s">&quot;/x&quot;</span>)
+<span class="k">def</span> <span class="n">f</span>(x, y=<span class="s">&quot;a # b&quot;</span>):  <span class="c"># a comment</span>
+    <span class="k">return</span> <span class="s">f&quot;{d[&quot;k&quot;]:&gt;3} {{x}}&quot;</span> + <span class="s">r&quot;\d&quot;</span> + <span class="s">b&quot;\x00&quot;</span> + <span class="s">&quot;&quot;&quot;doc &quot;string&quot; &quot;&quot;&quot;</span></code></pre>
+<p>brainfudge:</p>
+<pre><code class="language-brainfudge"><span class="c"># a comment line</span>
+x = <span class="s">&quot;a text&quot;</span> + <span class="s">&#39;b&#39;</span> // not here
+<span class="c">// a comment</span>
+don&#39;t stop: <span class="m">42</span> <span class="c">/* closed */</span> path/*.c</code></pre>
+<p>Aliases:</p>
+<pre><code class="language-py"><span class="n">print</span>(<span class="s">f&quot;{x!r}&quot;</span>)</code></pre>
+<pre><code class="language-yml"><span class="f">a</span>: <span class="m">1</span></code></pre>
+<pre><code class="language-c++"><span class="k">int</span> x = <span class="m">1</span>;</code></pre>
+<p>An output:</p>
+<pre><code class="language-text">3 passed, 0 failed
+</code></pre>
+<pre><code class="language-output">x = 1 # not a comment
+</code></pre>
+<p>No language:</p>
+<pre><code>x = 1
+</code></pre>
+<nav class="pager" aria-label="Pages"><span></span><span></span><span></span></nav>
+</main>
+58 blocks, 58 shown, every byte kept: true []
+exit 0

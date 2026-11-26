@@ -1,0 +1,42 @@
+(** For tests/site/colors.cmd: does the HTML of each block of a page hold every byte of the block, in its order, once its
+    spans are gone and its entities read back? cesia run --allow read kept.ce page.md page.html *)
+use std/io
+use std/list
+use std/markdown
+use std/sys
+use std/text
+use std/value
+
+defn unescaped(t)
+  (** The text that http.Escape escaped. *)
+  q = text.Char(34)
+  text.Replace("&amp;", "&", text.Replace("&lt;", "<", text.Replace("&gt;", ">", text.Replace("&quot;", q, text.Replace("&#39;", "'", t)))))
+end
+
+defn bare(h)
+  (** The text of some HTML, its tags gone. *)
+  out = []
+  i = 1
+  n = text.ByteLength(h)
+  while i <= n
+    k = text.ByteFind("<", i, h)
+    k = if value.IsMissing(k) n + 1 else k end
+    out = list.Append(text.ByteSlice(i, k - 1, h), out)
+    e = if k <= n text.ByteFind(">", k, h) else n end
+    i = e + 1
+  end
+  unescaped(text.Join("", out))
+end
+
+cut(t) = if text.EndsWith("\n", t) text.ByteSlice(1, text.ByteLength(t) - 1, t) else t end
+blocks = [b for b in markdown.Parse(sys.Read(sys.Args[1]).Value) if b.Kind == "code"]
+page = sys.Read(sys.Args[2]).Value
+pres = []
+k = text.ByteFind("<pre><code", 1, page)
+while value.IsSome(k)
+  e = text.ByteFind("</code></pre>", k, page)
+  pres = list.Append(text.ByteSlice(text.ByteFind(">", k + 5, page) + 1, e - 1, page), pres)
+  k = text.ByteFind("<pre><code", e, page)
+end
+bad = [blocks[i].Line for i in 1..list.Min(value.Len(blocks), value.Len(pres)) if cut(blocks[i].Text) != cut(bare(pres[i]))]
+io.Print("$(value.Len(blocks)) blocks, $(value.Len(pres)) shown, every byte kept: $(value.Len(bad) == 0 and value.Len(blocks) == value.Len(pres)) $bad")
