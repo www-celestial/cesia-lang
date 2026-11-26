@@ -1,6 +1,8 @@
-(** Statistics: the laws of probability as values, with the same four methods on each, Pdf, Cdf, Quantile and Sample,
-    as scipy's frozen laws and Julia's Distributions. The chapter Statistics of the book says what each method promises,
-    the method it follows and how close it comes to the exact values, beside R and scipy. *)
+(** Statistics: the laws of probability as values, with the same four methods on each, Pdf, Cdf, Quantile and Sample, as
+    scipy's frozen laws and Julia's Distributions. The chapter Statistics of the book says what each method promises,
+    the method it follows and how close it comes to the exact values, beside R and scipy. The laws compute with the exp,
+    log and pow of the system's C library, whose last bits differ from one system to another: the examples compare their
+    results with math.Near, within 1e-13. *)
 use std/bug
 use std/columns as col
 use std/dict
@@ -766,7 +768,7 @@ defn (d Normal) Pdf(x)
       costs nothing.
 
         Normal(0, 1).Pdf(0) --> 0.3989422804014327
-        Normal(10, 2).Pdf([10, 12]) --> [0.19947114020071635, 0.12098536225957168] *)
+        math.Near(Normal(10, 2).Pdf([10, 12]), [0.19947114020071635, 0.12098536225957168], rel = 1e-13) --> true *)
   m = field(d.Mean, "Normal", "Mean", "finite")
   s = field(d.Sd, "Normal", "Sd", "positive")
   if value.IsNumber(x)
@@ -779,10 +781,10 @@ defn (d Normal) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper, computed directly: the rational approximations of Cody (1969) for erf and
       erfc, with exp(-z^2 / 2) from z itself, so that both tails keep their digits down to about 1e-308.
 
-        Normal(0, 1).Cdf(1.96) --> 0.9750021048517796
+        math.Near(Normal(0, 1).Cdf(1.96), 0.9750021048517796, rel = 1e-13) --> true
         Normal(0, 1).Cdf(-40) --> 0.0
-        Normal(0, 1).Cdf(-37.5) --> 4.605353009581956e-308
-        Normal(0, 1).Cdf(10, upper = true) --> 7.619853024160527e-24 *)
+        math.Near(Normal(0, 1).Cdf(-37.5), 4.605353009581956e-308, rel = 1e-13) --> true
+        math.Near(Normal(0, 1).Cdf(10, upper = true), 7.619853024160527e-24, rel = 1e-13) --> true *)
   m = field(d.Mean, "Normal", "Mean", "finite")
   s = field(d.Sd, "Normal", "Sd", "positive")
   up = if upper 1.0 else 0.0 end
@@ -797,7 +799,7 @@ defn (d Normal) Quantile(p, upper = false)
   (** The x where P(X <= x) = p, or P(X > x) = p with upper: PPND16 of Wichura (1988), exact to the double; NaN for a p
       outside [0, 1].
 
-        Normal(0, 1).Quantile(0.975) --> 1.9599639845400536
+        math.Near(Normal(0, 1).Quantile(0.975), 1.9599639845400536, rel = 1e-13) --> true
         Normal(0, 1).Quantile(1e-300) --> -37.0470962993612
         Normal(100, 15).Quantile(0.5) --> 100.0 *)
   m = field(d.Mean, "Normal", "Mean", "finite")
@@ -913,8 +915,8 @@ end
 defn (d StudentT) Pdf(x)
   (** The density at x.
 
-        StudentT(1).Pdf(0) --> 0.3183098861837906
-        StudentT(5).Pdf(2) --> 0.06509031032621647 *)
+        math.Near(StudentT(1).Pdf(0), 0.3183098861837906, rel = 1e-13) --> true
+        math.Near(StudentT(5).Pdf(2), 0.06509031032621647, rel = 1e-13) --> true *)
   nu = field(d.Df, "StudentT", "Df", "positive or infinite")
   lb = if nu == 1.0 / 0.0 0.0 else special.LogBeta(0.5 * nu, 0.5) end
   if value.IsNumber(x)
@@ -928,7 +930,7 @@ defn (d StudentT) Cdf(x, upper = false)
       x = Df / (Df + t^2).
 
         StudentT(10).Cdf(2.228138851986274) --> 0.975
-        StudentT(3).Cdf(-50) --> 8.808576020635974e-6 *)
+        math.Near(StudentT(3).Cdf(-50), 8.808576020635974e-6, rel = 1e-13) --> true *)
   nu = field(d.Df, "StudentT", "Df", "positive or infinite")
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(x)
@@ -941,8 +943,8 @@ defn (d StudentT) Quantile(p, upper = false)
   (** The t where P(T <= t) = p, or P(T > t) = p with upper: closed forms for Df 1 and 2, else from the quantile of the
       beta law of the tail, t^2 = Df (1 - x) / x, both computed so that each keeps its digits.
 
-        StudentT(10).Quantile(0.975) --> 2.2281388519862744
-        StudentT(1).Quantile(0.75) --> 1.0000000000000002 *)
+        math.Near(StudentT(10).Quantile(0.975), 2.2281388519862744, rel = 1e-13) --> true
+        math.Near(StudentT(1).Quantile(0.75), 1.0, rel = 1e-13) --> true *)
   nu = field(d.Df, "StudentT", "Df", "positive or infinite")
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(p)
@@ -969,7 +971,7 @@ end
 defn (d ChiSquared) Pdf(x)
   (** The density at x, the gamma density of shape Df / 2 and rate 1/2.
 
-        ChiSquared(2).Pdf(2) --> 0.18393972058572117 *)
+        math.Near(ChiSquared(2).Pdf(2), 0.18393972058572117, rel = 1e-13) --> true *)
   k = field(d.Df, "ChiSquared", "Df", "positive")
   a = 0.5 * k
   ga = special.Gamma(a)
@@ -982,8 +984,8 @@ end
 defn (d ChiSquared) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio P(Df / 2, x / 2).
 
-        ChiSquared(1).Cdf(3.841458820694124) --> 0.95
-        ChiSquared(10).Cdf(100, upper = true) --> 5.449701982920529e-17 *)
+        math.Near(ChiSquared(1).Cdf(3.841458820694124), 0.95, rel = 1e-13) --> true
+        math.Near(ChiSquared(10).Cdf(100, upper = true), 5.449701982920529e-17, rel = 1e-13) --> true *)
   k = field(d.Df, "ChiSquared", "Df", "positive")
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(x)
@@ -996,8 +998,8 @@ end
 defn (d ChiSquared) Quantile(p, upper = false)
   (** The x where P(X <= x) = p, or P(X > x) = p with upper: twice the quantile of the gamma law of shape Df / 2.
 
-        ChiSquared(1).Quantile(0.95) --> 3.841458820694126
-        ChiSquared(10).Quantile(0.05, upper = true) --> 18.307038053275146 *)
+        math.Near(ChiSquared(1).Quantile(0.95), 3.841458820694126, rel = 1e-13) --> true
+        math.Near(ChiSquared(10).Quantile(0.05, upper = true), 18.307038053275146, rel = 1e-13) --> true *)
   k = field(d.Df, "ChiSquared", "Df", "positive")
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(p)
@@ -1054,7 +1056,7 @@ end
 defn (d FisherF) Pdf(x)
   (** The density at x: u^(Df1 / 2) (1 - u)^(Df2 / 2) / (x B(Df1 / 2, Df2 / 2)), u = Df1 x / (Df1 x + Df2).
 
-        FisherF(5, 10).Pdf(1) --> 0.49547978348663846 *)
+        math.Near(FisherF(5, 10).Pdf(1), 0.49547978348663846, rel = 1e-13) --> true *)
   d1 = field(d.Df1, "FisherF", "Df1", "positive")
   d2 = field(d.Df2, "FisherF", "Df2", "positive")
   lb = special.LogBeta(0.5 * d1, 0.5 * d2)
@@ -1067,8 +1069,8 @@ end
 defn (d FisherF) Cdf(x, upper = false)
   (** P(F <= x), or P(F > x) with upper: the incomplete beta ratio I_u(Df1 / 2, Df2 / 2), u = Df1 x / (Df1 x + Df2).
 
-        FisherF(5, 10).Cdf(3.325834530413011) --> 0.95
-        FisherF(2, 20).Cdf(30, upper = true) --> 9.536743164062494e-7 *)
+        math.Near(FisherF(5, 10).Cdf(3.325834530413011), 0.95, rel = 1e-13) --> true
+        math.Near(FisherF(2, 20).Cdf(30, upper = true), 9.536743164062494e-7, rel = 1e-13) --> true *)
   d1 = field(d.Df1, "FisherF", "Df1", "positive")
   d2 = field(d.Df2, "FisherF", "Df2", "positive")
   up = if upper 1.0 else 0.0 end
@@ -1082,7 +1084,7 @@ defn (d FisherF) Quantile(p, upper = false)
   (** The x where P(F <= x) = p, or P(F > x) = p with upper: (Df2 / Df1) u / (1 - u), u the quantile of the beta law of
       Df1 / 2 and Df2 / 2.
 
-        FisherF(5, 10).Quantile(0.95) --> 3.3258345304130104 *)
+        math.Near(FisherF(5, 10).Quantile(0.95), 3.3258345304130104, rel = 1e-13) --> true *)
   d1 = field(d.Df1, "FisherF", "Df1", "positive")
   d2 = field(d.Df2, "FisherF", "Df2", "positive")
   up = if upper 1.0 else 0.0 end
@@ -1179,7 +1181,7 @@ end
 defn (d Exponential) Cdf(x, upper = false)
   (** 1 - exp(-Rate x), computed as -expm1(-Rate x) so that a small x keeps its digits, or exp(-Rate x) with upper.
 
-        Exponential(1).Cdf(1e-10) --> 9.999999999500001e-11
+        math.Near(Exponential(1).Cdf(1e-10), 9.999999999500001e-11, rel = 1e-13) --> true
         Exponential(1).Cdf(800, upper = true) --> 0.0 *)
   r = field(d.Rate, "Exponential", "Rate", "positive")
   if value.IsNumber(x)
@@ -1191,7 +1193,7 @@ end
 defn (d Exponential) Quantile(p, upper = false)
   (** -log(1 - p) / Rate, computed as -log1p(-p) / Rate, or -log(p) / Rate with upper.
 
-        Exponential(1).Quantile(0.5) --> 0.6931471805599453 *)
+        math.Near(Exponential(1).Quantile(0.5), 0.6931471805599453, rel = 1e-13) --> true *)
   r = field(d.Rate, "Exponential", "Rate", "positive")
   if value.IsNumber(p)
     return expQuantileAt(1.0 * p, r, if upper 1.0 else 0.0 end)
@@ -1229,7 +1231,7 @@ end
 defn (d Gamma) Pdf(x)
   (** The density at x: Rate (Rate x)^(Shape - 1) exp(-Rate x) / Gamma(Shape).
 
-        Gamma(2, 1).Pdf(1) --> 0.36787944117144233 *)
+        math.Near(Gamma(2, 1).Pdf(1), 0.36787944117144233, rel = 1e-13) --> true *)
   a = field(d.Shape, "Gamma", "Shape", "positive")
   r = field(d.Rate, "Gamma", "Rate", "positive")
   ga = special.Gamma(a)
@@ -1242,7 +1244,7 @@ end
 defn (d Gamma) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio P(Shape, Rate x).
 
-        Gamma(2, 1).Cdf(1) --> 0.2642411176571153 *)
+        math.Near(Gamma(2, 1).Cdf(1), 0.2642411176571153, rel = 1e-13) --> true *)
   a = field(d.Shape, "Gamma", "Shape", "positive")
   r = field(d.Rate, "Gamma", "Rate", "positive")
   up = if upper 1.0 else 0.0 end
@@ -1256,7 +1258,7 @@ end
 defn (d Gamma) Quantile(p, upper = false)
   (** The x where P(X <= x) = p, or P(X > x) = p with upper.
 
-        Gamma(2, 1).Quantile(0.2642411176571153) --> 1.0 *)
+        math.Near(Gamma(2, 1).Quantile(0.2642411176571153), 1.0, rel = 1e-13) --> true *)
   a = field(d.Shape, "Gamma", "Shape", "positive")
   r = field(d.Rate, "Gamma", "Rate", "positive")
   up = if upper 1.0 else 0.0 end
@@ -1291,7 +1293,7 @@ end
 defn (d Beta) Pdf(x)
   (** The density at x: x^(A - 1) (1 - x)^(B - 1) / B(A, B) on [0, 1].
 
-        Beta(2, 3).Pdf(0.5) --> 1.5000000000000004 *)
+        math.Near(Beta(2, 3).Pdf(0.5), 1.5, rel = 1e-13) --> true *)
   a = field(d.A, "Beta", "A", "positive")
   b = field(d.B, "Beta", "B", "positive")
   lb = special.LogBeta(a, b)
@@ -1304,7 +1306,7 @@ end
 defn (d Beta) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper: the incomplete beta ratio I_x(A, B).
 
-        Beta(2, 3).Cdf(0.5) --> 0.6875 *)
+        math.Near(Beta(2, 3).Cdf(0.5), 0.6875, rel = 1e-13) --> true *)
   a = field(d.A, "Beta", "A", "positive")
   b = field(d.B, "Beta", "B", "positive")
   up = if upper 1.0 else 0.0 end
@@ -1449,8 +1451,8 @@ end
 defn (d Binomial) Pdf(x)
   (** P(X = x): 0 for an x that isn't a whole number in 0..N.
 
-        Binomial(10, 0.5).Pdf(5) --> 0.24609375000000008
-        Binomial(1000000, 0.5).Pdf(500000) --> 0.0007978843613317501 *)
+        math.Near(Binomial(10, 0.5).Pdf(5), 0.24609375, rel = 1e-13) --> true
+        math.Near(Binomial(1000000, 0.5).Pdf(500000), 0.0007978843613317501, rel = 1e-13) --> true *)
   n = field(d.N, "Binomial", "N", "count")
   p = field(d.P, "Binomial", "P", "probability")
   f = v -> if v != v v else binomialMass(v, n, p) end
@@ -1463,8 +1465,8 @@ end
 defn (d Binomial) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper: the incomplete beta ratio, 1 - I_P(floor(x) + 1, N - floor(x)).
 
-        Binomial(10, 0.5).Cdf(5) --> 0.6230468749999996
-        Binomial(100, 0.3).Cdf(50, upper = true) --> 9.034686195720671e-6 *)
+        math.Near(Binomial(10, 0.5).Cdf(5), 0.623046875, rel = 1e-13) --> true
+        math.Near(Binomial(100, 0.3).Cdf(50, upper = true), 9.034686195720671e-6, rel = 1e-13) --> true *)
   n = field(d.N, "Binomial", "N", "count")
   p = field(d.P, "Binomial", "P", "probability")
   up = if upper 1.0 else 0.0 end
@@ -1541,7 +1543,7 @@ end
 defn (d Poisson) Pdf(x)
   (** P(X = x): 0 for an x that isn't a whole number of 0 or more.
 
-        Poisson(3).Pdf(2) --> 0.22404180765538775 *)
+        math.Near(Poisson(3).Pdf(2), 0.22404180765538775, rel = 1e-13) --> true *)
   lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
   f = v -> if v != v v else poissonMass(v, lam) end
   if value.IsNumber(x)
@@ -1553,7 +1555,7 @@ end
 defn (d Poisson) Cdf(x, upper = false)
   (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio Q(floor(x) + 1, Lambda).
 
-        Poisson(3).Cdf(2) --> 0.42319008112684353 *)
+        math.Near(Poisson(3).Cdf(2), 0.42319008112684353, rel = 1e-13) --> true *)
   lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(x)

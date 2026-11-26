@@ -1,7 +1,9 @@
 (** Integrals: Integral, the integral of a function of one number from a to b, as integral in MATLAB and quad in scipy,
     by the adaptive methods of QUADPACK (Piessens, de Doncker-Kapenga, Überhuber and Kahaner 1983): QAGS on a finite
     interval, QAGP when points names where f jumps or is singular, QAGI when a bound is infinite. The chapter Numerical
-    methods of the book says what it promises, and where each part comes from. *)
+    methods of the book says what it promises, and where each part comes from. An integrand that calls the C library, as
+    math.Exp does, has other last bits from one system to another, and so has its integral: the examples compare such a
+    result with math.Near, within 1e-13. *)
 use std/bug
 use std/list
 use std/math
@@ -31,7 +33,7 @@ defn Integral(f, a, b, rtol = 1.0e-10, atol = 1.0e-12, points = [], limit = 1000
 
         Integral(x -> x * x, 0.0, 3.0).Value --> {Value: 9.000000000000002, Error: 9.992007221626411e-14, Evaluations: 21, Intervals: 1}
         Integral(x -> 1.0 / math.Sqrt(x), 0.0, 1.0).Value.Value --> 1.9999999999999984
-        Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf).Value.Value --> 1.772453850905516
+        math.Near(Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf).Value.Value, 1.772453850905516, rel = 1e-13) --> true
         Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [0.3]).Value.Intervals --> 2
         Integral(x -> 1.0 / x, 0.0, 1.0, limit = 20).Error.Message --> "quad.Integral: the error estimate 9.350560373140297 is above the tolerance 2.0882425258589698e-9 after 20 pieces, the limit; raise limit, or give in points the places where f jumps or is singular." *)
   if not value.IsFunction(f)

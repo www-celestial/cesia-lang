@@ -152,7 +152,10 @@ isWampler2() = digits(wampler2(), 1e-7) >= 12.0
 isWampler3() = digits(wampler3(), 1e-7) >= 9.0
 isWampler4() = digits(wampler4(), 1e-7) >= 7.5
 isWampler5() = digits(wampler5(), 1e-7) >= 5.5
-isFilip() = digits(filip(), 1e-10) >= 7.0
+(* Filip's powers of x come from the C library's pow, whose last bit differs from one system to another, and its
+   condition, near 1e15, makes one ulp of them a quarter of a digit: 7.16 with glibc 2.44, 6.93 and 7.37 when pow is one
+   ulp above or below. *)
+isFilip() = digits(filip(), 1e-10) >= 6.5
 defn isFilipDropsAColumn()
   (** With R's tolerance, Filip's x^10 is a combination of the columns before it, as in R: its estimate is missing. *)
   f = filip()

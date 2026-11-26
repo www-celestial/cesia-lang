@@ -42,18 +42,14 @@ let[@inline] prepare stiff n b o e eo r =
     for i = 0 to n - 1 do
       let y = get b (o + 2 + i) and k1 = get b (o + 2 + n + i) and k7 = get e (eo + n + i) in
       let r2 = get e (eo + i) -. y in
-      let r3 = (h *. k1) -. r2 in
+      let hk1 = h *. k1 in let r3 = hk1 -. r2 in
       set r i y;
       set r (n + i) r2;
       set r ((2 * n) + i) r3;
-      set r ((3 * n) + i) (r2 -. (h *. k7) -. r3);
-      set r ((4 * n) + i)
-        ((hd1 *. k1)
-         +. (hd3 *. get b (o + 2 + (2 * n) + i))
-         +. (hd4 *. get b (o + 2 + (3 * n) + i))
-         +. (hd5 *. get b (o + 2 + (4 * n) + i))
-         +. (hd6 *. get b (o + 2 + (5 * n) + i))
-         +. (hd7 *. k7))
+      let hk7 = h *. k7 in set r ((3 * n) + i) (r2 -. hk7 -. r3);
+      let p1 = hd1 *. k1 and p3 = hd3 *. get b (o + 2 + (2 * n) + i) and p4 = hd4 *. get b (o + 2 + (3 * n) + i) in
+      let p5 = hd5 *. get b (o + 2 + (4 * n) + i) and p6 = hd6 *. get b (o + 2 + (5 * n) + i) and p7 = hd7 *. k7 in
+      set r ((4 * n) + i) (p1 +. p3 +. p4 +. p5 +. p6 +. p7)
     done
   end
 
@@ -62,15 +58,15 @@ let[@inline] fill stiff n r th out at stride =
   let w = 1. -. th in
   if stiff then
     for i = 0 to n - 1 do
-      let q = get r ((3 * n) + i) +. (th *. get r ((4 * n) + i)) in
-      let q = get r ((2 * n) + i) +. (th *. q) in
-      set out (at + (i * stride)) ((w *. get r i) +. (th *. (get r (n + i) +. (w *. q))))
+      let p = th *. get r ((4 * n) + i) in let q = get r ((3 * n) + i) +. p in
+      let p = th *. q in let q = get r ((2 * n) + i) +. p in
+      let wq = w *. q in let s = th *. (get r (n + i) +. wq) and wr = w *. get r i in set out (at + (i * stride)) (wr +. s)
     done
   else
     for i = 0 to n - 1 do
-      set out (at + (i * stride))
-        (get r i
-         +. (th *. (get r (n + i) +. (w *. (get r ((2 * n) + i) +. (th *. (get r ((3 * n) + i) +. (w *. get r ((4 * n) + i)))))))))
+      let p = w *. get r ((4 * n) + i) in let p = th *. (get r ((3 * n) + i) +. p) in
+      let p = w *. (get r ((2 * n) + i) +. p) in let p = th *. (get r (n + i) +. p) in
+      set out (at + (i * stride)) (get r i +. p)
     done
 
 let fail ctx = Runtime.fail ctx Type Messages.ode_bad

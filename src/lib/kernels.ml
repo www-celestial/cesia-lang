@@ -146,14 +146,14 @@ let[@inline] cos_r r =
 let sind x =
   let r = Float.rem x 360. in
   let q = Float.round (r /. 90.) in
-  let r = r -. (90. *. q) in
+  let n = 90. *. q in let r = r -. n in
   let s = match int_of_float q land 3 with 0 -> sin_r r | 1 -> cos_r r | 2 -> -.sin_r r | _ -> -.cos_r r in
   if s = 0. then Float.copy_sign 0. x else s
 
 let cosd x =
   let r = Float.rem x 360. in
   let q = Float.round (r /. 90.) in
-  let r = r -. (90. *. q) in
+  let n = 90. *. q in let r = r -. n in
   (match int_of_float q land 3 with 0 -> cos_r r | 1 -> -.sin_r r | 2 -> -.cos_r r | _ -> sin_r r) +. 0.
 
 (* tan and its inverse of r in degrees, |r| <= 45, one rounding of the C library's tan of r in radians but at 30 and 45. *)
@@ -170,7 +170,7 @@ let[@inline] cot_r r =
 let tand x =
   let r = Float.rem x 360. in
   let q = Float.round (r /. 90.) in
-  let r = r -. (90. *. q) and p = int_of_float q land 3 in
+  let n = 90. *. q in let r = r -. n and p = int_of_float q land 3 in
   if p land 1 = 1 then (if r = 0. then (if p = 1 then infinity else neg_infinity) else -.cot_r r)
   else
     let t = tan_r r in
@@ -216,13 +216,13 @@ let above t h f =
 let[@inline never] settle f y =
   let s = y *. y in
   let se = Float.fma y y (-.s) and c = s *. y in
-  let d = (f -. c -. Float.fma s y (-.c) -. (se *. y)) /. (3. *. s) in
+  let fc = f -. c -. Float.fma s y (-.c) and sy = se *. y in let d = (fc -. sy) /. (3. *. s) in
   let y1 = y +. d in
   let rem = y -. y1 +. d in
   let h = (if rem > 0. then Float.succ y1 -. y1 else Float.pred y1 -. y1) *. 0.5 in
   if Float.abs (Float.abs rem -. Float.abs h) > Float.abs h *. 0x1p-30 then y1
   else if above y1 h f = (h > 0.) then y1
-  else y1 +. (2. *. h)
+  else let h2 = 2. *. h in y1 +. h2
 
 let thirds = Float.Array.of_list [ 1.; 1.2599210498948732; 1.5874010519681994 ]
 
@@ -238,15 +238,15 @@ let[@inline] cube_root x bits ex =
   let f = if k = 0 then m else if k = 1 then m *. 2. else m *. 4. in
   let inv = 1. /. f and m2 = m *. m in
   let t =
-    (0.47528789479229594 +. (m *. 0.8315701002007011) +. (m2 *. (-0.4604949010233348 +. (m *. 0.19708010287654082)))
-     +. (m2 *. m2 *. (-0.048556589709651425 +. (m *. 0.005116866908752332))))
-    *. Float.Array.get thirds k
+    let a1 = m *. 0.8315701002007011 and b1 = m *. 0.19708010287654082 and c1 = m *. 0.005116866908752332 in
+    let b2 = m2 *. (-0.4604949010233348 +. b1) and c2 = m2 *. m2 *. (-0.048556589709651425 +. c1) in
+    (0.47528789479229594 +. a1 +. b2 +. c2) *. Float.Array.get thirds k
   in
   let t = t +. 0x1.8p36 -. 0x1.8p36 in
-  let u = (f -. (t *. t *. t)) *. inv in
-  let w =
-    t *. u *. (0.3333333333333333 +. (u *. 0.2222222222222222) +. (u *. u *. (0.1728395061728395 +. (u *. 0.1440329218106996))))
-  in
+  let t3 = t *. t *. t in let u = (f -. t3) *. inv in
+  let u1 = u *. 0.2222222222222222 and u2 = u *. 0.1440329218106996 in
+  let u3 = u *. u *. (0.1728395061728395 +. u2) in
+  let w = t *. u *. (0.3333333333333333 +. u1 +. u3) in
   let y = t +. w in
   let a = Float.abs (t -. y +. w) in
   let y = if (Float.abs (a -. 0x1p-53) > 0x1p-63 && y > 1. && y < 2.) || a < 0x1p-56 then y else settle f y in
@@ -366,7 +366,7 @@ let dot x y =
       for b = lo to hi - 1 do
         let acc = ref 0. in
         for i = b * block to min n ((b + 1) * block) - 1 do
-          acc := !acc +. (Float.Array.get x i *. Float.Array.get y i)
+          let p = Float.Array.get x i *. Float.Array.get y i in acc := !acc +. p
         done;
         Float.Array.set totals b !acc
       done);
@@ -436,7 +436,7 @@ let matmul ~rows ~cols ~inner ~out x y =
             let b = Float.Array.get y ((j * inner) + k) in
             let src = k * rows in
             for i = 0 to rows - 1 do
-              Float.Array.set out (dst + i) (Float.Array.get out (dst + i) +. (Float.Array.get x (src + i) *. b))
+              let p = Float.Array.get x (src + i) *. b in Float.Array.set out (dst + i) (Float.Array.get out (dst + i) +. p)
             done
           done
         done);
