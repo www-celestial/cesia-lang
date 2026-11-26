@@ -53,8 +53,16 @@ jobs:
           grep '^source' cesia.toml
       # The binary, and the plugins it loads from its build: the JIT, and SQLite's natives.
       - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
+      # A block of the book that names no language stops it here: cesia doc --site only warns of it, so that a book that
+      # built before still builds, and Cesia's own book is held to more than that.
       - name: Site
-        run: _build/default/src/bin/main.exe doc --site _site
+        shell: bash
+        run: |
+          code=0
+          _build/default/src/bin/main.exe doc --site _site 2> site.err || code=$?
+          cat site.err >&2
+          [ "$code" -eq 0 ] || exit "$code"
+          if grep 'names no language' site.err; then exit 1; fi
       # The tabs of the book, its examples in Python, R and MATLAB, each run and checked against what its cesia block shows:
       # Python 3 with numpy, scipy, pandas and matplotlib at the versions the book was checked with, R, and GNU Octave for
       # MATLAB. Each tab runs capped and with no network, in a namespace of its own, which Ubuntu's AppArmor refuses to a
