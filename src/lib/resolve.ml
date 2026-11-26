@@ -425,7 +425,7 @@ let rec mark_tail self (f : func) (e : expr) =
     (* Named arguments, and defaults left out, too: the jump binds them as a call does ([Compile.prepare_call]), and
        the frame makes the defaults again at each turn. *)
     (match c.callee.e, self with
-     | Var { b = Cell { k; stable = true; _ }; _ }, Some me when k = me ->
+     | Var { b = Cell { m; k; stable = true }; _ }, Some (mm, me) when k = me && m = mm ->
        c.self_tail <- true;
        f.has_self_tail <- true
      | _ -> ())
@@ -614,7 +614,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
   fn.export_of <- Array.map (fun text -> cell env text) fn.var_names;
   Array.iter (fun (e : expr) ->
       match e.e with
-      | Fn_def ({ b = Cell { k; _ }; _ }, f) -> finish_tail (Some k) f
+      | Fn_def ({ b = Cell { m; k; _ }; _ }, f) -> finish_tail (Some (m, k)) f
       | _ -> ())
     (Lazy.force fn.body);
   Array.iter nested (Lazy.force fn.body);
