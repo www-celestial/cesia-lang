@@ -312,9 +312,10 @@ defn screening(sc, s, o, send, conn)
       show must not wait for it, as cepheus.Watch never does. While an action of the page runs, the changes wait, at
       most held seconds, and go with its reply in one frame: the page then never draws the action's row twice, its
       effect and the change it made. The replies wait for the first message of each show, the answer, too. A screen of
-      version 2 numbers its frames ({Seq} first) and keeps them until the page says it has them ({Got}); while its
-      connection is broken it keeps them, resume seconds and buffer bytes at most, and sends them to the connection
-      that comes back with its token, before anything new. *)
+      version 2 numbers its frames ({Seq} first) and keeps them until the page says it has them ({Got}), in a channel,
+      oldest first, so that keeping and letting go of one costs the same whatever their number; while its connection
+      is broken it keeps them, resume seconds and buffer bytes at most, and sends them to the connection that comes back
+      with its token, before anything new. *)
   made = shown(o.Screen, s)
   if result.IsErr(made)
     if sc.V2
@@ -331,19 +332,25 @@ defn screening(sc, s, o, send, conn)
   replies = []
   pending = []
   busy = 0
-  t = {Send: send, Conn: conn, Epoch: 1, Seq: 0, Kept: [], Bytes: 0, Lost: 0, Until: missing}
+  epoch = 1
+  seq = 0
+  kept = fiber.Channel()
+  keptN = 0
+  bytes = 0
+  lost = 0
+  until = missing
   if sc.V2
-    t = wrote(hello(sc, o, false), t, o)
+    _ = send(hello(sc, o, false))
   end
   chs = list.Concat([sc.Inbox], sources)
   while true
-    left = if value.IsMissing(t.Until) missing else list.Max([0, t.Until - sys.Now()]) end
+    left = if value.IsMissing(until) missing else list.Max([0, until - sys.Now()]) end
     wait = if busy > 0 held else left end
     wait = if value.IsSome(left) and value.IsSome(wait) list.Min([wait, left]) else wait end
     got = if value.IsMissing(wait) fiber.Select(chs) else fiber.Select(chs, timeout = wait) end
     out = []
     if result.IsErr(got) and got.Error.Kind == "timeout"
-      if value.IsSome(t.Until) and sys.Now() >= t.Until
+      if value.IsSome(until) and sys.Now() >= until
         ended(sc, o)
         return missing
       end
@@ -351,13 +358,13 @@ defn screening(sc, s, o, send, conn)
       pending = []
     else if result.IsErr(got)
       k = list.IndexOf(got.Error.Channel, sources)
-      failing(refused("The show $(json.Parse(names[k]).Value) ended."), t.Send, sc, t.Conn)
+      failing(refused("The show $(json.Parse(names[k]).Value) ended."), send, sc, conn)
       ended(sc, o)
       return missing
     else if got.Value.Channel == sc.Inbox
       v = got.Value.Value
       if v.Kind == "error"
-        failing(missing, t.Send, sc, t.Conn, last = v.Text)
+        failing(missing, send, sc, conn, last = v.Text)
         ended(sc, o)
         return missing
       else if v.Kind == "acting"
@@ -370,24 +377,45 @@ defn screening(sc, s, o, send, conn)
           pending = []
         end
       else if v.Kind == "pong"
-        if value.IsSome(t.Send)
-          _ = t.Send("[$(v.Text)]")
+        if value.IsSome(send)
+          _ = send("[$(v.Text)]")
         end
       else if v.Kind == "got"
-        t = confirmed(v.Seq, t)
+        n = list.Min([keptN, list.Max([0, v.Seq - (seq - keptN)])])
+        bytes -= dropped(kept, n)
+        keptN -= n
       else if v.Kind == "detach"
-        if v.Epoch == t.Epoch
+        if v.Epoch == epoch
           if not sc.Resumable
             ended(sc, o)
             return missing
           end
-          t = broken(t, o)
+          send = missing
+          conn = missing
+          until = sys.Now() + o.Resume
         end
       else if v.Kind == "attach"
-        t = taken(v, t, sc, o)
-        if value.IsMissing(t)
+        if v.Got < lost or v.Got > seq
+          fiber.Send({Ok: false}, v.Reply)
           ended(sc, o)
           return missing
+        end
+        n = list.Min([keptN, list.Max([0, v.Got - (seq - keptN)])])
+        bytes -= dropped(kept, n)
+        keptN -= n
+        if value.IsSome(conn)
+          old = conn
+          fiber.Spawn(() -> old.Close())
+        end
+        put(v.Request, sc.Request)
+        epoch += 1
+        send = v.Send
+        conn = v.Conn
+        until = missing
+        fiber.Send({Ok: true, Epoch: epoch}, v.Reply)
+        if not replayed(send, hello(sc, o, true), kept, keptN)
+          send = missing
+          until = sys.Now() + o.Resume
         end
       else if v.Kind == "bye"
         ended(sc, o)
@@ -420,94 +448,63 @@ defn screening(sc, s, o, send, conn)
           return missing
         end
       else
-        t.Seq += 1
-        t = wrote("[{\"Seq\":$(t.Seq)},$(text.Join(",", out))]", t, o)
-        t = bounded(t, o)
-        if value.IsMissing(t)
-          ended(sc, o)
-          return missing
+        seq += 1
+        frame = "[{\"Seq\":$seq},$(text.Join(",", out))]"
+        fiber.Send(frame, kept)
+        keptN += 1
+        bytes += text.ByteLength(frame)
+        if value.IsSome(send) and result.IsErr(send(frame))
+          send = missing
+          until = sys.Now() + o.Resume
+        end
+        while bytes > o.Buffer and keptN > 1
+          if value.IsMissing(send)
+            (* away, and its frames past the buffer: the page can't come back to them, the screen ends *)
+            ended(sc, o)
+            return missing
+          end
+          lost = seq - keptN + 1
+          bytes -= text.ByteLength(fiber.Receive(kept).Value)
+          keptN -= 1
         end
       end
     end
   end
 end
 
-defn wrote(frame, t, o)
-  (** A frame of a screen of version 2: kept until its page has it, when numbered, and sent while connected; a write
-      that fails is a break. *)
-  u = t
-  if text.StartsWith("[{\"Seq\":", frame)
-    u.Kept = list.Append({Seq: u.Seq, Text: frame}, u.Kept)
-    u.Bytes += text.ByteLength(frame)
+defn dropped(kept, n)
+  (** The n oldest frames kept let go, as the page has them: the bytes they held. A frame is kept as its text alone, its
+      number known from its place: the oldest is the last number sent less those kept, plus one. *)
+  out = 0
+  k = 0
+  while k < n
+    out += text.ByteLength(fiber.Receive(kept).Value)
+    k += 1
   end
-  if value.IsSome(u.Send) and result.IsErr(u.Send(frame))
-    u = broken(u, o)
-  end
-  u
+  out
 end
 
-defn confirmed(seq, t)
-  (** The frames the page says it has, up to seq, no longer kept. *)
-  u = t
-  while value.Len(u.Kept) > 0 and u.Kept[1].Seq <= seq
-    u.Bytes -= text.ByteLength(u.Kept[1].Text)
-    u.Kept = list.Skip(1, u.Kept)
+defn replayed(send, first, kept, n)
+  (** The hello of a screen that a page came back to, then the n frames it kept, which it keeps still (until the page
+      says it has them): true when all went. *)
+  frames = []
+  k = 0
+  while k < n
+    frames = list.Append(fiber.Receive(kept).Value, frames)
+    k += 1
   end
-  u
-end
-
-defn bounded(t, o)
-  (** The frames kept within buffer bytes: the oldest dropped while the page is connected (it can't come back to
-      them), the screen ended (missing) when they fill while it is away. *)
-  u = t
-  while u.Bytes > o.Buffer and value.Len(u.Kept) > 1
-    if value.IsMissing(u.Send)
-      return missing
-    end
-    u.Lost = u.Kept[1].Seq
-    u.Bytes -= text.ByteLength(u.Kept[1].Text)
-    u.Kept = list.Skip(1, u.Kept)
+  for f in frames
+    fiber.Send(f, kept)
   end
-  u
-end
-
-defn broken(t, o)
-  (** A screen whose connection broke: kept resume seconds for its page to come back to. *)
-  u = t
-  u.Send = missing
-  u.Conn = missing
-  u.Until = sys.Now() + o.Resume
-  u
-end
-
-defn taken(v, t, sc, o)
-  (** The connection of a page that came back with the screen's token: when the page has every frame it lost (its Got
-      at least the last one dropped), the screen's hello, then the frames after Got, and the screen goes on there; the
-      old connection, if still open, closed. Else missing: the page gets a new screen. *)
-  if v.Got < t.Lost or v.Got > t.Seq
-    fiber.Send({Ok: false}, v.Reply)
-    return missing
+  if result.IsErr(send(first))
+    return false
   end
-  u = confirmed(v.Got, t)
-  if value.IsSome(u.Conn)
-    old = u.Conn
-    fiber.Spawn(() -> old.Close())
-  end
-  put(v.Request, sc.Request)
-  u.Epoch += 1
-  u.Send = v.Send
-  u.Conn = v.Conn
-  u.Until = missing
-  fiber.Send({Ok: true, Epoch: u.Epoch}, v.Reply)
-  if result.IsErr(u.Send(hello(sc, o, true)))
-    return broken(u, o)
-  end
-  for f in u.Kept
-    if result.IsErr(u.Send(f.Text))
-      return broken(u, o)
+  for f in frames
+    if result.IsErr(send(f))
+      return false
     end
   end
-  u
+  true
 end
 
 defn ended(sc, o)
