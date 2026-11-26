@@ -230,14 +230,15 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
   in
   let links s site = List.iter (fun (vb, cb, cs) -> link s vb cb cs) fn.chains.(site) in
   (* A unit that calls OCaml keeps the values it needs after a call that may collect in [ra], a block of OCaml's local
-     roots on the machine stack, as CAMLlocalN makes one (caml/memory.h: next, ntables, nitems, tables): its values from
-     64 on, linked into the domain's list ([Ir.cx_roots]) for the call only, so that the collector reads and moves them;
+     roots on the machine stack, as CAMLlocalN makes one (caml/memory.h: next, ntables, nitems, tables, of which the
+     collector reads the first [ntables], 1 here): its values from 32 on, linked into the domain's list ([Ir.cx_roots])
+     for the call only, so that the collector reads and moves them;
      read back after it, and the value stack's address with them, as a collection moves the stacks while they are young.
      The constants' first fields are kept so too. *)
   let held = Hashtbl.create 8 and here = ref (0, 0) in
   let consts = if nested then used_consts fn else List.init (Array.length fn.consts) Fun.id in
   let kept () = Option.value (Hashtbl.find_opt held !here) ~default:[] in
-  let cell j = 64 + (8 * j) in
+  let cell j = 32 + (8 * j) in
   let keep s rs =
     List.iteri (fun j r -> Printf.bprintf s "  mov i64:%d(ra), r%d
 " (cell j) r) rs;
@@ -983,7 +984,7 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
               most := max !most (k + extra))
            ins)
       folded;
-    pr "  local i64:ra\n  alloca ra, %d\n  mov i64:8(ra), 1\n  add x0, ra, 64\n  mov i64:24(ra), x0\n" (cell !most)
+    pr "  local i64:ra\n  alloca ra, %d\n  mov i64:8(ra), 1\n  add x0, ra, 32\n  mov i64:24(ra), x0\n" (cell !most)
   end;
   (* Every value register holds a value from the start, as the collector may read any that a call holds. *)
   if bridged then Array.iteri (fun r k -> if k = Ir.Kval && not (is_param r) then pr "  mov r%d, 1\n" r) fn.kinds;

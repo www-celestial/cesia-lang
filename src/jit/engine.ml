@@ -185,6 +185,7 @@ let holds now v =
   match now, v with
   | Int a, Int b -> a = b
   | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
+  | (Text _ | Fun _ | Native _), _ -> now == v
   | _ -> false
 
 let of_kind v kind = match v, kind with Int _, Ir.Kint | Float _, Ir.Kfloat -> true | _ -> false

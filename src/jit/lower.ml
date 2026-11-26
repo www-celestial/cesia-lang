@@ -729,7 +729,14 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     let v = st.w.modules.(m).cells.(k) in
     if moves st.w m k then (match v with Int _ -> slot_of st m k Kint, Kint | Float _ -> slot_of st m k Kfloat, Kfloat | _ -> raise No)
     else begin
-      let c = match v with Int n -> (Ir.Int n, Ir.Kint) | Float x when Float.is_finite x -> Float x, Kfloat | _ -> raise No in
+      (* A text or a function, which nothing changes in place, as a constant of the unit too. *)
+      let c =
+        match v with
+        | Int n -> (Ir.Int n, Ir.Kint)
+        | Float x when Float.is_finite x -> Float x, Kfloat
+        | Text _ | Fun _ | Native _ -> fresh st Kval (fun r -> Value (r, const st v))
+        | _ -> raise No
+      in
       if not (List.exists (fun (m', k', _) -> m' = m && k' = k) st.dyn.cells) then st.dyn.cells <- (m, k, v) :: st.dyn.cells;
       c
     end
