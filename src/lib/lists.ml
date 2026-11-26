@@ -597,6 +597,20 @@ let unbase64 ctx (a : t array) =
   if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
   end
 
+(* The Base64 of the bytes of a text, standard alphabet, with = to a multiple of four (RFC 4648 §4), in one pass: the
+   cursor of a page of results is one at each request, which a loop of Cesia made in 24 µs. *)
+let base64 ctx (a : t array) =
+  let s = text_arg ctx "Base64" a.(0) in
+  let n = String.length s and digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" in
+  Runtime.pay_bytes ctx n;
+  Runtime.build ctx ((n / 24) + 1);
+  let out = Bytes.make ((n + 2) / 3 * 4) '=' and byte i = if i < n then Char.code s.[i] else 0 in
+  for g = 0 to ((n + 2) / 3) - 1 do
+    let w = (byte (3 * g) lsl 16) lor (byte ((3 * g) + 1) lsl 8) lor byte ((3 * g) + 2) in
+    for k = 0 to min 3 (n - (3 * g)) do Bytes.set out ((4 * g) + k) digits.[(w lsr (18 - (6 * k))) land 63] done
+  done;
+  Text (Bytes.to_string out)
+
 (* The hexadecimal text of the bytes of a text, in lower case, in one pass: the hash of a session is shown so for each
    request, and a comprehension of two digits a byte took 20 µs for 32 bytes. *)
 let hex ctx (a : t array) =
@@ -609,4 +623,4 @@ let hex ctx (a : t array) =
 
 let packages =
   [ "math", math_natives; "list", list_natives; "text", text_natives;
-    "encode", [ "unbase64", nat "unbase64" 1 1 unbase64; "hex", nat "hex" 1 1 hex ] ]
+    "encode", [ "unbase64", nat "unbase64" 1 1 unbase64; "base64", nat "base64" 1 1 base64; "hex", nat "hex" 1 1 hex ] ]

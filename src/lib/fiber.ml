@@ -417,6 +417,101 @@ let channel ctx (a : Types.t array) =
     { kind = "channel"; id = s.next_id - 1;
       task = Some (Chan { items = Queue.create (); size; receivers = []; senders = Queue.create (); closed = false }) }
 
+(* The tables: what the fibers share without a message. Every fiber runs on the main domain, and a native runs to its end
+   before another fiber does: none sees a table half written, without a lock. *)
+let table_arg ctx name (v : Types.t) =
+  match v with
+  | Handle { kind = "table"; task = Some (Cache c); _ } -> c
+  | v -> Runtime.fail ctx Type (Messages.need_table name (Value.describe v))
+
+let time_arg ctx name (v : Types.t) =
+  match v with
+  | Int i -> float_of_int i
+  | Float x when x = x -> x
+  | v -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
+
+(* Past [sweep] keys, a new one first drops those whose time passed; at [most], those due soonest too, the oldest written
+   first, down to three quarters of most with the new one. The next sweep waits for as many new keys as this one left. *)
+let make_room c =
+  if Hashtbl.length c.held >= c.sweep then begin
+    Hashtbl.filter_map_inplace (fun _ e -> if e.due > c.now then Some e else None) c.held;
+    let n = Hashtbl.length c.held and keep = max 0 ((3 * c.most / 4) - 1) in
+    if n >= c.most then begin
+      let all = Array.make n (0., 0, "") and i = ref 0 in
+      Hashtbl.iter (fun k e -> all.(!i) <- (e.due, e.written, k); incr i) c.held;
+      Array.sort (fun (d, w, _) (d', w', _) -> match Float.compare d d' with 0 -> Int.compare w w' | o -> o) all;
+      for j = 0 to n - keep - 1 do let _, _, k = all.(j) in Hashtbl.remove c.held k done
+    end;
+    c.sweep <- min c.most (max 1024 (2 * Hashtbl.length c.held))
+  end
+
+let put c key v due =
+  c.seq <- c.seq + 1;
+  match Hashtbl.find_opt c.held key with
+  | Some e -> e.kept <- v; e.due <- due; e.written <- c.seq
+  | None -> make_room c; Hashtbl.add c.held key { kept = v; due; written = c.seq }
+
+let table ctx (a : Types.t array) =
+  let most = match a.(0) with Int n when n >= 1 -> n | v -> Runtime.fail ctx Type (Messages.table_most (Value.describe v)) in
+  let s = ctx.w.sched and room = min most 1024 in
+  s.next_id <- s.next_id + 1;
+  Handle
+    { kind = "table"; id = s.next_id - 1;
+      task = Some (Cache { most; held = Hashtbl.create ~random:true room; epoch = 0; seq = 0; now = neg_infinity; sweep = room }) }
+
+let recall ctx (a : Types.t array) =
+  let key = Native.text_arg ctx "Recall" a.(0) and now = time_arg ctx "Recall" a.(1) and c = table_arg ctx "Recall" a.(2) in
+  if now > c.now then c.now <- now;
+  match Hashtbl.find_opt c.held key with
+  | Some e when e.due > now -> e.kept
+  | Some _ -> Hashtbl.remove c.held key; Missing
+  | None -> Missing
+
+let remember ctx (a : Types.t array) =
+  let key = Native.text_arg ctx "Remember" a.(0) and due = time_arg ctx "Remember" a.(2) and c = table_arg ctx "Remember" a.(3) in
+  (match if Array.length a > 4 then a.(4) else Undef with
+   | Undef | Missing -> put c key (Value.share a.(1)) due
+   | Int e -> if e = c.epoch then put c key (Value.share a.(1)) due
+   | v -> Runtime.fail ctx Type (Messages.need_number "Remember" (Value.describe v)));
+  Missing
+
+let admit_keys = Trie.names [| "Ok"; "Retry"; "Key" |]
+let rate_names = Array.map (fun n -> Trie.hash (Text n), Types.Text n) [| "Per"; "Period"; "Burst" |]
+
+(* GCRA, the generic cell rate algorithm (ITU-T I.371): a key holds the time its next request is due, which passes when it
+   comes no later than now plus (Burst - 1) * Period / Per; all of them, or none counted. *)
+let admit ctx (a : Types.t array) =
+  let items v = match v with Array l -> let l = Value.trim l in Array.init (l.rows * l.cols) (Value.elt l) | v -> Runtime.fail ctx Type (Messages.admit_rates (Value.describe v)) in
+  let keys = items a.(0) and rates = items a.(1) in
+  let now = time_arg ctx "Admit" a.(2) and c = table_arg ctx "Admit" a.(3) in
+  if Array.length rates <> Array.length keys then Runtime.fail ctx Type (Messages.admit_rates (Value.describe a.(1)));
+  if now > c.now then c.now <- now;
+  let field r k =
+    let h, name = rate_names.(k) in
+    match Trie.find r h name with
+    | Int i when i > 0 -> float_of_int i
+    | Float x when x > 0. -> x
+    | _ -> Runtime.fail ctx Type (Messages.admit_rates (Value.describe r))
+  in
+  let refused = ref (-1) and late = ref 0. in
+  let found = Array.make (Array.length keys) None and times = Array.make (Array.length keys) 0. in
+  Array.iteri (fun k key ->
+      let key = Native.text_arg ctx "Admit" key and gap = field rates.(k) 1 /. field rates.(k) 0 in
+      let e = Hashtbl.find_opt c.held key in
+      let t = match e with Some e when e.due > now -> e.due | _ -> now in
+      let tolerance = gap *. (field rates.(k) 2 -. 1.) in
+      let over = t -. now -. tolerance in
+      if !refused < 0 && over > 0. then (refused := k; late := over);
+      found.(k) <- e;
+      times.(k) <- t +. gap) keys;
+  if !refused < 0 then
+    Array.iteri (fun k key ->
+        match found.(k) with
+        | Some e -> c.seq <- c.seq + 1; e.kept <- Float times.(k); e.due <- times.(k); e.written <- c.seq
+        | None -> put c (Native.text_arg ctx "Admit" key) (Float times.(k)) times.(k)) keys;
+  Trie.record admit_keys
+    (if !refused < 0 then [| True; Int 0; Missing |] else [| False; Float (Float.ceil !late); keys.(!refused) |])
+
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
     "Wait",
@@ -427,4 +522,14 @@ let natives =
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
     "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive;
     "Close", Native.nat ~params:[| "ch" |] "Close" 1 1 close;
-    "Select", Native.nat ~result:true ~params:[| "chs"; "timeout" |] "Select" 1 2 select ]
+    "Select", Native.nat ~result:true ~params:[| "chs"; "timeout" |] "Select" 1 2 select;
+    "Table", Native.nat ~params:[| "most" |] "Table" 1 1 table;
+    "Recall", Native.nat ~params:[| "key"; "now"; "table" |] "Recall" 3 3 recall;
+    "Remember", Native.nat ~params:[| "key"; "value"; "until"; "table"; "epoch" |] "Remember" 4 5 remember;
+    "Forget", Native.nat ~params:[| "key"; "table" |] "Forget" 2 2 (fun ctx a ->
+        Hashtbl.remove (table_arg ctx "Forget" a.(1)).held (Native.text_arg ctx "Forget" a.(0)); Missing);
+    "Empty", Native.nat ~params:[| "table" |] "Empty" 1 1 (fun ctx a ->
+        let c = table_arg ctx "Empty" a.(0) in
+        Hashtbl.reset c.held; c.epoch <- c.epoch + 1; c.sweep <- min c.most 1024; Missing);
+    "Epoch", Native.nat ~params:[| "table" |] "Epoch" 1 1 (fun ctx a -> Int (table_arg ctx "Epoch" a.(0)).epoch);
+    "Admit", Native.nat ~params:[| "keys"; "rates"; "now"; "table" |] "Admit" 4 4 admit ]

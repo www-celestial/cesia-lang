@@ -210,13 +210,22 @@ publisher moves it.
 - Joe Armstrong. "A History of Erlang". *HOPL III*, ACM, 2007. <https://doi.org/10.1145/1238844.1238850>. Processes switched
   after a count of reductions, supervisors that start a failed process again, and code replaced while it runs: Cesia's
   checkpoints every million steps, the supervisor of `--workers`, and `--watch`.
+- ITU-T. Recommendation I.371, "Traffic control and congestion control in B-ISDN", 2004, annex A.
+  <https://www.itu.int/rec/T-REC-I.371>. The generic cell rate algorithm, GCRA: one due time a key, a request passing
+  no earlier than that time minus its tolerance: [fiber.Admit].
+- Scott A. Crosby, Dan S. Wallach. "Denial of Service via Algorithmic Complexity Attacks". *12th USENIX Security
+  Symposium*, 29–44, 2003. <https://www.usenix.org/legacy/event/sec03/tech/full_papers/crosby/crosby.pdf>. Keys chosen to
+  fall in one bucket of a hash table make each lookup walk them all: why [fiber.Table] hashes its keys with a random seed.
 
 ## Memory
 
 - KC Sivaramakrishnan, Stephen Dolan, Leo White, Sadiq Jaffer, Tom Kelly, Anmol Sahoo, Sudha Parimala, Atul Dhiman, Anil
   Madhavapeddy. "Retrofitting Parallelism onto OCaml". *Proceedings of the ACM on Programming Languages* 4(ICFP), article
   113, 2020. <https://doi.org/10.1145/3408995>. The garbage collector of OCaml 5, and its domains: what frees Cesia's
-  memory, and what runs the work on whole columns on several cores.
+  memory, and what runs the work on whole columns on several cores, and the slow calls of C. A domain that waits still
+  takes part in each stop of the world: why the pool of slow calls keeps one only within a burst.
+- The OCaml Manual, chapter "Parallel programming". <https://ocaml.org/manual/5.4/parallelism.html>. Domains, their cost
+  ("Domains are heavy-weight entities", no more than the cores), and the stop-the-world minor collections they share.
 
 ## The server and the network
 

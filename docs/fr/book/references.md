@@ -242,6 +242,13 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   relayés après un compte de réductions (de pas d'exécution), des supervisors qui redémarrent un processus tombé, et du
   code remplacé pendant qu'il tourne : les checkpoints de Cesia tous les millions de pas, le supervisor de `--workers`,
   et `--watch`.
+- ITU-T. Recommandation I.371, "Traffic control and congestion control in B-ISDN", 2004, annexe A.
+  <https://www.itu.int/rec/T-REC-I.371>. Le generic cell rate algorithm, GCRA : une heure d'échéance par clé, une requête
+  qui passe au plus tôt à cette heure moins sa tolérance : [fiber.Admit].
+- Scott A. Crosby, Dan S. Wallach. "Denial of Service via Algorithmic Complexity Attacks". *12th USENIX Security
+  Symposium*, 29–44, 2003. <https://www.usenix.org/legacy/event/sec03/tech/full_papers/crosby/crosby.pdf>. Des clés
+  choisies pour tomber dans une même case d'une table de hachage font parcourir toutes les autres à chaque recherche :
+  pourquoi [fiber.Table] hache ses clés avec une graine tirée au hasard.
 
 ## La mémoire
 
@@ -249,7 +256,12 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   Madhavapeddy. "Retrofitting Parallelism onto OCaml". *Proceedings of the ACM on Programming Languages* 4(ICFP), article
   113, 2020. <https://doi.org/10.1145/3408995>. Le garbage collector d'OCaml 5 (la partie qui libère la mémoire que plus
   rien n'utilise), et ses domains (des fils d'exécution qui tournent en parallèle, chacun sur son cœur) : ce qui libère la
-  mémoire de Cesia, et ce qui fait tourner sur plusieurs cœurs le travail sur des colonnes entières.
+  mémoire de Cesia, et ce qui fait tourner sur plusieurs cœurs le travail sur des colonnes entières, et les appels lents
+  de C. Un domain qui attend prend encore part à chaque stop of the world : pourquoi le pool des appels lents n'en garde
+  un que dans une rafale.
+- The OCaml Manual, chapitre "Parallel programming". <https://ocaml.org/manual/5.4/parallelism.html>. Les domains, leur
+  coût ("Domains are heavy-weight entities", pas plus que de cœurs), et les collectes du jeune tas qu'ils partagent en
+  arrêtant tout le monde.
 
 ## Le serveur et le réseau
 

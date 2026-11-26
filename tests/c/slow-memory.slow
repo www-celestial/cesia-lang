@@ -1,1 +1,1 @@
-120,000 slow C calls, each on a domain that it starts: about 30 s alone, past the change loop.
+120,000 slow C calls: a few seconds on the pool of domains (30 s with a domain a call), past the change loop.

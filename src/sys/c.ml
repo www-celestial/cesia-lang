@@ -208,7 +208,7 @@ let c_function st name address args ret =
       call address id st.slots st.texts !mask;
       return_value ctx ret (Bytes.get_int64_ne st.slots result_offset))
 
-(* The calls of a function bound with slow = true, as a password hash of 70 ms: each runs on a domain of its own, with
+(* The calls of a function bound with slow = true, as a password hash of 70 ms: each runs on a domain of the pool, with
    its runtime released, while its fiber waits and the others run, and no collection waits for it. As many run at once
    as Par.cores gives; the others wait in line, 64 at most for each of those places, and one more is refused: a burst of
    sign-ins can't take the memory of a thousand hashes at once, nor queue work that would run long after its request
@@ -248,25 +248,22 @@ let enter ctx =
 let blocks_of st (a : Types.t array) =
   Array.to_list a |> List.filter_map (function Handle { kind = "block"; id; _ } -> Hashtbl.find_opt st.blocks id | _ -> None)
 
-(* Runs a call away from the main domain, or on it when no domain can start. *)
+(* Runs a call on a domain of the pool, or on the main domain when none can start. *)
 let away ctx address id slots texts mask keep =
   enter ctx;
   let failed = ref None in
   let work () = try call_released address id slots texts mask with e -> failed := Some e in
   Fiber.suspend ctx (fun wake ->
-      let domain = ref None in
       let finish =
         ctx.w.remote (fun () ->
             ignore (Sys.opaque_identity keep);
-            Option.iter Par.join !domain;
+            Par.pace ();
             decr in_flight;
             leave ();
             wake ())
       in
       incr in_flight;
-      match Domain.spawn (fun () -> work (); finish ()) with
-      | d -> domain := Some d
-      | exception Failure _ -> work (); finish ());
+      if not (Pool.run work finish) then (work (); finish ()));
   Option.iter raise !failed
 
 let slow_function st name address args ret =
