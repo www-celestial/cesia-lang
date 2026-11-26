@@ -1,0 +1,631 @@
+(** QUIC, RFC 9000, through OpenSSL 3.5 or later: a connection over UDP that carries many streams at once, each with its
+    own order, so that a packet lost holds up only its own stream, and whose handshake is that of TLS 1.3 (RFC 9001).
+    std/http serves HTTP/3 on it beside HTTP/1.1. OpenSSL owns the UDP socket and runs the protocol, its timers and its
+    losses; one fiber drives it, and waits for a datagram or for OpenSSL's next timer, so that no fiber ever blocks the
+    others. Run with --allow ffi=ssl,ffi=crypto. OpenSSL's QUIC has no connection migration, no 0-RTT and no
+    datagrams (RFC 9221) yet: a client that changes its address starts a new connection. *)
+use std/c
+use std/fiber
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+chunk = 65536   (* The bytes of one read or one write. *)
+
+failed(message) = result.Err({Kind: "quic", Message: message})   (** An Err of the kind "quic". *)
+
+defn Open()
+  (** Loads OpenSSL's QUIC: an Ok of the api that Server and Dial take, or an Err that names what is missing. The QUIC
+      server came with OpenSSL 3.5: an older one, as the 3.0 of Ubuntu 22.04 and 24.04, gives an Err, and std/http
+      then serves HTTP/1.1 alone. Not on Windows yet. It needs OpenSSL, so it has no example here: the chapter
+      [HTTP](https://www-celestial.github.io/cesia-lang/http.html#http3) uses it. *)
+  four = loaded(4)
+  if result.IsOk(four)
+    return four
+  end
+  three = loaded(3)
+  if result.IsOk(three) three else four end
+end
+
+defn loaded(major)
+  (** The api of the OpenSSL of this major version, if it has all QUIC needs. A program may thus hold two OpenSSL, the 3
+      of std/tls and the 4 of QUIC, each with its own symbols. *)
+  ssl = c.Open("ssl", version = major) then result.MapErr(e -> {Kind: "quic", Message: e.Message})?
+  lib = c.Open("crypto", version = major) then result.MapErr(e -> {Kind: "quic", Message: e.Message})?
+  named = c.Fn("OpenSSL_version", ["i32"], "text", lib)?(0)
+  fn(name, args, ret, from) = c.Fn(name, args, ret, from) then result.MapErr(e -> {Kind: "quic", Message: "QUIC needs OpenSSL 3.6 or later, which tells a server the address of each client; this is $named: $(e.Message)"})
+  pick = fn("SSL_select_next_proto", ["ptr", "ptr", "ptr", "u32", "ptr", "u32"], "i32", ssl)?
+  api = {
+    ServerMethod: fn("OSSL_QUIC_server_method", [], "ptr", ssl)?,
+    ClientMethod: fn("OSSL_QUIC_client_method", [], "ptr", ssl)?,
+    CtxNew: fn("SSL_CTX_new", ["ptr"], "ptr", ssl)?,
+    CtxFree: fn("SSL_CTX_free", ["ptr"], "void", ssl)?,
+    CtxControl: fn("SSL_CTX_ctrl", ["ptr", "i32", "i64", "ptr"], "i64", ssl)?,
+    UseChain: fn("SSL_CTX_use_certificate_chain_file", ["ptr", "text"], "i32", ssl)?,
+    UseKey: fn("SSL_CTX_use_PrivateKey_file", ["ptr", "text", "i32"], "i32", ssl)?,
+    DefaultPaths: fn("SSL_CTX_set_default_verify_paths", ["ptr"], "i32", ssl)?,
+    LoadCa: fn("SSL_CTX_load_verify_locations", ["ptr", "text", "ptr"], "i32", ssl)?,
+    SetVerify: fn("SSL_CTX_set_verify", ["ptr", "i32", "ptr"], "void", ssl)?,
+    AlpnSelect: fn("SSL_CTX_set_alpn_select_cb", ["ptr", "callback", "ptr"], "void", ssl)?,
+    NewListener: fn("SSL_new_listener", ["ptr", "u64"], "ptr", ssl)?,
+    SslNew: fn("SSL_new", ["ptr"], "ptr", ssl)?,
+    SetFd: fn("SSL_set_fd", ["ptr", "i32"], "i32", ssl)?,
+    Blocking: fn("SSL_set_blocking_mode", ["ptr", "i32"], "i32", ssl)?,
+    SetValue: fn("SSL_set_value_uint", ["ptr", "u32", "u32", "u64"], "i32", ssl)?,
+    Listen: fn("SSL_listen", ["ptr"], "i32", ssl)?,
+    (* The only call that runs the handshake, so the only one through which OpenSSL calls back: see Server. *)
+    Tick: c.Fn("SSL_handle_events", ["ptr"], "i32", ssl, callsBack = true)?,
+    Timeout: fn("SSL_get_event_timeout", ["ptr", "ptr", "ptr"], "i32", ssl)?,
+    AcceptConnection: fn("SSL_accept_connection", ["ptr", "u64"], "ptr", ssl)?,
+    AcceptStream: fn("SSL_accept_stream", ["ptr", "u64"], "ptr", ssl)?,
+    StreamQueue: fn("SSL_get_accept_stream_queue_len", ["ptr"], "u64", ssl)?,
+    DefaultStream: fn("SSL_set_default_stream_mode", ["ptr", "u32"], "i32", ssl)?,
+    StreamPolicy: fn("SSL_set_incoming_stream_policy", ["ptr", "i32", "u64"], "i32", ssl)?,
+    NewStream: fn("SSL_new_stream", ["ptr", "u64"], "ptr", ssl)?,
+    StreamId: fn("SSL_get_stream_id", ["ptr"], "u64", ssl)?,
+    StreamType: fn("SSL_get_stream_type", ["ptr"], "i32", ssl)?,
+    ReadEx: fn("SSL_read_ex", ["ptr", "ptr", "u64", "ptr"], "i32", ssl)?,
+    WriteEx: fn("SSL_write_ex", ["ptr", "ptr", "u64", "ptr"], "i32", ssl)?,
+    Pending: fn("SSL_pending", ["ptr"], "i32", ssl)?,
+    GetError: fn("SSL_get_error", ["ptr", "i32"], "i32", ssl)?,
+    ReadState: fn("SSL_get_stream_read_state", ["ptr"], "i32", ssl)?,
+    ReadCode: fn("SSL_get_stream_read_error_code", ["ptr", "ptr"], "i32", ssl)?,
+    Conclude: fn("SSL_stream_conclude", ["ptr", "u64"], "i32", ssl)?,
+    Reset: fn("SSL_stream_reset", ["ptr", "ptr", "u64"], "i32", ssl)?,
+    ShutdownEx: fn("SSL_shutdown_ex", ["ptr", "u64", "ptr", "u64"], "i32", ssl)?,
+    CloseInfo: fn("SSL_get_conn_close_info", ["ptr", "ptr", "u64"], "i32", ssl)?,
+    SslFree: fn("SSL_free", ["ptr"], "void", ssl)?,
+    PeerAddr: fn("SSL_get_peer_addr", ["ptr", "ptr"], "i32", ssl)?,
+    InitialPeer: fn("SSL_set1_initial_peer_addr", ["ptr", "ptr"], "i32", ssl)?,
+    SetHost: fn("SSL_set1_host", ["ptr", "text"], "i32", ssl)?,
+    Control: fn("SSL_ctrl", ["ptr", "i32", "i64", "text"], "i64", ssl)?,
+    AlpnProtos: fn("SSL_set_alpn_protos", ["ptr", "ptr", "u32"], "i32", ssl)?,
+    Alpn: fn("SSL_get0_alpn_selected", ["ptr", "ptr", "ptr"], "void", ssl)?,
+    Connect: fn("SSL_connect", ["ptr"], "i32", ssl)?,
+    Handshake: fn("SSL_do_handshake", ["ptr"], "i32", ssl)?,
+    ClearErrors: fn("ERR_clear_error", [], "void", lib)?,
+    LastError: fn("ERR_get_error", [], "u64", lib)?,
+    ErrorText: fn("ERR_error_string", ["u64", "ptr"], "text", lib)?,
+    (* A lookup of a name may wait for a server of names: it runs off the fibers' thread. *)
+    Lookup: c.Fn("BIO_lookup", ["text", "text", "i32", "i32", "i32", "ptr"], "i32", lib, slow = true)?,
+    InfoFamily: fn("BIO_ADDRINFO_family", ["ptr"], "i32", lib)?,
+    InfoAddress: fn("BIO_ADDRINFO_address", ["ptr"], "ptr", lib)?,
+    InfoNext: fn("BIO_ADDRINFO_next", ["ptr"], "ptr", lib)?,
+    InfoFree: fn("BIO_ADDRINFO_free", ["ptr"], "void", lib)?,
+    Socket: fn("BIO_socket", ["i32", "i32", "i32", "i32"], "i32", lib)?,
+    Bind: fn("BIO_bind", ["i32", "ptr", "i32"], "i32", lib)?,
+    SocketConnect: fn("BIO_connect", ["i32", "ptr", "i32"], "i32", lib)?,
+    NonBlocking: fn("BIO_socket_nbio", ["i32", "i32"], "i32", lib)?,
+    CloseSocket: fn("BIO_closesocket", ["i32"], "i32", lib)?,
+    SockInfo: fn("BIO_sock_info", ["i32", "i32", "ptr"], "i32", lib)?,
+    AddrNew: fn("BIO_ADDR_new", [], "ptr", lib)?,
+    AddrFree: fn("BIO_ADDR_free", ["ptr"], "void", lib)?,
+    AddrPort: fn("BIO_ADDR_rawport", ["ptr"], "u16", lib)?,
+    AddrName: fn("BIO_ADDR_hostname_string", ["ptr", "i32"], "ptr", lib)?,
+    CryptoFree: fn("CRYPTO_free", ["ptr", "text", "i32"], "void", lib)?
+  }
+  (* The server picks the first protocol of its own list that the client offers (RFC 7301): OpenSSL calls this during the
+     handshake, from Tick alone. arg is the server's list, its bytes ended by a zero. *)
+  chosen(out, outLength, given, givenLength, arg) = if pick(out, outLength, arg, listLength(arg, 0), given, givenLength) == 1 0 else 2 end
+  api.Choose = c.Callback((s, out, outLength, given, givenLength, arg) -> chosen(out, outLength, given, givenLength, arg), ["ptr", "ptr", "ptr", "ptr", "u32", "ptr"], "i32")
+  result.Ok(api)
+end
+
+defn listLength(protocols, at)
+  (** The bytes of a list of protocols in C memory, each its length then its name, up to the zero that ends it. *)
+  n = c.Get("u8", at, protocols)
+  if n == 0 at else listLength(protocols, at + n + 1) end
+end
+
+defn wire(protocols)
+  (** A list of protocols as ALPN sends it (RFC 7301, section 3.1), in a block that ends with a zero, and its length. *)
+  bytes = text.Join("", ["$(text.FromBytes([text.ByteLength(p)]))$p" for p in protocols])
+  block = c.Alloc(text.ByteLength(bytes) + 1)
+  c.Store(bytes, 0, block)
+  {Block: block, Size: text.ByteLength(bytes)}
+end
+
+(* The constants of OpenSSL's headers that this file uses. *)
+streamUni = 1          (* SSL_STREAM_FLAG_UNI *)
+noBlock = 2            (* SSL_STREAM_FLAG_NO_BLOCK *)
+wantRead = 2           (* SSL_ERROR_WANT_READ *)
+wantWrite = 3          (* SSL_ERROR_WANT_WRITE *)
+zeroReturn = 6         (* SSL_ERROR_ZERO_RETURN: the other side ended its stream *)
+dgram = 2              (* SOCK_DGRAM, the same on Linux and macOS *)
+udp = 17               (* IPPROTO_UDP *)
+
+defn address(api, host, port, server)
+  (** The first address of a host for UDP, looked up off the fibers' thread: an Ok of {Info, Family, Address}, Info to
+      free with InfoFree once the socket is made. *)
+  out = c.Alloc(8)
+  found = api.Lookup(host, "$port", if server 1 else 0 end, 0, dgram, out)
+  info = c.Get("ptr", 0, out)
+  c.Free(out)
+  if found != 1 or value.IsMissing(info)
+    return failed("Can't find the address of $host.")
+  end
+  (* An IPv4 address first, as net.Connect takes one: "localhost" is then the 127.0.0.1 a server listens on by default. *)
+  chosen = info
+  each = info
+  while not value.IsMissing(each)
+    if api.InfoFamily(each) == 2
+      chosen = each
+      break
+    end
+    each = api.InfoNext(each)
+  end
+  result.Ok({Info: info, Family: api.InfoFamily(chosen), Address: api.InfoAddress(chosen)})
+end
+
+defn nameOf(api, addr)
+  (** The address of a BIO_ADDR as text, "127.0.0.1" or "::1", as net.Peer writes it. *)
+  p = api.AddrName(addr, 1)
+  if value.IsMissing(p)
+    return missing
+  end
+  s = c.Text(p)
+  api.CryptoFree(p, "", 0)
+  s
+end
+
+(* A port read from a BIO_ADDR, which keeps it in network order. *)
+hostOrder(p) = math.Mod(p, 256) * 256 + math.Div(p, 256)
+
+defn boundPort(api, fd)
+  (** The port a socket is bound to: the one the system chose when 0 was asked. *)
+  addr = api.AddrNew()
+  info = c.Alloc(8)
+  c.Set("ptr", 0, addr, info)
+  ok = api.SockInfo(fd, 0, info)
+  port = if ok == 1 hostOrder(api.AddrPort(addr)) else 0 end
+  c.Free(info)
+  api.AddrFree(addr)
+  port
+end
+
+(** The state of one QUIC endpoint, a listener or a client's connection, that its engine drives: Ssl, Fd and Ctx are
+    OpenSSL's; Wake a channel that says that the socket may be read or that a stream wrote; Waits the streams that wait
+    for the engine's next pass, and the objects to free; Closed a cell set once the endpoint closes. Block, Scratch and
+    Flag are the memory of the calls: one of each for all streams, since no fiber switch comes between a call and the
+    copy of what it wrote. *)
+struct Engine { Api, Ssl, Fd, Ctx, Wake, Waits, Block, Scratch, Flag, Closed, Alpn }
+
+defn cell(v)
+  (** A value that fibers share: a channel that always holds one. *)
+  ch = fiber.Channel(size = 1)
+  fiber.Send(v, ch)
+  ch
+end
+
+defn peek(ch)
+  (** The value of a cell. *)
+  v = fiber.Receive(ch, timeout = 0).Value
+  fiber.Send(v, ch)
+  v
+end
+
+defn put(v, ch)
+  (** Puts a value in a cell, or wakes an engine, without waiting: what it held before is dropped. *)
+  _ = fiber.Receive(ch, timeout = 0)
+  fiber.Send(v, ch)
+end
+
+defn engine(api, ssl, fd, ctx, alpn)
+  (** The engine of a socket that OpenSSL reads, and the fiber that wakes it when a datagram comes. *)
+  if not watch(fd)
+    return failed("QUIC isn't served on Windows yet.")
+  end
+  e = Engine(api, ssl, fd, ctx, fiber.Channel(size = 1), fiber.Channel(), c.Alloc(chunk), c.Alloc(48), c.Alloc(8), cell(false), alpn)
+  fiber.Spawn(() -> reading(e))
+  result.Ok(e)
+end
+
+defn reading(e)
+  (** Waits for the socket to be readable, and wakes the engine, until the endpoint closes. *)
+  while not peek(e.Closed)
+    readable(e.Fd)
+    put(true, e.Wake)
+  end
+end
+
+defn wait(e, ssl, kind)
+  (** Waits for the engine's next pass that lets this stream or connection go on: kind "read" until it has bytes or its
+      end, "accept" until it has a stream to accept or ends, "any" for the next pass. *)
+  poke = fiber.Channel(size = 1)
+  fiber.Send({Ssl: ssl, Kind: kind, Poke: poke}, e.Waits)
+  _ = fiber.Receive(poke)
+end
+
+kick(e) = put(true, e.Wake)   (* Asks the engine for a pass: a stream wrote, and OpenSSL sends on a pass. *)
+
+defn able(e, w)
+  (** Can a waiting stream or connection go on? A check of a few calls, so that a pass wakes only those. *)
+  if w.Kind == "read"
+    e.Api.Pending(w.Ssl) > 0 or e.Api.ReadState(w.Ssl) != 1
+  else if w.Kind == "accept"
+    e.Api.StreamQueue(w.Ssl) > 0 or ended(e, w.Ssl)
+  else
+    true
+  end
+end
+
+ended(e, conn) = e.Api.CloseInfo(conn, e.Scratch, 40) == 1   (* Has a connection ended, or begun to end? *)
+
+defn nextTimer(e)
+  (** The seconds until OpenSSL's next timer, or missing when it waits for nothing but the network. *)
+  if e.Api.Timeout(e.Ssl, e.Scratch, e.Flag) != 1
+    return 0.05
+  end
+  if c.Get("i32", 0, e.Flag) != 0
+    return missing
+  end
+  micro = c.Get("i64", 8, e.Scratch) / 1000000.0
+  list.Max(0.0, c.Get("i64", 0, e.Scratch) + micro)
+end
+
+defn taken(e, m, waiting)
+  (** What a fiber sent the engine: a stream that waits, or one to free once nothing waits on it. *)
+  if not dict.Has("Free", m)
+    return list.Append(m, waiting)
+  end
+  still = []
+  for w in waiting
+    if value.Equal(w.Ssl, m.Free)
+      fiber.Send(true, w.Poke)
+    else
+      still = list.Append(w, still)
+    end
+  end
+  e.Api.SslFree(m.Free)
+  still
+end
+
+defn run(e, accepted)
+  (** The engine's loop: OpenSSL reads, sends and keeps its timers, the new connections go to accepted (for a
+      listener), the streams that can go on are woken, then it waits for a datagram, a stream that wrote or waits, or
+      OpenSSL's next timer. It ends once the endpoint is closed, and wakes every stream left. *)
+  waiting = []
+  while not peek(e.Closed)
+    e.Api.ClearErrors()
+    e.Api.Tick(e.Ssl)
+    if not value.IsMissing(accepted)
+      newcomer = e.Api.AcceptConnection(e.Ssl, 1)
+      while not value.IsMissing(newcomer)
+        accepted(newcomer)
+        newcomer = e.Api.AcceptConnection(e.Ssl, 1)
+      end
+    end
+    still = []
+    for w in waiting
+      if able(e, w)
+        fiber.Send(true, w.Poke)
+      else
+        still = list.Append(w, still)
+      end
+    end
+    waiting = still
+    t = nextTimer(e)
+    got = if value.IsMissing(t) fiber.Select([e.Wake, e.Waits]) else fiber.Select([e.Wake, e.Waits], timeout = t) end
+    if result.IsOk(got) and not value.IsBool(got.Value.Value)
+      waiting = taken(e, got.Value.Value, waiting)
+    end
+    more = fiber.Receive(e.Waits, timeout = 0)
+    while result.IsOk(more)
+      waiting = taken(e, more.Value, waiting)
+      more = fiber.Receive(e.Waits, timeout = 0)
+    end
+  end
+  for w in waiting
+    fiber.Send(true, w.Poke)
+  end
+end
+
+defn release(e)
+  (** What an endpoint holds, given back once its engine stopped. *)
+  e.Api.SslFree(e.Ssl)
+  e.Api.CtxFree(e.Ctx)
+  e.Api.CloseSocket(e.Fd)
+  c.Free(e.Block)
+  c.Free(e.Scratch)
+  c.Free(e.Flag)
+  c.Free(e.Alpn)
+end
+
+defn shut(e)
+  (** Closes an endpoint: its engine stops at its next pass, and the reader at once. *)
+  if not peek(e.Closed)
+    put(true, e.Closed)
+    forget(e.Fd)
+    kick(e)
+  end
+end
+
+defn Server(certificate, key, api, port = 443, host = "127.0.0.1", alpn = ["h3"], validate = true)
+  (** A QUIC listener on a UDP port, for Serve: certificate and key are the paths of PEM files, as tls.Server takes, api
+      what Open gave, and alpn the protocols it speaks, in the order it prefers them (RFC 7301): a client that offers
+      none of them is refused during the handshake. port 0 lets the system choose one: Port gives it. With validate, a
+      client proves that it owns its address before the server sends more than three times what it received (RFC 9000,
+      section 8.1): a Retry packet, which costs a round trip; validate = false saves it, only for tests. An Err when a
+      file can't be read or the port is taken. It needs OpenSSL, so it has no example here. *)
+  ctx = api.CtxNew(api.ServerMethod())
+  if value.IsMissing(ctx)
+    return failed("OpenSSL made no QUIC context.")
+  end
+  if api.UseChain(ctx, certificate) != 1 or api.UseKey(ctx, key, 1) != 1
+    api.CtxFree(ctx)
+    return failed("Can't read the certificate $certificate or its key $key.")
+  end
+  (* SSL_CTRL_MODE, SSL_MODE_ENABLE_PARTIAL_WRITE: a write takes what the stream has room for, and the rest waits. *)
+  api.CtxControl(ctx, 33, 1, missing)
+  protocols = wire(alpn)
+  api.AlpnSelect(ctx, api.Choose, protocols.Block)
+  at = address(api, host, port, true)
+  if result.IsErr(at)
+    api.CtxFree(ctx)
+    return at
+  end
+  fd = api.Socket(at.Value.Family, dgram, udp, 0)
+  bound = fd >= 0 and api.Bind(fd, at.Value.Address, 0) == 1
+  api.InfoFree(at.Value.Info)
+  if not bound
+    if fd >= 0
+      api.CloseSocket(fd)
+    end
+    api.CtxFree(ctx)
+    return failed("Can't listen on UDP $host:$port.")
+  end
+  api.NonBlocking(fd, 1)
+  (* SSL_LISTENER_FLAG_NO_VALIDATE is 2. *)
+  listener = api.NewListener(ctx, if validate 0 else 2 end)
+  api.SetFd(listener, fd)
+  api.Blocking(listener, 0)
+  (* SSL_VALUE_EVENT_HANDLING_MODE, EXPLICIT: only Tick moves OpenSSL on, so only it calls back into Cesia. *)
+  api.SetValue(listener, 0, 6, 2)
+  api.Listen(listener)
+  e = engine(api, listener, fd, ctx, protocols.Block)?
+  result.Ok({Port: boundPort(api, fd), Engine: e})
+end
+
+defn Serve(server, serve)
+  (** Runs a listener of Server until Close: serve(conn) runs in a fiber of its own for each connection, and gets what
+      Dial gives a client: Peer, the address of the client; Accept(), an Ok of the next stream that the client opened,
+      or an Err once the connection ended; Open(uni), a stream of its own, one way with uni; Alpn, the protocol agreed;
+      and Close(code), which ends the connection with an application error code. *)
+  e = server.Engine
+  accepted(conn) = fiber.Spawn(() -> serve(connection(e, conn, true)))
+  run(e, accepted)
+  release(e)
+  result.Ok(missing)
+end
+
+Close(server) = shut(server.Engine)   (** Stops a listener: Serve returns at its next pass. *)
+
+defn connection(e, conn, server)
+  (** The functions of one connection. *)
+  if server
+    (* SSL_DEFAULT_STREAM_MODE_NONE, SSL_INCOMING_STREAM_POLICY_ACCEPT: each stream is accepted by the program. *)
+    e.Api.DefaultStream(conn, 0)
+    e.Api.StreamPolicy(conn, 1, 0)
+  end
+  peer = e.Api.AddrNew()
+  e.Api.PeerAddr(conn, peer)
+  at = nameOf(e.Api, peer)
+  e.Api.AddrFree(peer)
+  {Peer: at, Alpn: selected(e, conn), Accept: () -> accept(e, conn), Open: uni -> open(e, conn, uni),
+    Close: code -> closing(e, conn, code, server), Ended: () -> ended(e, conn)}
+end
+
+defn selected(e, conn)
+  (** The protocol the handshake agreed on, or missing. *)
+  e.Api.Alpn(conn, e.Scratch, e.Flag)
+  n = c.Get("u32", 0, e.Flag)
+  p = c.Get("ptr", 0, e.Scratch)
+  if n == 0 or value.IsMissing(p) missing else text.FromBytes([c.Get("u8", k - 1, p) for k in 1..n]) end
+end
+
+defn accept(e, conn)
+  (** The next stream the other side opened, or an Err once the connection ended. *)
+  while true
+    s = e.Api.AcceptStream(conn, 1)
+    if not value.IsMissing(s)
+      return result.Ok(stream(e, s))
+    end
+    if ended(e, conn) or peek(e.Closed)
+      return failed("The connection ended.")
+    end
+    wait(e, conn, "accept")
+  end
+end
+
+defn open(e, conn, uni)
+  (** A new stream of this side, once the other side allows one more (its MAX_STREAMS). *)
+  while true
+    s = e.Api.NewStream(conn, if uni streamUni + noBlock else noBlock end)
+    if not value.IsMissing(s)
+      return result.Ok(stream(e, s))
+    end
+    if ended(e, conn) or peek(e.Closed)
+      return failed("The connection ended.")
+    end
+    wait(e, conn, "any")
+  end
+end
+
+defn stream(e, s)
+  (** The functions of one stream: Id, its number (RFC 9000, section 2.1: its two low bits say who opened it and
+      whether it goes both ways); Read(), an Ok of the next bytes, of "" at its end, or an Err when it was reset or the
+      connection ended; Write(bytes); End(), the end of what this side sends; Reset(code), which abandons it; Free(),
+      once done with it. *)
+  {Id: e.Api.StreamId(s), Read: () -> read(e, s), Write: bytes -> write(e, s, bytes), End: () -> conclude(e, s),
+    Reset: code -> reset(e, s, code), Free: () -> fiber.Send({Free: s}, e.Waits)}
+end
+
+defn read(e, s)
+  while true
+    e.Api.ClearErrors()
+    if e.Api.ReadEx(s, e.Block, chunk, e.Scratch) == 1
+      return result.Ok(c.Load(0, c.Get("u64", 0, e.Scratch), e.Block))
+    end
+    why = e.Api.GetError(s, 0)
+    if why == zeroReturn
+      return result.Ok("")
+    end
+    if why != wantRead
+      return failed(if e.Api.ReadState(s) == 5 "The stream was reset." else "The connection ended." end)
+    end
+    if peek(e.Closed)
+      return failed("The connection ended.")
+    end
+    wait(e, s, "read")
+  end
+end
+
+defn write(e, s, bytes)
+  size = text.ByteLength(bytes)
+  at = 0
+  while at < size
+    piece = if at == 0 and size <= chunk bytes else text.ByteSlice(at + 1, list.Min(at + chunk, size), bytes) end
+    c.Store(piece, 0, e.Block)
+    e.Api.ClearErrors()
+    if e.Api.WriteEx(s, e.Block, text.ByteLength(piece), e.Scratch) == 1
+      at += c.Get("u64", 0, e.Scratch)
+      kick(e)
+    else
+      why = e.Api.GetError(s, 0)
+      if why != wantWrite and why != wantRead or peek(e.Closed)
+        return failed("A QUIC write failed: the stream was reset or the connection ended.")
+      end
+      kick(e)
+      wait(e, s, "any")
+    end
+  end
+  result.Ok(missing)
+end
+
+defn conclude(e, s)
+  if e.Api.Conclude(s, 0) != 1
+    return failed("This stream can't be ended.")
+  end
+  kick(e)
+  result.Ok(missing)
+end
+
+defn reset(e, s, code)
+  args = c.Alloc(8)
+  c.Set("u64", 0, code, args)
+  e.Api.Reset(s, args, 8)
+  c.Free(args)
+  kick(e)
+end
+
+defn closing(e, conn, code, server)
+  (** Ends a connection with an application error code, waits at most 2 s for OpenSSL to say it is done, and frees it;
+      a client's endpoint closes with it. *)
+  args = c.Alloc(16)
+  c.Set("u64", 0, code, args)
+  deadline = sys.Now() + 2
+  while e.Api.ShutdownEx(conn, 4, args, 16) == 0 and sys.Now() < deadline and not peek(e.Closed)
+    kick(e)
+    wait(e, conn, "any")
+  end
+  c.Free(args)
+  if server
+    fiber.Send({Free: conn}, e.Waits)
+  else
+    shut(e)
+  end
+end
+
+defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout = 10, peer = missing)
+  (** Connects to a QUIC server and makes the handshake within timeout seconds: an Ok of the connection, as Serve gives
+      one to a server, or an Err. The server's certificate is checked as tls.Client checks it, against the system's
+      authorities or those of the PEM file ca, and must name host; verify = false takes any, only for tests. peer is
+      as http.Fetch takes it: a function of the address found, which may refuse it before any packet is sent. It needs
+      OpenSSL and a server, so it has no example here. *)
+  ctx = api.CtxNew(api.ClientMethod())
+  if verify
+    if value.IsMissing(ca)
+      api.DefaultPaths(ctx)
+    else if api.LoadCa(ctx, ca, missing) != 1
+      api.CtxFree(ctx)
+      return failed("Can't read the authorities $ca.")
+    end
+    api.SetVerify(ctx, 1, missing)
+  end
+  api.CtxControl(ctx, 33, 1, missing)
+  found = address(api, host, port, false)
+  if result.IsErr(found)
+    api.CtxFree(ctx)
+    return found
+  end
+  at = found.Value
+  if not value.IsMissing(peer)
+    allowed = peer(nameOf(api, at.Address))
+    if result.IsErr(allowed)
+      api.InfoFree(at.Info)
+      api.CtxFree(ctx)
+      return allowed
+    end
+  end
+  fd = api.Socket(at.Family, dgram, udp, 0)
+  if fd < 0 or api.SocketConnect(fd, at.Address, 0) != 1
+    api.InfoFree(at.Info)
+    api.CtxFree(ctx)
+    return failed("Can't reach $host:$port over UDP.")
+  end
+  api.NonBlocking(fd, 1)
+  ssl = api.SslNew(ctx)
+  api.SetFd(ssl, fd)
+  api.InitialPeer(ssl, at.Address)
+  api.InfoFree(at.Info)
+  api.Control(ssl, 55, 0, host)
+  if verify
+    api.SetHost(ssl, host)
+  end
+  protocols = wire(alpn)
+  api.AlpnProtos(ssl, protocols.Block, protocols.Size)
+  api.Blocking(ssl, 0)
+  api.SetValue(ssl, 0, 6, 2)
+  api.DefaultStream(ssl, 0)
+  api.StreamPolicy(ssl, 1, 0)
+  e = engine(api, ssl, fd, ctx, protocols.Block)?
+  task = fiber.Spawn(() -> run(e, missing))
+  deadline = sys.Now() + timeout
+  while true
+    e.Api.ClearErrors()
+    r = api.Connect(ssl)
+    if r == 1
+      break
+    end
+    why = api.GetError(ssl, r)
+    if why != wantRead and why != wantWrite or sys.Now() > deadline
+      why = reason(api)
+      shut(e)
+      _ = fiber.Wait(task)
+      release(e)
+      return failed(if sys.Now() > deadline "$host:$port gave no QUIC handshake in $timeout seconds." else "The QUIC handshake with $host:$port failed: $why" end)
+    end
+    kick(e)
+    wait(e, ssl, "any")
+  end
+  conn = connection(e, ssl, false)
+  conn.Close = code -> ending(e, ssl, code, task)
+  result.Ok(conn)
+end
+
+defn reason(api)
+  (** What OpenSSL says of its last error, or "no reason given". *)
+  code = api.LastError()
+  if code == 0 "no reason given" else api.ErrorText(code, missing) end
+end
+
+defn ending(e, ssl, code, task)
+  (** Closes a client's connection, then its endpoint. *)
+  closing(e, ssl, code, false)
+  _ = fiber.Wait(task)
+  release(e)
+end

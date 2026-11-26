@@ -41,3 +41,6 @@ val natives : t -> (string * Types.t) list
 (** The natives that only the files of std/http see: the deadlines of the sockets it serves, and its check of a header
     line. *)
 val http_natives : t -> (string * Types.t) list
+
+(** The natives that only std/quic sees: it waits on the UDP socket that OpenSSL made, by its number. *)
+val quic_natives : t -> (string * Types.t) list

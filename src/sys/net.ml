@@ -657,6 +657,18 @@ let date _ _ =
   end;
   !date_line
 
+(* The names of std/quic, which only its file sees: OpenSSL reads and writes the UDP socket it made, and the fiber that
+   drives it waits here, its fiber alone, until a datagram may be read. Nothing on Windows, whose sockets aren't numbers:
+   watch says so, and std/quic doesn't start there. *)
+external descr : int -> Unix.file_descr = "%identity"
+
+let quic_natives n =
+  let on f ctx (a : Types.t array) = (if not Sys.win32 then f (descr (Arrays.whole_index ctx a.(0))) ctx); Missing in
+  [ "watch", Native.nat "watch" 1 1 (fun ctx a -> ignore (on (fun fd _ -> Poll.watch n.poll fd) ctx a); Value.of_bool (not Sys.win32));
+    "readable", Native.nat "readable" 1 1 (on (fun fd ctx -> Poll.read_ready n.poll ctx fd));
+    "forget", Native.nat "forget" 1 1 (on (fun fd _ -> Poll.forget n.poll fd));
+    "stopping", Native.nat "stopping" 0 0 (fun _ _ -> Value.of_bool n.stopping) ]
+
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =
   [ "arm", Native.nat "arm" 2 2 (arm n);
