@@ -2,6 +2,21 @@
 
 ## 1.3.0
 
+### When the connection drops
+
+- `std/live`, version 2 of its protocol: a screen outlives a break of its connection. A page that says `{Hello: 2}`
+  gets a screen kept `resume` seconds (120) and `buffer` bytes of frames (1 MiB) after its connection breaks, its shows
+  going on; the page comes back with its token and the last frame it has (`Got`), and gets every frame after it, once;
+  an action it sent again is run once on the screen that heard it (`Heard`), and carries the key made when it was
+  asked (`s.Key`) and what the page saw (`s.Base`). `Route`'s `same` decides who may come back to a screen (by default
+  the same cookies and query), `who` stamps a screen's actions and refuses those of another account, `client` is sent
+  to the page as its settings; `{Bye: 1}` ends a screen at once. A page of version 1 gets the screen of before.
+- `live.js` comes back by itself after a wait drawn at random under a bound that doubles (full jitter, 0.5 s to 30 s),
+  at once on `online` and on a tab shown again; a heartbeat sees a silent network; the actions asked meanwhile wait in
+  order with their keys, bounded (`OutboxCount`, `OutboxBytes`, `OutboxWait`); `live.onStatus`, `live.now`,
+  `live.again`, `connect(url, options)`, `live.act(..., base)`. It used to fail the actions in flight at a break.
+- `websocket.Dial`'s `last`: the message a page sends as it goes away (`pagehide`); a program ignores it.
+
 ### Language
 
 - An `if` with nothing before its `else` is an error when the file loads, which says to write the value in parentheses or
