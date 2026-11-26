@@ -498,7 +498,8 @@ let admit ctx (a : Types.t array) =
       let key = Native.text_arg ctx "Admit" key and gap = field rates.(k) 1 /. field rates.(k) 0 in
       let e = Hashtbl.find_opt c.held key in
       let t = match e with Some e when e.due > now -> e.due | _ -> now in
-      let over = t -. now -. (gap *. (field rates.(k) 2 -. 1.)) in
+      let tolerance = gap *. (field rates.(k) 2 -. 1.) in
+      let over = t -. now -. tolerance in
       if !refused < 0 && over > 0. then (refused := k; late := over);
       found.(k) <- e;
       times.(k) <- t +. gap) keys;
