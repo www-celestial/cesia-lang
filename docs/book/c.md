@@ -167,7 +167,7 @@ line, at most 64 for each of those places, and one more stops its fiber with an 
 can't take the memory of a thousand hashes at once. A slow function takes at most 6 numbers, pointers or texts, and
 doesn't call back; its texts are copied for it, and the blocks it is given stay alive until it returns, even if a fiber
 frees one meanwhile. No other fiber may write into those blocks while it runs: C would read them at the same time.
-Each call starts a thread of its own, which costs tens of microseconds: `slow` is for calls of a millisecond or more.
+Each call starts a thread of its own, which costs about 220 microseconds on Linux: `slow` is for calls of a millisecond or more.
 
 Measured on 2026-11-13, 50 sign-ins at once against a server of [std/http], each a [crypto.CheckPassword], while a
 fiber asks the same server `/ping` every 5 ms (`bench/signin.ce`): before, every sign-in waited for the others, and

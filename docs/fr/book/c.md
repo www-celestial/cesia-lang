@@ -182,7 +182,7 @@ rafale de mille connexions ne peut pas prendre d'un coup la mémoire de mille ha
 nombres, pointeurs ou textes, et ne rappelle pas Cesia ; ses textes sont copiés pour elle, et les blocs qu'elle reçoit
 restent en vie jusqu'à ce qu'elle rende la main, même si une fiber en libère un entre-temps. Aucune autre fiber ne doit
 écrire dans ces blocs pendant qu'elle tourne : C les lirait au même moment. Chaque appel lance un thread à lui, ce qui
-coûte quelques dizaines de microsecondes : `slow` est pour des appels d'une milliseconde ou plus.
+coûte environ 220 microsecondes sous Linux : `slow` est pour des appels d'une milliseconde ou plus.
 
 Mesuré le 2026-11-13, 50 connexions à la fois à un serveur de [std/http], chacune un [crypto.CheckPassword], pendant
 qu'une fiber demande `/ping` au même serveur toutes les 5 ms (`bench/signin.ce`) : avant, chaque connexion attendait les
