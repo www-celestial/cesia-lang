@@ -404,9 +404,32 @@ let values st =
   if coin () then p "fuzzSlow(%d)\n" (int 1000 3000);
   Buffer.contents b
 
+(* Loops that call natives from machine code, through OCaml: values kept across calls that allocate, texts, maps and
+   lists made by natives, a callback of value.Len into Cesia, arithmetic between, and late a map that is a list, whose
+   dict.Has is the native's error. *)
+let natives st =
+  let b = Buffer.create 2048 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let coin () = Random.State.bool st in
+  let turns = int 3000 20000 in
+  let late = int 1000 (turns + 3000) in
+  p "use std/dict\nuse std/io\nuse std/text\nuse std/value\n\n";
+  p "struct FuzzBag { n }\n\n(* What value.Len counts. *)\n(b FuzzBag) len() = text.ByteLength(text.Repeat(b.n, \"ab\"))\n\n";
+  p "defn fuzzNat(turns)\n  m = {A: 1, B: \"x\"}\n  on = m\n  total = 0\n  f = 0.5\n  last = missing\n  w = \"%s\"\n"
+    (pick st [| "abc"; "a,b,c"; "" |]);
+  p "  for i in 1..turns\n    if i == %d\n      on = %s\n    end\n" late (pick st [| "[1]"; "m"; "{C: 2}" |]);
+  if coin () then p "    h = dict.Has(\"A\", on)\n    if h\n      total = total + 1\n    end\n";
+  if coin () then p "    s = text.Repeat(%d, w)\n    n = text.ByteLength(s)\n    total = total + n\n" (int 0 30);
+  if coin () then p "    parts = text.Split(\",\", w)\n    last = dict.Put(\"P\", parts, m)\n";
+  if coin () then p "    k = value.Len(FuzzBag(%d))\n    total = total + k\n" (int 0 5);
+  for _ = 1 to int 0 12 do p "    f = f * %s + %s\n" (pick st [| "0.999"; "1.0001"; "0.5" |]) (pick st [| "1.0"; "0.25"; "f" |]) done;
+  p "  end\n  io.Print(total, f, last)\nend\n\nfuzzNat(%d)\n" turns;
+  Buffer.contents b
+
 let shaped st =
-  match Random.State.int st 7 with
-  | 0 -> csc st | 1 -> thunks st | 2 -> tops st | 3 -> defaults st | 4 -> values st | _ -> odes st
+  match Random.State.int st 8 with
+  | 0 -> csc st | 1 -> thunks st | 2 -> tops st | 3 -> defaults st | 4 -> values st | 5 -> natives st | _ -> odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"
