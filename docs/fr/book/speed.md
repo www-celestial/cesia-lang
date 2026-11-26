@@ -86,9 +86,12 @@ code machine garde ses deux floats dans des registres (les petites mémoires du 
 ## Ce qui reste dans l'interpréteur
 
 - Les appels aux fonctions des packages (du code groupé sous un nom) écrits en OCaml, comme [text.Split] ou
-  [json.Parse] : elles sont déjà du code machine. Une fonction qui en appelle une, fait un texte ou tient une closure
-  (une fonction qui garde des variables d'ailleurs) reste interprétée entière, comme le code d'un serveur, ses boucles à
-  part.
+  [json.Parse], quand ils viennent trop souvent pour ce que calcule le code autour : le code machine les appelle à
+  travers OCaml, pour environ 100 ns de plus que l'interpréteur, donc une boucle faite seulement de tels appels reste
+  interprétée ; ceux des fonctions qui attendent, comme sur le réseau, le restent toujours
+  ([Comment Cesia fonctionne](internals.md#le-code-machine-qui-appelle-ocaml)). Une fonction qui fait un texte ou tient
+  une closure (une fonction qui garde des variables d'ailleurs) reste interprétée entière, comme le code d'un serveur,
+  ses boucles à part.
 - Les boucles sur les éléments d'une liste, `for x in xs`, et un appel à travers une valeur qui a rencontré cinq
   fonctions ou plus, ou une fonction qui a capturé ses propres variables.
 - Dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme le `return` d'une erreur ou un
@@ -299,8 +302,8 @@ rapide que Python. Sur `structs`, il est devant Java, 38 ms contre 110, devant N
   dernier niveau de cache, là où le trie en faisait 18,7, contre 3,7 pour Python et 4,3 pour Go. Les 247 ms de Java
   viennent d'un garbage collector qui travaille sur les autres cœurs et d'un hash gardé dans chacune de ses chaînes ; et
   la boucle de `maps`, qui construit un texte à chaque tour, reste dans l'interpréteur de Cesia : sa part est d'environ
-  un dixième du temps, et du code natif devrait rappeler OCaml pour le hash, la table et le texte
-  ([Comment Cesia fonctionne](internals.md#ce-qui-reste-dans-linterpréteur)). Le prix de la table : le premier [dict.Put]
+  un dixième du temps, et du code natif appellerait OCaml pour le hash, la table et le texte, chaque appel coûtant plus
+  que ça ([Comment Cesia fonctionne](internals.md#ce-qui-reste-dans-linterpréteur)). Le prix de la table : le premier [dict.Put]
   sur une grande map construite sur place la change en trie, environ 0,25 s pour un million de clés, une seule fois.
 - **Node et Java démarrent lentement mais tournent vite** : leurs JIT compilent davantage, et plus tard, avec plus de
   temps à y consacrer.

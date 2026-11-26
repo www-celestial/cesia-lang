@@ -267,6 +267,8 @@ text.ByteLength("é") -->
 text.Bytes("é") -->
 ```
 
+![The text café as characters and as bytes: four characters counted from 1, c a f é, where é takes two of the five bytes of UTF-8, 195 and 169; value.Len gives 4, text.Slice(2, 3) gives af, text.ByteLength gives 5.](images/texts-positions.svg)
+
 [text.Byte] gives one byte, by its position from 1, [text.ByteFind] the byte position of a part, from a byte on, and
 [text.FromBytes] the text of a list of bytes. [text.Code] gives the code point of a character, its number in Unicode, and
 [text.Char] the character of a code point:

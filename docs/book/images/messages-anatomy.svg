@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="857.0" height="208" viewBox="0 0 857.0 208">
+<title>Two messages of Cesia, each part named: shop.ce:3:9, the file, line and column where it stopped, then the message, Index 5 is outside this array of 3 elements; the line of the code; a mark under the place; then a message of the parser with its hint on the line below, what to do.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="857.0" height="208" fill="#fff"/>
+<rect class="term" x="1" y="1" width="597.0" height="206" rx="4"/>
+<rect class="mark" x="14" y="31" width="98.0" height="20" rx="4"/>
+<text x="16" y="26" class="c"><tspan class="p">$ </tspan>cesia run shop.ce</text>
+<text x="16" y="46" class="c e">shop.ce:3:15: Index 5 is outside this array of 3 elements.</text>
+<text x="16" y="66" class="c e">  3 | io.Print(names[5])</text>
+<text x="16" y="86" class="c e">    |               ^</text>
+<text x="16" y="106" class="c"><tspan class="p">$ </tspan>cesia run total.ce</text>
+<text x="16" y="126" class="c e">total.ce:2:1: A name can't hold a _: &quot;my_total&quot;.</text>
+<text x="16" y="146" class="c e">  2 | my_total = 3</text>
+<text x="16" y="166" class="c e">    | ^</text>
+<text x="16" y="186" class="c e">  Join the words with capitals: myTotal, or MyTotal when it is public.</text>
+<line class="l" x1="603.0" y1="42" x2="619.0" y2="42"/><text x="625.0" y="46" class="s">where: file, line and column</text>
+<line class="l" x1="603.0" y1="62" x2="619.0" y2="62"/><text x="625.0" y="66" class="s">the line of the code</text>
+<line class="l" x1="603.0" y1="82" x2="619.0" y2="82"/><text x="625.0" y="86" class="s">the mark under the place</text>
+<line class="l" x1="603.0" y1="122" x2="619.0" y2="122"/><text x="625.0" y="126" class="s">what went wrong, in plain words</text>
+<line class="l" x1="603.0" y1="182" x2="619.0" y2="182"/><text x="625.0" y="186" class="s">the hint: what to do</text>
+</svg>

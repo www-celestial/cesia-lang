@@ -36,6 +36,7 @@ type code = {
   ticks : int array array;  (* at one that stops *)
   entries : (int, int) Hashtbl.t;  (* the site a limit of depth names, by the site of the call, as [Mirtext.text]'s *)
   last : t array;  (* the values of [fn.moving] that the last run took *)
+  natives : native array;  (* the natives its code calls through OCaml, by number: [Ir.Native] *)
 }
 
 (* What the interpreter holds of it. *)
@@ -46,6 +47,25 @@ let native = function Native c -> c | _ -> invalid_arg "Engine: code of another 
 (* One io for the process: native code runs to its end without letting another fiber in, and what a run gives is read
    before the checkpoint that may. *)
 let io = Array.make Ir.io_size 0
+
+(* A run of a unit that calls natives, while it lasts: its context, its code, its base, the fuel the interpreter gave it
+   and the highest base the limit of depth allows. A native may call back into Cesia, whose runs of machine code come
+   first then: the last first. While one lasts, no code is freed, as machine code is on the stack. *)
+type run = { rctx : ctx; rcode : code; rb : int; mutable fuel0 : int; depth : int; mutable calling : bool }
+
+let runs : run list ref = ref []
+
+(* The calls of natives from machine code in progress: each holds machine code's frames and the C glue's on the
+   machine's stack, whose size is the system's (8 MB on Linux, 1 MB on Windows). Past [most_nested], what a native calls
+   back runs in the interpreter, whose frames are OCaml's, on a stack that grows. *)
+let nested = ref 0
+let most_nested = 64
+
+
+(* What the bridge gives when the native raised: a block that no native gives. The exception the last one raised, with
+   the base of the frame it was raised in, which [fail] raises again. *)
+let failed = Text "jit: a native raised"
+let raised : (exn * int) option ref = ref None
 
 (* The steps of native code that take about as long as MIR takes to make one line of MIR text at level 1: 1,000 to
    1,400 for ode.Solve's step and the sparse product, 240 for optimize.Root. A unit gets its level 2 once its runs took
@@ -61,6 +81,8 @@ let pending : (code * Level2.state Atomic.t) option ref = ref None
    the same points where a run starts again, so it goes on from there. *)
 let settle () =
   match !pending with
+  (* A native that machine code called runs: that code is on the stack. *)
+  | Some _ when !runs <> [] -> ()
   | None -> ()
   | Some (code, job) ->
     (match Atomic.get job with
@@ -117,12 +139,14 @@ let make (w : world) (ver : version) fns start loops =
   let nested_room = Array.exists reserves (Array.sub fns 1 (Array.length fns - 1)) || Array.exists rooms fns in
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
        come back through a call of the first function. *)
-    if calls && (not pure) && fns.(0).loose then None
-    else if nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
+    (* A unit that calls natives never starts again: its stacks grow and its room is made where they lack. *)
+    let bridged = fns.(0).natives <> [||] in
+    if (not bridged) && calls && (not pure) && fns.(0).loose then None
+    else if (not bridged) && nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
     else begin
       (* The room the outermost frame checks at its start and at each turn of its loops covers what nested frames make
          then, up to [margin] words: a run comes back there after a collection rather than short in a nested frame. *)
-      if nested_room then begin
+      if nested_room && not bridged then begin
         let margin = margin () in
         Array.iter (fun (b : Ir.block) -> List.iter (function Ir.Reserve (n, p) when p >= 0 -> n := !n + margin | _ -> ()) b.ins) fns.(0).blocks
       end;
@@ -148,7 +172,7 @@ let make (w : world) (ver : version) fns start loops =
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
             need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; rooms = 0; worth;
             cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
-            last = Array.make (Array.length fn.moving) Missing; points; ticks; entries }
+            last = Array.make (Array.length fn.moving) Missing; points; ticks; entries; natives = fn.natives }
         in
         Gc.finalise release code;
         Some code
@@ -162,6 +186,7 @@ let holds now v =
   match now, v with
   | Int a, Int b -> a = b
   | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
+  | (Text _ | Fun _ | Native _), _ -> now == v
   | _ -> false
 
 let of_kind v kind = match v, kind with Int _, Ir.Kint | Float _, Ir.Kfloat -> true | _ -> false
@@ -272,6 +297,107 @@ let boxed (ctx : ctx) code =
 
 let imin (a : int) b = if a < b then a else b
 
+(* At least [n] words of the young heap for native code: OCaml's own allocation collects when they are not there, and runs
+   what the runtime has pending. *)
+let rec room n =
+  if n > 0 then begin
+    ignore (Sys.opaque_identity (n, n, n, n, n, n, n));
+    room (n - 8)
+  end
+
+(* The stack native frames may take: under a limit of memory, they ask for the stack the interpreter's would: its call
+   puts a frame at most [stride] above its caller's, which takes at most [need]; native frames, 2 apart from the first,
+   stop where those would pass the stack. *)
+let limits (ctx : ctx) code b depth =
+  let mem =
+    if ctx.w.limits.memory_words = max_int || code.stride <= 0 || code.need <= 0 then max_int
+    else begin
+      let first = b + code.fn.frame + code.fn.hidden and room = ctx.cap - code.need - b - code.stride in
+      if room < 0 then first - 1 else first + (2 * (room / code.stride))
+    end
+  in
+  io.(Ir.io_mem) <- mem;
+  io.(Ir.io_cap2) <- ctx.cap - 2;
+  io.(Ir.io_lim) <- imin (imin (ctx.cap - 2) depth) mem
+
+(* The stacks grown for a frame at [at] that native code is about to enter at [site], past them or past what the
+   interpreter's frames would take under a limit of memory, as the interpreter grows them at its call: the frame
+   entered, linked to its caller's, so that a limit names it, when the stacks hold it. *)
+let grow (ctx : ctx) r at site =
+  let caller = if at = r.rb + r.rcode.fn.frame + r.rcode.fn.hidden then r.rb else at - 2 in
+  if at + 1 < ctx.cap then begin
+    ctx.i.(at) <- caller;
+    ctx.i.(at + 1) <- site;
+    ctx.b <- at
+  end
+  else ctx.b <- caller;
+  ctx.site <- site;
+  Runtime.grow ctx (max (at + 3) (ctx.cap + 1))
+
+(* A call of machine code to OCaml, from the C glue: native [k] of the unit, at [site], from the frame at [at], as the
+   interpreter calls it, with [a]; or the stacks grown for a frame at [at] (k -1), or room for [at] words of the young
+   heap (k -2). [used]: the steps the run made so far. The interpreter's fuel is then what it would be after them, so
+   that the native's steps, and those of what it calls back, are counted as the interpreter counts them, and its
+   checkpoints come at the same steps; then the run goes on from what is left, its counts made from there. The
+   interpreter's frames that a native calls back go above the frame at [at], as they do above the interpreter's own:
+   they may write over the constants and the variables of modules that the outermost frame holds, written again after.
+   An exception is caught here, as no exception of OCaml may unwind machine code: [fail] raises it again. The result is
+   the native's, or [failed]; the C glue reads the stacks from the context of the first run of [runs]. *)
+let bridge (a : t array) =
+  match !runs with
+  | [] -> failed
+  | r :: _ ->
+    let ctx = r.rctx and code = r.rcode and fn = r.rcode.fn in
+    let k = io.(Ir.io_a) and at = io.(Ir.io_b) and site = io.(Ir.io_point) and used = io.(Ir.io_code) in
+    let w = ctx.w and s = ctx.site in
+    ctx.fuel <- r.fuel0 - used;
+    let v =
+      match
+        if k >= 0 then begin
+          ctx.b <- at;
+          ctx.site <- site;
+          r.calling <- true;
+          incr nested;
+          let v = code.natives.(k).run ctx a in
+          decr nested;
+          r.calling <- false;
+          v
+        end
+        else begin
+          if k = -1 then grow ctx r at site else if at > 4096 then Gc.minor () else room at;
+          Missing
+        end
+      with
+      | v -> v
+      | exception e ->
+        if r.calling then decr nested;
+        r.calling <- false;
+        raised := Some (e, ctx.b);
+        failed
+    in
+    let b = r.rb in
+    if k >= 0 && v != failed && ctx.fuel = r.fuel0 - used then begin
+      (* A native that counted no step called nothing back and met no checkpoint: nothing above the frame was written,
+         and the run's counts and limits are as they were, still in io. *)
+      ctx.b <- b;
+      ctx.site <- s;
+      ctx.fuel <- r.fuel0;
+      v
+    end
+    else
+    let put k v = if ctx.v.(k) != v then ctx.v.(k) <- v in
+    for j = 0 to Array.length fn.consts - 1 do put (b + fn.frame + j) fn.consts.(j) done;
+    let moved = Ir.moved_at fn in
+    for j = 0 to Array.length code.last - 1 do put (b + moved + j) code.last.(j) done;
+    ctx.b <- b;
+    ctx.site <- s;
+    r.fuel0 <- ctx.fuel + used;
+    io.(Ir.io_until) <- used + ctx.until - (ctx.refill - ctx.fuel);
+    io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else used + w.steps_left - (ctx.refill - ctx.fuel));
+    limits ctx code b r.depth;
+    ctx.fuel <- r.fuel0;
+    v
+
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
    comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
    slots before, and boxed back after a run that wrote them. A [stale] run goes on after a checkpoint where a variable of
@@ -280,7 +406,7 @@ let imin (a : int) b = if a < b then a else b
 let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
-  if (not code.plain) && not (numbers_fit ~cells:(not stale) ctx code) then Ir.fallback else begin
+  if !nested >= most_nested || ((not code.plain) && not (numbers_fit ~cells:(not stale) ctx code)) then Ir.fallback else begin
   if not code.plain then unboxed ctx code;
   io.(Ir.io_code) <- 0;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
@@ -293,18 +419,7 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
   io.(Ir.io_status) <- Ir.ok;
   io.(Ir.io_cap2) <- ctx.cap - 2;
   io.(Ir.io_depth) <- depth;
-  (* Under a limit of memory, native frames ask for the stack the interpreter's would: its call puts a frame at most
-     [stride] above its caller's, which takes at most [need]; native frames, 2 apart from the first, stop where those would
-     pass the stack. *)
-  let mem =
-    if w.limits.memory_words = max_int || code.stride <= 0 || code.need <= 0 then max_int
-    else begin
-      let first = b + code.fn.frame + code.fn.hidden and room = ctx.cap - code.need - b - code.stride in
-      if room < 0 then first - 1 else first + (2 * (room / code.stride))
-    end
-  in
-  io.(Ir.io_mem) <- mem;
-  io.(Ir.io_lim) <- imin (imin (ctx.cap - 2) depth) mem;
+  limits ctx code b depth;
   io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else w.steps_left - (ctx.refill - fuel0));
   io.(Ir.io_until) <- ctx.until - (ctx.refill - fuel0);
   io.(Ir.io_leave) <- (if leave then 1 else 0);
@@ -320,7 +435,10 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
          ctx.v.(b + at + j) <- code.last.(j))
       code.fn.moving
   end;
+  let r = if code.natives = [||] then None else (let r = { rctx = ctx; rcode = code; rb = b; fuel0; depth; calling = false } in runs := r :: !runs; Some r) in
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
+  (* Natives called through OCaml counted their steps in the interpreter's fuel, from which the run went on. *)
+  let fuel0 = match r with Some r -> runs := List.tl !runs; r.fuel0 | None -> fuel0 in
   if (not code.plain) && wrote code.fn st then boxed ctx code;
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
@@ -356,14 +474,6 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
   end
   end
 
-(* At least [n] words of the young heap for native code: OCaml's own allocation collects when they are not there, and runs
-   what the runtime has pending. *)
-let rec room n =
-  if n > 0 then begin
-    ignore (Sys.opaque_identity (n, n, n, n, n, n, n));
-    room (n - 8)
-  end
-
 (* An error of native code: the interpreter does the operation again, at the same site and on the same frames, so its
    message and trace are the interpreter's own. *)
 let fail (ctx : ctx) (c : code) =
@@ -371,7 +481,15 @@ let fail (ctx : ctx) (c : code) =
   ctx.b <- io.(Ir.io_frame);
   ctx.site <- io.(Ir.io_point);
   let a = io.(Ir.io_a) and b = io.(Ir.io_b) and code = io.(Ir.io_code) in
-  if code = Ir.err_add then ignore (Arith.add_int ctx a b)
+  if code = Ir.err_native then begin
+    match !raised with
+    | Some (e, at) ->
+      raised := None;
+      ctx.b <- at;
+      raise e
+    | None -> ()
+  end
+  else if code = Ir.err_add then ignore (Arith.add_int ctx a b)
   else if code = Ir.err_sub then ignore (Arith.sub_int ctx a b)
   else if code = Ir.err_mul then ignore (Arith.mul_int ctx a b)
   else if code = Ir.err_neg then ignore (Arith.neg ctx (Int a))
@@ -382,6 +500,14 @@ let fail (ctx : ctx) (c : code) =
     (* As the interpreter's write: the array owned, so copied when shared, then the write, which fails. *)
     let top = Runtime.own ctx ctx.v.(ctx.b + b) in
     Arrays.write ctx top [| Arrays.At a |] (Float 0.)
+  end
+  else if code = Ir.err_int || code = Ir.err_float then begin
+    (* A native's result that the interpreter's typed code takes as a number, as its to_i or to_f says. *)
+    let slot = b0 + Ir.moved_at c.fn - 1 in
+    let v = ctx.v.(slot) in
+    ctx.v.(slot) <- Missing;
+    if code = Ir.err_int then Runtime.fail ctx Type (Messages.want_int "This value" (Value.describe v))
+    else Runtime.fail ctx Type (Messages.need_number "This value" (Value.describe v))
   end
   else if code = Ir.err_cond then begin
     (* As the interpreter's test of a condition: the value, from the slot native code put it in. *)
@@ -505,7 +631,7 @@ let promote (w : world) (ver : version) =
   let ri = ver.ri and rf = ver.rf and rv = ver.rv in
   match Lower.unit w ver with
   | exception e when bug e -> ()
-  | None -> ()
+  | None -> if !Lower.why <> "" && Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ ver.owner.pname ^ " interpreted: " ^ !Lower.why)
   (* A body without a loop or a call is as fast interpreted as the way in and out of native code. *)
   | Some fns when not (fns.(0).calls || fns.(0).looped) -> ()
   | Some fns when !Tier.watching && fns.(0).looped -> ()
@@ -557,7 +683,10 @@ let compile (ctx : ctx) (l : Tier.loop) ver =
          l.code <- Some (Native c);
          l.reloads <- c.reloads
        | None -> l.failed <- true)
-    | None -> refused l
+    | None ->
+      if !Lower.why <> "" && Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
+        prerr_endline (Printf.sprintf "jit: loop %d interpreted: %s" l.expr.id !Lower.why);
+      refused l
     | exception Lower.Unseen ->
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true
@@ -568,9 +697,11 @@ let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads =
 
 (* Native code takes arrays of floats, integers or values only, and writes only into owned ones: a shared one is copied at its first write,
    which the interpreter does, at its step. Checked before the interpreter leaves its loops, so that native code then never
-   falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
+   falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. So does one that
+   [most_nested] natives called from machine code hold on the machine's stack. *)
 let fits (ctx : ctx) code =
-  numbers_fit ctx (native code)
+  !nested < most_nested
+  && numbers_fit ctx (native code)
   && Array.for_all
     (fun (slot, written, store, nd) ->
        let dims d = nd = 0 || Array.length d = (if nd = 2 then 0 else nd) in
@@ -778,4 +909,9 @@ let install () =
     (* In mode always, native entries from the first call to the last, for tests. *)
     if ver.rv != rv && !Tier.mode <> Tier.always then judge w ver ri rf rv
   in
+  Runtime.bridged := (fun ctx -> List.exists (fun r -> r.calling && r.rctx == ctx) !runs);
+  Callback.register "cesia_jit_native" bridge;
+  Callback.register "cesia_jit_io" io;
+  Callback.register "cesia_jit_runs" runs;
+  Callback.register "cesia_jit_failed" failed;
   Tier.jit := Some { promote; compile; pick; place; after; enter; start; counter }

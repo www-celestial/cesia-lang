@@ -1,0 +1,75 @@
+use std/dict
+use std/io
+use std/json
+use std/sys
+use std/text
+
+(* A native that raises, called from machine code: in a loop, in a function the loop calls, and counting its own steps
+   past the limit of steps; and an Err that a native gives, a value as any other. *)
+defn look(key)
+  v = text.Repeat(key, "ab")
+  v
+end
+
+defn fromLoop(n)
+  m = {A: 1, B: 2}
+  on = m
+  total = 0
+  for k in 1..n
+    if k == n
+      on = [1]
+    end
+    x = dict.Has("A", on)
+    if x
+      total = total + 1
+    end
+  end
+  total
+end
+
+defn fromCall(n)
+  total = 0
+  key = 2
+  for k in 1..n
+    if k == n
+      key = -1
+    end
+    x = look(key)
+    s = text.ByteLength(x)
+    total = total + s
+  end
+  total
+end
+
+defn errs(n)
+  t = "12"
+  last = missing
+  for k in 1..n
+    if k == n
+      t = "{x"
+    end
+    last = json.Parse(t)
+  end
+  last
+end
+
+defn grow(n)
+  total = 0
+  for k in 1..n
+    s = text.Repeat(3000, "abcdefgh")
+    size = text.ByteLength(s)
+    total = total + size
+  end
+  total
+end
+
+case = sys.Args[1]
+if case == "loop"
+  io.Print(fromLoop(3000))
+else if case == "call"
+  io.Print(fromCall(3000))
+else if case == "err"
+  io.Print(errs(3000))
+else
+  io.Print(grow(2000))
+end

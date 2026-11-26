@@ -1,0 +1,397 @@
+(* The figures of the book that show what a command prints or how a mechanism goes, drawn as SVG into OUT
+   (docs/book/images), an English one and, where it says something in words, a French one, NAME-fr.svg. The terminals
+   are what the commands print, run here in a folder of their own, WORK, by the cesia that CESIA names and Node; the
+   programs come from the pages themselves, so a figure can't drift from its page. Each is a drawing of SVG's shapes
+   and texts on white, readable on a light page and a dark one, as the site wants: no script, no link, no file loaded.
+   tools/figures.sh runs it. *)
+use std/crypto
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+cesia = sys.Env("CESIA")
+work = sys.Env("WORK")
+out = sys.Env("OUT")
+dollar = "$"   (* a dollar as itself, not the start of a value in a text *)
+
+esc(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
+keep(s) = text.Replace(" ", text.Char(160), esc(s))   (* the spaces of a terminal line kept, as no-break spaces: an SVG would fold them into one *)
+
+defn most(xs)
+  (** The largest of a list of numbers, 0 for none. *)
+  m = 0
+  for x in xs
+    if x > m
+      m = x
+    end
+  end
+  m
+end
+
+style = "<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>"
+
+defn svg(w, h, title, parts)
+  (** A drawing of w by h pixels on white, its title for those who can't see it. *)
+  head = ["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\">", "<title>$(esc(title))</title>", style,
+    "<rect width=\"$w\" height=\"$h\" fill=\"#fff\"/>"]
+  text.Join("\n", list.Concat(head, list.Concat(parts, ["</svg>", ""])))
+end
+
+t(x, y, s, cls = "", anchor = "start") = "<text x=\"$x\" y=\"$y\"$(if cls == "" "" else " class=\"$cls\"" end)$(if anchor == "start" "" else " text-anchor=\"$anchor\"" end)>$(esc(s))</text>"
+code(x, y, s, cls = "c") = "<text x=\"$x\" y=\"$y\" class=\"$cls\">$(keep(s))</text>"
+rect(x, y, w, h, cls) = "<rect class=\"$cls\" x=\"$x\" y=\"$y\" width=\"$w\" height=\"$h\" rx=\"4\"/>"
+line(x1, y1, x2, y2, cls = "l") = "<line class=\"$cls\" x1=\"$x1\" y1=\"$y1\" x2=\"$x2\" y2=\"$y2\"/>"
+arrow(x1, y, x2, cls = "la") = "$(line(x1, y, x2 - 7, y, cls))<polygon fill=\"#3a5ad9\" points=\"$x2,$y $(x2 - 8),$(y - 4) $(x2 - 8),$(y + 4)\"/>"
+
+charW = 7.85   (* the width of a character of the code font at 13 pixels *)
+
+(* ---- Terminals: what the commands print, a line each, the command after a gray $, the standard error in red, and a
+   note at the right of a line, in words. *)
+
+defn run(args, dir, input = "")
+  (** A command of cesia run in dir: {Code, Out, Err}. *)
+  sys.Run(cesia, args = args, dir = dir, input = input)!
+end
+
+lines(s) = if s == "" [] else text.Lines(s) end
+cmd(s, note = "") = {Kind: "cmd", Text: s, Note: note}
+defn rowsOf(kind, s, note)
+  (** The lines of a text as rows of a terminal, the note on the first. *)
+  ls = lines(s)
+  [{Kind: kind, Text: ls[k], Note: if k == 1 note else "" end} for k in 1..value.Len(ls)]
+end
+outLines(s, note = "") = rowsOf("out", s, note)
+errLines(s, note = "") = rowsOf("err", s, note)
+
+defn terminal(rows, title)
+  (** A terminal of rows, its notes at the right. *)
+  width = most([value.Len(r.Text) + (if r.Kind == "cmd" 2 else 0 end) for r in rows]) * charW + 32
+  noted = most([value.Len(r.Note) for r in rows])
+  w = math.Round(width + (if noted > 0 noted * 7.1 + 40 else 0 end))
+  h = value.Len(rows) * 20 + 28
+  parts = [rect(1, 1, math.Round(width), h - 2, "term")]
+  y = 26
+  for r in rows
+    if r.Kind == "cmd"
+      parts = list.Append("<text x=\"16\" y=\"$y\" class=\"c\"><tspan class=\"p\">$(dollar)$(text.Char(160))</tspan>$(keep(r.Text))</text>", parts)
+    else
+      parts = list.Append(code(16, y, r.Text, if r.Kind == "err" "c e" else "c" end), parts)
+    end
+    if r.Note != ""
+      parts = list.Concat(parts, [line(math.Round(width) + 6, y - 4, math.Round(width) + 22, y - 4), t(math.Round(width) + 28, y, r.Note, "s")])
+    end
+    y += 20
+  end
+  svg(w, h, title, parts)
+end
+
+(* A text of the book: the first block of code of a page that starts with a line. *)
+defn block(page, first)
+  body = sys.Read("docs/book/$page")!
+  start = text.Find(first, body)
+  stop = text.Find("\n```", text.Slice(start, value.Len(body), body))
+  "$(text.Slice(start, start + stop - 1, body))\n"
+end
+
+(* ---- The figures, each in English and in French: the words of a language, then the drawing. *)
+
+defn commands(say, tag)
+  (** A project from its start: new, a task, a test, a check that finds a mistake, a file that isn't there. *)
+  sh = "$work/commands$tag"
+  _ = sys.Mkdir(sh)
+  made = run(["new", "shop"], sh)
+  shop = "$sh/shop"
+  _ = sys.Mkdir("$shop/src/prices")
+  sys.Write("$shop/src/prices/tax.ce", "(** The price with its tax.\n\n      Taxed(100) --> 120.0 *)\nTaxed(price) = price * 1.2\n")!
+  task = run(["do", "run"], shop)
+  tested = run(["test"], shop)
+  sys.Write("$shop/src/main.ce", "use std/io\nuse src/prices\n\nio.Print(prices.Taxed(10))\nio.Print(prices.Taxd(20))\n")!
+  checked = run(["check"], shop)
+  absent = run(["run", "src/nothere.ce"], shop)
+  rows = list.Concat([cmd("cesia new shop", say.New)], outLines(made.Out))
+  rows = list.Concat(rows, [cmd("cd shop"), cmd("cesia do run", say.Task)])
+  rows = list.Concat(rows, outLines(task.Out))
+  rows = list.Concat(rows, list.Concat([cmd("cesia test", say.Test)], outLines(tested.Out)))
+  rows = list.Concat(rows, list.Concat([cmd("cesia check", say.Check)], list.Concat(outLines(checked.Out), errLines(checked.Err))))
+  rows = list.Concat(rows, [cmd("echo $(dollar)?"), {Kind: "out", Text: "$(checked.Code)", Note: say.One}])
+  rows = list.Concat(rows, list.Concat([cmd("cesia run src/nothere.ce")], errLines(absent.Err)))
+  rows = list.Concat(rows, [cmd("echo $(dollar)?"), {Kind: "out", Text: "$(absent.Code)", Note: say.Two}])
+  terminal(rows, say.Title)
+end
+
+defn streams(say, tag)
+  (** lines.ce of the chapter Files in a pipe: its output, its error and its exit code. *)
+  dir = "$work/lines$tag"
+  _ = sys.Mkdir(dir)
+  sys.Write("$dir/lines.ce", block("files.md", "(* lines.ce"))!
+  sales = sys.Read("docs/book/files/sales.csv")!
+  full = run(["run", "lines.ce"], dir, input = sales)
+  empty = run(["run", "lines.ce"], dir, input = "")
+  rows = list.Concat([cmd("cat sales.csv | cesia run lines.ce")], outLines(full.Out, say.Out))
+  rows = list.Concat(rows, [cmd("echo $(dollar)?"), {Kind: "out", Text: "$(full.Code)", Note: say.Zero}])
+  rows = list.Concat(rows, list.Concat([cmd("cesia run lines.ce < /dev/null")], list.Concat(outLines(empty.Out, say.Out), errLines(empty.Err, say.Err))))
+  rows = list.Concat(rows, [cmd("echo $(dollar)?"), {Kind: "out", Text: "$(empty.Code)", Note: say.One}])
+  rows = list.Concat(rows, [cmd("cesia run lines.ce < sales.csv > count.txt", say.File), cmd("cat count.txt")])
+  rows = list.Concat(rows, outLines(full.Out))
+  terminal(rows, say.Title)
+end
+
+defn anatomy(say, tag)
+  (** A message of a bug, and one of the parser with its hint, each part named. *)
+  dir = "$work/messages$tag"
+  _ = sys.Mkdir(dir)
+  sys.Write("$dir/shop.ce", "use std/io\nnames = [\"Ana\", \"Bo\", \"Cy\"]\nio.Print(names[5])\n")!
+  sys.Write("$dir/total.ce", "use std/io\nmy_total = 3\nio.Print(my_total)\n")!
+  bug = lines(run(["run", "shop.ce"], dir).Err)
+  hint = lines(run(["run", "total.ce"], dir).Err)
+  rows = list.Concat([cmd("cesia run shop.ce")], [{Kind: "err", Text: l, Note: ""} for l in bug])
+  rows = list.Concat(rows, list.Concat([cmd("cesia run total.ce")], [{Kind: "err", Text: l, Note: ""} for l in hint]))
+  width = most([value.Len(r.Text) + 2 for r in rows]) * charW + 32
+  h = value.Len(rows) * 20 + 28
+  first = bug[1]
+  colon = text.Find(": ", first)
+  where = text.Slice(1, colon - 1, first)
+  x0 = 16
+  parts = [rect(1, 1, math.Round(width), h - 2, "term")]
+  (* the place, a band over file:line:column *)
+  parts = list.Append(rect(x0 - 2, 31, math.Round(value.Len(where) * charW) + 4, 20, "mark"), parts)
+  y = 26
+  for r in rows
+    parts = list.Append(if r.Kind == "cmd" "<text x=\"16\" y=\"$y\" class=\"c\"><tspan class=\"p\">$(dollar)$(text.Char(160))</tspan>$(keep(r.Text))</text>" else code(16, y, r.Text, "c e") end, parts)
+    y += 20
+  end
+  nx = math.Round(width) + 8
+  note(k, s) = "$(line(nx - 2, 22 + k * 20, nx + 14, 22 + k * 20))$(t(nx + 20, 26 + k * 20, s, "s"))"
+  hintRow = value.Len(bug) + 2
+  parts = list.Concat(parts, [note(1, say.Where), note(2, say.Line), note(3, say.Place), note(hintRow, say.What)])
+  if value.Len(hint) >= 4
+    parts = list.Append(note(hintRow + 3, say.Hint), parts)
+  end
+  w = math.Round(width + 40 + most([value.Len(s) for s in [say.Where, say.Line, say.Place, say.What, say.Hint]]) * 7.1)
+  svg(w, h, say.Title, parts)
+end
+
+defn boundary(say, tag)
+  (** The three places where a written type is checked, each with the message it gives when a value doesn't fit. *)
+  dir = "$work/types$tag"
+  _ = sys.Mkdir(dir)
+  head = "struct Car\n  Mass Float\n  Speed Float = 0.0\nend\nHalf(x Float) Float = x / 2\n"
+  cases = [["Half(\"ten\")", say.Call], ["c = Car(1000.0)\nc.Mass = \"heavy\"", say.Field], ["defn label(n Int) Text\n  n * 2\nend\nlabel(4)", say.Result]]
+  parts = [t(16, 24, say.Runs, "h"), t(360, 24, say.Stops, "h")]
+  y = 48
+  k = 1
+  for c in cases
+    sys.Write("$dir/case$k.ce", "$head$(c[1])\n")!
+    said = lines(run(["run", "case$k.ce"], dir).Err)[1]
+    message = text.Slice(text.Find(": ", said) + 2, value.Len(said), said)
+    codeLines = text.Lines(c[1])
+    bh = value.Len(codeLines) * 18 + 30
+    parts = list.Append(rect(16, y, 300, bh, "term"), parts)
+    for j in 1..value.Len(codeLines)
+      parts = list.Append(code(28, y + 20 + (j - 1) * 18, codeLines[j]), parts)
+    end
+    parts = list.Append(t(28, y + bh - 8, c[2], "a"), parts)
+    parts = list.Append(arrow(320, y + 16, 356), parts)
+    words = text.Split(" ", message)
+    lineText = ""
+    ly = y + 20
+    for wd in words
+      if value.Len(lineText) + value.Len(wd) > 46
+        parts = list.Append(t(362, ly, lineText, "e"), parts)
+        ly += 18
+        lineText = wd
+      else
+        lineText = if lineText == "" wd else "$lineText $wd" end
+      end
+    end
+    parts = list.Append(t(362, ly, lineText, "e"), parts)
+    y += bh + 14
+    k += 1
+  end
+  svg(720, y + 4, say.Title, parts)
+end
+
+defn positions(say, tag)
+  (** The characters of a text counted from 1, and the bytes of UTF-8 under them. *)
+  s = "café"
+  chars = text.Chars(s)
+  parts = [t(16, 24, say.Chars, "h")]
+  cw = 44
+  bx = 16
+  x = bx
+  for k in 1..value.Len(chars)
+    ch = chars[k]
+    n = text.ByteLength(ch)
+    w = n * cw
+    parts = list.Concat(parts, [t(x + w / 2, 44, "$k", "s", "middle"), rect(x, 52, w - 4, 30, if k >= 2 and k <= 3 "box" else "term" end), "<text x=\"$(x + w / 2 - 2)\" y=\"72\" class=\"c\" text-anchor=\"middle\">$(esc(ch))</text>"])
+    x += w
+  end
+  bytes = text.Bytes(s)
+  x = bx
+  for k in 1..value.Len(bytes)
+    b = bytes[k]
+    parts = list.Concat(parts, [rect(x, 96, cw - 4, 26, "term"), "<text x=\"$(x + cw / 2 - 2)\" y=\"114\" class=\"c\" text-anchor=\"middle\">$b</text>", t(x + cw / 2 - 2, 140, "$k", "s", "middle")])
+    x += cw
+  end
+  parts = list.Append(t(16, 164, say.Bytes, "h"), parts)
+  rx = bx + value.Len(bytes) * cw + 24
+  facts = [["value.Len(\"café\")", "$(value.Len(s))"], ["text.Slice(2, 3, \"café\")", "\"$(text.Slice(2, 3, s))\""], ["text.ByteLength(\"café\")", "$(text.ByteLength(s))"],
+    ["text.Bytes(\"é\")", "$(text.Bytes("é"))"]]
+  for k in 1..value.Len(facts)
+    f = facts[k]
+    parts = list.Append("<text x=\"$rx\" y=\"$(44 + (k - 1) * 26)\" class=\"c\">$(esc(f[1])) <tspan class=\"p\">--&gt;</tspan> $(esc(f[2]))</text>", parts)
+  end
+  parts = list.Append(t(rx, 44 + 4 * 26 + 4, say.Walk, "s"), parts)
+  parts = list.Append(t(rx, 44 + 4 * 26 + 22, say.Walk2, "s"), parts)
+  svg(rx + 330, 176, say.Title, parts)
+end
+
+defn sections(say, tag)
+  (** A cesia.toml, each of its tables beside the command that reads it. *)
+  rows = [["[project]", "name = \"shop\"", "cesia = \"1.3\"", say.Project],
+    ["[deps.ceres]", "from = \"github.com/www-celestial/ceres\"", "version = \"v0.1.0\"", say.Deps],
+    ["[tasks.serve]", "file = \"src/serve.ce\"", "allow = [\"net=:8080\", \"read=public\"]", say.Tasks],
+    ["[test]", "allow = [\"read=files\"]", "timeout = \"30\"", say.Test],
+    ["[site]", "title = \"Shop\"", "source = \"https://github.com/someone/shop/blob/main/\"", say.Site]]
+  parts = [t(16, 22, "cesia.toml", "h"), t(490, 22, say.Who, "h")]
+  y = 34
+  for r in rows
+    parts = list.Concat(parts, [rect(16, y, 450, 66, "term"), code(28, y + 20, r[1], "c a"), code(28, y + 38, r[2]), code(28, y + 56, r[3]), arrow(470, y + 33, 490)])
+    said = text.Split("\n", r[4])
+    for j in 1..value.Len(said)
+      l = said[j]
+      parts = list.Append(if j == 1 code(498, y + 28, l) else t(498, y + 28 + (j - 1) * 18, l, "s") end, parts)
+    end
+    y += 76
+  end
+  svg(820, y + 4, say.Title, parts)
+end
+
+defn browser(say, tag)
+  (** loan.ce of the chapter WebAssembly, built, then run by Node and by cesia run: the same lines. *)
+  dir = "$work/loan$tag"
+  _ = sys.Mkdir(dir)
+  sys.Write("$dir/loan.ce", block("wasm.md", "(* loan.ce *)"))!
+  built = run(["build", "--target", "wasm", "loan.ce"], dir)
+  listed = text.Join("  ", [f for f in sys.List(dir)! if text.StartsWith("loan.", f)])
+  node = sys.Run("node", args = ["loan.js"], dir = dir)!
+  ran = run(["run", "loan.ce"], dir)
+  rows = list.Concat([cmd("cesia build --target wasm loan.ce", say.Build)], list.Concat(outLines(built.Out), errLines(built.Err)))
+  rows = list.Concat(rows, [cmd("ls"), {Kind: "out", Text: listed, Note: say.Files}])
+  rows = list.Concat(rows, list.Concat([cmd("node loan.js", say.Node)], outLines(node.Out)))
+  rows = list.Concat(rows, list.Concat([cmd("cesia run loan.ce", if node.Out == ran.Out say.Same else "" end)], outLines(ran.Out)))
+  terminal(rows, say.Title)
+end
+
+defn password(say, tag)
+  (** What crypto.HashPassword keeps, part by part, for the same password twice. *)
+  s = crypto.Open()!
+  one = crypto.HashPassword("correct horse", s)
+  two = crypto.HashPassword("correct horse", s)
+  p = text.Split(dollar, one)
+  q = text.Split(dollar, two)
+  costs = {}
+  for kv in text.Split(",", p[4])
+    pair = text.Split("=", kv)
+    costs[pair[1]] = text.Number(pair[2])
+  end
+  whole(x) = text.Decimals(0, x)
+  labels = [say.Algo, say.Version, "$(say.Memory) $(whole(costs["m"] / 1024)) MiB, $(costs["t"]) $(say.Passes), $(costs["p"]) $(say.Lanes)",
+    "$(say.Salt) $(whole(math.Floor(value.Len(p[5]) * 6 / 8))) $(say.BytesWord)", "$(say.Hash) $(whole(math.Floor(value.Len(p[6]) * 6 / 8))) $(say.BytesWord)"]
+  parts = [t(16, 22, say.Head, "h")]
+  x = 16
+  y = 52
+  for k in 2..6
+    piece = "$(dollar)$(p[k])"
+    w = value.Len(piece) * charW
+    parts = list.Concat(parts, [rect(x - 1, y - 16, math.Round(w) + 2, 22, if k >= 5 "box" else "term" end), code(x, y, piece), line(x + w / 2, y + 8, x + w / 2, y + 16 + (k - 2) * 18),
+      t(x + w / 2 + 6, y + 22 + (k - 2) * 18, labels[k - 1], if k >= 5 "a" else "s" end)])
+    x += w
+  end
+  y2 = y + 128
+  parts = list.Append(t(16, y2, say.Again, "h"), parts)
+  parts = list.Append(code(16, y2 + 24, two), parts)
+  parts = list.Append(t(16, y2 + 48, say.Check, "s"), parts)
+  svg(math.Round(x + 20), y2 + 60, say.Title, parts)
+end
+
+(* ---- The words of each figure. *)
+
+en = {
+  Commands: {Title: "A terminal: cesia new shop makes the project; cesia do run runs its task run, which prints Hello from shop; cesia test runs the example of src/prices/tax.ce, 1 passed; cesia check finds a name that doesn't exist, Taxd, without running anything, and its exit code is 1; cesia run of a file that isn't there says it can't read it, with the exit code 2.",
+    New: "a project: cesia.toml, src/main.ce, std/", Task: "the task run of cesia.toml", Test: "the examples and tests of the project",
+    Check: "a typo in src/main.ce: found, nothing ran", One: "1: an error stopped it", Two: "2: the command line is wrong"},
+  Streams: {Title: "A terminal: lines.ce of the chapter Files counts the lines of sales.csv in a pipe and ends with the code 0; with nothing on its input it prints 0 lines, writes lines: nothing came in on the standard error, and ends with the code 1; with its output sent to count.txt, only the file gets the count.",
+    Out: "standard output", Err: "standard error", Zero: "exit code 0: all went well", One: "exit code 1: sys.Exit(1)", File: "the output goes to the file, the screen shows nothing"},
+  Anatomy: {Title: "Two messages of Cesia, each part named: shop.ce:3:9, the file, line and column where it stopped, then the message, Index 5 is outside this array of 3 elements; the line of the code; a mark under the place; then a message of the parser with its hint on the line below, what to do.",
+    Where: "where: file, line and column", Line: "the line of the code", Place: "the mark under the place", What: "what went wrong, in plain words", Hint: "the hint: what to do"},
+  Types: {Title: "The three places where Cesia checks a written type while the program runs, each with the message it gives: a parameter at each call, Half(\"ten\"); a field each time it is written, c.Mass = \"heavy\"; a result each time the function gives one, label(4), whose n * 2 is no Text.",
+    Runs: "the code that runs", Stops: "where it stops, and why", Call: "checked at the call", Field: "checked as the field is written", Result: "checked as the result is given"},
+  Texts: {Title: "The text café as characters and as bytes: four characters counted from 1, c a f é, where é takes two of the five bytes of UTF-8, 195 and 169; value.Len gives 4, text.Slice(2, 3) gives af, text.ByteLength gives 5.",
+    Chars: "characters, from 1", Bytes: "bytes of UTF-8, from 1", Walk: "A character position walks the text from its", Walk2: "start; a byte position is found at once."},
+  Toml: {Title: "A cesia.toml, each of its tables beside the command that reads it: the table project for every command, deps.ceres for cesia pkg and use deps/www-celestial/ceres, tasks.serve for cesia do serve, test for cesia test, site for cesia doc --site.",
+    Who: "what reads it", Project: "every command\nthe project's name and its version of Cesia", Deps: "cesia pkg\nfetches it; use deps/www-celestial/ceres/...",
+    Tasks: "cesia do serve\nruns the file with these permissions", Test: "cesia test\nthe permissions and time of the tests", Site: "cesia doc --site\nthe site of the book and the reference"},
+  Browser: {Title: "A terminal: cesia build --target wasm loan.ce writes loan.wasm, loan.js and loan.sites beside loan.ce; node loan.js prints the payment and three months of the loan, then No schedule for a loan of nothing; cesia run loan.ce prints the same lines.",
+    Build: "compiled to WebAssembly", Files: "the module, its loader, the places of errors", Node: "the loader runs it in Node", Same: "the same lines, byte for byte"},
+  Crypto: {Title: "What crypto.HashPassword keeps for correct horse, part by part: argon2id, the algorithm; v=19, its version; the memory, passes and lanes it took; the salt, random bytes; the hash. The same password hashed again gives another salt and another hash, and crypto.CheckPassword reads all it needs in the text.",
+    Head: "crypto.HashPassword(\"correct horse\", s)", Algo: "the algorithm: Argon2id", Version: "its version", Memory: "memory", Passes: "passes", Lanes: "lane",
+    Salt: "the salt: random,", Hash: "the hash:", BytesWord: "bytes", Again: "The same password again: another salt, another hash",
+    Check: "crypto.CheckPassword(\"correct horse\", stored, s) reads the salt and the settings in the text: true for both."},
+}
+
+fr = {
+  Commands: {Title: "Un terminal : cesia new shop crée le projet ; cesia do run lance sa tâche run, qui affiche Hello from shop ; cesia test lance l'exemple de src/prices/tax.ce, 1 passé ; cesia check trouve un nom qui n'existe pas, Taxd, sans rien lancer, et son code de sortie est 1 ; cesia run d'un fichier absent dit qu'il ne peut pas le lire, avec le code de sortie 2.",
+    New: "un projet : cesia.toml, src/main.ce, std/", Task: "la tâche run de cesia.toml", Test: "les exemples et les tests du projet",
+    Check: "une faute dans src/main.ce : trouvée, rien n'a tourné", One: "1 : une erreur l'a arrêté", Two: "2 : la ligne de commande est fausse"},
+  Streams: {Title: "Un terminal : lines.ce du chapitre Fichiers compte les lignes de sales.csv dans un pipe et finit avec le code 0 ; sans rien en entrée, il affiche 0 lines, écrit lines: nothing came in sur la sortie d'erreur et finit avec le code 1 ; sa sortie envoyée dans count.txt, seul le fichier reçoit le compte.",
+    Out: "sortie standard", Err: "sortie d'erreur", Zero: "code de sortie 0 : tout s'est bien passé", One: "code de sortie 1 : sys.Exit(1)", File: "la sortie va dans le fichier, l'écran ne montre rien"},
+  Anatomy: {Title: "Deux messages de Cesia, chaque partie nommée : shop.ce:3:9, le fichier, la ligne et la colonne où il s'est arrêté, puis le message, Index 5 is outside this array of 3 elements ; la ligne du code ; une marque sous l'endroit ; puis un message du parser avec son conseil sur la ligne du dessous, quoi faire.",
+    Where: "où : fichier, ligne et colonne", Line: "la ligne du code", Place: "la marque sous l'endroit", What: "ce qui ne va pas, en mots simples", Hint: "le conseil : quoi faire"},
+  Types: {Title: "Les trois endroits où Cesia vérifie un type écrit pendant que le programme tourne, chacun avec son message : un paramètre à chaque appel, Half(\"ten\") ; un champ à chaque écriture, c.Mass = \"heavy\" ; un résultat chaque fois que la fonction en donne un, label(4), dont n * 2 n'est pas un Text.",
+    Runs: "le code qui tourne", Stops: "où il s'arrête, et pourquoi", Call: "vérifié à l'appel", Field: "vérifié quand le champ est écrit", Result: "vérifié quand le résultat est donné"},
+  Texts: {Title: "Le texte café en caractères et en octets : quatre caractères comptés depuis 1, c a f é, où é prend deux des cinq octets d'UTF-8, 195 et 169 ; value.Len donne 4, text.Slice(2, 3) donne af, text.ByteLength donne 5.",
+    Chars: "caractères, depuis 1", Bytes: "octets d'UTF-8, depuis 1", Walk: "Une position de caractère parcourt le texte depuis", Walk2: "son début ; une position d'octet se trouve d'un coup."},
+  Toml: {Title: "Un cesia.toml, chacune de ses tables à côté de la commande qui la lit : la table project pour toutes les commandes, deps.ceres pour cesia pkg et use deps/www-celestial/ceres, tasks.serve pour cesia do serve, test pour cesia test, site pour cesia doc --site.",
+    Who: "qui la lit", Project: "toutes les commandes\nle nom du projet et sa version de Cesia", Deps: "cesia pkg\nle télécharge ; use deps/www-celestial/ceres/...",
+    Tasks: "cesia do serve\nlance le fichier avec ces permissions", Test: "cesia test\nles permissions et la durée des tests", Site: "cesia doc --site\nle site du livre et la référence"},
+  Browser: {Title: "Un terminal : cesia build --target wasm loan.ce écrit loan.wasm, loan.js et loan.sites à côté de loan.ce ; node loan.js affiche la mensualité et trois mois du prêt, puis No schedule pour un prêt de rien ; cesia run loan.ce affiche les mêmes lignes.",
+    Build: "compilé en WebAssembly", Files: "le module, son chargeur, les endroits des erreurs", Node: "le chargeur le lance dans Node", Same: "les mêmes lignes, octet pour octet"},
+  Crypto: {Title: "Ce que crypto.HashPassword garde pour correct horse, partie par partie : argon2id, l'algorithme ; v=19, sa version ; la mémoire, les passes et les voies qu'il a pris ; le sel, des octets au hasard ; le hash. Le même mot de passe haché de nouveau donne un autre sel et un autre hash, et crypto.CheckPassword lit tout ce qu'il lui faut dans le texte.",
+    Head: "crypto.HashPassword(\"correct horse\", s)", Algo: "l'algorithme : Argon2id", Version: "sa version", Memory: "mémoire", Passes: "passes", Lanes: "voie",
+    Salt: "le sel : au hasard,", Hash: "le hash :", BytesWord: "octets", Again: "Le même mot de passe de nouveau : un autre sel, un autre hash",
+    Check: "crypto.CheckPassword(\"correct horse\", stored, s) lit le sel et les réglages dans le texte : true pour les deux."},
+}
+
+(* Each figure: its file, and how it is drawn from the words of a language; the commands of each language run in a
+   folder of their own (tag), so that each starts from nothing. *)
+figures = [["commands-session", commands, "Commands"], ["files-streams", streams, "Streams"], ["messages-anatomy", anatomy, "Anatomy"],
+  ["types-boundary", boundary, "Types"], ["texts-positions", positions, "Texts"], ["toml-sections", sections, "Toml"], ["wasm-build", browser, "Browser"],
+  ["crypto-password", password, "Crypto"]]
+
+only = sys.Env("ONLY")
+for f in figures
+  if not value.IsText(only) or only == "" or text.Contains(only, f[1])
+    for lang in [["", en], ["-fr", fr]]
+      sys.Write("$out/$(f[1])$(lang[1]).svg", f[2](lang[2][f[3]], lang[1]))!
+      io.Print("$out/$(f[1])$(lang[1]).svg")
+    end
+  end
+end

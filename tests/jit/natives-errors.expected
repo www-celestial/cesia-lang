@@ -1,0 +1,70 @@
+loop off:
+natives-errors.ce:22:13: Has needs a dictionary, not an array.
+  22 |     x = dict.Has("A", on)
+     |             ^
+  in fromLoop (natives-errors.ce:22)
+loop default:
+natives-errors.ce:22:13: Has needs a dictionary, not an array.
+  22 |     x = dict.Has("A", on)
+     |             ^
+  in fromLoop (natives-errors.ce:22)
+loop always:
+natives-errors.ce:22:13: Has needs a dictionary, not an array.
+  22 |     x = dict.Has("A", on)
+     |             ^
+  in fromLoop (natives-errors.ce:22)
+call off:
+natives-errors.ce:10:11: Repeat needs a count of 0 or more, not the number -1.
+  10 |   v = text.Repeat(key, "ab")
+     |           ^
+  in look (natives-errors.ce:10)
+  called from fromCall (natives-errors.ce:37)
+call default:
+natives-errors.ce:10:11: Repeat needs a count of 0 or more, not the number -1.
+  10 |   v = text.Repeat(key, "ab")
+     |           ^
+  in look (natives-errors.ce:10)
+  called from fromCall (natives-errors.ce:37)
+call always:
+natives-errors.ce:10:11: Repeat needs a count of 0 or more, not the number -1.
+  10 |   v = text.Repeat(key, "ab")
+     |           ^
+  in look (natives-errors.ce:10)
+  called from fromCall (natives-errors.ce:37)
+err off:
+Err({Kind: "json", Message: "A key needs a text, at byte 2."})
+err default:
+Err({Kind: "json", Message: "A key needs a text, at byte 2."})
+err always:
+Err({Kind: "json", Message: "A key needs a text, at byte 2."})
+steps 100000 off:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+steps 100000 always:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+steps 250001 off:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+steps 250001 always:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+steps 361000 off:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+steps 361000 always:
+natives-errors.ce:59:13: Limit "steps" reached.
+  59 |     s = text.Repeat(3000, "abcdefgh")
+     |             ^
+  in grow (natives-errors.ce:59)
+exit 1

@@ -75,9 +75,12 @@ writes the new `Particle` in place of the old one, which nothing else holds, as
 
 ## What stays in the interpreter
 
-- Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse]: they are machine code already.
-  A function that calls one, builds a text, or holds a closure stays interpreted as a whole, as a server's code does,
-  its loops apart.
+- Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse], when they come too often for
+  what the code around them computes: machine code calls them through OCaml, for about 100 ns more than the interpreter
+  does, so a loop made only of such calls stays interpreted; those of the functions that wait, as on the network, always
+  do
+  ([How Cesia works](internals.md#machine-code-that-calls-ocaml)). A function that builds a text or holds a closure
+  stays interpreted as a whole, as a server's code does, its loops apart.
 - Loops over the elements of a list, `for x in xs`, and a call through a value that met five functions or more, or a
   function that captured variables of its own.
 - In a loop, a statement inside an if that it can't make, as the `return` of an error or an `io.Print`: that statement
@@ -264,8 +267,9 @@ Java, Go included: 255 ms against 268.
   against 70 MB for Python, 51 for Go and 148 for Java. The processor's counters say why: 3.1 misses of its last level of cache an
   operation, where the trie took 18.7, against 3.7 for Python and 4.3 for Go. Java's 247 ms comes from a collector that
   works on the other cores and a hash kept inside each of its strings; and the loop of `maps`, which builds a text at
-  each turn, stays in Cesia's interpreter: its share is about a tenth of the time, and native code would have to call
-  back into OCaml for the hash, the table and the text ([How Cesia works](internals.md#what-stays-in-the-interpreter)).
+  each turn, stays in Cesia's interpreter: its share is about a tenth of the time, and native code would call OCaml for
+  the hash, the table and the text, each call costing more than that
+  ([How Cesia works](internals.md#what-stays-in-the-interpreter)).
   The price of the table: the first [dict.Put] on a big map that was built in place turns it into the trie, about
   0.25 s for a million keys, once.
 - **Node and Java start slowly but run fast**: their JITs compile more, and later, with more time to spend on it.

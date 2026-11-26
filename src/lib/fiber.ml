@@ -33,10 +33,11 @@ let parked (ctx : ctx) =
 let[@inline] woken (ctx : ctx) n = ctx.parks = n && (ctx.parks <- n + 1; true)
 
 (* A spawned fiber parks through an effect. The main program isn't a fiber, which keeps its stack and its speed:
-   it runs the scheduler itself until it is woken, in FIFO order with the others. *)
+   it runs the scheduler itself until it is woken, in FIFO order with the others; so does a fiber in a native that
+   machine code called, whose C frames no effect crosses. *)
 let park (ctx : ctx) register =
   Runtime.pause ctx;
-  if ctx.fiber then perform (Suspend (ctx, register))
+  if ctx.fiber && not (!Runtime.bridged ctx) then perform (Suspend (ctx, register))
   else begin
     let w = ctx.w in
     let woke = ref false in

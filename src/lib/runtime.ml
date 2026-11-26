@@ -69,6 +69,8 @@ let frames ctx =
 
 let limit what at = raise (Value.Limit { what; at })
 
+let bridged = ref (fun (_ : ctx) -> false)
+
 let heap_words () = (Gc.quick_stat ()).Gc.heap_words
 
 (* An entry of v beyond [top] belongs to a finished frame: it must not keep an array alive. *)

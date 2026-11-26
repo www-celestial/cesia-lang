@@ -861,12 +861,13 @@ interpreter, which then boxes every integer.
 
 ### Calls of natives
 
-A native, a function of `std/` written in OCaml, as `math.Abs` or `text.ByteLength`, is machine code already, but
-machine code never calls it: native code never calls back into OCaml, so that nothing collects during a run, and a loop
-with a statement that calls one stays in the interpreter. The JIT makes some of them itself, inline: those of libm, as
+A native, a function of `std/` written in OCaml, as `math.Abs` or `text.ByteLength`, is machine code already. Until
+2026-11-26 machine code never called it, so that nothing collected during a run, and a loop with a statement that called
+one stayed in the interpreter; machine code now calls it through OCaml when that pays
+([Machine code that calls OCaml](#machine-code-that-calls-ocaml)). The JIT makes some of them itself, inline: those of libm, as
 `math.Sqrt`, `math.Log10` to `math.Atanh` and `math.Hypot`, the angles in degrees, `math.SinDegrees`,
 `math.CosDegrees` and `math.TanDegrees`, reduced by libm's `fmod` and `round` as the interpreter reduces them, and
-`math.Abs`, `math.Div`, `math.Mod`, `list.Max` and `list.Min` of two numbers, `value.Len`, `random.Float`, and a few on
+`math.Abs`, `math.Div`, `math.Mod`, `list.Max` and `list.Min` of two numbers, `value.Len` of an array, `random.Float`, and a few on
 small arrays of floats. `math.Cbrt` is Cesia's own, correctly rounded, and no function of libm: a loop that calls it
 stays in the interpreter, and an array takes it in one call.
 The interpreter's call of the others took 28 to 36 ns. A sampling profiler, `gdb` stopping the process every 10 ms and
@@ -922,7 +923,8 @@ in Cesia, now machine code, against Python 730, Node 83.3, Lua 192 and LuaJIT 11
 against Python 641, Node 50.6, where the length is a property and no call, Lua 239 and LuaJIT 11.4; of `math.Sqrt`,
 which Cesia's machine code makes, 49.2, against 763, 53.2, 205 and 11.4. Lua's interpreter calls `string.len` in 24 ns a
 turn, against Cesia's 27: its call passes the arguments on its stack, where Cesia's makes an array and boxes them, as a
-native takes them. Node and LuaJIT make such calls machine code; Cesia does so only for the natives its JIT knows.
+native takes them. Node and LuaJIT make such calls machine code; Cesia does so inline only for the natives its JIT
+knows, and calls the others through OCaml ([Machine code that calls OCaml](#machine-code-that-calls-ocaml)).
 
 ### Versions that give values
 
@@ -947,7 +949,8 @@ it. Now a version is a candidate whatever it gives:
   whose body calls a native the JIT doesn't make, or holds a text made of parts, a `match`, a `?`, an `in`, a
   comprehension or a function literal, is refused at once, before the versions it calls are lowered for nothing.
 
-The hard part is memory. Native code never calls back into OCaml, so nothing collects while it runs: each turn of a loop
+The hard part is memory. Native code calls OCaml only as the next part says, so nothing else collects while it runs:
+each turn of a loop
 *reserves* the words it will make, and when the young heap lacks them, the run leaves, the interpreter's allocation
 collects, and the run comes back. A nested frame, the frame of a call that native code makes, can't leave, as its
 caller's registers would be lost. So a nested frame short of room *stops*: a loop's call then goes back to the
@@ -988,29 +991,144 @@ its numbers fit, and LuaJIT as floats; Cesia also checks each `d * d` for overfl
 Cesia's: a map is a few words taken from the young heap by moving a pointer, made whole, so with no write barrier, and a
 run collects nothing until it ends.
 
-What still keeps a version out is in the next part. A server's code is the case: the request path of Centauri, its door,
+What still keeps a version out is in [What stays in the interpreter](#what-stays-in-the-interpreter). A server's code is
+the case: the request path of Centauri, its door,
 its session and its route, calls natives at every step, `dict.GetOr`, `text.Contains`, `sys.Now`, the functions of
 `std/http`, builds texts and holds closures, and none of its versions lowers, before or now: a public request takes 19.2
 µs, as with main's binary (medians of 21 runs of 20,000 requests each, without the network), and a server of Centauri
 answers 13,000 requests of `/hello` a second on one core, beside 28,000 for `std/http` alone and 28,000 a core for Go's
-`net/http`. Native code would have to call OCaml for them, with every value it holds written to the frame first, as the
-collector may move it, the stacks read again after, as a call may grow them, and a native that waits, as a fiber does on
-the network, never called from there, as a wait can't leave a C frame: a call into OCaml from native code is C, beyond
-the budget of the glue.
+`net/http`. Machine code now calls OCaml for its natives, and its versions still don't lower: the end of the next part
+says what keeps each out.
+
+### Machine code that calls OCaml
+
+Until 2026-11-26, machine code never called OCaml: nothing collected while it ran, and a unit that called a native of
+`std/` stayed in the interpreter, as did the loop around the call. Now machine code calls a native as the interpreter
+does: with its arguments as values, at its site, from its frame. The call goes through the C glue, `cesia_jit_native`
+in `src/sys/jit.c`, which runs an OCaml function of the JIT, and that function runs the native.
+
+**Which natives.** Those of `std/` that ask for no permission and never wait. A wait parks a fiber through an effect of
+OCaml, and an effect can't cross a call from C to OCaml: it raises `Effect.Unhandled` where it is performed (the OCaml
+manual, *Effect handlers*, *Semantics*). So the natives of `std/fiber` but its tables, of `std/websocket`, whose
+sockets call back, of `std/cells`, `std/debug` and `std/sqlite3`, `sys.Sleep`, those that ask for a permission (files,
+the network, processes, C) and those of the packages, as Cepheus's, which may wait on a server, stay the interpreter's,
+and the unit with them: `CESIA_JIT_SHOW=1` names the native. A native that calls back into Cesia, as `value.Len` calls the
+`len` of a struct, may still reach a wait: its fiber then waits where it is, running the scheduler as the main program
+does, rather than parking.
+
+**How the collector and machine code agree.** Machine code keeps values in registers, and MIR keeps them across a call
+in the registers that the call preserves, or in its stack slots, as the convention of C on the platform says (System V
+on Linux and macOS, Microsoft's x64 on Windows): the collector looks at none of them. OCaml's rules for C say why that
+matters (the OCaml manual, *Interfacing C with OCaml*, *Living in harmony with the garbage collector*): a collection
+moves the values of the young heap and writes their new addresses only where it knows them, so a C function declares
+every value it holds across an allocation or a call of OCaml, its parameters with `CAMLparam`, its variables with
+`CAMLlocal`, an array of them with `CAMLlocalN`. Machine code follows the same rule. Around each call that may collect,
+a native, a call of another function of its unit, which may call one, and the slow paths of room and stack below, it
+writes the values it needs after the call into a block of local roots on its own stack, laid out as those macros lay
+theirs (`caml/memory.h`: the next block, the number of tables, the number of values, the tables), links it into the
+list of the domain for the call only, and reads the values back from it after: the collector reads them there, moves
+them, and writes where they went. Which values: those that a backward liveness analysis over the blocks of the IR says
+are read after the call (Aho, Lam, Sethi and Ullman, *Compilers*, 2nd edition, 9.2.5), every variable, which a way back
+to the interpreter writes to its slot, and the first fields of the constants. Each value register holds a value from
+the start of its function, the integer 0 before anything else, so that the collector never reads a stray word. MIR's
+optimizer reloads nothing from a stale copy: a call clears what it knows of memory, and a block whose address escapes
+is never assumed private.
+
+The stacks move too: a new fiber's hold 8 entries and the main program's 256, so they sit in the young heap until they
+grow, and a native that calls back may grow them. Machine code reads their addresses again after each such call, and
+the C glue hands it the new ones, from the context.
+
+**Errors.** An exception that OCaml code raises skips the C code between it and the OCaml that called it (the manual,
+*Callbacks from C to OCaml*): here it would skip machine code's frames, their links never written and their block of
+roots left in the list. So the function of the JIT catches every exception, and the C glue tells machine code it
+failed: machine code then takes its error path, each frame writing its link for the trace as it returns, and the engine
+raises the exception again, from the frame where it was raised. The message, the line and the trace are the
+interpreter's (`tests/jit/natives-errors.ce` and `natives-deep.ce`, in the three modes).
+
+**Steps and depth.** Before the call, the interpreter's fuel is set to what it would be after the steps the run made, so
+that the native counts its own steps, and those of what it calls back, as the interpreter does: a limit of steps falls
+at the same step, with the same site (31 limits across a loop of `text.Repeat`, in the three modes); the run goes on
+after from what is left. Each frame's link is written before the call, so that the interpreter's frames called back
+above it count the frames of machine code, as the limit of depth must, and a trace taken there holds them. Past 64
+natives called from machine code at once, what they call back runs in the interpreter: each level keeps machine code's
+frames and the glue's on the system's stack, 8 MB on Linux and 1 MB on Windows, where the interpreter's frames are
+OCaml's, on a stack that grows (`natives-deep.ce` recurses 40,000 levels through `value.Len`).
+
+**Never twice.** A native's effect shows, and the interpreter must never make it again: nothing after a native in its
+statement may go back to the interpreter, and a call of a function of a unit that calls natives counts as one. A unit
+that calls natives so never starts again: where its stacks are short it grows them, and where the young heap lacks room
+it collects, both through the same call into OCaml, its values held.
+
+**What it costs.** The way into OCaml and back is the price: `caml_callback`, its change of stack and its handler, and
+the work of the engine around the native. It costs about 100 ns more than the interpreter's own call of the same
+native, measured on this machine: a loop of 20 operations of floats takes 27 ns a turn in machine code and 137 in the
+interpreter, and 200 and 210 with a call of `dict.Has` in each turn. So a unit is machine code only when it makes at
+least 24 operations for each of its calls of natives; else the interpreter keeps it, and `CESIA_JIT_SHOW=1` says how
+many it counted. A loop made only of such calls stays where it was.
+
+Measured on 2026-11-26, `release` profile, 21 runs of each alternated with main's binary, the whole process, while
+other work ran on the machine (load 6.3 to 9.4); the median, then the fastest and the slowest run, in ms:
+
+| Program | Before | Now | Interpreter only |
+|---|---:|---:|---:|
+| 10^7 calls of `text.ByteLength`, 2 operations a call | 513.6 (354.7–642.8) | 526.8 (373.2–630.1) | 464.8 |
+| 10^7 calls of `dict.Has` | 792.8 (554.5–1,122.5) | 792.3 (543.8–1,180.4) | 769.8 |
+| 10^7 calls of `sys.Now` | 504.6 (403.5–648.9) | 498.5 (400.7–593.8) | 488.3 |
+| 10^7 times `text.ByteLength(text.Slice(2, 4, s))` | 2,167.8 (1,498.0–3,112.4) | 2,270.0 (1,528.8–3,082.2) | 2,111.8 |
+| 10^6 turns of 20 operations of floats and a `dict.Has` | 218.0 (157.9–329.8) | 220.6 (158.6–347.0) | 210.1 |
+| 10^6 turns of 60 operations of floats and a `dict.Has` | 490.9 (358.4–589.0) | 243.0 (173.6–332.9) | 490.0 |
+
+The first five stay in the interpreter, before and now: what separates them is inside the noise of the machine. The
+last is machine code now, twice as fast. Node and LuaJIT make the calls of their builtins inside their machine code,
+and Go compiles its library with the program: in none of them does such a call cross from one runtime to another, as
+Cesia's crosses from the machine code that MIR makes into OCaml.
+
+**Centauri.** Its request path, the public route, a thing by its id and a page, gets no machine code yet: a public
+request takes 20.5 µs, as with main's binary, a thing by its id 35.5 against 36.0, a page 135.2 against 135.7 (medians
+of 21 runs of 2,000 requests each, without the network, load 6.5 to 8.6), and under load a server answers 12,715
+requests of `/hello` a second, against 12,285, on 0.95 core, beside 27,516 for `std/http` alone and 92,869 for Go's
+`net/http` on 3.18 cores (21 measures of 2 s each, 256 kept connections, load 4.1 to 8.7). The natives were the
+first thing that kept its hot versions out; now each stops at the next thing the JIT doesn't make (`CESIA_JIT_SHOW=1`,
+on `bench/micro.ce` of Centauri):
+
+| What keeps it out | Versions and loops |
+|---|---:|
+| a closure: the handler of a route, as `r -> {Text: "Hello"}` | 18 |
+| a field read, or arithmetic on a value of no type, in a version as a whole: no frame to bet on | 7 |
+| a text made of parts, `"$x"` | 6 |
+| a statement the JIT doesn't make, as a write into a field | 5 |
+| a `match` | 4 |
+| a function literal | 4 |
+| too few operations for its calls of natives | 4 |
+| an `if` that gives a value, or another form of expression it doesn't make | 3 |
+| a native of a package, Cepheus's | 3 |
+| a cell of a list that is no variable of its frame, as `parts[2]` of a list given | 2 |
+| an `in` | 2 |
+| a comprehension | 2 |
+| the larger or the smaller of two values that are no numbers | 2 |
+| a native that waits, of `std/fiber` | 1 |
+| a `?` | 1 |
+| an empty map, `{}` | 1 |
+| a call of a function held in a field | 1 |
+| a variable that a closure shares | 1 |
+
+Before, the first refusal of 32 of them was a native. What would get Centauri's path into machine code is the next
+part of the JIT: a field read and a closure in a version as a whole, which need a way back to the interpreter in the
+middle of a call, and texts made of parts.
 
 ### The contract
 
 The same program gives the same output, the same errors at the same lines, and the same limits, in the interpreter and in
 machine code. Machine code counts steps as the interpreter does, checks bounds and overflow as it does, and leaves for
-the interpreter at each full checkpoint, where the other fibers get their turn. It never runs the garbage collector: each
-turn of a compiled loop reserves the memory it will need first, and leaves if there isn't enough, so the collector runs in
-OCaml as usual. The tests run the whole suite in both tiers, and a difference is a bug of the JIT.
+the interpreter at each full checkpoint, where the other fibers get their turn. It runs the garbage collector only through
+a call into OCaml, its values held as OCaml's local roots: each turn of a compiled loop reserves the memory it will need
+first, and leaves if there isn't enough, or, in a unit that calls natives, makes the room where it is. The tests run the whole suite in both tiers, and a difference is a bug of the JIT.
 
 ### What stays in the interpreter
 
-- a call of a native, a function of `std/` written in OCaml, as [text.Split], but those the JIT makes itself
-  ([Calls of natives](#calls-of-natives)): the native is machine code already, and the loop around the call stays
-  interpreted, or the statement alone in a branch of its ifs;
+- a call of a native that waits, asks for a permission or comes from a package, and a unit whose calls of natives come
+  too often for what it computes, fewer than 24 operations a call
+  ([Machine code that calls OCaml](#machine-code-that-calls-ocaml)): the interpreter calls a native for less;
 - `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
   function that captured variables;
 - in a loop, a statement inside an if that it can't make, as a `return` of a struct or an `io.Print`: that statement
@@ -1018,12 +1136,11 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
   statements run every few steps;
 - arrays of more than 15 floats made in a loop: the interpreter's operations on them, which work on many cells at a
   time, already cost little a cell;
-- a map read or written with a key computed as the program runs, as `m["key$k"]`, and the text built for it. Native code
-  never calls back into OCaml: nothing collects during a run, which lets the values it holds stay in registers, where the
-  collector couldn't find them to move them. The hash, the probe of the table, its growth and the new text would each
-  need such a call, with every value written back to its slot first and read again after; what native code could save
-  is the interpreter's own share of `bench/maps.ce`, a tenth of its time in its profile, and those calls would take much
-  of it back;
+- a map read or written with a key computed as the program runs, as `m["key$k"]`, and the text built for it. The hash, the
+  probe of the table, its growth and the new text would each be a call into OCaml, which costs about 100 ns more than
+  the interpreter's ([Machine code that calls OCaml](#machine-code-that-calls-ocaml)); what native code could save is the
+  interpreter's own share of `bench/maps.ce`, a tenth of its time in its profile, and those calls would take it all
+  back;
 - a loop of a file's top that assigns a variable of the module which a function it calls, and doesn't inline, reads:
   that function would read the variable in its module while the machine code holds it in a register;
 - a version as a whole that reads the fields of its values or computes with values of no type: when it gets hot there

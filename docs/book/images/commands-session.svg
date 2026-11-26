@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="779.0" height="408" viewBox="0 0 779.0 408">
+<title>A terminal: cesia new shop makes the project; cesia do run runs its task run, which prints Hello from shop; cesia test runs the example of src/prices/tax.ce, 1 passed; cesia check finds a name that doesn't exist, Taxd, without running anything, and its exit code is 1; cesia run of a file that isn't there says it can't read it, with the exit code 2.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="779.0" height="408" fill="#fff"/>
+<rect class="term" x="1" y="1" width="448.0" height="406" rx="4"/>
+<text x="16" y="26" class="c"><tspan class="p">$ </tspan>cesia new shop</text>
+<line class="l" x1="454.0" y1="22" x2="470.0" y2="22"/>
+<text x="476.0" y="26" class="s">a project: cesia.toml, src/main.ce, std/</text>
+<text x="16" y="46" class="c">std/ holds the libraries of Cesia 1.3.0.</text>
+<text x="16" y="66" class="c">Created shop. Run it: cd shop &amp;&amp; cesia do run</text>
+<text x="16" y="86" class="c"><tspan class="p">$ </tspan>cd shop</text>
+<text x="16" y="106" class="c"><tspan class="p">$ </tspan>cesia do run</text>
+<line class="l" x1="454.0" y1="102" x2="470.0" y2="102"/>
+<text x="476.0" y="106" class="s">the task run of cesia.toml</text>
+<text x="16" y="126" class="c">Hello from shop</text>
+<text x="16" y="146" class="c"><tspan class="p">$ </tspan>cesia test</text>
+<line class="l" x1="454.0" y1="142" x2="470.0" y2="142"/>
+<text x="476.0" y="146" class="s">the examples and tests of the project</text>
+<text x="16" y="166" class="c">1 passed, 0 failed</text>
+<text x="16" y="186" class="c"><tspan class="p">$ </tspan>cesia check</text>
+<line class="l" x1="454.0" y1="182" x2="470.0" y2="182"/>
+<text x="476.0" y="186" class="s">a typo in src/main.ce: found, nothing ran</text>
+<text x="16" y="206" class="c">src/main.ce:5:10: Module &quot;prices&quot; has no name &quot;Taxd&quot;.</text>
+<text x="16" y="226" class="c">  5 | io.Print(prices.Taxd(20))</text>
+<text x="16" y="246" class="c">    |          ^^^^^^^^^^^</text>
+<text x="16" y="266" class="c e">check: 1 error, 0 warnings, in 2 files.</text>
+<text x="16" y="286" class="c"><tspan class="p">$ </tspan>echo $?</text>
+<text x="16" y="306" class="c">1</text>
+<line class="l" x1="454.0" y1="302" x2="470.0" y2="302"/>
+<text x="476.0" y="306" class="s">1: an error stopped it</text>
+<text x="16" y="326" class="c"><tspan class="p">$ </tspan>cesia run src/nothere.ce</text>
+<text x="16" y="346" class="c e">cesia: can't read src/nothere.ce</text>
+<text x="16" y="366" class="c"><tspan class="p">$ </tspan>echo $?</text>
+<text x="16" y="386" class="c">2</text>
+<line class="l" x1="454.0" y1="382" x2="470.0" y2="382"/>
+<text x="476.0" y="386" class="s">2: the command line is wrong</text>
+</svg>

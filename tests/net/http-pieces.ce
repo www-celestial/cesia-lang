@@ -38,10 +38,12 @@ l = net.Listen(0)!
 port = net.Port(l)
 fiber.Spawn(() -> http.Serve(app, listener = l, maxBody = 100000, timeout = 5))
 
-defn ask(head, body, expect = false)
-  (** Sends a request by hand: the status line of its answer, with what came before it when expect asks for 100-continue. *)
+defn ask(head, body, expect = false, together = false)
+  (** Sends a request by hand: the status line of its answer, with what came before it when expect asks for 100-continue.
+      together sends the head and the body in one write, so that the body comes with the head: sent apart, it may come
+      after it, and is then read in pieces. *)
   c = net.Connect("127.0.0.1", port)?
-  net.Write(c, "$(head)Connection: close\r\n$(if expect "Expect: 100-continue\r\n" else "" end)\r\n")?
+  net.Write(c, "$(head)Connection: close\r\n$(if expect "Expect: 100-continue\r\n" else "" end)\r\n$(if together body else "" end)")?
   first = ""
   if expect
     first = net.Read(c)?
@@ -51,7 +53,9 @@ defn ask(head, body, expect = false)
     end
     first = "100 first, "
   end
-  _ = net.Write(c, body)
+  if not together
+    _ = net.Write(c, body)
+  end
   out = ""
   while true
     m = net.Read(c)
@@ -70,7 +74,7 @@ big = text.Repeat(3000000, "x")
 io.Print("in pieces: $(ask(post("/up", 3000000), big))")
 io.Print("told to go on: $(ask(post("/up", 3000000), big, expect = true))")
 io.Print("refused before its body: $(ask(post("/no", 3000000), big, expect = true))")
-io.Print("small, whole: $(ask(post("/up", 5), "hello"))")
+io.Print("small, whole: $(ask(post("/up", 5), "hello", together = true))")
 io.Print("too large for the route: $(ask(post("/up", 6000000), "z"))")
 io.Print("two lengths: $(ask("$(post("/up", 3000000))Content-Length: 4\r\n", "abcd"))")
 io.Print("a route without stream: $(ask(post("/plain", 90000), text.Repeat(90000, "y")))")

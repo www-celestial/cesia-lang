@@ -7,6 +7,8 @@ le reste est une erreur sur sa ligne, jamais une supposition. Une clé que Cesia
 ligne, si bien qu'une faute de frappe ne peut pas passer inaperçue. Les clés de `[site]` sont l'exception :
 `cesia doc --site` les lit, et c'est lui qui les vérifie.
 
+![Un cesia.toml, chacune de ses tables à côté de la commande qui la lit : la table project pour toutes les commandes, deps.ceres pour cesia pkg et use deps/www-celestial/ceres, tasks.serve pour cesia do serve, test pour cesia test, site pour cesia doc --site.](../../book/images/toml-sections-fr.svg)
+
 ## `[project]`
 
 ```toml

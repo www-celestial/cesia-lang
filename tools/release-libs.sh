@@ -61,7 +61,11 @@ build_sqlite() {  # output file, then the flags that name it
 build_openblas() {
   get "https://github.com/OpenMathLib/OpenBLAS/releases/download/v$openblas/OpenBLAS-$openblas.tar.gz" openblas.tgz "$openblas_sha256"
   tar -xzf openblas.tgz
-  make -C "OpenBLAS-$openblas" -j"$jobs" DYNAMIC_ARCH=1 NOFORTRAN=1 C_LAPACK=1 USE_OPENMP=0 NUM_THREADS=64 libs shared > /dev/null
+  # TARGET=GENERIC: the code common to every processor is built for any x86-64, as Debian builds it, and not for the
+  # processor of the machine that builds, which OpenBLAS may not know (a runner newer than this version stopped the build
+  # in getarch_2nd); with DYNAMIC_ARCH the kernels of each processor are still all built and picked at run time.
+  make -C "OpenBLAS-$openblas" -j"$jobs" TARGET=GENERIC DYNAMIC_ARCH=1 NOFORTRAN=1 C_LAPACK=1 USE_OPENMP=0 NUM_THREADS=64 \
+    libs shared > /dev/null
   cp -L "OpenBLAS-$openblas/libopenblas.so.0" "$lib/"
   cp "OpenBLAS-$openblas/LICENSE" "$lib/licenses/OpenBLAS.txt"
 }

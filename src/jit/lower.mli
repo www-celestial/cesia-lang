@@ -13,6 +13,10 @@ val unit : world -> version -> Ir.func array option
     after the step of an iteration. A [for] keeps its counter in its variable's slot when its body leaves it alone. *)
 val region : ?ctx:ctx -> world -> version -> Ast.expr -> (Ir.func array * int * (int * int * int * int) array) option
 
+(** Why the last version or loop refused stays interpreted, when its refusal has a name, else "": CESIA_JIT_SHOW prints
+    it. *)
+val why : string ref
+
 (** Raised by [region] when a guess needs a value that the frame [ctx] doesn't hold yet, as before the loop's first step:
     the loop can be lowered again later. Values of any type, maps and structs, are lowered only in regions, from what
     [ctx] holds: the keys of a map or the shape of a struct read there, an Int or a Float in arithmetic. *)

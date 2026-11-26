@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="590" height="176" viewBox="0 0 590 176">
+<title>Le texte café en caractères et en octets : quatre caractères comptés depuis 1, c a f é, où é prend deux des cinq octets d'UTF-8, 195 et 169 ; value.Len donne 4, text.Slice(2, 3) donne af, text.ByteLength donne 5.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="590" height="176" fill="#fff"/>
+<text x="16" y="24" class="h">caractères, depuis 1</text>
+<text x="38.0" y="44" class="s" text-anchor="middle">1</text>
+<rect class="term" x="16" y="52" width="40" height="30" rx="4"/>
+<text x="36.0" y="72" class="c" text-anchor="middle">c</text>
+<text x="82.0" y="44" class="s" text-anchor="middle">2</text>
+<rect class="box" x="60" y="52" width="40" height="30" rx="4"/>
+<text x="80.0" y="72" class="c" text-anchor="middle">a</text>
+<text x="126.0" y="44" class="s" text-anchor="middle">3</text>
+<rect class="box" x="104" y="52" width="40" height="30" rx="4"/>
+<text x="124.0" y="72" class="c" text-anchor="middle">f</text>
+<text x="192.0" y="44" class="s" text-anchor="middle">4</text>
+<rect class="term" x="148" y="52" width="84" height="30" rx="4"/>
+<text x="190.0" y="72" class="c" text-anchor="middle">é</text>
+<rect class="term" x="16" y="96" width="40" height="26" rx="4"/>
+<text x="36.0" y="114" class="c" text-anchor="middle">99</text>
+<text x="36.0" y="140" class="s" text-anchor="middle">1</text>
+<rect class="term" x="60" y="96" width="40" height="26" rx="4"/>
+<text x="80.0" y="114" class="c" text-anchor="middle">97</text>
+<text x="80.0" y="140" class="s" text-anchor="middle">2</text>
+<rect class="term" x="104" y="96" width="40" height="26" rx="4"/>
+<text x="124.0" y="114" class="c" text-anchor="middle">102</text>
+<text x="124.0" y="140" class="s" text-anchor="middle">3</text>
+<rect class="term" x="148" y="96" width="40" height="26" rx="4"/>
+<text x="168.0" y="114" class="c" text-anchor="middle">195</text>
+<text x="168.0" y="140" class="s" text-anchor="middle">4</text>
+<rect class="term" x="192" y="96" width="40" height="26" rx="4"/>
+<text x="212.0" y="114" class="c" text-anchor="middle">169</text>
+<text x="212.0" y="140" class="s" text-anchor="middle">5</text>
+<text x="16" y="164" class="h">octets d'UTF-8, depuis 1</text>
+<text x="260" y="44" class="c">value.Len(&quot;café&quot;) <tspan class="p">--&gt;</tspan> 4</text>
+<text x="260" y="70" class="c">text.Slice(2, 3, &quot;café&quot;) <tspan class="p">--&gt;</tspan> &quot;af&quot;</text>
+<text x="260" y="96" class="c">text.ByteLength(&quot;café&quot;) <tspan class="p">--&gt;</tspan> 5</text>
+<text x="260" y="122" class="c">text.Bytes(&quot;é&quot;) <tspan class="p">--&gt;</tspan> [195, 169]</text>
+<text x="260" y="152" class="s">Une position de caractère parcourt le texte depuis</text>
+<text x="260" y="170" class="s">son début ; une position d'octet se trouve d'un coup.</text>
+</svg>

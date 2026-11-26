@@ -1,0 +1,60 @@
+use std/fiber
+use std/io
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* Natives from machine code in spawned fibers: text.Repeat counts its steps, so full checkpoints come inside it, where a
+   fiber can't park across the C frames of native code; a callback that waits parks inside the native that called it
+   back; a native that waits leaves its loop to the interpreter. *)
+defn work(n, w)
+  total = 0
+  for k in 1..n
+    s = text.Repeat(200, w)
+    size = text.ByteLength(s)
+    total = total + size
+  end
+  total
+end
+
+struct Slow { n }
+
+(* What value.Len counts: a callback that sleeps. *)
+(s Slow) len() = slept(s.n)
+
+defn slept(n)
+  sys.Sleep(0.0)
+  n
+end
+
+defn waits(n)
+  total = 0
+  for k in 1..n
+    total = total + value.Len(Slow(1))
+  end
+  total
+end
+
+defn relay(ch, n)
+  got = 0
+  for k in 1..n
+    x = result.Unwrap(fiber.Receive(ch))
+    got = got + x
+  end
+  got
+end
+
+a = fiber.Spawn(() -> work(30000, "ab"))
+b = fiber.Spawn(() -> work(30000, "c"))
+c = fiber.Spawn(() -> waits(300))
+ch = fiber.Channel()
+d = fiber.Spawn(() -> relay(ch, 2000))
+for k in 1..2000
+  fiber.Send(1, ch)
+end
+io.Print(result.Unwrap(fiber.Wait(a)))
+io.Print(result.Unwrap(fiber.Wait(b)))
+io.Print(result.Unwrap(fiber.Wait(c)))
+io.Print(result.Unwrap(fiber.Wait(d)))
+io.Print(waits(300))

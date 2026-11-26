@@ -58,11 +58,107 @@ let used_consts (fn : Ir.func) =
     fn.blocks;
   List.rev !acc
 
+(* The registers an instruction writes and those it reads. *)
+let regs_of (i : Ir.ins) =
+  let v = function Ir.Reg r -> [ r ] | _ -> [] in
+  let vs a = List.concat_map v (Array.to_list a) in
+  match i with
+  | Ir.Move (r, x) | Neg (r, x, _) | Fneg (r, x) | Float_of (r, x) | Math (_, r, x) | Unbox (r, x, _, _) | Box (r, x)
+  | Tag (r, x) | Num (r, x, _, _) | Elem (r, _, x, _) | Get (r, _, x, _) | Vals (r, x, _, _, _) | Fields (r, x, _, _, _) | Vat (r, _, _, x, _, _, _) ->
+    [ r ], v x
+  | Incr r -> [ r ], [ r ]
+  | Bump (r, x) -> [ r ], r :: v x
+  | Op (_, r, x, y, _) | Try (_, r, x, y, _) -> [ r ], v x @ v y
+  | Draw (r, _) | Len (r, _) | Dim (r, _, _) | Frame (r, _) | Vget (r, _) | Value (r, _) -> [ r ], []
+  | Set_elem (_, i, x, _) | Put (_, i, x, _) -> [], v i @ v x
+  | Call (r, _, args, _, _, _) | Native (r, _, args, _) | Record (r, _, _, args) -> [ r ], vs args
+  | Offset (r, _, ixs, _, _) -> [ r ], vs ixs
+  | Keep (f, sp, q) -> [ f; sp; q ], []
+  | Elem_at (r, _, i, _) -> [ r ], [ i ]
+  | Load (r, a, _, _) -> [ r ], [ a ]
+  | Set_at (_, i, _, x) -> [], i :: v x
+  | Enter (r, _, _, _, _) | Enter_or_bail (r, _) -> [], [ r ]
+  | Share x | Vset (_, x) -> [], v x
+  | Into (_, i, xs, _, _, _, seen, _) -> [], v i @ vs xs @ (match seen with Some (m, d) -> [ m; d ] | None -> [])
+  | Tick _ | Burn | Steps _ | Reserve _ | Recheck _ -> [], []
+
+(* The registers a block's end reads, and the blocks it goes to. *)
+let term_of (t : Ir.term) =
+  let v = function Ir.Reg r -> [ r ] | _ -> [] in
+  match t with
+  | Ir.Jump l -> [], [ l ]
+  | Branch (_, _, x, y, a, b) -> v x @ v y, [ a; b ]
+  | Mixed (_, x, fx, y, a, b) -> v x @ v fx @ v y, [ a; b ]
+  | Return x | Out x | Not_bool (x, _) -> v x, []
+  | Done | Bail _ -> [], []
+  | Fuel_ge (x, a, b) | Is_fun (x, _, a, b) -> v x, [ a; b ]
+  | Room (r, a, b) -> [ r ], [ a; b ]
+
+(* Sets of registers, as sorted lists: the binary that loads the JIT has no Set of its own. *)
+module S = struct
+  let empty = []
+  let of_list l = List.sort_uniq compare l
+  let rec union a b =
+    match a, b with
+    | [], l | l, [] -> l
+    | x :: a', y :: b' -> if x < y then x :: union a' b else if y < x then y :: union a b' else x :: union a' b'
+  let remove r l = List.filter (fun x -> x <> r) l
+  let equal (a : int list) b = a = b
+  let elements l = l
+end
+
+(* A unit that calls OCaml: at each instruction that may collect (a native, a call, the slow paths of room and of the
+   stack), the value registers that are read after it, by liveness over the blocks; and the variables and their copies,
+   which a way back to the interpreter writes to their slots, at every one. By (block, instruction). *)
+let roots (fn : Ir.func) (blocks : Ir.ins list array) =
+  let value r = fn.kinds.(r) = Ir.Kval in
+  let always =
+    List.filter value
+      (List.map (fun (v : Ir.var) -> v.reg) (Array.to_list fn.vars)
+       @ List.concat_map (List.concat_map (fun (r, c) -> [ r; c ])) (Array.to_list fn.restores))
+  in
+  let n = Array.length blocks in
+  let live_in = Array.make n S.empty in
+  let step (live : int list) i =
+    let defs, uses = regs_of i in
+    let live = match i with Ir.Try (_, _, _, _, l) -> S.union live live_in.(l) | _ -> live in
+    S.union (List.fold_left (fun s r -> S.remove r s) live defs) (S.of_list (List.filter value uses))
+  in
+  let out_of l =
+    let uses, succ = term_of fn.blocks.(l).term in
+    List.fold_left (fun s k -> S.union s live_in.(k)) (S.of_list (List.filter value uses)) succ
+  in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    for l = n - 1 downto 0 do
+      let x = List.fold_left step (out_of l) (List.rev blocks.(l)) in
+      if not (S.equal x live_in.(l)) then (live_in.(l) <- x; changed := true)
+    done
+  done;
+  let at = Hashtbl.create 16 in
+  Array.iteri
+    (fun l ins ->
+       ignore
+         (List.fold_left
+            (fun (live, j) i ->
+               (match i with
+                | Ir.Native _ | Call _ | Reserve _ | Recheck _ | Enter _ ->
+                  let defs, _ = regs_of i in
+                  let keep = List.fold_left (fun s r -> S.remove r s) live defs in
+                  Hashtbl.replace at (l, j) (S.elements (S.union keep (S.of_list always)))
+                | _ -> ());
+               step live i, j - 1)
+            (out_of l, List.length ins - 1)
+            (List.rev ins)))
+    blocks;
+  at
+
 (* Each function is written twice: [f], the outermost frame, which the interpreter enters and which can leave and come
    back at a resume point; and [g], a nested frame, which only another native frame calls: no resume point, no slot
    written, a frame of 2 slots 2 above its caller's base. [points], [ticks] and [entries]: as [text]'s, the first only
    of [f]. *)
-let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (fn : Ir.func) =
+let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~entries (fn : Ir.func) =
   let pr fmt = Printf.bprintf b fmt in
   let name = if nested then "g" ^ String.sub fn.name 1 (String.length fn.name - 1) else fn.name in
   (* MIR's labels belong to the module: each function gets its own. *)
@@ -133,6 +229,54 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
     Printf.bprintf s "  lsh x0, x0, 1\n  add x0, x0, 1\n  mov i64:0(ip), x0\n  mov i64:8(ip), %s\n" (tagged fn.sites.(csite))
   in
   let links s site = List.iter (fun (vb, cb, cs) -> link s vb cb cs) fn.chains.(site) in
+  (* A unit that calls OCaml keeps the values it needs after a call that may collect in [ra], a block of OCaml's local
+     roots on the machine stack, as CAMLlocalN makes one (caml/memory.h: next, ntables, nitems, tables, of which the
+     collector reads the first [ntables], 1 here): its values from 32 on, linked into the domain's list ([Ir.cx_roots])
+     for the call only, so that the collector reads and moves them;
+     read back after it, and the value stack's address with them, as a collection moves the stacks while they are young.
+     The constants' first fields are kept so too. *)
+  let held = Hashtbl.create 8 and here = ref (0, 0) in
+  let consts = if nested then used_consts fn else List.init (Array.length fn.consts) Fun.id in
+  let kept () = Option.value (Hashtbl.find_opt held !here) ~default:[] in
+  let cell j = 32 + (8 * j) in
+  let keep s rs =
+    List.iteri (fun j r -> Printf.bprintf s "  mov i64:%d(ra), r%d
+" (cell j) r) rs;
+    List.iteri (fun j c -> Printf.bprintf s "  mov i64:%d(ra), c%d
+" (cell (List.length rs + j)) c) consts
+  in
+  let back_from s rs =
+    List.iteri (fun j r -> Printf.bprintf s "  mov r%d, i64:%d(ra)
+" r (cell j)) rs;
+    List.iteri (fun j c -> Printf.bprintf s "  mov c%d, i64:%d(ra)
+" c (cell (List.length rs + j))) consts;
+    if not nested then Printf.bprintf s "  mov vp, %s
+  lsh xa, b, 3
+  add vp, vp, xa
+" (cx 2)
+  in
+  let held_n rs = List.length rs + List.length consts in
+  let most = ref 1 in
+  let hold s n =
+    most := max !most n;
+    Printf.bprintf s "  mov x6, %s
+  mov x5, i64:0(x6)
+  mov i64:0(ra), x5
+  mov i64:16(ra), %d
+  mov i64:0(x6), ra
+" (cx Ir.cx_roots) n
+  in
+  let release s = Printf.bprintf s "  mov x6, %s
+  mov x5, i64:0(ra)
+  mov i64:0(x6), x5
+" (cx Ir.cx_roots) in
+  (* A call of the C glue's bridge: [k] a native, -1 a growth of the stacks to a frame at [at], -2 room for [at] words; with
+     the [n] values from cell [first], linked before. *)
+  let bridge s k ~first ~n at site =
+    Printf.bprintf s "  add x4, ra, %d
+  call pnat, cesia_jit_native, fuel, cx, x4, %d, %d, %s, %d, fuel
+" (cell first) n k at site
+  in
   (* With a debugger, the one block where every error writes the variables back for the stop, out of the loops, as the
      ticks' below. *)
   let error_used = ref false in
@@ -230,6 +374,89 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
   (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start, the
      interpreter makes the call and grows the stack. *)
   let again back = bail_to back in
+  (* A native that raised, or a growth or a collection that did: the fuel the bridge kept, then the error, whose
+     exception [Engine] holds. *)
+  let native_error site =
+    stub (fun s ->
+        Printf.bprintf s "  mov fuel, %s
+  mov x1, 0
+  mov x2, 0
+" (cx Ir.io_fuel);
+        let x3 =
+          if site >= 0 then (links s site; base_in s "x5" (frame_of site); fn.sites.(site))
+          else (Printf.bprintf s "  mov x5, b
+"; 0)
+        in
+        Printf.bprintf s "  mov x3, %d
+  mov x4, %d
+  jmp %s
+" x3 Ir.err_native (shared "E"))
+  in
+  (* In a unit that calls OCaml, a frame at [at] past the limit: past the stack, or where the interpreter's frames would
+     want a longer one under a limit of memory, the stacks grow where they are, the values [rs] and [extra] held, and the
+     check is made again at [again]; else the limit of depth, at [deep]. [linked]: [rs] are held already. *)
+  let grow_stub at ~rs ~extra ~linked ~again ~deep site =
+    let g = label () and ok = label () and bad = native_error site in
+    stub (fun s ->
+        Printf.bprintf s "  mov x0, %s
+  bgt %s, %s, x0
+  mov x0, %s
+  bgt %s, %s, x0
+" (cx Ir.io_cap2) g at (cx Ir.io_mem) g at;
+        if linked then release s;
+        Printf.bprintf s "  jmp %s
+%s:
+" deep g;
+        let n = held_n rs and e = List.length extra in
+        if not linked then keep s rs;
+        List.iteri (fun j r -> Printf.bprintf s "  mov i64:%d(ra), r%d
+" (cell (n + j)) r) extra;
+        if linked then (most := max !most (n + e); Printf.bprintf s "  mov i64:16(ra), %d
+" (n + e)) else hold s (n + e);
+        bridge s (-1) ~first:0 ~n:0 at fn.sites.(site);
+        Printf.bprintf s "  bge %s, fuel, 0
+" ok;
+        if linked then Printf.bprintf s "  mov i64:16(ra), %d
+" n;
+        release s;
+        Printf.bprintf s "  jmp %s
+%s:
+" bad ok;
+        if linked then Printf.bprintf s "  mov i64:16(ra), %d
+" n else release s;
+        back_from s rs;
+        List.iteri (fun j r -> Printf.bprintf s "  mov r%d, i64:%d(ra)
+" r (cell (n + j))) extra;
+        Printf.bprintf s "  jmp %s
+" again)
+  in
+  (* In a unit that calls OCaml, room for [need] words that the young heap lacks: made where it is, the values held,
+     then checked again at [again]. *)
+  let room_stub need rs again =
+    let bad = native_error (-1) in
+    stub (fun s ->
+        keep s rs;
+        hold s (held_n rs);
+        bridge s (-2) ~first:0 ~n:0 (string_of_int need) 0;
+        release s;
+        Printf.bprintf s "  blt %s, fuel, 0
+" bad;
+        back_from s rs;
+        Printf.bprintf s "  jmp %s
+" again)
+  in
+  let room_check need slow =
+    let check = label () in
+    pr "%s:
+  mov x6, %s
+  mov x5, i64:0(x6)
+  sub x5, x5, %d
+  mov x6, %s
+  mov x6, i64:0(x6)
+  ublt %s, x5, x6
+" check
+      (cx Ir.cx_young) (8 * need) (cx (Ir.cx_young + 1)) (slow check)
+  in
   (* A frame at [at] above the limit, for a call that can bail: past the stack, or where the interpreter's frames would want
      a longer one, bail; else the limit of depth. *)
   let short at caller site entry back =
@@ -256,6 +483,72 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
   in
   let rec ins = function
     | Ir.Frame (r, _) -> pr "  add r%d, b, %d\n" r (offset r)
+    | Enter (r, base, site, entry, _) when bridged ->
+      let at = "r" ^ string_of_int r and check = label () in
+      let slow = grow_stub at ~rs:(kept ()) ~extra:[] ~linked:false ~again:check ~deep:(deep_stub at base site entry) site in
+      pr "%s:\n  mov x0, %s\n  bgt %s, r%d, x0\n" check (cx Ir.io_lim) slow r
+    | Num (r, v, how, site) ->
+      (* An Int's field, 2n + 1, as 2n; for a float, a Float's double, or an Int's made one; else the value to the
+         outermost frame's slot of [Not_bool] and the interpreter's error. *)
+      let v = in_reg Kval v in
+      let bad =
+        stub (fun s ->
+            Printf.bprintf s "  mov xa, %s\n  lsh xa, xa, 3\n  mov x0, %s\n  add x0, x0, xa\n  add x0, x0, %d\n  call pmod, caml_modify, x0, %s\n"
+              (cx Ir.io_base) (cx 2) (8 * (moved_at - 1)) v;
+            Printf.bprintf s "  jmp %s\n" (error (if how = Ir.Only_int then Ir.err_int else Ir.err_float) site (Ir.Int 0) None))
+      in
+      pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n" v bad v;
+      if how = Ir.Only_int then pr "  bne %s, x1, 0\n  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" bad v r
+      else begin
+        let f = label () and d = label () in
+        pr "  beq %s, x1, 1\n  bne %s, x1, 0\n  mov x2, i64:0(%s)\n  rsh x2, x2, 1\n  i2d r%d, x2\n  jmp %s\n" f bad v r d;
+        pr "%s:\n  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n%s:\n" f v r d
+      end
+    | Value (r, c) ->
+      (* From the outermost frame's slot, which a run's start writes and a call through OCaml writes again. *)
+      if nested then pr "  mov xa, %s\n  lsh xa, xa, 3\n  mov x1, %s\n  add x1, x1, xa\n  mov r%d, i64:%d(x1)\n" (cx Ir.io_base) (cx 2) r (8 * (consts_at + c))
+      else pr "  mov r%d, i64:%d(vp)\n" r (8 * (fn.frame + c))
+    | Native (r, k, args, site) ->
+      (* Its arguments after the values kept, its result in the first of them; the links of the inlined frames around it
+         written, so that the interpreter's frames called back above it find theirs. *)
+      let rs = kept () and n = Array.length args in
+      let at = held_n rs in
+      keep b rs;
+      Array.iteri (fun j v -> pr "  mov i64:%d(ra), %s\n" (cell (at + j)) (operand v)) args;
+      if n = 0 then pr "  mov i64:%d(ra), 1\n" (cell at);
+      links b site;
+      hold b (at + max n 1);
+      base_in b "x5" (frame_of site);
+      bridge b k ~first:at ~n "x5" fn.sites.(site);
+      release b;
+      pr "  blt %s, fuel, 0\n  mov r%d, i64:%d(ra)\n" (native_error site) r (cell at);
+      back_from b rs
+    | Call (r, k, args, site, entry, _) when bridged ->
+      (* The values kept around the call, and its frame's link written before it: a native deeper finds every frame's.
+         A short stack grows where it is; an error deeper unwinds. *)
+      let rs = kept () and nb = offset (frame_of site) + callee_of site and check = label () in
+      keep b rs;
+      links b site;
+      hold b (held_n rs);
+      pr "  add nb, b, %d\n" nb;
+      let extra = List.filter_map (function Ir.Reg q when fn.kinds.(q) = Kval -> Some q | _ -> None) (Array.to_list args) in
+      let slow = grow_stub "nb" ~rs ~extra ~linked:true ~again:check ~deep:(deep_stub "nb" (frame_of site) site entry) site in
+      pr "%s:\n  mov x0, %s\n  bgt %s, nb, x0\n  mov ip, %s\n  lsh xa, nb, 3\n  add ip, ip, xa\n" check (cx Ir.io_lim) slow (cx 0);
+      base_in b "x0" (frame_of site);
+      pr "  lsh x0, x0, 1\n  add x0, x0, 1\n  mov i64:0(ip), x0\n  mov i64:8(ip), %s\n" (tagged fn.sites.(site));
+      pr "  inline Q%s%d, %sg%d, fuel, cx, nb, fuel%s\n" prefix k prefix k
+        (String.concat "" (Array.to_list (Array.map (fun v -> ", " ^ operand v) args)));
+      release b;
+      let up =
+        stub (fun s ->
+            links s site;
+            base_in s "x6" (frame_of site);
+            Printf.bprintf s "  add x5, b, %d\n  mov x4, %d\n  jmp %s\n" nb fn.sites.(site) (shared "U"))
+      in
+      pr "  blt %s, fuel, 0\n  %s r%d, %s\n" up (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (result_cell fn.kinds.(r));
+      back_from b rs
+    | Reserve (need, _) when bridged && !need > 0 -> let rs = kept () in room_check !need (room_stub !need rs)
+    | Recheck (need, _) when bridged && !need > 0 -> let rs = kept () in room_check !need (room_stub !need rs)
     | Enter (r, base, site, entry, back) ->
       let at = "r" ^ string_of_int r in
       let slow = if back < 0 then deep_stub at base site entry else short at base site entry back in
@@ -672,6 +965,29 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
        pr "  local i64:%s, i64:%s\n" (arr a) (len a);
        for d = 0 to nd - 1 do pr "  local i64:%s\n" (dim a d) done)
     fn.arrays;
+  let folded = Array.map (fun (bk : Ir.block) -> fold bk.ins) fn.blocks in
+  if bridged then begin
+    Hashtbl.iter (Hashtbl.replace held) (roots fn folded);
+    (* The most values a call holds: those kept, and a native's arguments or a call's values, held while the stacks
+       grow. *)
+    Array.iteri
+      (fun l ins ->
+         List.iteri
+           (fun j i ->
+              let k = match Hashtbl.find_opt held (l, j) with Some rs -> held_n rs | None -> 0 in
+              let v = function Ir.Reg q -> fn.kinds.(q) = Kval | _ -> false in
+              let extra = match i with
+                | Ir.Native (_, _, args, _) -> max 1 (Array.length args)
+                | Call (_, _, args, _, _, _) -> List.length (List.filter v (Array.to_list args))
+                | _ -> 0
+              in
+              most := max !most (k + extra))
+           ins)
+      folded;
+    pr "  local i64:ra\n  alloca ra, %d\n  mov i64:8(ra), 1\n  add x0, ra, 32\n  mov i64:24(ra), x0\n" (cell !most)
+  end;
+  (* Every value register holds a value from the start, as the collector may read any that a call holds. *)
+  if bridged then Array.iteri (fun r k -> if k = Ir.Kval && not (is_param r) then pr "  mov r%d, 1\n" r) fn.kinds;
 
   let guards () =
     Array.iteri
@@ -747,7 +1063,7 @@ let func b ~prefix ~nested ~index ~moved_at ~consts_at ~points ~ticks ~entries (
   Array.iteri
     (fun l (bk : Ir.block) ->
        pr "%s:\n" (bl l);
-       List.iter ins (fold bk.ins);
+       List.iteri (fun j i -> here := (l, j); ins i) folded.(l);
        term (l + 1) bk.term)
     fn.blocks;
   Buffer.add_buffer b stubs;
@@ -820,8 +1136,11 @@ let emit (fns : Ir.func array) =
   let prefix = Printf.sprintf "u%d_" !units in
   let b = Buffer.create 4096 in
   let pr fmt = Printf.bprintf b fmt in
-  pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " used);
+  (* A unit that calls OCaml: every function keeps its values around the calls that may collect. *)
+  let bridged = Array.exists (fun (fn : Ir.func) -> Array.exists (fun (bk : Ir.block) -> List.exists (function Ir.Native _ -> true | _ -> false) bk.ins) fn.blocks) fns in
+  pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " (if bridged then used @ [ "cesia_jit_native" ] else used));
   pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
+  if bridged then pr "pnat: proto i64, p:cx, p:a, i64:n, i64:k, i64:at, i64:s, i64:f\n";
   Array.iteri
     (fun k (fn : Ir.func) ->
        pr "P%s%d: proto i64, %s\n" prefix k (args_of ~nested:false fn);
@@ -837,8 +1156,8 @@ let emit (fns : Ir.func array) =
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));
   let moved_at = Ir.moved_at fns.(0) and consts_at = fns.(0).frame in
   let points = Array.make (Array.length fns.(0).resumes) (-1) and ticks = Vec.create () and entries = Hashtbl.create 8 in
-  func b ~prefix ~nested:false ~index:0 ~moved_at ~consts_at ~points ~ticks ~entries fns.(0);
-  List.iter (fun k -> func b ~prefix ~nested:true ~index:k ~moved_at ~consts_at ~points ~ticks ~entries fns.(k)) nested;
+  func b ~prefix ~nested:false ~bridged ~index:0 ~moved_at ~consts_at ~points ~ticks ~entries fns.(0);
+  List.iter (fun k -> func b ~prefix ~nested:true ~bridged ~index:k ~moved_at ~consts_at ~points ~ticks ~entries fns.(k)) nested;
   let f0 = fns.(0) in
   pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:vp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
@@ -855,6 +1174,8 @@ let emit (fns : Ir.func array) =
   pr "  call P%s0, %sf0, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n  %s res, %s\n" prefix prefix
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix
     (if f0.result = Kfloat then "dmov" else "mov") (result_cell f0.result);
+  (* A call through OCaml may have grown the stacks, or moved them: those of a new fiber, small, are in the young heap. *)
+  if bridged then pr "  lsh x0, b, 3\n  mov fp, %s\n  add fp, fp, x0\n  mov vp, %s\n  add vp, vp, x0\n" (cx 1) (cx 2);
   (match f0.result with
    | Kint -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
    (* A value: in the value slot after the constants, through the write barrier, where [Engine] takes it. *)
