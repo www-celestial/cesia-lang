@@ -197,21 +197,26 @@ function encode (j) {
   throw new TypeError('A function called by js.Call gives a number, a string, bytes, a boolean, null or an array.')
 }
 
-// The loader's own module: the WebSocket of the page or of Node, for std/websocket.
+// The loader's own module: the WebSocket of the page or of Node, for std/websocket. A socket opened with a last
+// message sends it when the page goes away (pagehide), before the browser closes it.
 const utf8 = new TextDecoder('utf-8', { fatal: true })
-const sockets = new Map()
-let nextSocket = 1
+const sockets = new Map(), lasts = new Map()
+let nextSocket = 1, leaving = false
 const own = {
   'cesia:websocket': {
-    Open (address, messages, events) {
+    Open (address, messages, events, last) {
       let ws
       try { ws = new WebSocket(decoder.decode(address)) } catch (e) { events.send('error'); return 0 }
       const id = nextSocket++
       ws.binaryType = 'arraybuffer'
       ws.onopen = () => events.send('open')
       ws.onmessage = e => messages.send(e.data)
-      ws.onclose = e => { sockets.delete(id); events.send('closed ' + e.code); messages.close(); events.close() }
+      ws.onclose = e => { sockets.delete(id); lasts.delete(id); events.send('closed ' + e.code); messages.close(); events.close() }
       sockets.set(id, ws)
+      if (last != null) {
+        lasts.set(id, decoder.decode(last))
+        if (!leaving && !node) { leaving = true; addEventListener('pagehide', () => { for (const [k, t] of lasts) { const w = sockets.get(k); if (w && w.readyState === 1) w.send(t) } }) }
+      }
       return id
     },
     Send (id, data) {

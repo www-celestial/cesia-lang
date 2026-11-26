@@ -24,7 +24,7 @@ struct Conn { Messages, socket, writer, closing, frames, ending }
 
 refused(message) = result.Err({Kind: "websocket", Message: message})   (* An Err of the kind "websocket". *)
 
-defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage, headers = [])
+defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage, headers = [], last = missing)
   (** Connects to the server of a ws:// URL and makes the handshake of RFC 6455 §4.1, both within timeout seconds: an Ok
       of a Conn, or an Err of the kind "websocket" when the URL or the handshake is refused, or when the time runs out. A
       message past maxMessage bytes ends the connection with the close code 1009, each of its fragments counted 64 bytes
@@ -33,6 +33,7 @@ defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage, headers = [])
       one the handshake writes itself (Host, Upgrade, Connection, Content-Length, Transfer-Encoding, or a name that starts
       with Sec-WebSocket-), or whose value holds a line end or a zero byte, is an Err before any connection: no value can
       add a header of its own. It needs the net permission of the host and port, as net.Connect; wss:// isn't taken yet.
+      last is for a page: the message it sends as it goes away (a tab closed, another address); a program ignores it.
 
         Dial("wss://example.com/") then result.MapErr(it.Kind) --> result.Err("websocket")
         silent = net.Listen(0).Value

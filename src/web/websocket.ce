@@ -13,9 +13,11 @@ struct Conn { Messages, socket, events }
 
 refused(message) = result.Err({Kind: "websocket", Message: message})   (* An Err of the kind "websocket". *)
 
-defn Dial(url, timeout = 10, maxMessage = 67108864, headers = [])
+defn Dial(url, timeout = 10, maxMessage = 67108864, headers = [], last = missing)
   (** Connects to the server of a ws:// or wss:// URL within timeout seconds: an Ok of a Conn, or an Err of the kind
-      "websocket". A page sends no headers of its own: headers must be empty. maxMessage is the browser's. *)
+      "websocket". A page sends no headers of its own: headers must be empty. maxMessage is the browser's. last, a text,
+      is sent when the page goes away (pagehide: a tab closed, a reload, another address), the last thing the server
+      hears of it, as {Bye: 1} for std/live. *)
   if not (value.IsText(url) and (text.StartsWith("ws://", url) or text.StartsWith("wss://", url)))
     return refused("This URL doesn't start with ws:// or wss://: $url")
   end
@@ -24,7 +26,7 @@ defn Dial(url, timeout = 10, maxMessage = 67108864, headers = [])
   end
   messages = fiber.Channel()
   events = fiber.Channel()
-  socket = js.Call("cesia:websocket", "Open", [url, messages, events])
+  socket = js.Call("cesia:websocket", "Open", [url, messages, events, last])
   got = fiber.Receive(events, timeout = timeout)
   if result.IsOk(got) and got.Value == "open"
     return result.Ok(Conn(messages, socket, events))
