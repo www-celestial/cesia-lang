@@ -257,6 +257,79 @@ one, and the other fiber keeps what it had. A channel is the way to pass the new
 threads writing one memory at the same time, and no locks to take: a fiber runs alone between two of its waits, on one
 core.
 
+### A table that every fiber reads
+
+A fiber that owns a state answers one message at a time: what it holds is never lost, and no two fibers change it at
+once. But each question is a round trip, a message there and its answer back, and a server that asks for a session and
+its rate limits at each request pays one at each request. [fiber.Table] holds what is read that often: values that every
+fiber reads and writes at once, without a message. Each key, a text, holds a value until a time, and the table holds at
+most so many keys: past them, a new key first drops those whose time passed, then those due soonest, the oldest written
+first, down to three quarters. What a table holds may thus go at any time. It is a *cache*, a copy kept close because
+the original is far or slow, and the truth still lives in a fiber that owns it, or in a database.
+
+A server's sessions and its limit of 600 requests a minute for each address, with a burst of 150:
+
+```cesia
+use std/fiber
+use std/value
+sessions = fiber.Table(100000)
+limits = fiber.Table(100000)
+perAddress = {Per: 600, Period: 60, Burst: 150}
+defn handle(ip, cookie, now)
+  pass = fiber.Admit(["ip:$ip"], [perAddress], now, limits)
+  if not pass.Ok
+    return "429, wait $(pass.Retry) seconds"
+  end
+  user = fiber.Recall(cookie, now, sessions)
+  if value.IsMissing(user)
+    epoch = fiber.Epoch(sessions)
+    user = "ana"   (* what the database says: the fiber waits for it, and others run *)
+    fiber.Remember(cookie, user, now + 2, sessions, epoch = epoch)
+  end
+  "200, hello $user"
+end
+handle("203.0.113.7", "c0ffee", 1000) -->
+fiber.Recall("c0ffee", 1001, sessions) -->
+fiber.Recall("c0ffee", 1002, sessions) -->
+```
+
+[fiber.Recall] gives the value of a key, or missing once its time is not after now, a number of seconds that you give:
+`sys.Now()`, or the clock of a test. [fiber.Remember] keeps a value until a time, [fiber.Forget] drops a key and
+[fiber.Empty] all of them. A session read from the database before a sign-out emptied the table must not come back
+after it: [fiber.Epoch] counts the times a table was emptied, and Remember with `epoch` keeps a value only if that count
+hasn't moved since it was taken.
+
+[fiber.Admit] counts a request in rate limits with GCRA, the *generic cell rate algorithm* of ATM networks (ITU-T
+I.371): a key keeps one number, the time its next request is due, and a request passes when it comes no earlier than
+that time minus the burst it may take at once, `(Burst - 1) * Period / Per` seconds. A request of several limits, as an
+address, a user and his tenant, passes all of them or none: a request refused by one counts in none.
+
+Each call on a table runs to its end before another fiber runs, as every fiber runs on the program's main thread: none
+sees a key half written, and a limit counts each request once, whatever the fibers do around it. The keys are spread by
+a hash of random seed, so that no one can choose keys that all fall in one place and make each look slow, an
+*algorithmic complexity attack* (Crosby and Wallach, 2003). Each process of `cesia run --workers` has its own tables.
+
+In Go, the same is a map behind a lock, its times checked by hand, and a limiter of `golang.org/x/time/rate`, a token
+bucket, for each key, in another map that nothing prunes unless you do:
+
+```go
+var mu sync.Mutex
+var limiters = map[string]*rate.Limiter{}
+func allow(ip string) bool {
+	mu.Lock()
+	l, ok := limiters[ip]
+	if !ok {
+		l = rate.NewLimiter(rate.Every(time.Minute/600), 150)
+		limiters[ip] = l
+	}
+	mu.Unlock()
+	return l.Allow()
+}
+```
+
+There each goroutine may run on its own core, so the lock is needed, and forgetting it is a data race that the race
+detector finds only when it happens. Python's `cachetools.TTLCache` needs one too as soon as threads share it.
+
 ## Further reading
 
 - C. A. R. Hoare, *Communicating Sequential Processes*, 1978: the channels, and the meeting of a send and a receive that a
@@ -265,6 +338,9 @@ core.
   [fiber.Select], which tries its channels in the order of its list where Go picks at random among the ready ones.
 - KC Sivaramakrishnan and others, *Retrofitting Effect Handlers onto OCaml*, 2021: what each fiber is inside.
 - Joe Armstrong, *A History of Erlang*, 2007: processes switched by counted steps.
+- ITU-T Recommendation I.371, *Traffic control and congestion control in B-ISDN*: GCRA, the rate limits of [fiber.Admit].
+- Scott A. Crosby, Dan S. Wallach, *Denial of Service via Algorithmic Complexity Attacks*, 2003: why the keys of a table
+  are spread by a hash of random seed.
 
 Each with its link in [References](references.md#fibers-and-channels); [How Cesia works](internals.md#fibers-and-the-scheduler)
 shows the scheduler, and [Speed](speed.md#fibers-beside-goroutines-async-and-virtual-threads) fibers beside goroutines,

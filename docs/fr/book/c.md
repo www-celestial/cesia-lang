@@ -181,8 +181,19 @@ autres attendent dans une file, au plus 64 pour chacune de ces places, et un de 
 rafale de mille connexions ne peut pas prendre d'un coup la mémoire de mille hashes. Une fonction lente prend au plus 6
 nombres, pointeurs ou textes, et ne rappelle pas Cesia ; ses textes sont copiés pour elle, et les blocs qu'elle reçoit
 restent en vie jusqu'à ce qu'elle rende la main, même si une fiber en libère un entre-temps. Aucune autre fiber ne doit
-écrire dans ces blocs pendant qu'elle tourne : C les lirait au même moment. Chaque appel lance un thread à lui, ce qui
-coûte environ 220 microsecondes sous Linux : `slow` est pour des appels d'une milliseconde ou plus.
+écrire dans ces blocs pendant qu'elle tourne : C les lirait au même moment. Chaque appel tourne sur un *domain*, le
+thread d'OCaml qui tourne sur un cœur à lui. En lancer un coûte environ 220 microsecondes sous Linux, et sa fin vide d'un
+coup le jeune tas (la mémoire des valeurs qui viennent d'être faites) de tous les domains, dans un *stop of the world*
+(tous les domains arrêtés le temps d'un travail du garbage collector) : ce qui y vit passe au vieux tas, 2 ms pour un
+serveur qui garde 1,4 Mo de jeunes valeurs. Alors dans une rafale, chaque appel commençant moins de 2 ms après la fin du
+précédent, comme une boucle ou une file de connexions, le domain d'un appel attend le suivant : 5 000 appels à la suite coûtent 13 µs par appel [10, 17] au lieu de 104 [97, 214] (médianes de 21 exécutions alternées, charge 8,8 à 9,3). Un appel seul
+lance toujours un domain qui part une fois fini, et un programme qui n'appelle jamais lentement n'en a aucun. Un domain
+qui attend prend part à chaque stop of the world du garbage collector, et la collecte du vieux tas va environ deux fois
+moins vite tant qu'il attend (le manuel d'OCaml, chapitre "Parallel programming" ; Sivaramakrishnan et al.,
+*Retrofitting Parallelism onto OCaml*, 2020) : attendre plus longtemps coûterait de la mémoire. Des rafales de 100 appels
+toutes les 0,3 s dans un programme qui change sans cesse 20 000 listes, pendant 3 s : un domain qui attend 50 ms après
+chaque rafale a porté son vieux tas de 4,0 à 6,0 millions de mots au plus, 2 ms de 4,0 à 4,0, et 126 collectes du jeune
+tas au lieu de 1 040. `slow` est pour des appels d'une milliseconde ou plus, ou pour beaucoup à la suite.
 
 Mesuré le 2026-11-13, 50 connexions à la fois à un serveur de [std/http], chacune un [crypto.CheckPassword], pendant
 qu'une fiber demande `/ping` au même serveur toutes les 5 ms (`bench/signin.ce`) : avant, chaque connexion attendait les
