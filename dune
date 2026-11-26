@@ -4,14 +4,25 @@
  ; tripled the call sites for no speed the benches could measure; the hot functions are marked [@inline] instead.
  ; The dev build, which the tests and the change loop run, has no -g either: its frame tables are 28% smaller, and a
  ; start takes 2.59 ms instead of 2.85 (medians of 900 runs of io.Print(1), 2026-11-19). The C keeps its -g.
+ ; The C: no contraction of a product and an add into one fused instruction, which rounds once where the plain operations
+ ; round twice. GCC contracts by default where the processor has one (arm64), Clang within an expression (macOS): a
+ ; result would differ in its last bits from one system to another. On x86-64 the machine code stays the same: its base
+ ; instruction set, which the C here is built for, has no fused one.
  (release
-  (ocamlopt_flags ()))
+  (ocamlopt_flags ())
+  (c_flags
+   (:standard -ffp-contract=off)))
  (dev
-  (ocamlopt_flags ()))
+  (ocamlopt_flags ())
+  (c_flags
+   (:standard -ffp-contract=off)))
  ; dune build --profile sanitize --build-dir DIR tests/jit_test.exe: the C of src/sys/, MIR's included, under
  ; AddressSanitizer and UBSan. Run with ASAN_OPTIONS=detect_leaks=0, as OCaml frees nothing at exit.
  (sanitize
   (c_flags
-   (:standard -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined))
+   (:standard -ffp-contract=off -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined))
   (link_flags
-   (:standard -ccopt -fsanitize=address,undefined))))
+   (:standard -ccopt -fsanitize=address,undefined)))
+ (_
+  (c_flags
+   (:standard -ffp-contract=off))))

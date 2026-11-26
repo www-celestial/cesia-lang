@@ -436,7 +436,7 @@ let lu ~pay ~reserve n ap ai (ax : floatarray) q tol =
           let xj = Float.Array.get x j in
           for r = lp.(jj) to lp.(jj + 1) - 1 do
             let c = li.(r) in
-            Float.Array.set x c (Float.Array.get x c -. (Float.Array.get lx r *. xj))
+            let p = Float.Array.get lx r *. xj in Float.Array.set x c (Float.Array.get x c -. p)
           done;
           work := !work + lp.(jj + 1) - lp.(jj)
         end
@@ -535,10 +535,9 @@ let update ~pay ~rows ~cols ~inner ~trans out x y =
         let s2 = s1 + xl in
         let s3 = s2 + xl in
         for i = 0 to rows - 1 do
-          Float.Array.set od (o + i)
-            (Float.Array.get od (o + i)
-            -. ((Float.Array.get xd (s0 + i) *. b0) +. (Float.Array.get xd (s1 + i) *. b1)
-               +. (Float.Array.get xd (s2 + i) *. b2) +. (Float.Array.get xd (s3 + i) *. b3)))
+          let p0 = Float.Array.get xd (s0 + i) *. b0 and p1 = Float.Array.get xd (s1 + i) *. b1 in
+          let p2 = Float.Array.get xd (s2 + i) *. b2 and p3 = Float.Array.get xd (s3 + i) *. b3 in
+          Float.Array.set od (o + i) (Float.Array.get od (o + i) -. (p0 +. p1 +. p2 +. p3))
         done;
         p := !p + 4
       done;
@@ -546,7 +545,7 @@ let update ~pay ~rows ~cols ~inner ~trans out x y =
         let b = Float.Array.get yd (yat j !p) and s = xo + (!p * xl) in
         if b <> 0. then
           for i = 0 to rows - 1 do
-            Float.Array.set od (o + i) (Float.Array.get od (o + i) -. (Float.Array.get xd (s + i) *. b))
+            let p = Float.Array.get xd (s + i) *. b in Float.Array.set od (o + i) (Float.Array.get od (o + i) -. p)
           done;
         incr p
       done
@@ -573,7 +572,7 @@ let rec chol_columns ~pay f m j0 j1 =
         let cc = c * m and l = Float.Array.get f (cj + c) in
         if l <> 0. then
           for i = c to m - 1 do
-            Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. (Float.Array.get f (cj + i) *. l))
+            let p = Float.Array.get f (cj + i) *. l in Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. p)
           done
       done;
       incr j
@@ -600,7 +599,7 @@ let rec unit_solve ~pay f m j0 j1 c0 c1 =
         let x = Float.Array.get f (cc + j) and cj = j * m in
         if x <> 0. then
           for i = j + 1 to j1 - 1 do
-            Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. (Float.Array.get f (cj + i) *. x))
+            let p = Float.Array.get f (cj + i) *. x in Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. p)
           done
       done
     done
@@ -654,7 +653,7 @@ let rec lu_columns ~pay f m kp tol order j0 j1 =
           let u = Float.Array.get f (cc + jj) in
           if u <> 0. then
             for i = jj + 1 to m - 1 do
-              Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. (Float.Array.get f (cj + i) *. u))
+              let p = Float.Array.get f (cj + i) *. u in Float.Array.set f (cc + i) (Float.Array.get f (cc + i) -. p)
             done
         done;
         incr j
@@ -857,7 +856,7 @@ let analyse ~pay n cp ci perm =
       let k0 = cols.(s) and k1 = cols.(s + 1) in
       let ns = k0 + k1 and fresh = k0 * (lnz.(s + 1) + k0 - lnz.(s)) in
       let total = zeros.(s + 1) + fresh in
-      let z = float total /. ((float ns *. float (ns + 1) /. 2.) +. (float ns *. float (lnz.(s + 1) - k1))) in
+      let nk = float ns *. float (lnz.(s + 1) - k1) in let z = float total /. ((float ns *. float (ns + 1) /. 2.) +. nk) in
       if ns <= 4 || fresh = 0 || (ns <= 16 && z < 0.8) || (ns <= 48 && z < 0.1) || z < 0.05 then begin
         merged.(s + 1) <- s;
         zeros.(s) <- total;
@@ -1189,7 +1188,7 @@ let solve fac (b : floatarray) =
         let yj = Float.Array.get y (f0 + j) /. Float.Array.get lx (o + j) in
         Float.Array.set y (f0 + j) yj;
         for q = j + 1 to k - 1 do
-          Float.Array.set y (f0 + q) (Float.Array.get y (f0 + q) -. (Float.Array.get lx (o + q) *. yj))
+          let p = Float.Array.get lx (o + q) *. yj in Float.Array.set y (f0 + q) (Float.Array.get y (f0 + q) -. p)
         done
       done;
       if u * k >= least then begin
@@ -1205,7 +1204,7 @@ let solve fac (b : floatarray) =
           let o = lp.(g) + (j * m) and yj = Float.Array.get y (f0 + j) in
           for q = k to m - 1 do
             let i = rows.(r0 + q) in
-            Float.Array.set y i (Float.Array.get y i -. (Float.Array.get lx (o + q) *. yj))
+            let p = Float.Array.get lx (o + q) *. yj in Float.Array.set y i (Float.Array.get y i -. p)
           done
         done
     done;
@@ -1223,7 +1222,7 @@ let solve fac (b : floatarray) =
           let o = lp.(g) + (j * m) in
           let acc = ref (Float.Array.get y (f0 + j)) in
           for q = k to m - 1 do
-            acc := !acc -. (Float.Array.get lx (o + q) *. Float.Array.get y rows.(r0 + q))
+            let p = Float.Array.get lx (o + q) *. Float.Array.get y rows.(r0 + q) in acc := !acc -. p
           done;
           Float.Array.set y (f0 + j) !acc
         done;
@@ -1231,7 +1230,7 @@ let solve fac (b : floatarray) =
         let o = lp.(g) + (j * m) in
         let acc = ref (Float.Array.get y (f0 + j)) in
         for q = j + 1 to k - 1 do
-          acc := !acc -. (Float.Array.get lx (o + q) *. Float.Array.get y (f0 + q))
+          let p = Float.Array.get lx (o + q) *. Float.Array.get y (f0 + q) in acc := !acc -. p
         done;
         Float.Array.set y (f0 + j) (!acc /. Float.Array.get lx (o + j))
       done
@@ -1251,7 +1250,7 @@ let solve fac (b : floatarray) =
         Float.Array.set w (f0 + j) z;
         for q = j + 1 to k - 1 do
           let i = pivots.(r0 + q) in
-          Float.Array.set y i (Float.Array.get y i -. (Float.Array.get llx (o + q) *. z))
+          let p = Float.Array.get llx (o + q) *. z in Float.Array.set y i (Float.Array.get y i -. p)
         done
       done;
       if u * k >= least then begin
@@ -1267,7 +1266,7 @@ let solve fac (b : floatarray) =
           let o = llp.(g) + (j * m) and z = Float.Array.get w (f0 + j) in
           for q = k to m - 1 do
             let i = pivots.(r0 + q) in
-            Float.Array.set y i (Float.Array.get y i -. (Float.Array.get llx (o + q) *. z))
+            let p = Float.Array.get llx (o + q) *. z in Float.Array.set y i (Float.Array.get y i -. p)
           done
         done
     done;
@@ -1283,7 +1282,7 @@ let solve fac (b : floatarray) =
         for q = 0 to u - 1 do
           let xc = Float.Array.get t q and o = ulp.(g) + (q * k) in
           for j = 0 to k - 1 do
-            Float.Array.set w (f0 + j) (Float.Array.get w (f0 + j) -. (Float.Array.get ulx (o + j) *. xc))
+            let p = Float.Array.get ulx (o + j) *. xc in Float.Array.set w (f0 + j) (Float.Array.get w (f0 + j) -. p)
           done
         done;
       for j = k - 1 downto 0 do
@@ -1291,7 +1290,7 @@ let solve fac (b : floatarray) =
         let xj = Float.Array.get w (f0 + j) /. Float.Array.get llx (o + j) in
         Float.Array.set w (f0 + j) xj;
         for i = 0 to j - 1 do
-          Float.Array.set w (f0 + i) (Float.Array.get w (f0 + i) -. (Float.Array.get llx (o + i) *. xj))
+          let p = Float.Array.get llx (o + i) *. xj in Float.Array.set w (f0 + i) (Float.Array.get w (f0 + i) -. p)
         done
       done
     done;

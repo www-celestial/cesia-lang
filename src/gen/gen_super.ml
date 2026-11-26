@@ -1,6 +1,8 @@
 (* Generates src/lib/super.ml: the depth-2 superinstructions on + - *, for integers and floats. Forms: (a o1 b) o2 c and c
    o2 (a o1 b), where a and b are a variable or a constant, and c a variable, a constant or an expression. The integer
-   version carries the overflow checks. *)
+   version carries the overflow checks. The float version binds a o1 b by a let: on arm64, OCaml fuses a product written
+   inside an add or a sub into one instruction that rounds once, where x86-64 and WebAssembly round twice
+   (tests/fusion_test.ml). *)
 
 let ops = [ "Add", "+"; "Sub", "-"; "Mul", "*" ]
 let pr = Printf.printf
@@ -38,10 +40,10 @@ let flo () =
               List.iter (fun kc ->
                   pr "  | %s, %s, %s, %s, %s ->\n" n1 n2 (fpat "F" "p" ka) (fpat "F" "q" kb) (fpat "F" "r" kc);
                   if kc = "X" then
-                    pr "    Some (fun ctx -> let z = r ctx in let f = ctx.f and b = ctx.b in (%s %s %s) %s z)\n"
+                    pr "    Some (fun ctx -> let z = r ctx in let f = ctx.f and b = ctx.b in let m = %s %s %s in m %s z)\n"
                       (read "p" ka) (op s1) (read "q" kb) (op s2)
                   else
-                    pr "    Some (fun ctx -> let f = ctx.f and b = ctx.b in (%s %s %s) %s %s)\n"
+                    pr "    Some (fun ctx -> let f = ctx.f and b = ctx.b in let m = %s %s %s in m %s %s)\n"
                       (read "p" ka) (op s1) (read "q" kb) (op s2) (read "r" kc))
                 leaves)
             pairs)
@@ -55,11 +57,11 @@ let flo () =
               List.iter (fun kc ->
                   pr "  | %s, %s, %s, %s, %s ->\n" n1 n2 (fpat "F" "r" kc) (fpat "F" "p" ka) (fpat "F" "q" kb);
                   if kc = "X" then
-                    pr "    Some (fun ctx -> let z = r ctx in let f = ctx.f and b = ctx.b in z %s (%s %s %s))\n"
-                      (op s2) (read "p" ka) (op s1) (read "q" kb)
+                    pr "    Some (fun ctx -> let z = r ctx in let f = ctx.f and b = ctx.b in let m = %s %s %s in z %s m)\n"
+                      (read "p" ka) (op s1) (read "q" kb) (op s2)
                   else
-                    pr "    Some (fun ctx -> let f = ctx.f and b = ctx.b in %s %s (%s %s %s))\n"
-                      (read "r" kc) (op s2) (read "p" ka) (op s1) (read "q" kb))
+                    pr "    Some (fun ctx -> let f = ctx.f and b = ctx.b in let m = %s %s %s in %s %s m)\n"
+                      (read "p" ka) (op s1) (read "q" kb) (read "r" kc) (op s2))
                 leaves)
             pairs)
         ops)
