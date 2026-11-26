@@ -78,10 +78,8 @@ site=$(mktemp -d)
 work=$(mktemp -d)
 trap 'cp "$backup" src/lib/messages.ml; rm -f "$backup"; rm -rf "$site" "$work"' EXIT
 "$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null 2> "$work/site.err" || { cat "$work/site.err" >&2; fail "Cesia's site doesn't build"; }
-if grep -q 'names no language' "$work/site.err"; then
-  grep 'names no language' "$work/site.err" >&2
-  fail "a block of Cesia's book names no language"
-fi
+cat "$work/site.err" >&2
+grep -q 'names no language' "$work/site.err" && fail "a block of Cesia's book names no language"
 "$PWD/_build/default/src/bin/main.exe" run --allow "read=$site,read=docs,read=$work,write=$work,exec=prlimit,env=CI,env=PATH" tools/tabs.ce "$site/.tabs" "$work" ||
   fail "a tab of the book fails: tools/tabs.ce"
 

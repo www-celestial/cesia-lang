@@ -87,14 +87,14 @@ codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
 
     Words. Keys: the keywords, read in any case when Fold. Names: the bytes a name may hold besides letters, digits and _,
     as - in CSS. A name right after a dot is a field when Dots, as in Cesia; right before ( it is called when Calls; right
-    after ( when Lisp; before : inside braces it is a field when Props, a property of CSS; first on its line it is a
-    keyword when Leads, a directive of nginx. Numbers: digits make a number, but in prose. Vars: the marks of a variable,
-    $ in a shell, before a name, {...}, or a bracket of VarOpens. At: the marks of an annotation, @name or #[...], as a
-    called name. Atoms: :name is a field, a symbol of Ruby. CharMarks: the marks of one character, $a in Erlang, \a in
-    Clojure. Commands: \name is a keyword, as in TeX. Directives: # first on its line opens a directive, a keyword, as in
-    C. Regex: /.../ where a value goes is a text, as in JavaScript. Ticks: a quote right after a name or a bracket is an
-    operator, the transpose of MATLAB. Chars: a quote opens a text only as one character, 'a' or '\n', as in OCaml, where
-    'a is a type.
+    after ( when Lisp; before : and a blank inside braces it is a field when Props, a property of CSS, where a:hover is
+    none; first on its line it is a keyword when Leads, a directive of nginx. Numbers: digits make a number, but in prose.
+    Vars: the marks of a variable, $ in a shell, before a name, {...}, or a bracket of VarOpens. At: the marks of an
+    annotation, @name or #[...], as a called name. Atoms: :name is a field, a symbol of Ruby. CharMarks: the marks of one
+    character, $a in Erlang, \a in Clojure. Commands: \name is a keyword, as in TeX. Directives: # first on its line opens
+    a directive, a keyword, as in C. Regex: /.../ where a value goes is a text, as in JavaScript. Ticks: a quote right after
+    a name or a bracket is an operator, the transpose of MATLAB. Chars: a quote opens a text only as one character, 'a' or
+    '\n', as in OCaml, where 'a is a type.
 
     Lines. Sections: a [section] first on its line is a keyword. Pairs: the bytes that may follow a key first on its line,
     which makes it a field: = in TOML, : in YAML, which takes a blank after it. Keyed: the bytes after a text that make it a
@@ -102,8 +102,9 @@ codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
     Heads: [mark, class] for a line that starts with mark, all of it of that class, as + in a diff; Plain: the other lines
     stay plain. Prompts: a line that starts with a prompt, as $ followed by a blank, is a command in the language Command,
     and its prompt a comment. Body: after the first empty line, the rest is in that language, the body of HTTP. Fences:
-    the fenced blocks of Markdown, each in its own language. Tags: "markup" reads tags, attributes and entities, the text between them plain, as
-    in HTML; "jsx" the same tags inside code, as in React. Embeds: the language of the text inside a tag, js in <script>. *)
+    the fenced blocks of Markdown, each in its own language. Tags: "markup" reads tags, attributes and entities, the text
+    between them plain, as in HTML; "jsx" the same tags inside code, as in React. Embeds: the language of the text inside
+    a tag, js in <script>. *)
 langBase = {Line: [], Spaced: false, Lead: false, Dashes: false, Blocks: [], Nest: false, Shut: false, Texts: [], Raw: [],
   Multi: [], Prefixes: "", RawPrefix: "", Holes: {}, Delims: [], Heredocs: false, LineTexts: [], Keys: [], Fold: false,
   Names: "", Dots: false, Calls: true, Lisp: false, Props: false, Leads: false, Numbers: true, Vars: [], VarOpens: "{",
@@ -131,13 +132,15 @@ defn textRule(l, t)
   {Open: open, Close: if value.IsText(t) t else t[2] end, Raw: open in l.Raw, Multi: open in l.Multi, Holes: dict.GetOr(open, [], l.Holes)}
 end
 
+noRules = [[] for b in 1..256]   (** No rule at any byte: each language starts from it. *)
+
 defn lang(fields)
   (** A language read with these fields, those it doesn't give as in langBase, and what the reader draws from them: the
       rules that may start at each byte, in their order, and the bytes where a rule, a name or a number may start. *)
   l = dict.Merge(langBase, fields)
   keys = if l.Fold [text.Lower(k) for k in l.Keys] else l.Keys end
   texts = [textRule(l, t) for t in l.Texts]
-  rules = [[] for b in 1..256]
+  rules = noRules
   marks = []
   for b in l.Blocks
     marks = list.Append({Kind: "block", Open: b[1], Close: b[2]}, marks)
@@ -190,7 +193,7 @@ defn lang(fields)
   stops = list.Concat(stops, if words nameBase else [] end)
   stops = list.Concat(stops, if l.Numbers [46] else [] end)
   dict.Merge(l, {KeySet: dict.Zipmap(keys, [true for k in keys]), Rules: rules, TextRules: texts, Words: words,
-    Stops: text.FromBytes(list.Unique(stops)), NameBytes: text.Str(text.FromBytes(nameBase), l.Names),
+    Stops: text.FromBytes(stops), NameBytes: text.Str(text.FromBytes(nameBase), l.Names),
     TextFirsts: text.Join("", list.Unique([text.ByteSlice(1, 1, t.Open) for t in texts])), Tracks: l.Regex or l.Tags == "jsx",
     Long: "long" in l.Delims, AfterPrefix: text.Str(text.Join("", [text.ByteSlice(1, 1, t.Open) for t in texts]), "#'\""),
     LineWork: l.Fences or value.Len(l.Heads) > 0 or l.Prompts or l.Plain or l.Body != "" or l.Sections or l.Pairs != "" or l.Scalars})
