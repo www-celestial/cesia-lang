@@ -1,6 +1,7 @@
 (* HTTP/3 beside HTTP/1.1: the same app, its routes unchanged, served both ways; Fetch learns the Alt-Svc of the first
-   answer and asks over QUIC from then on; a streamed body, a body sent, a HEAD, a 404, a handler that panics, a body
-   too large, and the 425 of RFC 8470 on both paths. *)
+   answer and asks over QUIC from then on; a streamed body, a body sent, a body too large, an upload that its route
+   takes in pieces and one past its limit (a 413 that the client reads though its upload was stopped), a HEAD, a 404,
+   a handler that panics, and the 425 of RFC 8470 on both paths. *)
 use std/http
 use std/http3
 use std/quic

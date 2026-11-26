@@ -615,41 +615,62 @@ defn refuse(st, status, options)
   _ = reply(st, {Status: status, Body: dict.Get(status, names), Headers: [{Name: "content-type", Value: "text/plain; charset=utf-8"}]}, false, options)
 end
 
+defn firstOf(st)
+  (** What starts a stream that a client opened: an Ok of {Session} (a stream of a WebTransport session, the bytes
+      after its signal), {Head} (the first HEADERS frame, frames of unknown types skipped), {Status: 431} (a head too
+      large), {Close} (DATA first, an error of the connection) or {Reset}; an Err when it ends or breaks first. *)
+  kind = frameKind(st)?
+  if value.IsMissing(kind)
+    return failed("The stream ended before its head.")
+  end
+  if kind.Type == wtStream
+    return result.Ok({Session: kind.Rest})
+  end
+  buf = "$(Varint(kind.Type))$(kind.Rest)"
+  while true
+    f = frameOf(st, buf, MaxHead)?
+    if value.IsMissing(f)
+      return failed("The stream ended before its head.")
+    end
+    if f.Type == headersFrame
+      return result.Ok(if dict.Has("Size", f) {Status: 431} else {Head: f} end)
+    else if f.Type == dataFrame
+      return result.Ok({Close: frameUnexpected})
+    else if dict.Has("Size", f)
+      return result.Ok({Reset: excessiveLoad})
+    end
+    buf = f.Rest
+  end
+end
+
 defn exchange(st, conn, handle, options, sessions)
   (** One request and its response, on a stream that the client opened, or a stream of a WebTransport session. The head
       must come within the timeout, and every head is at most MaxHead bytes. *)
   deadline = sys.Now() + options.Timeout
-  opened = fiber.Wait(fiber.Spawn(() -> frameKind(st)), timeout = options.Timeout)
-  if result.IsErr(opened) or result.IsErr(opened.Value) or value.IsMissing(opened.Value.Value)
+  (* The head, whole, within the timeout: one fiber reads it, and a client that sends it a byte at a time, or frames
+     that carry nothing, never holds the stream past its deadline. *)
+  got = fiber.Wait(fiber.Spawn(() -> firstOf(st)), timeout = options.Timeout)
+  if result.IsErr(got) or result.IsErr(got.Value)
     st.Reset(requestRejected)
     return st.Free()
   end
-  if opened.Value.Value.Type == wtStream
-    return joined(st, opened.Value.Value.Rest, sessions, options)
+  first = got.Value.Value
+  if dict.Has("Session", first)
+    return joined(st, first.Session, sessions, options)
   end
-  buf = "$(Varint(opened.Value.Value.Type))$(opened.Value.Value.Rest)"
-  head = missing
-  while value.IsMissing(head)
-    got = fiber.Wait(fiber.Spawn(() -> frameOf(st, buf, MaxHead)), timeout = options.Timeout)
-    if result.IsErr(got) or result.IsErr(got.Value) or value.IsMissing(got.Value.Value)
-      st.Reset(requestRejected)
-      return st.Free()
-    end
-    f = got.Value.Value
-    if f.Type == headersFrame and dict.Has("Size", f)
-      refuse(st, 431, options)
-      return st.Free()
-    else if f.Type == dataFrame
-      conn.Close(frameUnexpected)
-      return st.Free()
-    else if f.Type == headersFrame
-      head = f
-    else if dict.Has("Size", f)
-      st.Reset(excessiveLoad)
-      return st.Free()
-    end
-    buf = f.Rest
+  if dict.Has("Status", first)
+    refuse(st, first.Status, options)
+    return st.Free()
   end
+  if dict.Has("Close", first)
+    conn.Close(first.Close)
+    return st.Free()
+  end
+  if dict.Has("Reset", first)
+    st.Reset(first.Reset)
+    return st.Free()
+  end
+  head = first.Head
   fields = DecodeHead(head.Payload)
   if result.IsErr(fields)
     (* QPACK_DECOMPRESSION_FAILED is an error of the connection (RFC 9204, section 2.2.3). *)
@@ -920,7 +941,11 @@ defn connection(conn, handle, options, state)
     kind = math.Mod(st.Id, 4)
     if kind == 0
       next = st.Id + 4
-      tasks = list.Append(fiber.Spawn(() -> exchange(st, conn, handle, options, sessions)), [t for t in tasks if running(t)])
+      (* The tasks begun, for the stop to wait for them: those ended are dropped now and then, not at each request. *)
+      if value.Len(tasks) >= 64
+        tasks = [t for t in tasks if running(t)]
+      end
+      tasks = list.Append(fiber.Spawn(() -> exchange(st, conn, handle, options, sessions)), tasks)
     else if kind == 2
       fiber.Spawn(() -> incoming(st, conn))
     else
@@ -928,6 +953,8 @@ defn connection(conn, handle, options, state)
     end
   end
   ctl.Free()
+  (* Given back to OpenSSL in every case, its end heard or not: a connection kept would cost each run of the engine. *)
+  conn.Close(noError)
   count(state, "open", -1)
 end
 
@@ -1040,14 +1067,27 @@ end
 defn broken(client, host, port)
   (** Says that HTTP/3 failed for host:port: TCP for the next 5 minutes. *)
   fiber.Remember("broken $host:$port", true, sys.Now() + brokenFor, client.Offers)
-  fiber.Forget("$host:$port", client.Pool)
+  dropped(client, "$host:$port")
+end
+
+defn dropped(client, key)
+  (** A connection of the pool closed and forgotten. *)
+  kept = fiber.Recall(key, sys.Now(), client.Pool)
+  fiber.Forget(key, client.Pool)
+  if not value.IsMissing(kept)
+    kept.Close(noError)
+  end
 end
 
 defn dialed(client, host, port, timeout, peer)
   (** The connection kept for host:port, or a new one with its control stream and its SETTINGS. *)
   kept = fiber.Recall("$host:$port", sys.Now(), client.Pool)
-  if not value.IsMissing(kept) and not kept.Ended()
-    return result.Ok(kept)
+  if not value.IsMissing(kept)
+    if not kept.Ended()
+      return result.Ok(kept)
+    end
+    (* Its socket and its fiber given back. *)
+    kept.Close(noError)
   end
   conn = quic.Dial(host, port, client.Api, verify = client.Verify, ca = client.Ca, timeout = timeout, peer = peer)?
   control = conn.Open(true)
@@ -1075,7 +1115,7 @@ defn ask(client, host, port, method, path, headers, body, timeout, maxBody, peer
   conn = dialed(client, host, port, timeout, peer)?
   opened = conn.Open(false)
   if result.IsErr(opened)
-    fiber.Forget("$host:$port", client.Pool)
+    dropped(client, "$host:$port")
     return opened
   end
   st = opened.Value
