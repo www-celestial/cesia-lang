@@ -624,12 +624,12 @@ résultats décalé d'un ulp vers le haut, puis vers le bas.
 
 Le processeur lui-même ajouterait une différence. Sur arm64, OCaml 5.5 compile un produit de floats écrit dans une
 addition ou une soustraction en une seule instruction fusionnée (fused), fmadd, fmsub ou fnmsub, qui arrondit une fois
-là où x86-64 et WebAssembly arrondissent deux fois (asmcomp/arm64/selection.ml, lignes 184 à 196 de ses sources) : `x *
-x - 2.0`, dans les instructions de l'interpréteur qui font deux opérations d'un coup, donnait d'autres derniers bits sur
-un Mac. Le code de Cesia lie chaque produit par un `let` avant son addition, ce qui les garde séparés : sans flambda, le
-`let` d'un nom est Strict (lambda/matching.ml, ligne 4246), ce que Simplif garde (lambda/simplif.ml, ligne 578) ;
-Closure le garde pour ce qui n'est pas une constante (middle_end/closure/closure.ml, lignes 1020 à 1033), Cmm aussi
-(asmcomp/cmmgen.ml, lignes 1273 et 1289) ; et la sélection des instructions le calcule d'abord dans un registre
+là où x86-64 et WebAssembly arrondissent deux fois (asmcomp/arm64/selection.ml, lignes 184 à 196 de ses sources) :
+`x * x - 2.0`, dans les instructions de l'interpréteur qui font deux opérations d'un coup, donnait d'autres derniers
+bits sur un Mac. Le code de Cesia lie chaque produit par un `let` avant son addition, ce qui les garde séparés : sans
+flambda, le `let` d'un nom est Strict (lambda/matching.ml, ligne 4246), ce que Simplif garde (lambda/simplif.ml, ligne
+578) ; Closure le garde pour ce qui n'est pas une constante (middle_end/closure/closure.ml, lignes 1020 à 1033), Cmm
+aussi (asmcomp/cmmgen.ml, lignes 1273 et 1289) ; et la sélection des instructions le calcule d'abord dans un registre
 (asmcomp/selectgen.ml, lignes 615 à 618), si bien que l'addition voit une variable. tests/fusion_test.ml lit chaque
 fichier OCaml de src/ et échoue sur un produit écrit dans une addition ou une soustraction ; il échoue aussi avec un
 OCaml qui a flambda sur arm64, dont Un_anf remet un `let` utilisé une fois à sa place d'usage
