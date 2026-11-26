@@ -2,8 +2,14 @@
     actions at once, before the app has answered them. Route serves the screens of a path: a screen is a page that
     connects; the app gives it its shows, each a name and a channel of the changes of an answer, and runs the actions that
     the page asks for. live.js, the page's side, comes from the same path. Each screen has a fiber of its own, which
-    writes to its page alone: a page that reads nothing holds no other back. *)
+    writes to its page alone: a page that reads nothing holds no other back.
+
+    A break of the connection is no end: a screen whose connection broke is kept resume seconds, its shows going on and
+    its frames waiting, so that the page that comes back with its token gets every frame it missed, once, and its
+    actions are run once each (the connection state recovery of Socket.IO, the stateful reconnect of SignalR). Past
+    that, or on another server, the page gets a new screen, whose first messages are the whole answers. *)
 use std/dict
+use std/encode
 use std/fiber
 use std/http
 use std/json
@@ -11,6 +17,7 @@ use std/list
 use std/log
 use std/math
 use std/metrics
+use std/random
 use std/result
 use std/sys
 use std/text
@@ -29,15 +36,26 @@ Show(name, changes) = {Name: name, Changes: changes}
 inARow = 64   (* The changes that wait at most for the reply to an action. *)
 held = 0.1   (* The seconds that changes wait at most for the reply to an action. *)
 
-defn Route(pattern, screen, a, actions = {})
+defn Route(pattern, screen, a, actions = {}, resume = 120, buffer = 1048576, same = missing, who = missing, client = missing)
   (** An application with the live screens of a path added, and live.js, the page's side, at the path and /live.js.
       screen(s) gives the shows of a screen, a list of Show, or an Err that the page gets; s is {Request, Ended}: the
-      HTTP request of the page, its headers and cookies to tell who it is, and a channel that closes when the page
-      leaves, for the sources of its shows to stop, as cepheus.Watch does with until = s.Ended. actions maps the name of
+      HTTP request of the page, its headers and cookies to tell who it is, and a channel that closes when the screen
+      ends, for the sources of its shows to stop, as cepheus.Watch does with until = s.Ended. actions maps the name of
       each action to a function (s, args) of the screen and of what the page sent: its value, an Ok's or anything that
       isn't an Err, goes back to the page, which then drops the effect it showed; an Err undoes it. Each screen's
-      actions run one after the other, in the order the page asked for them. A page of another origin than the app's
-      gets a 403, as http.SameOrigin decides, so that no other site opens a screen with the cookies of its visitor.
+      actions run one after the other, in the order the page asked for them; s.Key is then the action's key, which the
+      page made when the action was asked and sends again with it after a break (missing from an older page), for the
+      app to run it once (an Idempotency-Key), and s.Base what the page saw before it asked, for the app to refuse a
+      change of a thing that changed meanwhile. A page of another origin than the app's gets a 403, as http.SameOrigin
+      decides, so that no other site opens a screen with the cookies of its visitor.
+
+      A page that says {Hello: 2} gets a screen that outlives a break: kept resume seconds (0: never) while its frames
+      not yet confirmed by the page hold buffer bytes at most, for the page to come back to with its token. same(old,
+      new) tells whether the request of a page that comes back is the one of the screen's page (its user, its shows):
+      by default the same Cookie header and the same query. who(s), when given, is a text the page stamps its actions
+      with: an action of another who is refused, as the next user of a browser sending the actions of the one before.
+      client is a value the page gets as it connects, its own settings. A page that says {Hello: 1}, the version
+      before, gets a screen that ends with its connection.
 
         app = http.Handler(http.App() then Route("/live", s -> []))
         app({Method: "GET", Path: "/live/live.js", Query: "", Headers: [], Body: ""}).Status --> 200
@@ -45,10 +63,41 @@ defn Route(pattern, screen, a, actions = {})
         app({Method: "GET", Path: "/live", Query: "", Headers: handshake, Body: ""}).Status --> 101
         other = list.Append({Name: "origin", Value: "https://elsewhere.example"}, list.Append({Name: "host", Value: "shop.example"}, handshake))
         app({Method: "GET", Path: "/live", Query: "", Headers: other, Body: ""}).Status --> 403 *)
-  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: client, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, screen, actions), r))
+  o = {Screen: screen, Actions: actions, Resume: resume, Buffer: buffer, Same: if value.IsMissing(same) sameRequest else same end, Who: who,
+    Client: client, Kept: cell(dict.Dict())}
+  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: script, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, o), r))
 end
 
-defn opening(request, screen, actions)
+defn sameRequest(old, new)
+  (** The default same of Route: the same cookies and the same query. *)
+  http.HeaderValue("cookie", old.Headers) == http.HeaderValue("cookie", new.Headers) and value.Equal(dict.Get("Query", old), dict.Get("Query", new))
+end
+
+defn cell(v)
+  (** A cell: a channel of size 1 that always holds one value, what a fiber changes and the others read. *)
+  c = fiber.Channel(size = 1)
+  fiber.Send(v, c)
+  c
+end
+
+defn peek(c)
+  (** The value of a cell. *)
+  v = fiber.Receive(c, timeout = 0).Value
+  fiber.Send(v, c)
+  v
+end
+
+defn put(v, c)
+  (** A cell's value replaced. *)
+  _ = fiber.Receive(c, timeout = 0)
+  fiber.Send(v, c)
+end
+
+(* The token of a screen that outlives a break: 128 random bits in hex. It is no secret that guards the screen: Route's
+   same does, with the request of the page that comes back. *)
+newToken() = encode.Hex(text.FromBytes([random.Int(0, 255) for k in 1..16]))
+
+defn opening(request, o)
   (** The response to the request of a screen, which http.SameOrigin let pass: the upgrade to WebSocket, or a 400 for a
       request that isn't one. The connection, once upgraded, goes to the first message of the page, its hello. *)
   key = http.HeaderValue("sec-websocket-key", request.Headers)
@@ -56,54 +105,142 @@ defn opening(request, screen, actions)
   if value.IsMissing(key) or value.IsMissing(asked) or text.Lower(asked) != "websocket"
     return {Status: 400, Body: "This route takes the WebSocket connections of live.js."}
   end
-  ended = fiber.Channel()
-  inbox = fiber.Channel(size = 64)
-  first = fiber.Channel(size = 1)
-  s = {Request: request, Ended: ended}
-  accepted = ws.Accept(key, (m, send) -> heard(m, send, s, screen, actions, first, inbox))
+  c = {Request: request, First: fiber.Channel(size = 1), Bound: cell(missing), Epoch: cell(0), O: o}
+  accepted = ws.Accept(key, (m, send) -> heard(m, send, c))
   upgrade = accepted.Upgrade
-  accepted.Upgrade = (conn, rest) -> serving(upgrade, conn, rest, first, ended)
+  accepted.Upgrade = (conn, rest) -> serving(upgrade, conn, rest, c)
   accepted
 end
 
-defn serving(upgrade, conn, rest, first, ended)
-  (** Runs the connection of a screen, then ends the screen: ended closes, which stops its fibers and the sources of its
-      shows. *)
-  fiber.Send(conn, first)
+defn serving(upgrade, conn, rest, c)
+  (** Runs the connection of a screen, then tells its screen that it ended: a screen of a page of the version before
+      ends with it, one of version 2 waits for its page to come back. *)
+  fiber.Send(conn, c.First)
   done = upgrade(conn, rest)
-  fiber.Close(ended)
+  sc = peek(c.Bound)
+  if value.IsSome(sc)
+    tellScreen({Kind: "detach", Epoch: peek(c.Epoch)}, sc)
+  end
   done
 end
 
+defn tellScreen(m, sc)
+  (** A message for a screen's fiber, unless the screen ended. *)
+  if not isClosed(sc.Ended)
+    fiber.Send(m, sc.Inbox)
+  end
+end
+
+isClosed(ch) = fiber.Receive(ch, timeout = 0).Error.Kind == "closed"   (* Has a channel that never gets a value closed? *)
+
 refused(message) = {Kind: "live", Message: message}   (* An error of the kind "live". *)
 
-defn heard(m, send, s, screen, actions, first, inbox)
-  (** A message of the page, in the fiber of its connection. The first is its hello, which starts the screen. Each
-      action runs here, one after the other, and its reply goes to the screen's fiber, which sends it after the changes
-      that came before it. *)
+defn heard(m, send, c)
+  (** A message of the page, in the fiber of its connection. The first is its hello, which starts the screen, or
+      attaches the connection to the screen it had, kept since a break. Each action goes to the fiber of the screen's
+      actions, which runs them one after the other; their replies go to the screen's fiber, which sends them after the
+      changes that came before them. An action heard twice, sent again after a break, is run once. *)
   parsed = json.Parse(m)
-  conn = fiber.Receive(first, timeout = 0)
+  p = if result.IsOk(parsed) and value.IsDict(parsed.Value) parsed.Value else {} end
+  conn = fiber.Receive(c.First, timeout = 0)
   if result.IsOk(conn)
-    if result.IsOk(parsed) and value.IsDict(parsed.Value) and dict.Get("Hello", parsed.Value) == 1
+    version = dict.Get("Hello", p)
+    if version == 2 and value.IsText(dict.Get("Token", p)) and attached(p, send, conn.Value, c)
+      return missing
+    end
+    if version == 1 or version == 2
       metrics.Add("live_screens_total")
-      fiber.Spawn(() -> screening(s, screen, send, conn.Value, inbox))
+      started(c, send, conn.Value, version)
     else
       conn.Value.Close()
     end
     return missing
   end
-  p = if result.IsOk(parsed) and value.IsDict(parsed.Value) parsed.Value else {} end
+  sc = peek(c.Bound)
+  if value.IsMissing(sc)
+    return missing
+  end
   if "Act" in p and "Id" in p
-    fiber.Send({Kind: "acting", Text: ""}, inbox)
-    fiber.Send({Kind: "ack", Text: acting(s, actions, p.Act, p.Id, dict.Get("Args", p))}, inbox)
+    id = p.Id
+    if sc.Resumable and value.IsInt(id)
+      if id <= peek(sc.Heard)
+        return missing
+      end
+      put(id, sc.Heard)
+    end
+    if not isClosed(sc.Ended)
+      fiber.Send(p, sc.Acts)
+    end
+  else if "Got" in p and value.IsInt(p.Got)
+    tellScreen({Kind: "got", Seq: p.Got}, sc)
   else if "Ping" in p and value.IsNumber(p.Ping)
-    fiber.Send({Kind: "pong", Text: json.Text({Pong: p.Ping, At: now()})}, inbox)
+    tellScreen({Kind: "pong", Text: json.Text({Pong: p.Ping, At: now()})}, sc)
+    if "Got" in p and value.IsInt(p.Got)
+      tellScreen({Kind: "got", Seq: p.Got}, sc)
+    end
   else if "Delays" in p and value.IsDict(p.Delays)
     observed(p.Delays)
+  else if "Bye" in p
+    tellScreen({Kind: "bye"}, sc)
   else
-    fiber.Send({Kind: "error", Text: json.Text({Error: refused("The page sent a message that live.js doesn't send.")})}, inbox)
+    tellScreen({Kind: "error", Text: json.Text({Error: refused("The page sent a message that live.js doesn't send.")})}, sc)
   end
   missing
+end
+
+defn attached(p, send, conn, c)
+  (** Attaches a connection to the screen of its token, kept since a break, when its request is the screen's (Route's
+      same): true once the screen took it, and sends its page the frames it missed; false for a new screen. *)
+  sc = dict.Get(p.Token, peek(c.O.Kept))
+  if value.IsMissing(sc) or not c.O.Same(peek(sc.Request), c.Request)
+    return false
+  end
+  reply = fiber.Channel(size = 1)
+  tellScreen({Kind: "attach", Send: send, Conn: conn, Got: if value.IsInt(dict.Get("Got", p)) p.Got else 0 end, Request: c.Request, Reply: reply}, sc)
+  got = fiber.Receive(reply, timeout = 5)
+  if result.IsErr(got) or not got.Value.Ok
+    return false
+  end
+  put(sc, c.Bound)
+  put(got.Value.Epoch, c.Epoch)
+  metrics.Add("live_resumed_total")
+  true
+end
+
+defn started(c, send, conn, version)
+  (** A new screen for a connection: its fiber, the fiber of its actions, and its token kept when it outlives a break. *)
+  resumable = version == 2 and c.O.Resume > 0
+  ended = fiber.Channel()
+  s = {Request: c.Request, Ended: ended}
+  o = c.O
+  w = if value.IsMissing(o.Who) missing else o.Who(s) end
+  sc = {Token: if version == 2 newToken() else missing end, V2: version == 2, Inbox: fiber.Channel(size = 64), Acts: fiber.Channel(size = 64), Heard: cell(0),
+    Request: cell(c.Request), Ended: ended, Resumable: resumable, Who: if value.IsText(w) w else missing end}
+  put(sc, c.Bound)
+  put(1, c.Epoch)
+  if resumable
+    kept = peek(o.Kept)
+    kept[sc.Token] = sc
+    put(kept, o.Kept)
+  end
+  fiber.Spawn(() -> doing(sc, o))
+  fiber.Spawn(() -> screening(sc, s, o, send, conn))
+end
+
+defn doing(sc, o)
+  (** The fiber of a screen's actions: each one run in turn, its reply to the screen's fiber, until the screen ends. *)
+  while true
+    got = fiber.Select([sc.Ended, sc.Acts])
+    if result.IsErr(got)
+      return missing
+    end
+    p = got.Value.Value
+    tellScreen({Kind: "acting"}, sc)
+    s = {Request: peek(sc.Request), Ended: sc.Ended, Key: if value.IsText(dict.Get("Key", p)) p.Key else missing end, Base: dict.Get("Base", p)}
+    other = value.IsText(sc.Who) and value.IsText(dict.Get("Who", p)) and p.Who != sc.Who
+    reply = if other json.Text({Ack: p.Id, Err: {Kind: "live", Status: 403, Message: "This action was asked by another account: it is not sent."}}) else acting(s, o.Actions, p.Act, p.Id, dict.Get("Args", p)) end
+    tellScreen({Kind: "ack", Text: reply}, sc)
+  end
 end
 
 defn observed(d)
@@ -156,15 +293,36 @@ defn shown(screen, s)
   if value.IsMissing(problem) result.Ok({Sources: [sh.Changes for sh in shows], Names: [json.Text(sh.Name) for sh in shows]}) else result.Err(problem) end
 end
 
-defn screening(s, screen, send, conn, inbox)
+defn hello(sc, o, resumed)
+  (** The first frame a page of version 2 gets from its screen, not numbered: its token, whether the screen is the one
+      it had (Resumed, with Heard, the last action it heard), its who and its settings. *)
+  m = {Token: sc.Token, Resumed: resumed, Heard: peek(sc.Heard)}
+  if value.IsText(sc.Who)
+    m.Who = sc.Who
+  end
+  if value.IsSome(o.Client)
+    m.Client = o.Client
+  end
+  "[$(json.Text(m))]"
+end
+
+defn screening(sc, s, o, send, conn)
   (** The fiber of a screen: it reads the changes of its shows as they come and writes each to the connection, as JSON,
       in a frame of its own, a JSON list. While a write waits for a slow page, the screen reads nothing: the source of a
       show must not wait for it, as cepheus.Watch never does. While an action of the page runs, the changes wait, at
       most held seconds, and go with its reply in one frame: the page then never draws the action's row twice, its
-      effect and the change it made. The replies wait for the first message of each show, the answer, too. *)
-  made = shown(screen, s)
+      effect and the change it made. The replies wait for the first message of each show, the answer, too. A screen of
+      version 2 numbers its frames ({Seq} first) and keeps them until the page says it has them ({Got}), in a channel,
+      oldest first, so that keeping and letting go of one costs the same whatever their number; while its connection
+      is broken it keeps them, resume seconds and buffer bytes at most, and sends them to the connection that comes back
+      with its token, before anything new. *)
+  made = shown(o.Screen, s)
   if result.IsErr(made)
-    failing(made.Error, send, s.Ended, conn)
+    if sc.V2
+      _ = send(hello(sc, o, false))
+    end
+    failing(made.Error, send, sc, conn)
+    ended(sc, o)
     return missing
   end
   sources = made.Value.Sources
@@ -174,24 +332,40 @@ defn screening(s, screen, send, conn, inbox)
   replies = []
   pending = []
   busy = 0
-  chs = list.Concat([s.Ended, inbox], sources)
+  epoch = 1
+  seq = 0
+  kept = fiber.Channel()
+  keptN = 0
+  bytes = 0
+  lost = 0
+  until = missing
+  if sc.V2
+    _ = send(hello(sc, o, false))
+  end
+  chs = list.Concat([sc.Inbox], sources)
   while true
-    got = if busy > 0 fiber.Select(chs, timeout = held) else fiber.Select(chs) end
+    left = if value.IsMissing(until) missing else list.Max([0, until - sys.Now()]) end
+    wait = if busy > 0 held else left end
+    wait = if value.IsSome(left) and value.IsSome(wait) list.Min([wait, left]) else wait end
+    got = if value.IsMissing(wait) fiber.Select(chs) else fiber.Select(chs, timeout = wait) end
     out = []
     if result.IsErr(got) and got.Error.Kind == "timeout"
+      if value.IsSome(until) and sys.Now() >= until
+        ended(sc, o)
+        return missing
+      end
       out = pending
       pending = []
     else if result.IsErr(got)
-      if got.Error.Channel == s.Ended
-        return missing
-      end
       k = list.IndexOf(got.Error.Channel, sources)
-      failing(refused("The show $(json.Parse(names[k]).Value) ended."), send, s.Ended, conn)
+      failing(refused("The show $(json.Parse(names[k]).Value) ended."), send, sc, conn)
+      ended(sc, o)
       return missing
-    else if got.Value.Channel == inbox
+    else if got.Value.Channel == sc.Inbox
       v = got.Value.Value
       if v.Kind == "error"
-        failing(missing, send, s.Ended, conn, last = v.Text)
+        failing(missing, send, sc, conn, last = v.Text)
+        ended(sc, o)
         return missing
       else if v.Kind == "acting"
         busy += 1
@@ -202,22 +376,64 @@ defn screening(s, screen, send, conn, inbox)
           out = pending
           pending = []
         end
-      else
-        out = [v.Text]
+      else if v.Kind == "pong"
+        if value.IsSome(send)
+          _ = send("[$(v.Text)]")
+        end
+      else if v.Kind == "got"
+        n = list.Min([keptN, list.Max([0, v.Seq - (seq - keptN)])])
+        bytes -= dropped(kept, n)
+        keptN -= n
+      else if v.Kind == "detach"
+        if v.Epoch == epoch
+          if not sc.Resumable
+            ended(sc, o)
+            return missing
+          end
+          send = missing
+          conn = missing
+          until = sys.Now() + o.Resume
+        end
+      else if v.Kind == "attach"
+        if v.Got < lost or v.Got > seq
+          fiber.Send({Ok: false}, v.Reply)
+          ended(sc, o)
+          return missing
+        end
+        n = list.Min([keptN, list.Max([0, v.Got - (seq - keptN)])])
+        bytes -= dropped(kept, n)
+        keptN -= n
+        if value.IsSome(conn)
+          old = conn
+          fiber.Spawn(() -> old.Close())
+        end
+        put(v.Request, sc.Request)
+        epoch += 1
+        send = v.Send
+        conn = v.Conn
+        until = missing
+        fiber.Send({Ok: true, Epoch: epoch}, v.Reply)
+        if not replayed(send, hello(sc, o, true), kept, keptN)
+          send = missing
+          until = sys.Now() + o.Resume
+        end
+      else if v.Kind == "bye"
+        ended(sc, o)
+        return missing
       end
     else
       k = list.IndexOf(got.Value.Channel, sources)
       v = got.Value.Value
       rows = dict.Get("Rows", v)
-      t = if value.IsMissing(rows) "{\"Show\":$(names[k]),\"Group\":$(number(v.Group)),\"Added\":$(listText(v.Added)),\"Removed\":$(listText(v.Removed)),\"At\":$(now())}" else "{\"Show\":$(names[k]),\"Group\":$(number(v.Group)),\"Rows\":$(listText(rows)),\"At\":$(now())}" end
+      m = if value.IsMissing(rows) "{\"Show\":$(names[k]),\"Group\":$(number(v.Group)),\"Added\":$(listText(v.Added)),\"Removed\":$(listText(v.Removed)),\"At\":$(now())}" else "{\"Show\":$(names[k]),\"Group\":$(number(v.Group)),\"Rows\":$(listText(rows)),\"At\":$(now())}" end
       if not seen[k]
         seen[k] = true
         waiting -= 1
       end
       if busy > 0 and value.Len(pending) < inARow
-        pending = list.Append(t, pending)
+        pending = list.Append(m, pending)
       else
-        out = list.Append(t, pending)
+        out = list.Append(m, pending)
         pending = []
       end
     end
@@ -225,25 +441,121 @@ defn screening(s, screen, send, conn, inbox)
       out = list.Concat(out, replies)
       replies = []
     end
-    if value.Len(out) > 0 and result.IsErr(send(if value.Len(out) == 1 "[$(out[1])]" else "[$(text.Join(",", out))]" end))
-      return missing
+    if value.Len(out) > 0
+      if not sc.Resumable
+        if result.IsErr(send(if value.Len(out) == 1 "[$(out[1])]" else "[$(text.Join(",", out))]" end))
+          ended(sc, o)
+          return missing
+        end
+      else
+        seq += 1
+        frame = "[{\"Seq\":$seq},$(text.Join(",", out))]"
+        fiber.Send(frame, kept)
+        keptN += 1
+        bytes += text.ByteLength(frame)
+        if value.IsSome(send) and result.IsErr(send(frame))
+          send = missing
+          until = sys.Now() + o.Resume
+        end
+        while bytes > o.Buffer and keptN > 1
+          if value.IsMissing(send)
+            (* away, and its frames past the buffer: the page can't come back to them, the screen ends *)
+            ended(sc, o)
+            return missing
+          end
+          lost = seq - keptN + 1
+          bytes -= text.ByteLength(fiber.Receive(kept).Value)
+          keptN -= 1
+        end
+      end
     end
   end
 end
 
-defn failing(e, send, ended, conn, last = missing)
+defn dropped(kept, n)
+  (** The n oldest frames kept let go, as the page has them: the bytes they held. A frame is kept as its text alone, its
+      number known from its place: the oldest is the last number sent less those kept, plus one. *)
+  out = 0
+  k = 0
+  while k < n
+    out += text.ByteLength(fiber.Receive(kept).Value)
+    k += 1
+  end
+  out
+end
+
+defn replayed(send, first, kept, n)
+  (** The hello of a screen that a page came back to, then the n frames it kept, which it keeps still (until the page
+      says it has them): true when all went. *)
+  frames = []
+  k = 0
+  while k < n
+    frames = list.Append(fiber.Receive(kept).Value, frames)
+    k += 1
+  end
+  for f in frames
+    fiber.Send(f, kept)
+  end
+  if result.IsErr(send(first))
+    return false
+  end
+  for f in frames
+    if result.IsErr(send(f))
+      return false
+    end
+  end
+  true
+end
+
+defn ended(sc, o)
+  (** The end of a screen: its Ended closed (its shows stop), its token forgotten, and what waited for it let go. *)
+  if not isClosed(sc.Ended)
+    fiber.Close(sc.Ended)
+  end
+  if sc.Resumable
+    kept = peek(o.Kept)
+    put(dict.Drop(sc.Token, kept), o.Kept)
+  end
+  while result.IsOk(fiber.Receive(sc.Inbox, timeout = 0))
+  end
+  while result.IsOk(fiber.Receive(sc.Acts, timeout = 0))
+  end
+end
+
+defn failing(e, send, sc, conn, last = missing)
   (** Ends a screen with an error that the page gets: the page then closes its side, or the connection closes after a
       second. *)
+  if value.IsMissing(send)
+    return missing
+  end
   _ = send("[$(if value.IsMissing(last) json.Text({Error: e}) else last end)]")
-  _ = fiber.Receive(ended, timeout = 1)
-  conn.Close()
+  until = sys.Now() + 1
+  while sys.Now() < until
+    got = fiber.Receive(sc.Inbox, timeout = list.Max([0, until - sys.Now()]))
+    if result.IsErr(got) or got.Value.Kind == "detach"
+      break
+    end
+  end
+  if value.IsSome(conn)
+    conn.Close()
+  end
 end
 
 (* live.js, the page's side, served at the path of Route and /live.js. *)
-client = "// live.js, the page's side of std/live: connect(url) opens a screen of the app; live.show(name, draw) draws a show's
-// rows at each change; live.act(name, args, effects) asks the app for an action and shows its effect at once.
+script = "// live.js, the page's side of std/live: connect(url, options) opens a screen of the app; live.show(name, draw) draws a
+// show's rows at each change; live.act(name, args, effects, base) asks the app for an action and shows its effect at
+// once; live.onStatus(f) tells the page the state of its connection.
+//
+// A break is no end. The page comes back by itself, after a wait drawn at random up to a bound that doubles at each
+// failure (full jitter: Brooker, Exponential Backoff And Jitter, 2015), at once when the browser is online again or the
+// tab is shown; to the same screen while the app keeps it (every frame it missed, once), else to a new one whose
+// answers replace its rows. A silent network (no frame for DeadAfter seconds, a ping every PingEvery) is a break too.
+// The actions asked meanwhile wait in order, each with the key made when it was asked, and go once the page is back:
+// the app runs each once. Their bounds and the delays are the app's settings, which come with the screen.
 const pageNow = () => performance.timeOrigin + performance.now()
 const later = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : f => setTimeout(f, 0)
+const browser = typeof window === 'object' && typeof document === 'object'
+const defaults = { Outbox: 'on', OutboxCount: 100, OutboxBytes: 1048576, OutboxWait: 3600, ReconnectFirst: 500, ReconnectMax: 30000, PingEvery: 15, DeadAfter: 30 }
 
 // The same text for two rows that hold the same values, whatever the order of their keys.
 function key(v) {
@@ -268,50 +580,141 @@ function quantile(sorted, q) {
   return sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)]
 }
 
+// The key of an action, made once when it is asked: 128 random bits.
+function newKey() {
+  if (typeof crypto === 'object' && crypto.randomUUID) return crypto.randomUUID()
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+}
+
 class Live {
-  constructor(url) {
+  constructor(url, options) {
     const u = new URL(url, location.href)
     u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
     this.url = u.href
+    this.given = options || {}
+    this.o = Object.assign({}, defaults, this.given)
     this.shows = new Map()
     this.pending = []
     this.next = 1
     this.handlers = []
+    this.watchers = []
     this.socket = null
     this.closed = false
     this.ended = false
-    this.wait = 250
     this.offset = null
     this.best = Infinity
     this.delays = []
     this.frame = 0
     this.timers = []
+    this.state = 'connecting'
+    this.token = null
+    this.seq = 0
+    this.told = 0
+    this.who = null
+    this.attempt = 0
+    this.retryAt = 0
+    this.retry = 0
+    this.last = 0
+    this.ever = false
+    this.news = null
   }
 
   open(opened, refused) {
-    const socket = new WebSocket(this.url)
+    if (this.closed || this.ended) return
+    clearTimeout(this.retry)
+    this.retry = 0
+    let socket
+    try { socket = new WebSocket(this.url) } catch (e) { return this.lost(socket) }
     this.socket = socket
-    let up = false
+    this.set('connecting')
     socket.onopen = () => {
-      up = true
-      this.wait = 250
-      socket.send(JSON.stringify({ Hello: 1 }))
-      this.ping()
-      if (opened) opened(this)
+      this.last = pageNow()
+      socket.send(JSON.stringify(this.token === null ? { Hello: 2 } : { Hello: 2, Token: this.token, Got: this.seq }))
     }
     socket.onmessage = e => {
       const at = pageNow()
-      for (const m of JSON.parse(e.data)) this.heard(m, at)
+      this.last = at
+      const frame = JSON.parse(e.data)
+      const first = frame[0]
+      if (first && 'Token' in first) return this.hello(first, opened)
+      if (first && 'Seq' in first) {
+        if (first.Seq <= this.seq) return
+        this.seq = first.Seq
+        this.owe()
+      }
+      for (const m of frame) this.heard(m, at)
     }
     socket.onclose = () => {
-      this.socket = null
-      for (const p of this.pending.filter(p => !p.answered)) this.settle(p, false, { Kind: 'live', Message: 'The connection to the app broke before it answered: the action may have run or not.' })
-      if (!up && refused) return refused({ Kind: 'live', Message: 'No screen opened at ' + this.url + '.' })
-      if (!this.closed && !this.ended) {
-        setTimeout(() => this.open(), this.wait * (0.5 + Math.random()))
-        this.wait = Math.min(this.wait * 2, 8000)
-      }
+      if (!this.ever && refused && !this.ended) return refused({ Kind: 'live', Message: 'No screen opened at ' + this.url + '.' })
+      this.lost(socket)
     }
+  }
+
+  // The screen's first frame: its token, whether it is the screen the page had (then only the actions it didn't hear
+  // go again), or a new one (every action not answered goes again, each show's answer will replace its rows).
+  hello(m, opened) {
+    const resumed = m.Resumed === true
+    if (m.Client) this.o = Object.assign({}, defaults, m.Client, this.given)
+    if (!resumed) this.seq = 0
+    this.news = this.ever ? (resumed ? 'resumed' : 'reloaded') : null
+    this.token = m.Token
+    const who = 'Who' in m ? m.Who : null
+    if (this.who !== null && who !== this.who) {
+      for (const p of this.pending.filter(p => !p.answered && p.who !== null && p.who !== who)) this.settle(p, false, { Kind: 'live', Message: 'This action was asked by another account: it is not sent.' })
+    }
+    this.who = who
+    for (const p of this.pending) if (p.who === null) p.who = who
+    this.attempt = 0
+    this.set('up')
+    for (const p of this.pending) if (!p.answered && (!resumed || p.id > m.Heard)) this.send(p)
+    this.ping()
+    if (!this.ever) {
+      this.ever = true
+      if (opened) opened(this)
+    }
+  }
+
+  // A break: every action waits (or fails, with the outbox off), and the page comes back after a wait at random.
+  lost(socket) {
+    if (socket && this.socket !== socket) return
+    this.socket = null
+    if (socket) socket.onclose = socket.onmessage = socket.onopen = null
+    if (this.closed || this.ended) return
+    if (this.o.Outbox === 'off') {
+      for (const p of this.pending.filter(p => !p.answered)) this.settle(p, false, { Kind: 'live', Message: 'The connection to the app broke before it answered: the action may have run or not.' })
+    }
+    const wait = Math.random() * Math.min(this.o.ReconnectMax, this.o.ReconnectFirst * Math.pow(2, this.attempt))
+    this.attempt = Math.min(this.attempt + 1, 30)
+    this.retryAt = pageNow() + wait
+    this.retry = setTimeout(() => this.open(), wait)
+    this.set('down')
+  }
+
+  // Comes back at once: the browser is online again, the tab is shown, or the page asks.
+  now() {
+    if (this.state === 'down' && !this.closed && !this.ended) this.open()
+  }
+
+  // The page's own frames confirmed to the app, a second at most after they came.
+  owe() {
+    if (this.owing) return
+    this.owing = setTimeout(() => {
+      this.owing = 0
+      if (this.socket && this.socket.readyState === 1 && this.seq > this.told) {
+        this.told = this.seq
+        this.socket.send(JSON.stringify({ Got: this.seq }))
+      }
+    }, 1000)
+  }
+
+  send(p) {
+    if (!this.socket || this.socket.readyState !== 1) return
+    const m = { Act: p.name, Id: p.id, Args: p.args === undefined ? null : p.args, Key: p.key }
+    if (p.base !== undefined) m.Base = p.base
+    if (p.who !== null) m.Who = p.who
+    this.socket.send(JSON.stringify(m))
+    p.sent = true
   }
 
   heard(m, at) {
@@ -342,6 +745,8 @@ class Live {
       }
     } else if ('Error' in m) {
       this.ended = true
+      clearTimeout(this.retry)
+      this.set('ended', m.Error)
       this.emit(m.Error)
       if (this.socket) this.socket.close(1000)
     }
@@ -357,6 +762,7 @@ class Live {
       const i = this.pending.indexOf(p)
       if (i >= 0) this.pending.splice(i, 1)
       for (const name in p.effects) this.dirty(this.get(name))
+      this.tell()
     }
     if (p.keep.length === 0) drop()
     else {
@@ -401,8 +807,25 @@ class Live {
     }
   }
 
+  // A ping every PingEvery seconds, with the frames confirmed; no frame for DeadAfter seconds is a break, even when the
+  // browser hasn't seen the network go (a cable, a router, a proxy that drops idle connections).
   ping() {
-    if (this.socket && this.socket.readyState === 1) this.socket.send(JSON.stringify({ Ping: pageNow() }))
+    const s = this.socket
+    if (!s || s.readyState !== 1) return
+    if (this.state === 'up' && pageNow() - this.last > this.o.DeadAfter * 1000) {
+      s.close(4000)
+      return this.lost(s)
+    }
+    this.told = this.seq
+    s.send(JSON.stringify(this.seq > 0 ? { Ping: pageNow(), Got: this.seq } : { Ping: pageNow() }))
+  }
+
+  // Actions that waited past OutboxWait fail: those never sent are not sent, the others may have run.
+  expire() {
+    const old = pageNow() - this.o.OutboxWait * 1000
+    for (const p of this.pending.filter(p => !p.answered && p.at < old)) {
+      this.settle(p, false, { Kind: 'live', Message: p.sent ? 'No reply came in time: the action may have run or not.' : 'This action waited too long to be sent: it was not sent.' })
+    }
   }
 
   report() {
@@ -417,19 +840,52 @@ class Live {
     for (const f of this.handlers) f(e)
   }
 
+  set(state, error) {
+    this.state = state
+    this.error = error === undefined ? null : error
+    this.tell()
+  }
+
+  // The state as onStatus gives it: State connecting, up, down or ended; Waiting, the actions not answered yet; Retry,
+  // the milliseconds before the next try while down; Last, resumed or reloaded after a break; Offline, the browser's
+  // own word; Error, what ended the screen.
+  status() {
+    return { State: this.state, Waiting: this.pending.filter(p => !p.answered).length, Retry: this.state === 'down' ? Math.max(0, this.retryAt - pageNow()) : 0,
+      Last: this.news, Offline: typeof navigator === 'object' && navigator.onLine === false, Error: this.error }
+  }
+
+  tell() {
+    const s = this.status()
+    for (const f of this.watchers) f(s)
+  }
+
+  onStatus(f) {
+    this.watchers.push(f)
+    f(this.status())
+  }
+
   show(name, draw) {
     const s = this.get(name)
     s.draws.push(draw)
     if (s.group !== null) this.dirty(s)
   }
 
-  act(name, args, effects) {
-    if (!this.socket || this.socket.readyState !== 1) return Promise.reject({ Kind: 'live', Message: 'This page is not connected to its app.' })
+  // An action: sent at once when connected, else kept in order until the page is back, bounded by OutboxCount and
+  // OutboxBytes; base, the values the page saw, lets the app refuse a change of what changed meanwhile.
+  act(name, args, effects, base) {
+    if (this.closed) return Promise.reject({ Kind: 'live', Message: 'This screen is closed.' })
+    if (this.o.Outbox === 'off' && this.state !== 'up') return Promise.reject({ Kind: 'live', Message: 'This page is not connected to its app.' })
+    const bytes = JSON.stringify(args === undefined ? null : args).length
+    const waiting = this.pending.filter(p => !p.answered)
+    if (waiting.length >= this.o.OutboxCount || waiting.reduce((n, p) => n + p.bytes, 0) + bytes > this.o.OutboxBytes) {
+      return Promise.reject({ Kind: 'live', Message: 'Too many actions wait to be sent: ' + waiting.length + '.' })
+    }
     return new Promise((resolve, reject) => {
-      const p = { id: this.next++, name, effects: effects || {}, resolve, reject, sent: true, changed: new Set(), answered: false, keep: [] }
+      const p = { id: this.next++, key: newKey(), name, args, base, who: this.who, at: pageNow(), bytes, effects: effects || {}, resolve, reject, sent: false, changed: new Set(), answered: false, keep: [] }
       this.pending.push(p)
-      this.socket.send(JSON.stringify({ Act: name, Id: p.id, Args: args === undefined ? null : args }))
+      if (this.state === 'up') this.send(p)
       for (const n in p.effects) this.dirty(this.get(n))
+      this.tell()
     })
   }
 
@@ -437,17 +893,35 @@ class Live {
     this.handlers.push(f)
   }
 
+  // After a sign-in that follows the end of the screen (its session gone), the page comes back, its actions with it.
+  again() {
+    this.ended = false
+    this.token = null
+    this.open()
+  }
+
   close() {
     this.closed = true
+    clearTimeout(this.retry)
+    clearTimeout(this.beat)
     for (const t of this.timers) clearInterval(t)
+    if (this.socket && this.socket.readyState === 1) this.socket.send(JSON.stringify({ Bye: 1 }))
     if (this.socket) this.socket.close(1000)
   }
 }
 
-export function connect(url) {
+export function connect(url, options) {
   return new Promise((opened, refused) => {
-    const live = new Live(url)
-    live.timers.push(setInterval(() => live.ping(), 30000), setInterval(() => live.report(), 60000))
+    const live = new Live(url, options)
+    const beat = () => { if (live.closed) return; live.ping(); live.expire(); live.beat = setTimeout(beat, Math.max(1, live.o.PingEvery) * 1000) }
+    live.beat = setTimeout(beat, Math.max(1, live.o.PingEvery) * 1000)
+    live.timers.push(setInterval(() => live.report(), 60000))
+    if (browser) {
+      window.addEventListener('online', () => live.now())
+      window.addEventListener('offline', () => { if (live.socket) { const s = live.socket; s.close(4000); live.lost(s) } })
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.now() })
+      window.addEventListener('pagehide', () => { if (live.socket && live.socket.readyState === 1) live.socket.send(JSON.stringify({ Bye: 1 })) })
+    }
     live.open(opened, e => { live.close(); refused(e) })
   })
 }

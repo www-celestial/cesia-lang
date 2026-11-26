@@ -673,19 +673,83 @@ each show at most once a frame of the display, at `requestAnimationFrame`.
 
 ### The page's side
 
-`live.js` is served at the path of the route and `/live.js`, a module of 211 lines with nothing to install:
+`live.js` is served at the path of the route and `/live.js`, a module of 383 lines with nothing to install:
 
 | | |
 |---|---|
-| `connect(url)` | opens the screen: a `Promise` of it, or a refusal when no screen opens at `url` |
+| `connect(url, options)` | opens the screen: a `Promise` of it, or a refusal when no screen opens at `url`; `options` are the page's own settings of the connection (below), over the app's |
 | `live.show(name, draw)` | `draw(rows)` with the rows of a show, at once if they are there, then at each change |
-| `live.act(name, args, effects)` | an action: a `Promise` of its reply, its effects drawn at once |
+| `live.act(name, args, effects, base)` | an action: a `Promise` of its reply, its effects drawn at once; kept while the page is away, sent once it is back |
+| `live.onStatus(f)` | `f(status)` now and at each change of the connection: `{State, Waiting, Retry, Last, Offline, Error}` |
 | `live.onError(f)` | `f(error)` for an error of the screen, as an `Err` of `screen` or a show that ended |
-| `live.close()` | closes the screen |
+| `live.now()`, `live.again()` | try at once while down; come back after an error that ended the screen, as a sign-in again |
+| `live.close()` | closes the screen, and tells the app, which lets it go at once |
 
-When the connection breaks, the page connects again by itself, after 0.25 s, then twice as long each time, up to 8 s;
-the new screen starts with the answers. An action asked before the break and not yet answered gets an error that says
-so: it may have run or not, and the new answers show which.
+### When the connection drops
+
+A break of the connection is no end: a wifi lost, a phone that goes from wifi to 4G with another address, a laptop
+asleep, the app restarted or deployed, a proxy that cuts idle connections. For a drop of seconds to minutes the page
+comes back by itself and goes on where it stopped, once, as Socket.IO's *connection state recovery* and SignalR's
+*stateful reconnect* do; nothing to write, on either side.
+
+- **The page comes back by itself**, after a wait drawn at random between 0 and a bound that doubles at each failure,
+  from `ReconnectFirst` (500 ms) to `ReconnectMax` (30 s): *full jitter* (Marc Brooker, "Exponential Backoff And
+  Jitter", AWS Architecture Blog, 2015), so that a thousand pages cut together by a restart don't all come back in the
+  same instant. It tries at once when the browser says it is online again, and when its tab is shown again.
+- **A silent network is a break too**: a router gone or a cable pulled closes nothing, and TCP takes minutes to give
+  up. The page pings every `PingEvery` seconds (15), and no frame for `DeadAfter` seconds (30) is a break: the values
+  of SignalR's `KeepAliveInterval` and `ServerTimeout`. The browser's `offline` is a break at once.
+- **The app keeps the screen**: a page that says `{"Hello": 2}` gets a screen that outlives its connection, kept
+  `resume` seconds (120, Socket.IO's `maxDisconnectionDuration`), its shows going on, the frames it sends numbered
+  (`{"Seq": n}` first) and kept until the page says it has them (`{"Got": n}`, at most a second later), `buffer` bytes
+  at most (1 MiB; SignalR keeps 100,000 bytes). The page comes back with its token and the last frame it has: the app
+  sends it every frame after that one, once, and the page goes on. *Nothing missed, nothing twice.*
+- **Past that** (the app restarted, another server, too long, too much missed), the page gets a new screen, whose first
+  messages are the whole answers: its rows are replaced, its data reloaded, not the page, and `onStatus` says so
+  (`Last: "reloaded"`).
+- **Actions wait, in order, each with its key.** An action asked while the page is away is kept, in the order asked,
+  with a key made when it was asked; one sent when the connection broke is kept too, with its key. Back on the screen
+  the app kept, the page sends again only those the screen didn't hear (`Heard`); on a new screen, all of them, each with
+  its key: `s.Key` in the action, which an app gives to its handler as an `Idempotency-Key`, so that it runs once
+  (Centauri does). At most `OutboxCount` (100) and `OutboxBytes` (1 MiB) wait; past them the next is refused at once;
+  one that waited `OutboxWait` seconds (an hour) fails, saying whether it was ever sent.
+- **Another account's actions are never sent**: with `who`, the app gives each screen a tag of its account; the page
+  stamps each action with it, and drops those of another account when it comes back signed in as someone else; the
+  app refuses an action whose tag isn't the screen's.
+- **What the page saw goes with its change**: `base`, the values the page saw of what an action changes, reaches it as
+  `s.Base`, for the app to refuse a change of a thing that changed meanwhile rather than overwrite it.
+
+```cesia norun hide=code
+screen(s) = []
+acts = {}
+sameAccount(old, new) = true
+accountTag(r) = "w"
+```
+```cesia norun
+app = http.App() then live.Route("/live", screen, actions = acts,
+  resume = 120, buffer = 1048576,                      (* the screen kept through a break, and its frames *)
+  same = (old, new) -> sameAccount(old, new),          (* who may come back to it: by default the same cookies and query *)
+  who = s -> accountTag(s.Request),                    (* the tag that stamps the page's actions *)
+  client = {PingEvery: 15, DeadAfter: 30, OutboxCount: 100})   (* the page's settings, sent with its screen *)
+```
+```js
+const live = await connect("/live")
+live.onStatus(s => line.textContent = s.State === "down" ? `Offline — ${s.Waiting} waiting` : s.State)
+```
+
+The wire, version 2 (a page of version 1, `{"Hello": 1}`, gets the screen of before, which ends with its connection):
+
+| from | message | what it says |
+|---|---|---|
+| page | `{"Hello": 2}`, or `{"Hello": 2, "Token": t, "Got": n}` | a new screen, or the screen `t` again after frame `n` |
+| app | `[{"Token": t, "Resumed": r, "Heard": h, "Who": w, "Client": c}]` | not numbered: the screen's token, whether it is the one the page had, the last action it heard |
+| app | `[{"Seq": n}, ...]` | a frame, numbered, kept until the page has it |
+| page | `{"Got": n}`, `{"Ping": t, "Got": n}` | the frames the page has |
+| page | `{"Act": a, "Id": i, "Args": x, "Key": k, "Base": b, "Who": w}` | an action, run once by its `Id` on its screen and by its `Key` at the app |
+| page | `{"Bye": 1}` | the page goes away (sent as it closes): the screen ends at once |
+
+A resume is the screen's own: the request of the page that comes back must be the screen's (Route's `same`); a token
+of another account or of another query gets a new screen, and the screen of the token goes on.
 
 A page of another origin than the app's gets a `403`, as [http.SameOrigin] decides: no other site opens a screen with the
 cookies of its visitors, which a WebSocket would otherwise allow, since a browser doesn't hold it to the

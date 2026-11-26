@@ -713,19 +713,91 @@ show au plus une fois par image de l'affichage, à `requestAnimationFrame`.
 
 ### Le côté de la page
 
-`live.js` est servi au chemin de la route suivi de `/live.js` : un module de 211 lignes, sans rien à installer :
+`live.js` est servi au chemin de la route suivi de `/live.js` : un module de 383 lignes, sans rien à installer :
 
 | | |
 |---|---|
-| `connect(url)` | ouvre l'écran : une `Promise` de l'écran, ou un refus quand aucun écran ne s'ouvre à `url` |
+| `connect(url, options)` | ouvre l'écran : une `Promise` de l'écran, ou un refus quand aucun écran ne s'ouvre à `url` ; `options`, les réglages de la connexion propres à la page (plus bas), par-dessus ceux de l'application |
 | `live.show(name, draw)` | `draw(rows)` avec les lignes d'un show, aussitôt si elles sont là, puis à chaque changement |
-| `live.act(name, args, effects)` | une action : une `Promise` de sa réponse, ses effets dessinés aussitôt |
+| `live.act(name, args, effects, base)` | une action : une `Promise` de sa réponse, ses effets dessinés aussitôt ; gardée tant que la page est coupée, envoyée à son retour |
+| `live.onStatus(f)` | `f(status)` maintenant et à chaque changement de la connexion : `{State, Waiting, Retry, Last, Offline, Error}` |
 | `live.onError(f)` | `f(error)` pour une erreur de l'écran, comme un `Err` de `screen` ou un show qui a pris fin |
-| `live.close()` | ferme l'écran |
+| `live.now()`, `live.again()` | réessayer tout de suite pendant une coupure ; revenir après une erreur qui a fermé l'écran, comme une reconnexion du compte |
+| `live.close()` | ferme l'écran, et le dit à l'application, qui le lâche aussitôt |
 
-Quand la connexion se coupe, la page se reconnecte d'elle-même, après 0,25 s, puis deux fois plus longtemps à chaque
-fois, jusqu'à 8 s ; le nouvel écran commence par les résultats. Une action demandée avant la coupure et encore sans
-réponse reçoit une erreur qui le dit : elle a pu tourner ou non, et les nouveaux résultats montrent lequel des deux.
+### Quand la connexion tombe
+
+Une coupure de la connexion n'est pas une fin : un wifi perdu, un téléphone qui passe du wifi à la 4G avec une autre
+adresse, un portable en veille, l'application redémarrée ou redéployée, un proxy qui coupe les connexions restées
+muettes. Pour une coupure de quelques secondes à quelques minutes, la page revient d'elle-même et reprend là où elle
+s'était arrêtée, une seule fois, comme le font la *connection state recovery* de Socket.IO (la reprise de l'état de la
+connexion) et le *stateful reconnect* de SignalR (la reconnexion qui garde l'état) ; rien à écrire, d'un côté comme de
+l'autre.
+
+- **La page revient d'elle-même**, après une attente tirée au hasard entre 0 et une borne qui double à chaque échec,
+  de `ReconnectFirst` (500 ms) à `ReconnectMax` (30 s) : le *full jitter* (l'attente entièrement tirée au hasard ; Marc
+  Brooker, « Exponential Backoff And Jitter », AWS Architecture Blog, 2015), pour que mille pages coupées ensemble par
+  un redémarrage ne reviennent pas toutes au même instant. Elle réessaie tout de suite quand le navigateur dit qu'il a
+  de nouveau le réseau, et quand son onglet se montre de nouveau.
+- **Un réseau muet est une coupure aussi** : un routeur tombé ou un câble débranché ne ferme rien, et TCP met des
+  minutes à abandonner. La page envoie un ping (un petit message qui ne sert qu'à prouver que l'autre côté entend)
+  toutes les `PingEvery` secondes (15), et aucune trame pendant `DeadAfter` secondes (30) est une coupure : les valeurs
+  du `KeepAliveInterval` et du `ServerTimeout` de SignalR. Le `offline` du navigateur est une coupure aussitôt.
+- **L'application garde l'écran** : une page qui dit `{"Hello": 2}` reçoit un écran qui survit à sa connexion, gardé
+  `resume` secondes (120, le `maxDisconnectionDuration` de Socket.IO), ses shows continuant, les trames qu'il envoie
+  numérotées (`{"Seq": n}` en tête) et gardées jusqu'à ce que la page dise qu'elle les a (`{"Got": n}`, au plus une
+  seconde plus tard), `buffer` octets au plus (1 Mio ; SignalR en garde 100 000). La page revient avec son jeton
+  (*token*) et la dernière trame qu'elle a : l'application lui envoie chaque trame d'après, une fois, et la page
+  continue. *Rien de manqué, rien en double.*
+- **Au-delà** (l'application redémarrée, un autre serveur, trop longtemps, trop de manqué), la page reçoit un nouvel
+  écran, dont les premiers messages sont les résultats entiers : ses lignes sont remplacées, ses données rechargées,
+  pas la page, et `onStatus` le dit (`Last: "reloaded"`).
+- **Les actions attendent, dans l'ordre, chacune avec sa clé.** Une action demandée pendant la coupure est gardée,
+  dans l'ordre des demandes, avec une clé faite au moment de la demande ; celle envoyée quand la connexion a lâché est
+  gardée aussi, avec sa clé. De retour sur l'écran gardé, la page renvoie seulement celles que l'écran n'a pas
+  entendues (`Heard`) ; sur un nouvel écran, toutes, chacune avec sa clé : `s.Key` dans l'action, qu'une application
+  donne à son handler comme `Idempotency-Key` (la clé qui fait qu'une requête envoyée deux fois ne tourne qu'une fois),
+  pour qu'elle tourne une seule fois (Centauri le fait). Au plus `OutboxCount` (100) et `OutboxBytes` (1 Mio)
+  attendent ; au-delà, la suivante est refusée tout de suite ; celle qui a attendu `OutboxWait` secondes (une heure)
+  échoue, en disant si elle a jamais été envoyée.
+- **Les actions d'un autre compte ne partent jamais** : avec `who`, l'application donne à chaque écran une étiquette de
+  son compte ; la page en marque chaque action, abandonne celles d'un autre compte quand elle revient connectée sous
+  quelqu'un d'autre, et l'application refuse une action dont l'étiquette n'est pas celle de l'écran.
+- **Ce que la page a vu part avec son changement** : `base`, les valeurs que la page a vues de ce que change une action,
+  lui arrive en `s.Base`, pour que l'application refuse le changement d'une chose qui a changé entre-temps plutôt que
+  de l'écraser.
+
+```cesia norun hide=code
+screen(s) = []
+acts = {}
+sameAccount(old, new) = true
+accountTag(r) = "w"
+```
+```cesia norun
+app = http.App() then live.Route("/live", screen, actions = acts,
+  resume = 120, buffer = 1048576,                      (* the screen kept through a break, and its frames *)
+  same = (old, new) -> sameAccount(old, new),          (* who may come back to it: by default the same cookies and query *)
+  who = s -> accountTag(s.Request),                    (* the tag that stamps the page's actions *)
+  client = {PingEvery: 15, DeadAfter: 30, OutboxCount: 100})   (* the page's settings, sent with its screen *)
+```
+```js
+const live = await connect("/live")
+live.onStatus(s => line.textContent = s.State === "down" ? `Offline — ${s.Waiting} waiting` : s.State)
+```
+
+Le fil, version 2 (une page de version 1, `{"Hello": 1}`, reçoit l'écran d'avant, qui finit avec sa connexion) :
+
+| de | message | ce qu'il dit |
+|---|---|---|
+| page | `{"Hello": 2}`, ou `{"Hello": 2, "Token": t, "Got": n}` | un nouvel écran, ou de nouveau l'écran `t` après la trame `n` |
+| application | `[{"Token": t, "Resumed": r, "Heard": h, "Who": w, "Client": c}]` | sans numéro : le jeton de l'écran, si c'est celui que la page avait, la dernière action qu'il a entendue |
+| application | `[{"Seq": n}, ...]` | une trame, numérotée, gardée jusqu'à ce que la page l'ait |
+| page | `{"Got": n}`, `{"Ping": t, "Got": n}` | les trames que la page a |
+| page | `{"Act": a, "Id": i, "Args": x, "Key": k, "Base": b, "Who": w}` | une action, lancée une fois par son `Id` sur son écran et par sa `Key` dans l'application |
+| page | `{"Bye": 1}` | la page s'en va (envoyé en fermant) : l'écran finit aussitôt |
+
+Une reprise appartient à son écran : la requête de la page qui revient doit être celle de l'écran (le `same` de Route) ;
+un jeton d'un autre compte ou d'une autre query reçoit un nouvel écran, et l'écran du jeton continue.
 
 Une page d'une autre origine que celle de l'application reçoit un `403`, comme en décide [http.SameOrigin] : aucun autre site
 n'ouvre un écran avec les cookies de ses visiteurs, ce qu'une WebSocket permettrait sinon, puisqu'un navigateur ne la
