@@ -1084,29 +1084,29 @@ and Go compiles its library with the program: in none of them does such a call c
 Cesia's crosses from the machine code that MIR makes into OCaml.
 
 **Centauri.** Its request path, the public route, a thing by its id and a page, gets no machine code yet: a public
-request takes 22.9 µs, against 23.8 with main's binary, a thing by its id 40.9 against 41.9, a page 149.0 against 149.0
-(medians of 21 runs of 2,000 requests each, without the network, load 3.6 to 4.8), and under load a server answers
-11,880 requests of `/hello` a second, against 11,985, on 0.94 core, beside 26,021 for `std/http` alone and 76,176 for
-Go's `net/http` on 2.88 cores (21 measures of 2 s each, 256 kept connections, load 4.1 to 10.4). The natives were the
+request takes 20.5 µs, as with main's binary, a thing by its id 35.5 against 36.0, a page 135.2 against 135.7 (medians
+of 21 runs of 2,000 requests each, without the network, load 6.5 to 8.6), and under load a server answers 12,715
+requests of `/hello` a second, against 12,285, on 0.95 core, beside 27,516 for `std/http` alone and 92,869 for Go's
+`net/http` on 3.18 cores (21 measures of 2 s each, 256 kept connections, load 4.1 to 8.7). The natives were the
 first thing that kept its hot versions out; now each stops at the next thing the JIT doesn't make (`CESIA_JIT_SHOW=1`,
 on `bench/micro.ce` of Centauri):
 
 | What keeps it out | Versions and loops |
 |---|---:|
 | a closure: the handler of a route, as `r -> {Text: "Hello"}` | 18 |
-| a field read, or arithmetic on a value of no type, in a version as a whole: no frame to bet on | 6 |
+| a field read, or arithmetic on a value of no type, in a version as a whole: no frame to bet on | 7 |
+| a text made of parts, `"$x"` | 6 |
 | a statement the JIT doesn't make, as a write into a field | 5 |
-| a cell of a list that is no variable of its frame, as `parts[2]` of a list given | 5 |
-| a text made of parts, `"$x"` | 5 |
 | a `match` | 4 |
 | a function literal | 4 |
+| too few operations for its calls of natives | 4 |
 | an `if` that gives a value, or another form of expression it doesn't make | 3 |
-| a native that waits, of `std/fiber` | 3 |
 | a native of a package, Cepheus's | 3 |
+| a cell of a list that is no variable of its frame, as `parts[2]` of a list given | 2 |
 | an `in` | 2 |
 | a comprehension | 2 |
 | the larger or the smaller of two values that are no numbers | 2 |
-| too few operations for its calls of natives | 2 |
+| a native that waits, of `std/fiber` | 1 |
 | a `?` | 1 |
 | an empty map, `{}` | 1 |
 | a call of a function held in a field | 1 |

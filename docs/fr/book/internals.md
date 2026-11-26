@@ -1218,30 +1218,30 @@ appel ne passe d'un runtime (le système qui exécute le programme) à un autre,
 machine que fait MIR à OCaml.
 
 **Centauri.** Son chemin de requête, la route publique, une chose par son id et une page, n'a pas encore de code
-machine : une requête publique prend 22,9 µs, contre 23,8 avec le binaire de main, une chose par son id 40,9 contre
-41,9, une page 149,0 contre 149,0 (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, charge 3,6 à
-4,8), et sous charge un serveur répond à 11 880 requêtes de `/hello` par seconde, contre 11 985, sur 0,94 cœur, à côté
-de 26 021 pour `std/http` seul et de 76 176 pour le `net/http` de Go sur 2,88 cœurs (21 mesures de 2 s chacune, 256
-connexions gardées, charge 4,1 à 10,4). Les natives étaient la première chose qui gardait ses versions hot dehors ;
+machine : une requête publique prend 20,5 µs, comme avec le binaire de main, une chose par son id 35,5 contre 36,0,
+une page 135,2 contre 135,7 (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, charge 6,5 à 8,6), et
+sous charge un serveur répond à 12 715 requêtes de `/hello` par seconde, contre 12 285, sur 0,95 cœur, à côté de 27 516
+pour `std/http` seul et de 92 869 pour le `net/http` de Go sur 3,18 cœurs (21 mesures de 2 s chacune, 256 connexions
+gardées, charge 4,1 à 8,7). Les natives étaient la première chose qui gardait ses versions hot dehors ;
 maintenant chacune s'arrête à la chose suivante que le JIT ne fait pas (`CESIA_JIT_SHOW=1`, sur `bench/micro.ce` de
 Centauri) :
 
 | Ce qui la garde dehors | Versions et boucles |
 |---|---:|
 | une closure : le handler d'une route, comme `r -> {Text: "Hello"}` | 18 |
-| une lecture de champ, ou un calcul sur une valeur sans type, dans une version entière : pas de frame sur laquelle parier | 6 |
+| une lecture de champ, ou un calcul sur une valeur sans type, dans une version entière : pas de frame sur laquelle parier | 7 |
+| un texte fait de morceaux, `"$x"` | 6 |
 | une instruction que le JIT ne fait pas, comme une écriture dans un champ | 5 |
-| une cellule d'une liste qui n'est pas une variable de sa frame, comme `parts[2]` d'une liste reçue | 5 |
-| un texte fait de morceaux, `"$x"` | 5 |
 | un `match` | 4 |
 | une fonction littérale | 4 |
+| trop peu d'opérations pour ses appels de natives | 4 |
 | un `if` qui donne une valeur, ou une autre forme d'expression qu'il ne fait pas | 3 |
-| une native qui attend, de `std/fiber` | 3 |
 | une native d'un package, celles de Cepheus | 3 |
+| une cellule d'une liste qui n'est pas une variable de sa frame, comme `parts[2]` d'une liste reçue | 2 |
 | un `in` | 2 |
 | une comprehension (une liste faite par `[f(x) for x in xs]`) | 2 |
 | le plus grand ou le plus petit de deux valeurs qui ne sont pas des nombres | 2 |
-| trop peu d'opérations pour ses appels de natives | 2 |
+| une native qui attend, de `std/fiber` | 1 |
 | un `?` | 1 |
 | une map vide, `{}` | 1 |
 | un appel d'une fonction tenue dans un champ | 1 |
