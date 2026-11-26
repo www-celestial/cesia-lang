@@ -61,9 +61,31 @@ let runs : run list ref = ref []
 let nested = ref 0
 let most_nested = 64
 
-(* The result of the last native that machine code called, which the C glue reads; the exception the last one raised,
-   with the base of the frame it was raised in, which [fail] raises again. *)
-let result = ref Missing
+(* A call of a native from machine code costs about 100 ns more than the interpreter's, the way into OCaml and back
+   (2026-11-26: a loop of 20 operations of floats takes 27 ns a turn in machine code, 137 interpreted; with a call of
+   dict.Has, 200 and 210), and an operation of machine code saves about 5.5 ns on the interpreter's: a unit is made
+   only when its operations are at least [bridge_ops] for each of its calls of natives, else the interpreter, which calls
+   natives for less, keeps it (the same loop three times over, 60 operations a call: 220 ms against 420). A call of a
+   function of the unit counts as 4, as the interpreter's costs that. CESIA_JIT=always makes every unit, for tests. *)
+let bridge_ops = 24
+
+let work (f : Ir.func) =
+  Array.fold_left
+    (fun (w, n) (b : Ir.block) ->
+       List.fold_left
+         (fun (w, n) -> function
+            | Ir.Native _ -> w, n + 1
+            | Call _ -> w + 4, n
+            | Move _ | Incr _ | Bump _ | Tick _ | Steps _ | Burn | Frame _ | Enter _ | Enter_or_bail _ | Keep _ | Reserve _
+            | Recheck _ | Share _ | Value _ | Len _ | Dim _ ->
+              w, n
+            | _ -> w + 1, n)
+         (w, n) b.ins)
+    (0, 0) f.blocks
+
+(* What the bridge gives when the native raised: a block that no native gives. The exception the last one raised, with
+   the base of the frame it was raised in, which [fail] raises again. *)
+let failed = Text "jit: a native raised"
 let raised : (exn * int) option ref = ref None
 
 (* The steps of native code that take about as long as MIR takes to make one line of MIR text at level 1: 1,000 to
@@ -140,7 +162,13 @@ let make (w : world) (ver : version) fns start loops =
        come back through a call of the first function. *)
     (* A unit that calls natives never starts again: its stacks grow and its room is made where they lack. *)
     let bridged = fns.(0).natives <> [||] in
-    if (not bridged) && calls && (not pure) && fns.(0).loose then None
+    let ops, natives = Array.fold_left (fun (w, n) f -> let a, b = work f in w + a, n + b) (0, 0) fns in
+    if bridged && ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
+      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
+        prerr_endline (Printf.sprintf "jit: %s interpreted: %d operations for %d calls of natives" ver.owner.pname ops natives);
+      None
+    end
+    else if (not bridged) && calls && (not pure) && fns.(0).loose then None
     else if (not bridged) && nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
     else begin
       (* The room the outermost frame checks at its start and at each turn of its loops covers what nested frames make
@@ -340,38 +368,50 @@ let grow (ctx : ctx) r at site =
    checkpoints come at the same steps; then the run goes on from what is left, its counts made from there. The
    interpreter's frames that a native calls back go above the frame at [at], as they do above the interpreter's own:
    they may write over the constants and the variables of modules that the outermost frame holds, written again after.
-   An exception is caught here, as no exception of OCaml may unwind machine code: [fail] raises it again. *)
+   An exception is caught here, as no exception of OCaml may unwind machine code: [fail] raises it again. The result is
+   the native's, or [failed]; the C glue reads the stacks from the context of the first run of [runs]. *)
 let bridge (a : t array) =
   match !runs with
-  | [] -> None
+  | [] -> failed
   | r :: _ ->
     let ctx = r.rctx and code = r.rcode and fn = r.rcode.fn in
     let k = io.(Ir.io_a) and at = io.(Ir.io_b) and site = io.(Ir.io_point) and used = io.(Ir.io_code) in
     let w = ctx.w and s = ctx.site in
     ctx.fuel <- r.fuel0 - used;
-    let ok =
+    let v =
       match
         if k >= 0 then begin
           ctx.b <- at;
           ctx.site <- site;
           r.calling <- true;
           incr nested;
-          result := code.natives.(k).run ctx a;
+          let v = code.natives.(k).run ctx a in
           decr nested;
-          r.calling <- false
+          r.calling <- false;
+          v
         end
-        else if k = -1 then grow ctx r at site
-        else if at > 4096 then Gc.minor ()
-        else room at
+        else begin
+          if k = -1 then grow ctx r at site else if at > 4096 then Gc.minor () else room at;
+          Missing
+        end
       with
-      | () -> true
+      | v -> v
       | exception e ->
         if r.calling then decr nested;
         r.calling <- false;
         raised := Some (e, ctx.b);
-        false
+        failed
     in
     let b = r.rb in
+    if k >= 0 && v != failed && ctx.fuel = r.fuel0 - used then begin
+      (* A native that counted no step called nothing back and met no checkpoint: nothing above the frame was written,
+         and the run's counts and limits are as they were, still in io. *)
+      ctx.b <- b;
+      ctx.site <- s;
+      ctx.fuel <- r.fuel0;
+      v
+    end
+    else
     let put k v = if ctx.v.(k) != v then ctx.v.(k) <- v in
     for j = 0 to Array.length fn.consts - 1 do put (b + fn.frame + j) fn.consts.(j) done;
     let moved = Ir.moved_at fn in
@@ -383,7 +423,7 @@ let bridge (a : t array) =
     io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else used + w.steps_left - (ctx.refill - ctx.fuel));
     limits ctx code b r.depth;
     ctx.fuel <- r.fuel0;
-    if ok then Some ctx else None
+    v
 
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
    comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
@@ -899,5 +939,6 @@ let install () =
   Runtime.bridged := (fun ctx -> List.exists (fun r -> r.calling && r.rctx == ctx) !runs);
   Callback.register "cesia_jit_native" bridge;
   Callback.register "cesia_jit_io" io;
-  Callback.register "cesia_jit_result" result;
+  Callback.register "cesia_jit_runs" runs;
+  Callback.register "cesia_jit_failed" failed;
   Tier.jit := Some { promote; compile; pick; place; after; enter; start; counter }

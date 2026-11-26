@@ -167,19 +167,21 @@ value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
    CAMLlocalN would: a collection here moves them and writes where they went, and native code reads them back after
    (OCaml's rules of the C interface: every value live across an allocation or a callback is a registered root). Here,
    [a] is made, filled and given to the callback with no allocation between, and [r] read before any: neither needs a
-   root of its own. The closure catches every exception of OCaml, which never unwinds native code's frames. The result to
-   args[0], the stacks, which a growth or a collection replaced, and the cells of io that the call changed to cx; the
-   fuel, or -1 when the native raised. */
+   root of its own. The closure catches every exception of OCaml, which never unwinds native code's frames, and gives the
+   native's result or the value [failed]. The result to args[0]; the stacks, which a growth or a collection replaced,
+   from the context of the first of [runs] (a list of records whose first field is the context, whose first three are
+   the stacks); the cells of io that the call changed to cx; the fuel, or -1 when the native raised. */
 intnat cesia_jit_native(int64_t *cx, value *args, intnat n, intnat k, intnat at, intnat site, intnat fuel) {
   value a, r;
-  static const value *bridge = NULL, *io = NULL, *result = NULL;
+  static const value *bridge = NULL, *io = NULL, *runs = NULL, *failed = NULL;
   /* The cells of io, as Ir's: operands in, then the limits and the counts of steps that a call changes. */
   enum { code = 14, op_a = 15, op_b = 16, point = 13, spent = 10, quantum = 11 };
   static const int back[] = { 6, 7, 9, 19, 21 };
   if (bridge == NULL) {
     bridge = caml_named_value("cesia_jit_native");
     io = caml_named_value("cesia_jit_io");
-    result = caml_named_value("cesia_jit_result");
+    runs = caml_named_value("cesia_jit_runs");
+    failed = caml_named_value("cesia_jit_failed");
   }
   a = n > 0 ? caml_alloc_small(n, 0) : Atom(0);
   for (intnat j = 0; j < n; j++) Field(a, j) = args[j];
@@ -188,16 +190,16 @@ intnat cesia_jit_native(int64_t *cx, value *args, intnat n, intnat k, intnat at,
   Field(*io, point) = Val_long(site);
   Field(*io, code) = Val_long(cx[spent] + cx[quantum] - fuel);
   r = caml_callback_exn(*bridge, a);
-  if (Is_exception_result(r) || Is_long(r)) {
+  if (Is_exception_result(r) || r == *failed) {
     cx[5] = fuel;
     fuel = -1;
   } else {
-    r = Field(r, 0);
-    cx[0] = (int64_t) Field(r, 2);
-    cx[1] = (int64_t) Field(r, 1);
-    cx[2] = (int64_t) Field(r, 0);
+    if (k >= 0) args[0] = r;
+    a = Field(Field(Field(*runs, 0), 0), 0);
+    cx[0] = (int64_t) Field(a, 2);
+    cx[1] = (int64_t) Field(a, 1);
+    cx[2] = (int64_t) Field(a, 0);
     for (int j = 0; j < 5; j++) cx[back[j]] = Long_val(Field(*io, back[j]));
-    if (k >= 0) args[0] = Field(*result, 0);
   }
   return fuel;
 }
