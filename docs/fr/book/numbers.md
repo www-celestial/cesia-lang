@@ -600,21 +600,22 @@ quand il ne vient que de ceux-ci :
 | [math.Pi] et [math.E] | écrites en entier |
 | le texte d'un float, tel que `io.Print` l'écrit | celui de Cesia, les chiffres les plus courts qui se relisent (Ryu) |
 
-Les autres sont celles de la bibliothèque C du système, comme dans numpy, R et MATLAB : [math.Exp], [math.Log],
-[math.Log10], [math.Log2], [math.Log1p], [math.Expm1], [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos],
-[math.Atan], [math.Atan2], [math.Sinh], [math.Cosh], [math.Tanh], [math.Asinh], [math.Acosh], [math.Atanh],
-[math.Hypot], [math.LogSumExp], `x ^ y` d'un float, les degrés hors de leurs points exacts, et ce qui calcule avec elles
-: [std/special], les lois de [std/stats], [std/quad] et [std/optimize] sur une telle fonction, et les tirages de
-[num.Normal]. IEEE 754-2019, dans sa clause 9.2, recommande ces fonctions correctement arrondies (correctly rounded : le
-float le plus proche de la valeur exacte), mais aucune bibliothèque C ne le promet pour toutes : le manuel de la glibc,
-dans sa section 19.7, dit qu'elle ne le vise pas, seulement « quelques ulps », et que ses tests ne signalent une erreur
-qu'au-delà de 9 ulps (l'analyse qu'il cite, « Accuracy of Mathematical Functions in Single, Double, Double Extended, and
-Quadruple Precision » de Gladman, Innocente, Mather et Zimmermann, mesure chacune). Leurs derniers bits diffèrent donc
-d'un système à l'autre : [math.Sinh] de 710 vaut 1.1169973830808555e308, le float le plus proche, avec la glibc 2.44, et
-1.1169973830808557e308 avec la glibc 2.35, celle d'Ubuntu 22.04 ; `math.Degrees(math.Asin(0.5))` vaut 30.000000000000004
-avec la glibc et 29.999999999999996 sous macOS. Elles s'accordent là où la valeur exacte est un float
-(`math.Log10(1000)`, `math.Hypot(3, 4)`), aux points spéciaux de l'annexe F du C (`math.Sinh(-0.0)` vaut -0.0,
-`math.Tanh(math.Inf)` vaut 1), là où le résultat déborde (overflow), et là où un x minuscule revient tel quel.
+Les autres sont celles de la bibliothèque C du système, comme dans numpy, R et MATLAB, et en WebAssembly celles du
+moteur JavaScript, son `Math.exp` et les autres : [math.Exp], [math.Log], [math.Log10], [math.Log2], [math.Log1p],
+[math.Expm1], [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], [math.Atan2], [math.Sinh],
+[math.Cosh], [math.Tanh], [math.Asinh], [math.Acosh], [math.Atanh], [math.Hypot], [math.LogSumExp], `x ^ y` d'un float,
+les degrés hors de leurs points exacts, et ce qui calcule avec elles : [std/special], les lois de [std/stats],
+[std/quad] et [std/optimize] sur une telle fonction, et les tirages de [num.Normal]. IEEE 754-2019, dans sa clause 9.2,
+recommande ces fonctions correctement arrondies (correctly rounded : le float le plus proche de la valeur exacte), mais
+aucune bibliothèque C ne le promet pour toutes : le manuel de la glibc, dans sa section 19.7, dit qu'elle ne le vise
+pas, seulement « quelques ulps », et que ses tests ne signalent une erreur qu'au-delà de 9 ulps (l'analyse qu'il cite, «
+Accuracy of Mathematical Functions in Single, Double, Double Extended, and Quadruple Precision » de Gladman, Innocente,
+Mather et Zimmermann, mesure chacune). Leurs derniers bits diffèrent donc d'un système à l'autre : [math.Sinh] de 710
+vaut 1.1169973830808555e308, le float le plus proche, avec la glibc 2.44, et 1.1169973830808557e308 avec la glibc 2.35,
+celle d'Ubuntu 22.04 ; `math.Degrees(math.Asin(0.5))` vaut 30.000000000000004 avec la glibc et 29.999999999999996 sous
+macOS. Elles s'accordent là où la valeur exacte est un float (`math.Log10(1000)`, `math.Hypot(3, 4)`), aux points
+spéciaux de l'annexe F du C (`math.Sinh(-0.0)` vaut -0.0, `math.Tanh(math.Inf)` vaut 1), là où le résultat déborde
+(overflow), et là où un x minuscule revient tel quel.
 
 Les exemples de la référence et les tests de Cesia comparent les autres avec [math.Near] : à 1e-15 près de la valeur
 pour un appel de la bibliothèque C, 4.5 ulps ou plus ; à 1e-13 près pour [std/special], [std/stats], [std/quad] et

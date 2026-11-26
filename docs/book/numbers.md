@@ -589,20 +589,21 @@ it comes from these alone:
 | [math.Pi] and [math.E] | written in full |
 | the text of a float, as `io.Print` writes it | Cesia's own, the shortest digits that read back (Ryu) |
 
-The others are those of the system's C library, as in numpy, R and MATLAB: [math.Exp], [math.Log], [math.Log10],
-[math.Log2], [math.Log1p], [math.Expm1], [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan],
-[math.Atan2], [math.Sinh], [math.Cosh], [math.Tanh], [math.Asinh], [math.Acosh], [math.Atanh], [math.Hypot],
-[math.LogSumExp], `x ^ y` of a float, the degrees away from their exact points, and what computes with them:
-[std/special], the laws of [std/stats], [std/quad] and [std/optimize] on such a function, and the draws of [num.Normal].
-IEEE 754-2019, in its clause 9.2, recommends these functions correctly rounded, the float nearest to the exact value,
-but no C library promises it for all of them: glibc's manual, in its section 19.7, says that it doesn't aim for it, only
-for "a few ulp", and that its tests flag an error above 9 ulps (the analysis it points to, "Accuracy of Mathematical
-Functions in Single, Double, Double Extended, and Quadruple Precision" by Gladman, Innocente, Mather and Zimmermann,
-measures each). So the last bits differ from one system to another: [math.Sinh] of 710 is 1.1169973830808555e308, the
-nearest float, with glibc 2.44, and 1.1169973830808557e308 with glibc 2.35, Ubuntu 22.04's;
-`math.Degrees(math.Asin(0.5))` is 30.000000000000004 with glibc and 29.999999999999996 on macOS. They agree where the
-exact value is a float (`math.Log10(1000)`, `math.Hypot(3, 4)`), at the special points of C's Annex F (`math.Sinh(-0.0)`
-is -0.0, `math.Tanh(math.Inf)` is 1), where the result overflows, and where a tiny x comes back as it is.
+The others are those of the system's C library, as in numpy, R and MATLAB, and in WebAssembly those of the JavaScript
+engine, its `Math.exp` and the others: [math.Exp], [math.Log], [math.Log10], [math.Log2], [math.Log1p], [math.Expm1],
+[math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], [math.Atan2], [math.Sinh], [math.Cosh],
+[math.Tanh], [math.Asinh], [math.Acosh], [math.Atanh], [math.Hypot], [math.LogSumExp], `x ^ y` of a float, the degrees
+away from their exact points, and what computes with them: [std/special], the laws of [std/stats], [std/quad] and
+[std/optimize] on such a function, and the draws of [num.Normal]. IEEE 754-2019, in its clause 9.2, recommends these
+functions correctly rounded, the float nearest to the exact value, but no C library promises it for all of them: glibc's
+manual, in its section 19.7, says that it doesn't aim for it, only for "a few ulp", and that its tests flag an error
+above 9 ulps (the analysis it points to, "Accuracy of Mathematical Functions in Single, Double, Double Extended, and
+Quadruple Precision" by Gladman, Innocente, Mather and Zimmermann, measures each). So the last bits differ from one
+system to another: [math.Sinh] of 710 is 1.1169973830808555e308, the nearest float, with glibc 2.44, and
+1.1169973830808557e308 with glibc 2.35, Ubuntu 22.04's; `math.Degrees(math.Asin(0.5))` is 30.000000000000004 with glibc
+and 29.999999999999996 on macOS. They agree where the exact value is a float (`math.Log10(1000)`, `math.Hypot(3, 4)`),
+at the special points of C's Annex F (`math.Sinh(-0.0)` is -0.0, `math.Tanh(math.Inf)` is 1), where the result
+overflows, and where a tiny x comes back as it is.
 
 The examples of the reference and Cesia's tests compare the others with [math.Near]: within 1e-15 of the value for a
 call of the C library, 4.5 ulps or more; within 1e-13 for [std/special], [std/stats], [std/quad] and [std/optimize],

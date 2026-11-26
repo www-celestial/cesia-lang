@@ -1,9 +1,9 @@
 (** Numbers: arithmetic, rounding, trigonometry, bits and the tests of a number. Each function of one number also works
     on an array, element by element. The arithmetic, Sqrt, Cbrt, Radians, Degrees, the rounding and the bits give the
     same float on every system; Exp, the logarithms, the trigonometry in radians, the hyperbolic functions, Hypot,
-    LogSumExp and the power of a float are those of the system's C library, as in numpy, R and MATLAB, and may differ
-    from one system to another in their last bits: their examples compare with Near, within 1e-15 of the value, 4.5 ulps
-    or more. The chapter Numbers of the book says which is which, and why. *)
+    LogSumExp and the power of a float are those of the system's C library, as in numpy, R and MATLAB, or in WebAssembly
+    of the JavaScript engine, and may differ from one system to another in their last bits: their examples compare with
+    Near, within 1e-15 of the value, 4.5 ulps or more. The chapter Numbers of the book says which is which, and why. *)
 
 (** One more, and one less. Both work on arrays, element by element.
 
