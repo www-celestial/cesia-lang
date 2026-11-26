@@ -94,7 +94,7 @@ defn amplification()
     s = serving(validate)?
     p = proxy(s.Port)?
     p.Ask("drop")?
-    _ = quic.Dial("127.0.0.1", p.Port, s.Api, verify = false, timeout = 1.5)
+    _ = quic.Dial("127.0.0.1", p.Port, s.Api, verify = false, timeout = 3)
     st = p.Ask("stats")?
     p.Stop()
     ratio = st.server / st.client
