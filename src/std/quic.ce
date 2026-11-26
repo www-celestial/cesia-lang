@@ -60,7 +60,8 @@ defn loaded(major)
     (* The only call that runs the handshake, so the only one through which OpenSSL calls back: see Server. *)
     Tick: c.Fn("SSL_handle_events", ["ptr"], "i32", ssl, callsBack = true)?,
     Timeout: fn("SSL_get_event_timeout", ["ptr", "ptr", "ptr"], "i32", ssl)?,
-    AcceptConnection: fn("SSL_accept_connection", ["ptr", "u64"], "ptr", ssl)?,
+    (* OpenSSL may run the handshake of a connection as it hands it over: this one may call back too. *)
+    AcceptConnection: c.Fn("SSL_accept_connection", ["ptr", "u64"], "ptr", ssl, callsBack = true)?,
     AcceptStream: fn("SSL_accept_stream", ["ptr", "u64"], "ptr", ssl)?,
     DefaultStream: fn("SSL_set_default_stream_mode", ["ptr", "u32"], "i32", ssl)?,
     StreamPolicy: fn("SSL_set_incoming_stream_policy", ["ptr", "i32", "u64"], "i32", ssl)?,

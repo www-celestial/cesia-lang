@@ -1,0 +1,73 @@
+(* WebTransport over HTTP/3 as live.js speaks it, without a browser: the extended CONNECT of a screen of std/live, its
+   stream of messages (each its length then its text), the hello of version 2 and an action answered once; a session
+   asked of a server without webtransport refused with 400; a stream of a session that doesn't exist reset. *)
+use std/http
+use std/http3
+use std/live
+use std/quic
+use std/tls
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/json
+use std/result
+use std/text
+use std/dict
+
+defn head(st)
+  (** The status of the response head on a stream, and what came after it. *)
+  got = st.Read()?
+  kind = http3.ReadVarint(got, 1)
+  size = http3.ReadVarint(got, kind.Next)
+  fields = http3.DecodeHead(text.ByteSlice(size.Next, size.Next + size.Value - 1, got))?
+  result.Ok([f.Value for f in fields if f.Name == ":status"][1])
+end
+
+defn connect(conn, port, path)
+  (** A session asked on a new stream: the CONNECT head, the stream kept open. *)
+  st = conn.Open(false)?
+  fields = [{Name: ":method", Value: "CONNECT"}, {Name: ":protocol", Value: "webtransport"}, {Name: ":scheme", Value: "https"},
+    {Name: ":authority", Value: "127.0.0.1:$port"}, {Name: ":path", Value: path}, {Name: "origin", Value: "https://127.0.0.1:$port"}]
+  st.Write(http3.Frame(1, http3.EncodeHead(fields)))?
+  result.Ok(st)
+end
+
+defn served(a, port, h3, webtransport)
+  fiber.Spawn(() -> http.Serve(a, listener = net.Listen(port, host = "127.0.0.1")!, wrap = tls.Server(sys.Args[1], sys.Args[2], tls.Open()!)!, http3 = h3, webtransport = webtransport))
+  sys.Sleep(0.05)
+end
+
+defn main()
+  q = quic.Open()?
+  acts = {pay: (s, args) -> result.Ok("paid $(args.Id)")}
+  a = http.App() then live.Route("/live", s -> [], actions = acts)
+  h3 = http3.Server(sys.Args[1], sys.Args[2], q, port = 0, validate = false)?
+  served(a, h3.Port, h3, true)
+  conn = quic.Dial("127.0.0.1", h3.Port, q, verify = false)?
+  control = conn.Open(true)?
+  control.Write("$(http3.Varint(0))$(http3.Frame(4, ""))")?
+  session = connect(conn, h3.Port, "/live")?
+  io.Print("session", head(session))
+  st = conn.Open(false)?
+  st.Write("$(http3.Varint(65))$(http3.Varint(session.Id))")?
+  m = http3.Messages(st)
+  m.Send(json.Text({Hello: 2}))?
+  first = json.Parse(m.Receive()?)?
+  io.Print("hello", first[1].Resumed, text.ByteLength(first[1].Token))
+  m.Send(json.Text({Act: "pay", Id: 1, Args: {Id: 7}, Key: "k1"}))?
+  reply = json.Parse(m.Receive()?)?
+  io.Print("reply", [r for r in reply if dict.Has("Ack", r)])
+  stray = conn.Open(false)?
+  stray.Write("$(http3.Varint(65))$(http3.Varint(999))")?
+  io.Print("stray", stray.Read() then result.MapErr(it.Kind))
+  conn.Close(256)
+  plain = http3.Server(sys.Args[1], sys.Args[2], q, port = 0, validate = false)?
+  served(a, plain.Port, plain, false)
+  other = quic.Dial("127.0.0.1", plain.Port, q, verify = false)?
+  io.Print("without webtransport", head(connect(other, plain.Port, "/live")?))
+  other.Close(256)
+  result.Ok(missing)
+end
+
+io.Print(main())

@@ -197,22 +197,114 @@ function encode (j) {
   throw new TypeError('A function called by js.Call gives a number, a string, bytes, a boolean, null or an array.')
 }
 
-// The loader's own module: the WebSocket of the page or of Node, for std/websocket. A socket opened with a last
-// message sends it when the page goes away (pagehide), before the browser closes it.
+// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it and the page is https: a session
+// on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's variable integer) then its
+// UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The two are raced, as Happy
+// Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or within 300 ms of the
+// WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in sessionStorage, and only
+// WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked network.
+const wtMark = 'cesia-webtransport-failed'
+function wtFailed() { try { return Date.now() < +(sessionStorage.getItem(wtMark) || 0) } catch (e) { return false } }
+function wtFail() { try { sessionStorage.setItem(wtMark, String(Date.now() + 600000)) } catch (e) {} }
+function wtLength(n) {
+  if (n < 64) return [n]
+  if (n < 16384) return [64 | (n >> 8), n & 255]
+  return [128 | (n >>> 24), (n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function overTransport(url, opened, failed, hashes) {
+  const s = { readyState: 0, onmessage: null, onclose: null }
+  let t, writer = null, over = false
+  const enc = new TextEncoder(), dec = new TextDecoder()
+  const end = code => {
+    if (over) return
+    over = true
+    const was = s.readyState
+    s.readyState = 3
+    try { t.close() } catch (e) {}
+    if (was === 0) failed()
+    else if (s.onclose) s.onclose({ code: code })
+  }
+  s.send = m => {
+    const b = typeof m === 'string' ? enc.encode(m) : new Uint8Array(m), head = wtLength(b.length), all = new Uint8Array(head.length + b.length)
+    all.set(head)
+    all.set(b, head.length)
+    writer.write(all).catch(() => end(1006))
+  }
+  s.close = code => end(code || 1000)
+  // A certificate of 14 days at most that the page already knows by its hash, as a test's or a machine's own.
+  const known = hashes && hashes.length ? { serverCertificateHashes: hashes.map(h => ({ algorithm: 'sha-256', value: Uint8Array.from(atob(h), c => c.charCodeAt(0)) })) } : undefined
+  try { t = new WebTransport(url, known) } catch (e) { setTimeout(() => end(1006), 0); return s }
+  t.closed.then(() => end(1000), () => end(1006))
+  t.ready.then(async () => {
+    const stream = await t.createBidirectionalStream()
+    writer = stream.writable.getWriter()
+    if (over) return
+    s.readyState = 1
+    opened(s)
+    const reader = stream.readable.getReader()
+    let buf = new Uint8Array(0)
+    for (;;) {
+      const got = await reader.read()
+      if (got.done) break
+      const joined = new Uint8Array(buf.length + got.value.length)
+      joined.set(buf)
+      joined.set(got.value, buf.length)
+      buf = joined
+      for (;;) {
+        if (buf.length < 1) break
+        const w = 1 << (buf[0] >> 6)
+        if (buf.length < w) break
+        let n = buf[0] & 63
+        for (let k = 1; k < w; k++) n = n * 256 + buf[k]
+        if (buf.length < w + n) break
+        const m = dec.decode(buf.subarray(w, w + n))
+        buf = buf.slice(w + n)
+        if (s.onmessage) s.onmessage({ data: m })
+      }
+    }
+    end(1000)
+  }).catch(() => end(1006))
+  return s
+}
+// A connection to a ws: or wss: URL: ready(socket) once one is open, failed() if none could be. hashes: the
+// CertificateHashes of the options, base64 SHA-256 of the server's certificate, for one no authority signed.
+function dial(url, ready, failed, hashes) {
+  const ws = new WebSocket(url)
+  ws.binaryType = 'arraybuffer'
+  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && !wtFailed()
+  let chosen = null, wsDead = false, wtDead = !race, grace = 0, wt = null
+  const pick = s => {
+    if (chosen) return
+    chosen = s
+    clearTimeout(grace)
+    if (s !== ws) { ws.onopen = ws.onclose = null; ws.close(1000) }
+    else if (wt) wt.close(1000)
+    ready(s)
+  }
+  const dead = () => { if (!chosen && wsDead && wtDead) failed() }
+  ws.onopen = () => { if (wtDead) pick(ws); else grace = setTimeout(() => pick(ws), 300) }
+  ws.onclose = () => { wsDead = true; dead() }
+  if (race) wt = overTransport('https:' + url.slice(4), s => pick(s), () => { wtDead = true; wtFail(); if (!chosen && ws.readyState === 1) pick(ws); dead() }, hashes)
+}
+// The loader's own module: the WebSocket of the page or of Node, for std/websocket, or WebTransport where it wins the
+// race of dial. A socket opened with a last message sends it when the page goes away (pagehide), before the browser
+// closes it.
 const utf8 = new TextDecoder('utf-8', { fatal: true })
-const sockets = new Map(), lasts = new Map()
+const sockets = new Map(), lasts = new Map(), dropped = new Set()
 let nextSocket = 1, leaving = false
 const own = {
   'cesia:websocket': {
     Open (address, messages, events, last) {
-      let ws
-      try { ws = new WebSocket(decoder.decode(address)) } catch (e) { events.send('error'); return 0 }
       const id = nextSocket++
-      ws.binaryType = 'arraybuffer'
-      ws.onopen = () => events.send('open')
-      ws.onmessage = e => messages.send(e.data)
-      ws.onclose = e => { sockets.delete(id); lasts.delete(id); events.send('closed ' + e.code); messages.close(); events.close() }
-      sockets.set(id, ws)
+      const closed = code => { sockets.delete(id); lasts.delete(id); dropped.delete(id); events.send('closed ' + code); messages.close(); events.close() }
+      const ready = ws => {
+        if (dropped.delete(id)) return ws.close(1000)
+        ws.onmessage = e => messages.send(e.data)
+        ws.onclose = e => closed(e.code)
+        sockets.set(id, ws)
+        events.send('open')
+      }
+      try { dial(decoder.decode(address), ready, () => closed(1006), (globalThis.cesia || {}).certificateHashes) } catch (e) { events.send('error'); return 0 }
       if (last != null) {
         lasts.set(id, decoder.decode(last))
         if (!leaving && !node) { leaving = true; addEventListener('pagehide', () => { for (const [k, t] of lasts) { const w = sockets.get(k); if (w && w.readyState === 1) w.send(t) } }) }
@@ -227,7 +319,8 @@ const own = {
       ws.send(s === null ? data : s)
       return true
     },
-    Close (id) { const ws = sockets.get(id); if (ws && ws.readyState < 2) ws.close(1000) },
+    // A socket still dialing is closed as soon as it opens: Dial gave up on it.
+    Close (id) { const ws = sockets.get(id); if (!ws) dropped.add(id); else if (ws.readyState < 2) ws.close(1000) },
   },
   'cesia:regex': { Test: (pattern, s) => new RegExp(decoder.decode(pattern), 'u').test(decoder.decode(s)) },
   // The clock of the page or of Node, in its time zone, for std/date's Local.

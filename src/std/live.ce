@@ -66,6 +66,38 @@ defn Route(pattern, screen, a, actions = {}, resume = 120, buffer = 1048576, sam
   o = {Screen: screen, Actions: actions, Resume: resume, Buffer: buffer, Same: if value.IsMissing(same) sameRequest else same end, Who: who,
     Client: client, Kept: cell(dict.Dict())}
   a then http.Get("$pattern/live.js", r -> {Status: 200, Body: script, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, o), r))
+    then http.Route("CONNECT", pattern, r -> http.SameOrigin(s -> transported(s, o), r))
+end
+
+defn transported(request, o)
+  (** The response to a WebTransport session that a page asks for on the same path (http.Serve with webtransport =
+      true, over HTTP/3): the same screen as over WebSocket, its messages on the first stream the page opens, each its
+      length then its text (std/http3's Messages). *)
+  if dict.Get("Protocol", request) != "webtransport"
+    return {Status: 400, Body: "This route takes the WebTransport sessions of live.js."}
+  end
+  c = {Request: request, First: fiber.Channel(size = 1), Bound: cell(missing), Epoch: cell(0), O: o}
+  {Status: 200, Body: "", Session: s -> sessioned(s, c)}
+end
+
+defn sessioned(s, c)
+  (** Runs a screen's session as serving runs its WebSocket: every message heard, then the screen told that it ended. *)
+  got = s.Messages()
+  if result.IsErr(got)
+    return missing
+  end
+  m = got.Value
+  fiber.Send({Close: () -> s.Close()}, c.First)
+  next = m.Receive()
+  while result.IsOk(next)
+    heard(next.Value, m.Send, c)
+    next = m.Receive()
+  end
+  m.Free()
+  sc = peek(c.Bound)
+  if value.IsSome(sc)
+    tellScreen({Kind: "detach", Epoch: peek(c.Epoch)}, sc)
+  end
 end
 
 defn sameRequest(old, new)
@@ -555,6 +587,95 @@ script = "// live.js, the page's side of std/live: connect(url, options) opens a
 const pageNow = () => performance.timeOrigin + performance.now()
 const later = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : f => setTimeout(f, 0)
 const browser = typeof window === 'object' && typeof document === 'object'
+// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it and the page is https: a session
+// on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's variable integer) then its
+// UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The two are raced, as Happy
+// Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or within 300 ms of the
+// WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in sessionStorage, and only
+// WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked network.
+const wtMark = 'cesia-webtransport-failed'
+function wtFailed() { try { return Date.now() < +(sessionStorage.getItem(wtMark) || 0) } catch (e) { return false } }
+function wtFail() { try { sessionStorage.setItem(wtMark, String(Date.now() + 600000)) } catch (e) {} }
+function wtLength(n) {
+  if (n < 64) return [n]
+  if (n < 16384) return [64 | (n >> 8), n & 255]
+  return [128 | (n >>> 24), (n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function overTransport(url, opened, failed, hashes) {
+  const s = { readyState: 0, onmessage: null, onclose: null }
+  let t, writer = null, over = false
+  const enc = new TextEncoder(), dec = new TextDecoder()
+  const end = code => {
+    if (over) return
+    over = true
+    const was = s.readyState
+    s.readyState = 3
+    try { t.close() } catch (e) {}
+    if (was === 0) failed()
+    else if (s.onclose) s.onclose({ code: code })
+  }
+  s.send = m => {
+    const b = typeof m === 'string' ? enc.encode(m) : new Uint8Array(m), head = wtLength(b.length), all = new Uint8Array(head.length + b.length)
+    all.set(head)
+    all.set(b, head.length)
+    writer.write(all).catch(() => end(1006))
+  }
+  s.close = code => end(code || 1000)
+  // A certificate of 14 days at most that the page already knows by its hash, as a test's or a machine's own.
+  const known = hashes && hashes.length ? { serverCertificateHashes: hashes.map(h => ({ algorithm: 'sha-256', value: Uint8Array.from(atob(h), c => c.charCodeAt(0)) })) } : undefined
+  try { t = new WebTransport(url, known) } catch (e) { setTimeout(() => end(1006), 0); return s }
+  t.closed.then(() => end(1000), () => end(1006))
+  t.ready.then(async () => {
+    const stream = await t.createBidirectionalStream()
+    writer = stream.writable.getWriter()
+    if (over) return
+    s.readyState = 1
+    opened(s)
+    const reader = stream.readable.getReader()
+    let buf = new Uint8Array(0)
+    for (;;) {
+      const got = await reader.read()
+      if (got.done) break
+      const joined = new Uint8Array(buf.length + got.value.length)
+      joined.set(buf)
+      joined.set(got.value, buf.length)
+      buf = joined
+      for (;;) {
+        if (buf.length < 1) break
+        const w = 1 << (buf[0] >> 6)
+        if (buf.length < w) break
+        let n = buf[0] & 63
+        for (let k = 1; k < w; k++) n = n * 256 + buf[k]
+        if (buf.length < w + n) break
+        const m = dec.decode(buf.subarray(w, w + n))
+        buf = buf.slice(w + n)
+        if (s.onmessage) s.onmessage({ data: m })
+      }
+    }
+    end(1000)
+  }).catch(() => end(1006))
+  return s
+}
+// A connection to a ws: or wss: URL: ready(socket) once one is open, failed() if none could be. hashes: the
+// CertificateHashes of the options, base64 SHA-256 of the server's certificate, for one no authority signed.
+function dial(url, ready, failed, hashes) {
+  const ws = new WebSocket(url)
+  ws.binaryType = 'arraybuffer'
+  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && !wtFailed()
+  let chosen = null, wsDead = false, wtDead = !race, grace = 0, wt = null
+  const pick = s => {
+    if (chosen) return
+    chosen = s
+    clearTimeout(grace)
+    if (s !== ws) { ws.onopen = ws.onclose = null; ws.close(1000) }
+    else if (wt) wt.close(1000)
+    ready(s)
+  }
+  const dead = () => { if (!chosen && wsDead && wtDead) failed() }
+  ws.onopen = () => { if (wtDead) pick(ws); else grace = setTimeout(() => pick(ws), 300) }
+  ws.onclose = () => { wsDead = true; dead() }
+  if (race) wt = overTransport('https:' + url.slice(4), s => pick(s), () => { wtDead = true; wtFail(); if (!chosen && ws.readyState === 1) pick(ws); dead() }, hashes)
+}
 const defaults = { Outbox: 'on', OutboxCount: 100, OutboxBytes: 1048576, OutboxWait: 3600, ReconnectFirst: 500, ReconnectMax: 30000, PingEvery: 15, DeadAfter: 30 }
 
 // The same text for two rows that hold the same values, whatever the order of their keys.
@@ -624,14 +745,21 @@ class Live {
     if (this.closed || this.ended) return
     clearTimeout(this.retry)
     this.retry = 0
-    let socket
-    try { socket = new WebSocket(this.url) } catch (e) { return this.lost(socket) }
-    this.socket = socket
+    const dialing = this.dialing = (this.dialing || 0) + 1
     this.set('connecting')
-    socket.onopen = () => {
-      this.last = pageNow()
-      socket.send(JSON.stringify(this.token === null ? { Hello: 2 } : { Hello: 2, Token: this.token, Got: this.seq }))
+    const gone = () => {
+      if (dialing !== this.dialing) return
+      if (!this.ever && refused && !this.ended) return refused({ Kind: 'live', Message: 'No screen opened at ' + this.url + '.' })
+      this.lost(null)
     }
+    try { dial(this.url, socket => dialing === this.dialing && !this.closed ? this.use(socket, opened, refused) : socket.close(1000), gone, this.o.CertificateHashes) } catch (e) { this.lost(null) }
+  }
+
+  // The connection that won, WebSocket or WebTransport: the hello, then every frame.
+  use(socket, opened, refused) {
+    this.socket = socket
+    this.last = pageNow()
+    socket.send(JSON.stringify(this.token === null ? { Hello: 2 } : { Hello: 2, Token: this.token, Got: this.seq }))
     socket.onmessage = e => {
       const at = pageNow()
       this.last = at

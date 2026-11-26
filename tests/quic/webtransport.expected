@@ -1,0 +1,7 @@
+session Ok("200")
+hello false 32
+reply [{Ack: 1, Ok: "paid 7"}]
+stray Err("quic")
+without webtransport Ok("400")
+Ok(missing)
+exit 0

@@ -546,11 +546,19 @@ defn refuse(st, status, options)
   _ = reply(st, {Status: status, Body: dict.Get(status, names), Headers: [{Name: "content-type", Value: "text/plain; charset=utf-8"}]}, false, options)
 end
 
-defn exchange(st, conn, handle, options)
-  (** One request and its response, on a stream that the client opened. The head must come within the timeout, and
-      every head is at most MaxHead bytes. *)
+defn exchange(st, conn, handle, options, sessions)
+  (** One request and its response, on a stream that the client opened, or a stream of a WebTransport session. The head
+      must come within the timeout, and every head is at most MaxHead bytes. *)
   deadline = sys.Now() + options.Timeout
-  buf = ""
+  opened = fiber.Wait(fiber.Spawn(() -> frameKind(st)), timeout = options.Timeout)
+  if result.IsErr(opened) or result.IsErr(opened.Value) or value.IsMissing(opened.Value.Value)
+    st.Reset(requestRejected)
+    return st.Free()
+  end
+  if opened.Value.Value.Type == wtStream
+    return joined(st, opened.Value.Value.Rest, sessions, options)
+  end
+  buf = "$(Varint(opened.Value.Value.Type))$(opened.Value.Value.Rest)"
   head = missing
   while value.IsMissing(head)
     got = fiber.Wait(fiber.Spawn(() -> frameOf(st, buf, MaxHead)), timeout = options.Timeout)
@@ -591,9 +599,133 @@ defn exchange(st, conn, handle, options)
     return st.Free()
   end
   request.Body = body.Value
+  if dict.Has("Protocol", request) and not (options.WebTransport and request.Protocol == "webtransport")
+    refuse(st, 400, options)
+    return st.Free()
+  end
   response = answered(handle, request, deadline - sys.Now())
+  if dict.Has("Protocol", request) and dict.Has("Session", response) and response.Status >= 200 and response.Status < 300
+    return session(st, conn, response, sessions, options)
+  end
   _ = reply(st, response, request.Method == "HEAD", options)
   st.Free()
+end
+
+(* WebTransport over HTTP/3 (draft-ietf-webtrans-http3, as browsers speak it, drafts 02 and 07): a session is an
+   extended CONNECT (RFC 9220) whose stream stays open; each stream of the session starts with its signal, 0x41 for
+   one both ways, 0x54 for one of one way (a stream type), then the session's id, the CONNECT stream's number. *)
+wtStream = 65
+wtUni = 84
+
+defn session(st, conn, response, sessions, options)
+  (** Runs a session that a handler accepted: its head of 2xx, then response.Session(s), whose s gives Accept(), an Ok
+      of the next stream that the page opened in the session (Read, Write, End, Free as quic's), Messages(), the first
+      such stream read and written as messages, and Close(), the end of the session. The session ends when that
+      function returns, or when the page closes the CONNECT stream. *)
+  headers = match response
+    {Headers: h} -> h
+    else -> []
+  end
+  head = headOf({Status: response.Status, Headers: list.Append({Name: "sec-webtransport-http3-draft", Value: "draft02"}, headers)}, options, missing)
+  if result.IsErr(st.Write(Frame(headersFrame, head)))
+    return st.Free()
+  end
+  streams = fiber.Channel(size = 16)
+  key = "$(st.Id)"
+  fiber.Remember(key, streams, sys.Now() + 31536000, sessions)
+  s = {Accept: () -> fiber.Receive(streams) then result.MapErr(e -> {Kind: "http", Message: "The session ended."}),
+    Messages: () -> fiber.Receive(streams) then result.MapErr(e -> {Kind: "http", Message: "The session ended."}) then result.MapOk(Messages),
+    Close: () -> fiber.Close(streams)}
+  (* The CONNECT stream itself: the page closes the session by ending it (or by a capsule, read and dropped). *)
+  watcher = fiber.Spawn() do
+    got = st.Read()
+    while result.IsOk(got) and got.Value != ""
+      got = st.Read()
+    end
+    fiber.Close(streams)
+  end
+  done = fiber.Wait(fiber.Spawn(() -> response.Session(s)))
+  if result.IsErr(done)
+    log.Error("webtransport: a session stopped", {Error: done.Error})
+  end
+  fiber.Forget(key, sessions)
+  fiber.Close(streams)
+  _ = st.End()
+  fiber.Cancel(watcher)
+  st.Free()
+end
+
+defn joined(st, rest, sessions, options)
+  (** A stream that a page opened in a session: given to the session with the bytes that came after its signal. A
+      stream of a session that isn't, or no longer is, open is refused. *)
+  id = ReadVarint(rest, 1)
+  buf = rest
+  while value.IsMissing(id)
+    got = st.Read()
+    if result.IsErr(got) or got.Value == ""
+      st.Reset(requestRejected)
+      return st.Free()
+    end
+    buf = "$buf$(got.Value)"
+    id = ReadVarint(buf, 1)
+  end
+  streams = fiber.Recall("$(id.Value)", sys.Now(), sessions)
+  if value.IsMissing(streams)
+    st.Reset(requestRejected)
+    return st.Free()
+  end
+  first = if id.Next > text.ByteLength(buf) "" else text.ByteSlice(id.Next, text.ByteLength(buf), buf) end
+  fiber.Send(primed(st, first), streams)
+end
+
+defn primed(st, first)
+  (** A stream whose first Read gives bytes already read from it. *)
+  left = fiber.Channel(size = 1)
+  fiber.Send(first, left)
+  out = st
+  out.Read = () -> match fiber.Receive(left, timeout = 0)
+    result.Ok(bytes) -> if bytes == "" st.Read() else result.Ok(bytes) end
+    else -> st.Read()
+  end
+  out
+end
+
+(** The largest message that Messages reads: 1 MiB, as std/websocket's largest frame.
+
+      MaxMessage --> 1048576 *)
+MaxMessage = 1048576
+
+defn Messages(st)
+  (** A stream read and written as messages, each its length (QUIC's integer) then its bytes, as live.js frames them
+      over WebTransport: Receive(), an Ok of the next message or an Err once the stream ended, was reset, or sent one
+      larger than MaxMessage; Send(text); Close(), the end of what this side sends. *)
+  buf = fiber.Channel(size = 1)
+  fiber.Send("", buf)
+  {Receive: () -> received(st, buf), Send: m -> st.Write("$(Varint(text.ByteLength(m)))$m"), Close: () -> st.End(), Free: () -> st.Free()}
+end
+
+defn received(st, cell)
+  (** The next message of a stream of messages, the bytes read after it kept for the next. *)
+  b = fiber.Receive(cell).Value
+  while true
+    n = ReadVarint(b, 1)
+    if not value.IsMissing(n) and n.Value > MaxMessage
+      fiber.Send("", cell)
+      return failed("A message is larger than $MaxMessage bytes.")
+    end
+    if not value.IsMissing(n) and n.Next + n.Value - 1 <= text.ByteLength(b)
+      m = if n.Value == 0 "" else text.ByteSlice(n.Next, n.Next + n.Value - 1, b) end
+      after = n.Next + n.Value
+      fiber.Send(if after > text.ByteLength(b) "" else text.ByteSlice(after, text.ByteLength(b), b) end, cell)
+      return result.Ok(m)
+    end
+    got = st.Read()
+    if result.IsErr(got) or got.Value == ""
+      fiber.Send("", cell)
+      return failed("The stream of messages ended.")
+    end
+    b = "$b$(got.Value)"
+  end
 end
 
 defn incoming(st, conn)
@@ -686,6 +818,7 @@ defn connection(conn, handle, options, state)
     return conn.Close(generalError)
   end
   count(state, "open", 1)
+  sessions = fiber.Table(64)
   tasks = []
   next = 0
   while true
@@ -705,7 +838,7 @@ defn connection(conn, handle, options, state)
     kind = math.Mod(st.Id, 4)
     if kind == 0
       next = st.Id + 4
-      tasks = list.Append(fiber.Spawn(() -> exchange(st, conn, handle, options)), [t for t in tasks if result.IsErr(fiber.Wait(t, timeout = 0))])
+      tasks = list.Append(fiber.Spawn(() -> exchange(st, conn, handle, options, sessions)), [t for t in tasks if running(t)])
     else if kind == 2
       fiber.Spawn(() -> incoming(st, conn))
     else
@@ -714,6 +847,14 @@ defn connection(conn, handle, options, state)
   end
   ctl.Free()
   count(state, "open", -1)
+end
+
+defn running(t)
+  (** Does a task still run? One that ended, even by a panic, doesn't. *)
+  match fiber.Wait(t, timeout = 0)
+    result.Err(e) -> e.Kind == "timeout"
+    else -> false
+  end
 end
 
 defn count(state, key, step)
