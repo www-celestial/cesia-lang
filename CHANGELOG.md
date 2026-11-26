@@ -378,6 +378,27 @@
   code: each of its versions stops now at the next thing the JIT doesn't make, a closure, a text made of parts, a
   `match`, a field read in a version as a whole. The book's How Cesia works tells it, in English and in French;
   `tests/jit` checks it under a young heap of 4,096 words, with errors, fibers and recursions through the calls.
+- A version as a whole lowers without a bet, as the handlers of a server's routes and what they call: a field read goes
+  through an inline cache in machine code, filled by its slow path, the interpreter's read through OCaml; so do
+  `dict.Get`, `dict.Has` and `dict.GetOr` of a key written in the code, the cache also holding that keys made whole lack
+  it; tests and arithmetic of values are machine code for words, texts, Ints and Floats, and the interpreter's through
+  OCaml else; `text.ByteLength` of a text reads its string's length; texts of parts, lists, the larger or smaller of two
+  values, `math.Div` and `math.Mod` of values and natives given named arguments go through OCaml in the interpreter's
+  order, and a call that machine code can't make is the interpreter's call of the value, `Compile.call_back`. A
+  closure's own frame is machine code, its captured values read from their slots at its entry as parameters; one
+  captured before it had a value sends the call to the interpreter, whose read is the error. In a loop, the cached keys
+  and lengths call nothing: 10^7 calls of `dict.Has` of a key take 52 ms instead of 557, of `text.ByteLength` 57
+  instead of 375, a loop of 20 operations of floats and a `dict.Has` 41 instead of 173 for 10^6 turns (medians of 21
+  runs, alternated). Of the 70 hot versions and loops of Centauri's request path that stayed out, 33 refusals are gone
+  (closures 18, field reads and arithmetic of values 7, texts of parts 6, the larger of two values 2), and 28 versions
+  now lower whole, against 7; the JIT keeps them interpreted, as they make too few operations for their calls of OCaml,
+  so a request takes the time it took (public 21.1 µs against 20.7, a thing by its id 34.7 against 35.9; `/hello`
+  under load alike, paired by round 1.01 and 0.98 the requests of before); under `CESIA_JIT=always`, 37 of them are
+  machine code against 27. The version of no types computes the default of a parameter whose slot a call left without a
+  value, as the interpreter's, which a call of `count(5)` through a value of `count(n, acc = 0)` needed on the path
+  without versions by type. The book's How Cesia works, in a part of its own, and Speed, with `/hello` beside Go, Node
+  and Java, tell it, in English and in French; `tests/jit/whole-*` check it in each mode, under a young heap of 4,096
+  words, with the errors and the limits of depth through the calls.
 - `encode.Base64` makes its digits as numbers and the text by one call of `text.FromBytes`, instead of a text of four
   pieces for each three bytes: 125 bytes in 24 µs instead of 56, as the cursor of a page of Centauri, which writes one
   for each page; its output is the same, as RFC 4648's vectors and a property test against the version before check.

@@ -1247,9 +1247,127 @@ Centauri) :
 | un appel d'une fonction tenue dans un champ | 1 |
 | une variable qu'une closure partage | 1 |
 
-Avant, le premier refus de 32 d'entre elles était une native. Ce qui ferait entrer le chemin de Centauri dans le code
-machine est la partie suivante du JIT : une lecture de champ et une closure dans une version entière, qui demandent un
-retour à l'interpréteur au milieu d'un appel, et les textes faits de morceaux.
+Avant, le premier refus de 32 d'entre elles était une native. La partie suivante dit ce qui les compile maintenant :
+[Les versions entières sans pari](#les-versions-entières-sans-pari).
+
+### Les versions entières sans pari
+
+Une boucle reçoit son code machine au milieu d'une exécution : la frame tient alors les valeurs que lisent ses paris, et
+un pari qui échoue revient à l'interpréteur avant l'instruction où il est. Une version entière reçoit son code machine
+au début d'un appel, sans frame à regarder, et l'interpréteur ne reprend aucune fonction en son milieu : jusqu'au
+2026-11-26, une lecture de champ, un test ou un calcul de valeurs sans type, ou un texte fait de morceaux gardaient
+dehors toute la version. De telles versions sont l'essentiel du code d'un serveur : les handlers de ses routes et ce
+qu'ils appellent. Maintenant chacune de ces opérations a un fast path (un chemin rapide) en code machine, qui ne demande
+aucun pari, et un slow path (un chemin lent), qui est l'opération même de l'interpréteur, appelée à travers OCaml comme
+une native ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)) : les mêmes roots pour le
+collector, la même erreur au même site, les mêmes pas.
+
+**Les champs.** Une lecture de champ passe par un inline cache (un cache posé dans le code, au site même de la lecture ;
+Deutsch et Schiffman, POPL 1984 ; Hölzle, Chambers et Ungar, ECOOP 1991) : une constante de l'unité tient les clés de la
+map, ou la shape (la forme) de la struct, dans laquelle le champ a été lu la dernière fois, et la place du champ là. Le
+code machine compare le premier mot de la valeur à celui du cache, vérifie que ses valeurs sont dans un store de
+valeurs qui a cette place, et la lit : dix lectures de mémoire et quatre tests. Tout le reste, une map d'autres clés,
+une struct d'une autre shape, une map de floats, une map profonde, une autre sorte de valeur, appelle la lecture de
+l'interpréteur (`Compile.field_slow`), dont la valeur ou l'erreur est celle de l'interpréteur, et qui remplit le cache
+avec ce qu'elle a trouvé. La place d'un champ ne dépend que des clés ou de la shape, donc le cache s'écrit en un mot,
+une nouvelle constante qui tient les deux : le code machine ne lit jamais les clés de l'une et la place de l'autre. Sa
+confidentialité dépend du package qui le lit, donc les sites d'un même nom ne partagent un cache que dans un package.
+`dict.Get`, `dict.Has` et `dict.GetOr` d'une clé écrite dans le code passent par le même cache, qui tient aussi que des
+clés faites entières, celles d'un littéral, n'ont pas la clé : toute map qui les tient les a toutes.
+
+**Les valeurs sans type.** Un test de deux valeurs est fait en code machine quand il peut le dire : deux mots
+(`missing`, `true`, `false`) sont égaux quand ils sont le même mot, deux textes quand les blocs de leurs strings ont les
+mêmes mots (OCaml remplit le bloc d'une string de la même façon pour chaque longueur, comme le lit `caml_string_equal`),
+deux Ints ou deux Floats par leurs nombres, comme `eq_b` et les autres de l'interpréteur ; tout le reste, comme une
+liste face à une valeur, est le test de l'interpréteur, à travers OCaml. Le calcul de deux Ints ou de deux Floats est
+fait en code machine, les Ints vérifiés pour l'overflow (le dépassement de 63 bits) comme l'interpréteur les vérifie ;
+tout le reste est celui d'`Arith`. `text.ByteLength` d'un texte lit la longueur de sa string dans son bloc.
+
+**À travers OCaml.** Un texte fait de morceaux, `"$a and $(f(b))"`, est joint par une native propre au JIT, qui fait un
+texte de chaque trou avec la mémoire et les pas que cela coûte, comme celui de l'interpréteur ; avant un trou dont
+l'évaluation peut échouer ou se voir, les trous d'avant sont d'abord faits textes, pour que ce qui échoue échoue dans
+l'ordre de l'interpréteur. Un littéral de liste, le plus grand ou le plus petit de deux valeurs, `math.Div` et
+`math.Mod` de valeurs, et une native qui reçoit des arguments nommés, dans l'ordre de ses paramètres comme
+l'interpréteur les évalue, passent aussi par OCaml. Un appel que le code machine ne sait pas faire, d'une fonction dont
+la version ne se compile pas ou d'une valeur qu'aucun de ses paris ne prend, est l'appel de cette valeur par
+l'interpréteur (`Compile.call_back`), au-dessus de la frame de l'appel, dont le site le nomme dans une trace.
+
+**Les closures.** L'appel d'une closure par l'interpréteur écrit ses valeurs capturées dans leurs slots avant que la
+frame commence (`Compile.finish`) ; la frame la plus externe du code machine d'une closure les y lit comme elle lit ses
+paramètres. Une variable capturée avant d'avoir une valeur tient `Undef` : un tel appel est celui de l'interpréteur,
+dont la lecture est l'erreur. Une closure appelée depuis le code machine passe encore par OCaml : ses valeurs capturées
+sont dans la valeur de la fonction, qu'une frame imbriquée ne lit pas encore.
+
+**Ce que cela change pour Centauri.** Son chemin de requête se compile maintenant : des versions qu'une exécution de
+`bench/micro.ce` rend hot (`CESIA_JIT_SHOW=1`), les closures, les lectures de champ et les calculs de valeurs dans une version entière, les textes faits de morceaux
+et le plus grand ou le plus petit de deux valeurs, 33 refus, ont disparu ; 28 versions se compilent maintenant entières,
+contre 7 avant, et le JIT les garde alors dans l'interpréteur par sa mesure de ce qu'elles coûtent, 23 d'entre elles pour
+leurs appels à travers OCaml (moins de 24 opérations par appel : leur travail est dans les natives qu'elles appellent,
+`fiber.Admit`, `list.Concat`, `json.Text`) et 5 parce qu'elles n'ont ni boucle ni appel : l'entrée dans le code machine
+et la sortie y coûteraient plus que ce qu'elles gagnent. Chacune des autres s'arrête maintenant à la chose suivante que
+le JIT ne fait pas :
+
+| Ce qui la garde dehors | Avant | Maintenant |
+|---|---:|---:|
+| une closure : le handler d'une route, comme `r -> {Text: "Hello"}` | 18 | 0 |
+| une lecture de champ, ou un calcul sur une valeur sans type, dans une version entière | 7 | 0 |
+| un texte fait de morceaux, `"$x"` | 6 | 0 |
+| le plus grand ou le plus petit de deux valeurs qui ne sont pas des nombres | 2 | 0 |
+| compilée entière, ses appels à travers OCaml trop nombreux pour ce qu'elle calcule | 4 | 23 |
+| compilée entière, sans boucle ni appel | 3 | 5 |
+| une instruction que le JIT ne fait pas : `for x in xs` sur une liste, une écriture dans un champ | 5 | 7 |
+| une fonction littérale | 4 | 7 |
+| un appel d'une fonction tenue dans un champ, comme `env.Who(req, env)`, qui peut être une méthode | 1 | 4 |
+| un `match` | 4 | 4 |
+| une native d'un package, celles de Cepheus | 3 | 4 |
+| une cellule d'une liste qui n'est pas une variable de sa frame, comme `routes[k]` d'une liste reçue | 2 | 3 |
+| une comprehension (une liste faite par `[f(x) for x in xs]`) | 2 | 3 |
+| un `in` | 2 | 2 |
+| une autre forme : un `if` qui donne une valeur, un appel d'une fonction avec des arguments nommés, une map dans une variable d'un module | 3 | 3 |
+| une native qui attend, de `std/fiber` | 1 | 1 |
+| un `?` | 1 | 1 |
+| une map vide, `{}` | 1 | 1 |
+| une variable qu'une closure partage | 1 | 1 |
+
+Sous `CESIA_JIT=always`, qui fait chaque unité dès qu'elle devient hot, pour les tests, 37 versions du chemin sont du
+code machine contre 27 : `door`, `SessionKey`, `Json`, `Cookie`, les closures des handlers et celles des shapes parmi
+elles. Dans le mode par défaut, aucune : une version qui se compile entière et appelle OCaml aussi souvent que celles-ci
+va aussi vite dans l'interpréteur, qui appelle une native pour moins cher
+([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)).
+
+Donc une requête de Centauri prend le temps qu'elle prenait, mesuré le 2026-11-26, profil `release`, contre le binaire
+de main, en alternance, pendant que d'autres travaux tournaient sur la machine : une requête publique 21,1 µs
+[19,1, 33,0] contre 20,7 [18,8, 34,1], une chose par son id 34,7 [31,3, 39,9] contre 35,9 [31,7, 57,5], une page 132,0
+[119,7, 158,8] contre 134,6 [121,6, 202,8] (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, [la plus
+rapide, la plus lente], charge 4,1 à 5,2) ; son temps est dans les natives qu'elle appelle, dans ses allocations et dans
+le collector : un échantillonnage de `/hello` (un timer de 500 µs de CPU, l'instruction où chaque tick est tombé) donne
+53 % aux closures de l'interpréteur, 33 % aux natives et à la bibliothèque, 12 % au collector et à l'allocation. Là où
+les mêmes appels de natives sont dans une boucle, les clés et les longueurs en cache font la différence (21 exécutions,
+en alternance, charge 3,5 à 5,9) :
+
+| Programme | Avant | Maintenant |
+|---|---:|---:|
+| 10^7 appels de `dict.Has` d'une clé écrite dans le code | 557,5 (522,5–625,4) | 52,4 (50,0–106,1) |
+| 10^7 appels de `text.ByteLength`, 2 opérations par appel | 375,3 (342,8–454,8) | 57,2 (52,3–77,3) |
+| 10^6 tours de 20 opérations de floats et un `dict.Has` | 173,3 (155,9–295,7) | 40,5 (38,0–80,0) |
+| 10^6 tours de 60 opérations de floats et un `dict.Has` | 181,3 (169,2–279,2) | 77,1 (71,7–133,9) |
+| 10^7 appels de `sys.Now` | 409,7 (392,9–514,3) | 418,8 (389,0–481,2) |
+| 10^7 fois `text.ByteLength(text.Slice(2, 4, s))` | 1 630,5 (1 545,5–1 899,4) | 1 645,3 (1 501,5–2 047,5) |
+
+```cesia allow=read,write
+use std/plot
+
+loops = ["dict.Has", "ByteLength", "20 ops + Has", "60 ops + Has", "sys.Now"]
+times = plot.Bars(loops, [[557.5, 375.3, 173.3, 181.3, 409.7], [52.4, 57.2, 40.5, 77.1, 418.8]], label = ["before", "now"],
+  color = ["#999999", "#3a5ad9"])
+cached = plot.Of([times], title = "Loops that call natives: median of 21 runs", x = "loop", y = "milliseconds",
+  size = [640, 360])
+plot.Save(cached, "internals-cached.svg") -->
+```
+
+Les quatre premiers sont maintenant du code machine sans appel d'OCaml dans leur boucle : les clés de la map vérifiées
+contre le cache, la longueur lue dans la string. `sys.Now` et `text.Slice` passent encore dans OCaml à chaque appel, et
+restent où ils étaient.
 
 ### Le contrat
 
@@ -1268,7 +1386,8 @@ une différence est un bug du JIT.
   ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)) : l'interpréteur appelle une native pour
   moins cher ;
 - `for x in xs` sur les éléments d'une liste, et un appel à travers une valeur qui a atteint cinq fonctions ou plus, ou
-  une fonction qui a capturé des variables ;
+  une closure appelée depuis le code machine : de tels appels passent par OCaml
+  ([Les versions entières sans pari](#les-versions-entières-sans-pari)) ;
 - dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme un `return` d'une struct ou un
   `io.Print` : cette instruction seule, chaque fois qu'elle tourne, et la boucle revient au code machine à son tour
   suivant ; la boucle entière, quand de telles instructions tournent tous les quelques pas ;
@@ -1283,9 +1402,11 @@ une différence est un bug du JIT.
 - une boucle du haut d'un fichier qui affecte une variable du module qu'une fonction qu'elle appelle, sans l'inliner
   (sans copier son corps sur place), lit : cette fonction lirait la variable dans son module pendant que le code machine
   la tient dans un registre ;
-- une version entière qui lit les champs de ses valeurs ou calcule avec des valeurs sans type : quand elle devient hot,
-  il n'y a pas de frame sur laquelle parier, et un pari qui échoue n'aurait pas d'autre retour que son appel entier ;
-  inlinée dans une boucle, son corps est fait avec les paris de la boucle ;
+- dans une version entière, une fonction littérale, un `match`, une comprehension, un `in`, un `?`, une écriture dans un
+  champ, et un appel d'une méthode ou d'une fonction tenue dans un champ : quand elle devient hot, il n'y a pas de frame
+  sur laquelle parier, et un pari qui échoue n'aurait pas d'autre retour que son appel entier ; les champs, les tests et
+  les calculs de valeurs, les textes faits de morceaux et les autres appels se compilent sans pari
+  ([Les versions entières sans pari](#les-versions-entières-sans-pari)) ;
 - une version entière avec une boucle dont les appels font des valeurs, ou qui écrit dans un array : une frame imbriquée
   à court de place ne pourrait pas revenir à l'interpréteur, qui ne reprend aucune fonction en son milieu ; ses boucles
   ont leur propre code machine ;

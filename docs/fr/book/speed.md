@@ -33,6 +33,14 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
   argument : le code machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve,
   comme le montre [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qu'une cell ou
   le prompt définit de nouveau avec le même code est la même pour lui.
+- Les fonctions entières, comme les handlers (les fonctions qui traitent une requête) des routes d'un serveur, sans
+  pari : leurs champs, et les clés écrites dans le code de `dict.Get`, `dict.Has` et `dict.GetOr`, lus à travers des
+  inline caches (des caches posés au site même de la lecture), leurs tests et calculs de valeurs, leurs textes faits de
+  morceaux, `text.ByteLength`, et la frame (la place de ses variables) d'une closure (une fonction qui garde des
+  variables d'ailleurs), comme le montre [Comment Cesia fonctionne](internals.md#les-versions-entières-sans-pari). Ce que le code
+  machine ne sait pas y faire, il l'appelle à travers OCaml, donc une telle fonction n'est du code machine que si elle
+  calcule assez entre ces appels ; dans une boucle, les clés et les longueurs en cache n'appellent rien : `dict.Has`
+  d'une clé dans une boucle prend 5 ns par appel au lieu de 56.
 - Une variable d'un module dont le nombre change sous le code machine, comme celui d'un slider que [cells.Set] donne en
   place : lue dans un slot à chaque lancement, si bien que le code reste pour chaque nouveau nombre.
 - `random.Float()`, le pas de son générateur fait sur place, les mêmes nombres que ceux de l'interpréteur dans le même
@@ -89,11 +97,10 @@ code machine garde ses deux floats dans des registres (les petites mémoires du 
   [json.Parse], quand ils viennent trop souvent pour ce que calcule le code autour : le code machine les appelle à
   travers OCaml, pour environ 100 ns de plus que l'interpréteur, donc une boucle faite seulement de tels appels reste
   interprétée ; ceux des fonctions qui attendent, comme sur le réseau, le restent toujours
-  ([Comment Cesia fonctionne](internals.md#le-code-machine-qui-appelle-ocaml)). Une fonction qui fait un texte ou tient
-  une closure (une fonction qui garde des variables d'ailleurs) reste interprétée entière, comme le code d'un serveur,
-  ses boucles à part.
+  ([Comment Cesia fonctionne](internals.md#le-code-machine-qui-appelle-ocaml)). Les handlers d'un serveur, qui appellent
+  surtout de telles fonctions, se compilent maintenant, et restent interprétés pour cette raison.
 - Les boucles sur les éléments d'une liste, `for x in xs`, et un appel à travers une valeur qui a rencontré cinq
-  fonctions ou plus, ou une fonction qui a capturé ses propres variables.
+  fonctions ou plus, ou une closure appelée depuis le code machine, qui passent par OCaml.
 - Dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme le `return` d'une erreur ou un
   `io.Print` : cette instruction passe à l'interpréteur chaque fois qu'elle tourne, et le reste de la boucle reste du
   code machine.
@@ -477,6 +484,51 @@ connexion inactive. `tools/http-gate.sh` lance les charges principales et échou
 dépasse 10 ms, si une connexion inactive prend plus de 4 KB, ou si deux workers (deux processus du même serveur, chacun
 sur un cœur) ne donnent pas une fois et demie un seul processus. `HTTP_GATE_SCALE=0.5` divise les planchers par deux
 sur une machine plus lente.
+
+### La requête d'un framework à côté des géants
+
+Centauri, un framework (un cadre qui fournit la structure d'une application) de Cesia, répond à `/hello` avec un JSON
+d'un champ à travers sa porte, sa session, ses limites, ses shapes et son journal ; [std/http] seul répond à la même
+route sans rien autour, comme le font le `net/http` de Go, le `http` de Node et le `HttpServer` du JDK (sur un pool de 4
+threads). Mesuré le 2026-11-26, profil `release`, chaque serveur épinglé sur 4 cœurs et le client de charge (256
+connexions gardées, 4 threads) sur les 4 autres, 21 mesures de 2 s chacune, l'ordre tourné à chaque tour, pendant que
+d'autres travaux tournaient sur la machine (charge 4,8 à 15,2) ; le CPU est celui du serveur sur la mesure, ses threads
+ensemble ; la médiane, puis la plus basse et la plus haute :
+
+| Serveur | Requêtes par seconde | Cœurs | Requêtes par seconde par cœur | 99e percentile | Mémoire |
+|---|---:|---:|---:|---:|---:|
+| Centauri | 10 318 (5 719–12 537) | 0,95 | 10 930 | 41,1 ms | 55 MB |
+| Centauri, le binaire de main d'avant | 11 165 (4 627–12 908) | 0,95 | 11 703 | 41,2 ms | 52 MB |
+| `std/http` seul | 24 963 (8 823–30 295) | 0,90 | 27 798 | 22,2 ms | 40 MB |
+| Go, `net/http` | 66 746 (16 971–94 258) | 2,57 | 26 069 | 18,5 ms | 17 MB |
+| Node, `http` | 30 518 (13 682–37 727) | 0,85 | 35 819 | 13,7 ms | 82 MB |
+| Java, `HttpServer` | 24 913 (12 456–29 100) | 1,60 | 15 794 | 45,7 ms | 466 MB |
+
+```cesia allow=read,write
+servers = ["Centauri", "std/http", "Go", "Node", "Java"]
+perSecond = plot.Bars(servers, [[10318, 24963, 66746, 30518, 24913], [10930, 27798, 26069, 35819, 15794]],
+  label = ["requests a second", "per core"], color = ["#3a5ad9", "#999999"])
+hello = plot.Of([perSecond], title = "/hello under load: median of 21 measures", x = "server", y = "requests a second",
+  size = [640, 360])
+plot.Save(hello, "speed-hello.svg") -->
+```
+
+Le binaire d'avant et celui de maintenant répondent pareil : apparié par tour, maintenant a donné 1,01 fois les
+requêtes d'avant (0,56 à 2,69), devant dans 12 tours sur 21, et dans une seconde série de 21, 0,98 (0,36 à 1,63), devant
+dans 9 ; les unités du chemin de requête qui se compilent maintenant restent interprétées, car elles font trop peu
+d'opérations pour leurs appels à travers OCaml ([Comment Cesia fonctionne](internals.md#les-versions-entières-sans-pari)).
+Le `HttpServer` de Java a fait échouer environ 32 700 requêtes à chaque mesure, un cinquième de ce qu'on lui envoyait :
+c'est le petit serveur du JDK, pour les outils et les tests, et Netty ou Jetty, pas mesurés ici, sont ce sur quoi tourne
+un serveur Java.
+
+**Où un géant gagne, et pourquoi.** Par cœur, Node répond à 1,3 fois ce que répond `std/http` et à 3,3 fois Centauri :
+son parser (le lecteur) de HTTP est du C, `llhttp`, et V8 compile le handler ; `std/http` lit en OCaml et lance le
+handler dans l'interpréteur. Go répond à 2,7 fois `std/http`, car ses goroutines prennent les cœurs d'elles-mêmes, là où
+ce serveur Cesia est un processus sur un cœur : `--workers` lui en donne plus, comme le mesure
+[Un serveur sous charge](#un-serveur-sous-charge). Une requête de Centauri prend 2,4 fois celle de `std/http` seul, pour
+sa session, ses limites et son journal, en bonne partie dans des natives (un échantillonnage donne 33 % de son temps à
+elles et 12 % au collector) ; la part propre de l'interpréteur, 53 %, est ce que le code machine pourrait prendre, et
+seulement là où il appelle OCaml moins souvent qu'il ne calcule.
 
 ## Pour aller plus loin
 
