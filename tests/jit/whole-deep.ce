@@ -1,0 +1,57 @@
+use std/io
+use std/list
+use std/sys
+
+(* Recursions deeper than the machine's stack holds, which whole-deep.cmd makes small: native code takes it down to the
+   room it leaves to the natives, then the interpreter makes the calls deeper, on OCaml's stack, which grows. A unit of
+   numbers stops, nothing it did showing, and the interpreter makes its call from the start; a unit that calls OCaml
+   calls on through it, a Float argument given in two halves. The same values, error, trace and limit of depth as the
+   interpreter's, from a version as a whole, from a loop, and under a native that calls back. *)
+defn depth(n)
+  if n == 0
+    return 0
+  end
+  1 + depth(n - 1)
+end
+
+defn values(n, x, r)
+  if n == 0
+    return x * r.One
+  end
+  values(n - 1, x + 0.5, r) + r.One
+end
+
+defn wrong(n, x, r)
+  if n == 0
+    return x + "a"
+  end
+  wrong(n - 1, x * 1.0, r) + r.One
+end
+
+(* A closure that a native calls back, which calls a closure deep down: native code under the native's frames. *)
+defn walk(n, f)
+  if n == 0
+    return f(0)
+  end
+  walk(n - 1, f) + 1
+end
+
+n = 60000
+case = sys.Args[1]
+if case == "numbers"
+  io.Print(depth(n))
+  total = 0
+  for i in 1..3
+    total = total + depth(n - i)
+  end
+  io.Print(total)
+else if case == "values"
+  io.Print(values(n, 0.0, {One: 1}))
+  io.Print(values(n, 1.25, {One: 1}) - values(n - 1, 1.25, {One: 2}))
+else if case == "callback"
+  io.Print(list.Map(x -> walk(n, y -> y + x), [1, 2]))
+else if case == "error"
+  io.Print(wrong(n, 2.0, {One: 1}))
+else
+  io.Print(depth(n) + values(n, 0.0, {One: 1}))
+end

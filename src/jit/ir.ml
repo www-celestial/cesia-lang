@@ -272,6 +272,16 @@ let cx_roots = 32
 (** The cell of that context where the C glue writes the address of OCaml's list of local roots, which a unit that calls
     OCaml links its block of roots into around each call. *)
 
+let cx_floor = 33
+(** The cell where the C glue writes the lowest address of the machine's stack that nested frames may take: below, it is
+    left to the natives they call *)
+
+let cx_probe = 34
+(** The cell of the base past which a nested frame looks at the machine's stack again, which the C glue starts [probe]
+    frames above the run's base and folds into [io_lim], as native code does after each look *)
+
+let probe = 16
+
 let restored = 1 lsl 20
 
 (* Added to the point of a [Bail]: a statement left to the interpreter, which a guess failed none of; one that is a
@@ -339,6 +349,10 @@ let gc = 11  (** at [io_point], all variables written to their slots: the young 
 
 let room_out = 15
 
+let machine_out = 16
+(** the machine's stack is short for a nested call that can't bail: nothing that shows was written, and the interpreter
+    makes the call from its start *)
+
 let room_code = 17
 (** In [io_code] after a bail: a call's nested frame was short of room, [io_b] the number of its function in the unit. *)
 (** a nested frame lacks room in the young heap, which it can't leave for: nothing that shows was written since the run
@@ -376,6 +390,7 @@ let written = 11
 
 let cold_code = 12  (** after a bail: no guess failed, the interpreter makes a statement that native code left to it *)
 let leaving_code = 13  (** the same, a [return] *)
+let machine_code = 21  (** the machine's stack was short for a call: the interpreter makes the statement *)
 
 (** The value slot of the outermost frame, from its base, where the variables of modules read from slots start: after
     its constants and the slot of a [return]'s value. *)

@@ -1,0 +1,116 @@
+numbers off:
+60000
+179994
+numbers default:
+60000
+179994
+numbers always:
+60000
+179994
+values off:
+90000.0
+-89998.25
+values default:
+90000.0
+-89998.25
+values always:
+90000.0
+-89998.25
+callback off:
+[60001, 60002]
+callback default:
+[60001, 60002]
+callback always:
+[60001, 60002]
+error off:
+whole-deep.ce:26:14: Can't add the number 2.0 and the text "a".
+  26 |     return x + "a"
+     |              ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in wrong (whole-deep.ce:26)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+error default:
+whole-deep.ce:26:14: Can't add the number 2.0 and the text "a".
+  26 |     return x + "a"
+     |              ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in wrong (whole-deep.ce:26)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+error always:
+whole-deep.ce:26:14: Can't add the number 2.0 and the text "a".
+  26 |     return x + "a"
+     |              ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in wrong (whole-deep.ce:26)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+  called from wrong (whole-deep.ce:28)
+limit off:
+whole-deep.ce:10:1: Limit "depth" reached.
+  10 | defn depth(n)
+     | ^
+  in depth (whole-deep.ce:10)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  ... and 29991 more
+limit default:
+whole-deep.ce:10:1: Limit "depth" reached.
+  10 | defn depth(n)
+     | ^
+  in depth (whole-deep.ce:10)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  ... and 29991 more
+limit always:
+whole-deep.ce:10:1: Limit "depth" reached.
+  10 | defn depth(n)
+     | ^
+  in depth (whole-deep.ce:10)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  called from depth (whole-deep.ce:14)
+  ... and 29991 more
+the machine's stack short: yes
+exit 0

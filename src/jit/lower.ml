@@ -1449,11 +1449,21 @@ and call_expr st e (call : call) =
          emit st (Value (g, const st st.w.modules.(m).cells.(k)));
          call_through st e (Ir.Reg g) (Array.map (fun (a : arg) -> a.value) call.args)
        in
+       (* A callee that loops over a variable of a module that the code of a file changes: called from machine code,
+          through OCaml or nested, it would hold the machine's stack while the other fibers, which change it, wait or
+          run inside its call, and see it unchanged, which the interpreter's call doesn't. It stays the interpreter's
+          call, whose own loop lets them in at its checkpoints. *)
+       let callee = Cache.ready proto.func in
+       let body = Lazy.force callee.body in
+       let found = ref false in
+       if nest body > 0 || callee.has_self_tail then
+         Array.iter (walk (fun (x : expr) -> (match x.e with Var { b = Cell { stable = false; _ }; _ } -> found := true | _ -> ()); not !found)) body;
+       if !found then raise No;
        if v.state <> 2 then through () else
+       let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && gives_number v in
        (* A default of a number only, which the callee's register then holds. *)
        if Array.exists (fun t -> t == TBot) (Array.mapi (fun j t -> if t == TBot && v.tv.(j) != TI && v.tv.(j) != TF then TBot else TA) sg)
        then through () else
-       let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && gives_number v in
        let inlined = st.inl = [] && inlinable ~any:true v && not (own st v) in
        (* Values in or out: inlined, its body made here, or called when it lowers, with the versions it calls; else the
           call through OCaml. *)
@@ -1636,6 +1646,20 @@ and call_values ?(typed = true) st e f (args : expr array) vals =
    is made when the test fails, or when the frame or the fuel of the callee's step is short, which it then handles. *)
 and native_call st e (v : version) given =
   st.ncalls <- st.ncalls + 1;
+  (* Each argument of the kind of its parameter: a number boxed for one of no type, which the version of no types that
+     --no-spec calls takes, as the interpreter's call gives it; an integer made a float for a Float. *)
+  let given =
+    Array.mapi
+      (fun j ->
+         Option.map (fun x ->
+             let k = match x with Ir.Reg q -> Vec.get st.kinds q | Int _ -> Ir.Kint | Float _ -> Kfloat | Word _ -> Kval in
+             match ret_kind v.tv.(j), k with
+             | w, k when w = k -> x
+             | Ir.Kval, k -> box st (x, k)
+             | Kfloat, Kint -> to_float st (x, Kint)
+             | _ -> raise No))
+      given
+  in
   let back = back st in
   (* A parameter the call leaves out gets any number of its kind: the callee makes its default after its step. *)
   let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
