@@ -72,11 +72,14 @@ tools/test.sh --slow > /dev/null 2>&1 || fail "a test slow by nature fails: tool
 # Cesia's own site, which GitHub Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the
 # book that gives another value, fails here and there; so does a tab of the book, an example in Python, R or MATLAB, that
 # prints other values than its cesia block. A tab whose language isn't installed here is skipped with a warning: the CI
-# of the site runs them all.
+# of the site runs them all. A block of Cesia's own book that names no language fails here and there too: cesia doc --site
+# only warns of it, so that a book that built before still builds, and Cesia's book is held to more than that.
 site=$(mktemp -d)
 work=$(mktemp -d)
 trap 'cp "$backup" src/lib/messages.ml; rm -f "$backup"; rm -rf "$site" "$work"' EXIT
-"$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null || fail "Cesia's site doesn't build"
+"$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null 2> "$work/site.err" || { cat "$work/site.err" >&2; fail "Cesia's site doesn't build"; }
+cat "$work/site.err" >&2
+grep -q 'names no language' "$work/site.err" && fail "a block of Cesia's book names no language"
 "$PWD/_build/default/src/bin/main.exe" run --allow "read=$site,read=docs,read=$work,write=$work,exec=prlimit,env=CI,env=PATH" tools/tabs.ce "$site/.tabs" "$work" ||
   fail "a tab of the book fails: tools/tabs.ce"
 

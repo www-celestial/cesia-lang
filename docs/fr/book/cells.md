@@ -554,7 +554,7 @@ rho   = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
 bold  = cells.Check(false, label = "Bold line")
 ```
 
-```
+```text
 year   [ 2026        v ]
 zone   [ GMT-5       v ]
 day    [ 2026-11-23  v ]
