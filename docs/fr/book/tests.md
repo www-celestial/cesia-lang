@@ -402,12 +402,86 @@ ses données ; sans réseau, sans autre variable d'environnement que `PATH`, ave
 
 ### Couleurs des autres langages
 
-Un bloc `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`, `toml`, `ini` ou `css`, onglet ou non,
-prend les couleurs du code de Cesia : mots-clés, noms appelés, textes, nombres et commentaires, et aussi les variables d'un
-shell, les clés et les sections de `toml` et `ini`, et les propriétés de `css`. Le site le colore quand il se construit,
-sans script, par un petit lecteur réglé pour chaque langage ; il lit ce que montre un livre, pas chaque recoin de chaque
-langage, et ce qu'il ne sait pas dire reste sans couleur. Un bloc d'un autre langage, comme `text` ou `output`, est montré
-tel quel.
+Un bloc de n'importe quel langage prend les couleurs du code de Cesia, onglet ou non : mots-clés, noms appelés, textes,
+nombres, commentaires, et champs, c'est-à-dire les noms après un point, comme en Cesia, les clés de JSON, YAML, TOML et
+INI, les variables d'un shell et les propriétés de CSS. Le site le colore quand il se construit, sans script, par un petit
+lecteur qu'une table règle pour chaque langage. Il lit ce que montre un livre, pas chaque recoin de chaque langage, et ce
+qu'il ne sait pas dire reste sans couleur ; chaque caractère du bloc reste, dans son ordre. Il lit un bloc une seule fois,
+de gauche à droite : 1 Mo de Python prend 2,5 s, quatre fois 250 Ko.
+
+![Quatre blocs d'une page du site, colorés comme le code de Cesia : Java, SQL, JSON et un diff. Les mots-clés sont bleu foncé, les textes verts, les nombres bleus, les commentaires gris et en italique, les champs violets, comme les noms après un point, les clés de JSON et le paramètre $1 de SQL ; le diff montre sa ligne ajoutée en vert, sa ligne retirée en violet et son hunk @@ en bleu-vert.](../../book/images/colors-languages.png)
+
+Ces langages sont lus entièrement, sous le nom écrit après la fence du bloc (la ligne de trois accents graves qui
+l'ouvre) ou sous l'un des autres noms de sa ligne :
+
+| Langage | Autres noms | Ce qu'il lit en plus des mots-clés, textes, nombres et commentaires |
+|---|---|---|
+| `bash` | `sh`, `shell`, `zsh`, `ksh` | les variables, `$(...)` dans les textes, les heredocs `<<EOF` (un texte fait des lignes qui suivent, jusqu'à `EOF`), un `#` qui n'est un commentaire qu'après un blanc, donc pas dans une adresse |
+| `console` | `shell-session`, `shellsession`, `terminal` | le prompt (l'invite du terminal) comme un commentaire, `$`, `#`, `%` ou `>` seul ou après un mot comme `ana@box:~/shop$` ; sa commande comme `bash`, continuée après un `\` ; la sortie sans couleur |
+| `c` | `h` | les directives, `#include <stdio.h>` |
+| `cpp` | `c++`, `cxx`, `cc`, `hpp` | les directives, les textes bruts `R"x(...)x"`, les nombres comme `1'000` |
+| `csharp` | `cs`, `c#` | les directives, les textes `@"..."`, `$"...{x}..."` et `"""..."""` |
+| `cmake` | | les commandes en majuscules ou minuscules, les variables `${...}`, les commentaires `#[[ ]]` |
+| `css` | | les propriétés, `@media` et les autres at-rules (les règles qui commencent par `@`) |
+| `dart` | | `${...}` dans les textes, les textes bruts `r'...'`, les annotations |
+| `diff` | `patch` | une ligne ajoutée comme un texte, une ligne retirée comme un champ, un hunk `@@` (le début d'un morceau changé) comme un nom appelé, les en-têtes comme des mots-clés |
+| `dockerfile` | `docker`, `containerfile` | les instructions, les variables, les heredocs |
+| `elixir` | `ex`, `exs` | `#{...}` dans les textes, les atomes `:ok`, les attributs `@doc` |
+| `erlang` | `erl` | les caractères `$a`, les commentaires `%` |
+| `fortran` | `f90`, `f95`, `f03` | les mots-clés en majuscules ou minuscules, les commentaires `!` |
+| `go` | `golang` | les textes bruts entre accents graves |
+| `graphql` | `gql` | les variables `$id`, les directives `@include`, les champs |
+| `haskell` | `hs` | les commentaires imbriqués `{- -}`, les noms avec un prime comme `x'`, un opérateur `-->` qui n'est pas un commentaire |
+| `html` | `htm`, `xhtml`, `svg` | les balises, les attributs, les entités comme `&amp;`, le texte de `<script>` comme `js` et celui de `<style>` comme `css` |
+| `http` | | la ligne de la requête ou du statut, les en-têtes, un corps comme `json` |
+| `ini` | `cfg`, `conf`, `gitconfig` | les sections, les clés |
+| `java` | | les blocs de texte `"""`, les annotations `@Override` |
+| `js` | `javascript`, `mjs`, `cjs`, `node` | les templates (les textes entre accents graves) et leurs `${...}`, les expressions régulières, les décorateurs |
+| `json` | `jsonc`, `json5` | les clés comme des champs, `true`, `false` et `null`, les commentaires `//` et `/* */` |
+| `julia` | `jl` | `$(...)` dans les textes, les commentaires imbriqués `#= =#`, les symboles, les macros `@time`, la transposée `A'` |
+| `kotlin` | `kt`, `kts` | `${...}` dans les textes, les textes bruts `"""`, les commentaires imbriqués, les annotations |
+| `latex` | `tex` | les commandes, les formules entre `$` |
+| `lisp` | `clojure`, `clj`, `cljs`, `edn`, `scheme`, `scm`, `racket`, `elisp`, `emacs-lisp` | le nom appelé juste après `(`, les mots-clés `:k`, les caractères `\a` et `#\a`, les commentaires de bloc imbriqués |
+| `lua` | | les textes et commentaires longs `[==[ ]==]` |
+| `makefile` | `make`, `mk` | les variables `$(CC)` et `$@`, les cibles et les affectations |
+| `markdown` | `md` | les titres, le code, chaque bloc entre fences dans son propre langage |
+| `matlab` | `m`, `octave` | la transposée `A'`, un guillemet doublé dans un texte, `'it''s'` |
+| `nginx` | `nginxconf` | les directives, les variables |
+| `nix` | | `${...}` dans les textes, les textes `''...''`, les attributs |
+| `ocaml` | `ml`, `mli` | les commentaires imbriqués, les types `'a`, les caractères `'x'` |
+| `perl` | `pl` | les variables `$x`, `@xs` et `%h`, le POD (sa documentation), les expressions régulières, les heredocs |
+| `php` | | les variables, `{$x}` dans les textes, les heredocs `<<<` |
+| `powershell` | `ps1`, `pwsh`, `ps` | les variables, `$(...)` dans les textes, les here-strings `@"..."@` (ses heredocs), les mots-clés en majuscules ou minuscules |
+| `properties` | | les clés, les commentaires `#` et `!` en tête de ligne |
+| `protobuf` | `proto` | les types comme des mots-clés |
+| `python` | `py`, `python3` | les f-strings (les textes qui portent du code entre accolades) et leurs `{...}`, les préfixes comme `r` et `b`, `"""`, les décorateurs |
+| `r` | | `TRUE`, `NA` et les autres constantes |
+| `ruby` | `rb` | `#{...}` dans les textes, les symboles, les variables `@x` et `$x`, les heredocs, les expressions régulières, `=begin` |
+| `rust` | `rs` | les lifetimes `'a` (les durées de vie des références), les caractères `'x'`, les textes bruts `r#"..."#`, `b"..."`, les commentaires imbriqués, les attributs `#[...]`, les macros `println!` |
+| `scala` | | `s"..."` et `f"..."` avec `${...}`, les commentaires imbriqués |
+| `sql` | `psql`, `postgresql`, `postgres`, `plpgsql`, `mysql`, `sqlite` | les mots-clés en majuscules ou minuscules, les textes `$$...$$` de PostgreSQL, `'it''s'`, les paramètres `$1` et `:name`, les commentaires imbriqués |
+| `swift` | | `\(...)` dans les textes, `#"..."#`, les commentaires imbriqués, les attributs `@MainActor` |
+| `toml` | | les sections, les clés |
+| `typescript` | `ts` | comme `js`, et ses types |
+| `tsx`, `jsx` | | comme `typescript` et `js`, et les balises de JSX, leurs attributs et leur code entre accolades |
+| `xml` | | les balises, les attributs, les entités, `CDATA` |
+| `yaml` | `yml` | les clés, les ancres `&a` et les alias `*a`, le texte indenté après `>` ou une barre verticale |
+| `zig` | | les textes `\\` jusqu'à la fin de la ligne, les builtins `@import` (les fonctions du compilateur) |
+
+Un langage que la table ne connaît pas est lu de la façon générique, pour qu'aucun bloc ne reste nu : les textes entre
+guillemets doubles, et entre guillemets simples quand aucune lettre ne se trouve juste avant le premier, comme dans
+don't ; les nombres ; et les commentaires dont les marques ne peuvent rien être d'autre, `#` ou `//` en tête de ligne, et
+`/* */` quand il se ferme. Un bloc `text` ou `output`, ou `txt`, `plain` et `plaintext`, est montré tel quel : c'est ce
+qu'un programme a écrit.
+
+Un bloc qui ne nomme aucun langage après sa fence est montré tel quel lui aussi, et la construction le nomme sur la sortie
+d'erreur, avec son fichier et sa ligne, puis continue : un livre qui se construisait se construit encore.
+
+![Un terminal : cesia doc --site écrit docs/book/index.md:32, la ligne d'un bloc qui ne nomme aucun langage, dit qu'il est montré sans couleurs et comment nommer son langage, puis écrit les 895 fichiers du site : la construction a continué.](../../book/images/colors-warning.png)
+
+Le livre de Cesia lui-même est tenu à plus : `tools/check.sh` et la CI du site lisent ce que la construction de son site
+écrit sur la sortie d'erreur, et s'arrêtent à cet avertissement. La règle est dans ces deux scripts du dépôt de Cesia,
+pas dans `cesia doc --site`, donc aucun autre projet n'échoue à cause d'elle.
 
 ### Formules
 

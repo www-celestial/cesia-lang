@@ -284,10 +284,17 @@
   allowed, its cookies sent, `peer` refused (the browser doesn't tell the address); `date.Local` is on the clock of the
   page; `encode.Hex` and so `std/encode`, `text.Bytes`, `FromBytes`, `PadLeft`, `PadRight`, `IsUtf8` and
   `ByteFindAny` compile.
-- `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
-  `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
-  comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
-  as it builds, with no script, in the time the site took before.
+- `cesia doc --site` colors a block of any language, a tab or not, with the colors of Cesia's code: keywords, called
+  names, texts, numbers, comments, and fields, which are the names after a dot as in Cesia, the keys of JSON, YAML, TOML
+  and INI, the variables of a shell and the properties of CSS. One small reader, set by a table, reads 52 languages fully,
+  under their names and the usual others, from `java`, `sql`, `rust`, `yaml` and `html` to `diff` and `console` (the
+  chapter Tests lists them), with what traps a simple reader: a lifetime `'a` of Rust or a type `'a` of OCaml, a `#` in an
+  address in a shell, a `//` in a text, nested comments, raw texts as `r#"..."#`, the code inside an f-string or a
+  template; and any other language the generic way, texts, numbers and the comments whose marks can't be anything else.
+  Every character of a block stays, in its order. It colors as the site builds, with no script, reading a block once:
+  1 MB of Python in 2.5 s. `text` and `output` stay as they are, and so does a block that names no language, which the
+  build names on the standard error with its file and line, then goes on, so that a book that built before still builds;
+  `tools/check.sh` and the CI of the site stop at one in Cesia's own book.
 - `std/markdown` writes images, `![what it shows](url "title")`, as CommonMark and GitHub do, the text between the
   brackets as the image's `alt`; an image leads only to http, https or a file of the site, never `javascript:` or
   `data:`. A hook `Image(url, alt, line)` gives its address; without it, an image takes the one `Url` gives.

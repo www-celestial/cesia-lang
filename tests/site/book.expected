@@ -212,8 +212,8 @@ SIL OPEN FONT LICENSE Version 1.1
 <pre><code class="cesia"><span class="k">use</span> std/http
 http.<span class="f">Serve</span>(http.<span class="f">App</span>(), port = <span class="m">8080</span>)</code></pre>
 </div>
-<div class="tab"><pre><code class="language-python"><span class="k">from</span> http.server <span class="k">import</span> HTTPServer, BaseHTTPRequestHandler
-<span class="n">HTTPServer</span>((<span class="s">&quot;127.0.0.1&quot;</span>, <span class="m">8080</span>), BaseHTTPRequestHandler).<span class="n">serve_forever</span>()</code></pre></div>
+<div class="tab"><pre><code class="language-python"><span class="k">from</span> http.<span class="f">server</span> <span class="k">import</span> HTTPServer, BaseHTTPRequestHandler
+<span class="n">HTTPServer</span>((<span class="s">&quot;127.0.0.1&quot;</span>, <span class="m">8080</span>), BaseHTTPRequestHandler).<span class="f">serve_forever</span>()</code></pre></div>
 </div>
 </main>
 <a href="readme.html">README</a>
