@@ -9,8 +9,8 @@ open Types
 type code = ..
 
 (** The modes: [off] ([--no-jit], [CESIA_JIT=off]), [hot], the default, and [always] ([CESIA_JIT=always]), which compiles
-    each candidate at its first call or run, for tests. [CESIA_JIT_SHOW=1] prints the MIR of each unit on stderr, and why
-    the JIT didn't load. *)
+    each candidate at its first call or run, for tests. [CESIA_JIT_SHOW=1] prints the MIR of each unit on stderr, why the
+    JIT didn't load, and why a hot version or loop stays interpreted when the reason has a name. *)
 val off : int
 
 val hot : int

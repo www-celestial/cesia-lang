@@ -1,0 +1,62 @@
+off:
+6000
+3000
+6000
+40000
+6000
+natives-deep.ce:20:1: Limit "depth" reached.
+  20 | defn deep(n)
+     | ^
+  in deep (natives-deep.ce:20)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  ... and 990 more
+default:
+6000
+3000
+6000
+40000
+6000
+natives-deep.ce:20:1: Limit "depth" reached.
+  20 | defn deep(n)
+     | ^
+  in deep (natives-deep.ce:20)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  ... and 990 more
+always:
+6000
+3000
+6000
+40000
+6000
+natives-deep.ce:20:1: Limit "depth" reached.
+  20 | defn deep(n)
+     | ^
+  in deep (natives-deep.ce:20)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  called from down (natives-deep.ce:17)
+  called from Down.len (natives-deep.ce:11)
+  called from deep (natives-deep.ce:23)
+  ... and 990 more
+machine code calls natives
+exit 0

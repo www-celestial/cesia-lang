@@ -2,8 +2,9 @@
 
     An int register holds 2n for the Cesia integer n, so that the processor's flag of 64-bit overflow tells exactly the
     63-bit overflow of OCaml's integers; a slot of the int stack holds 2n + 1, an OCaml integer. A float register holds a
-    double. A value register holds an OCaml value, a word of [Types.t]: native code never holds one across anything that
-    can collect, as nothing collects inside a run (allocations take room reserved before, see [Reserve]). *)
+    double. A value register holds an OCaml value, a word of [Types.t]. Native code allocates in room reserved before (see
+    [Reserve]), which never collects; only a call of OCaml ([Native]) can, and a unit that makes one keeps each value it
+    needs after such a call, or after a call of a function that may make one, as a local root of OCaml's ([Mirtext]). *)
 
 type kind = Kint | Kfloat | Kval
 
@@ -121,6 +122,18 @@ type ins =
           checked, room for the allocations after it; when the young heap lacks it, a region's statement bails to [k]
           ([room_code]), as the call itself would, and a nested frame or a version as a whole ([k] -1) stops
           ([room_out]) *)
+  | Value of int * int
+      (** [Value (r, c)]: the constant [c] of the unit's table itself, a value no run changes: a text, or a function of a
+          name never assigned again *)
+  | Num of int * value * unbox * int
+      (** [Num (r, v, how, site)]: the number in the value [v] that a native gave, which inference says is an Int
+          ([Only_int]) or a number ([Number], an Int made a float), as the interpreter's typed code takes it; any other is
+          its error at the site ([err_int], [err_float]), the value in the slot of [Not_bool] *)
+  | Native of int * int * value array * int
+      (** [Native (r, k, args, site)]: the native [k] of the unit's [natives], called with these values at the site, as
+          the interpreter calls it, its result in [r]. The call goes through OCaml ([Engine]), which may collect: in a
+          unit with one, the slow paths of [Reserve], [Recheck] and of a short stack collect or grow the stacks where
+          they are, and the run never starts again. An exception the native raises is the run's error ([err_native]) *)
 
 type term =
   | Jump of int
@@ -204,6 +217,7 @@ type func = {
          session can set in place, as a slider's number: each its register, loaded at the function's entry, and its
          number in the unit's [moving] *)
   moving : (int * int * kind) array;
+  natives : Types.native array;  (** of the unit's first function: the natives that [Native] calls, by number *)
       (* of the unit's first function: each variable of a module read from a slot by any function of the unit, by its
          number: module, cell, and the kind the code takes. [Engine] writes its value, checked of that kind, to the value
          slot [moved_at] + its number of the outermost frame before each run *)
@@ -237,6 +251,10 @@ let cx_young = 30
 let cx_result = 29
 (** The cell of that context where a function puts its result just before it returns: its one result is the fuel it
     leaves, or a negative one when it stopped, as Windows x86-64 gives a function only one. *)
+
+let cx_roots = 32
+(** The cell of that context where the C glue writes the address of OCaml's list of local roots, which a unit that calls
+    OCaml links its block of roots into around each call. *)
 
 let restored = 1 lsl 20
 
@@ -329,6 +347,12 @@ let err_write_nd = 10
 let err_cond = 16  (** a condition that is no Bool: the value in the slot of [Not_bool] *)
 
 let err_vec = 15
+
+let err_int = 19
+let err_float = 20
+
+let err_native = 18
+(** a native called by [Native] raised: [Engine] holds the exception, and the base of the frame where it was raised *)
 (** an index outside a small array kept in slots: [io_a] the index, [io_b] its rows, [io_ixs] its columns *)
 
 let written = 11
