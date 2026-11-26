@@ -1,9 +1,10 @@
-(** 100,000 calls of a C function bound with slow = true leave the memory as it was. Each runs on a domain, whose end
-    empties the young heap of every domain and, in OCaml 5.5, runs no slice of the major GC; the young heap, emptied at
-    each call, never got half full to ask for one, so the heap kept all that each end promoted, 0.6 KB a call, until
-    Par.join ran the slice itself. The RSS that /proc shows after 20,000 calls, which bring the heap to its size, then
-    after 100,000 more, which added 79 MB without the slice: OCaml 5.5 itself keeps 40 bytes of each domain, its stack
-    cache, which the OCaml after 5.5 frees, 4 MB of the 6 here. *)
+(** 100,000 calls of a C function bound with slow = true leave the memory as it was. Each ran on a domain of its own,
+    whose end empties the young heap of every domain and, in OCaml 5.5, runs no slice of the major GC; the young heap,
+    emptied at each call, never got half full to ask for one, so the heap kept all that each end promoted, 0.6 KB a call,
+    until Par.join ran the slice itself. Now the calls share a domain of the pool, which ends only once idle. The RSS
+    that /proc shows after 20,000 calls, which bring the heap to its size, then after 100,000 more, which added 79 MB
+    with a domain a call and no slice: OCaml 5.5 itself keeps 40 bytes of each domain, its stack cache, which the OCaml
+    after 5.5 frees. *)
 use std/c
 use std/io
 use std/result

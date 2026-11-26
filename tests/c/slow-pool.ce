@@ -1,0 +1,34 @@
+(** The domains of slow calls: a program has none before its first, and in a burst of calls, each less than 2 ms after
+    the end of the last, the domain of a call waits for the next, so a thousand calls in a row run on a few; past that
+    time without a call it leaves, and the program is back to its main domain alone. A signal still stops the program at
+    once while a domain waits: its signals are blocked, so they reach the scheduler. The threads that /proc lists: each
+    domain has the thread that runs it, and another that answers the runtime while the first waits. *)
+use std/c
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/value
+
+lib = result.Unwrap(c.Open(sys.Args[1]))
+spin = result.Unwrap(c.Fn("spin", ["i64"], "i64", lib, slow = true))
+threads() = result.Unwrap(sys.List("/proc/self/task"))
+
+before = threads()
+spin(1)
+seen = []
+for k in 1..1000
+  spin(1)
+  seen = list.Append(threads(), seen)
+end
+sys.Sleep(0.5)
+later = threads()
+others = list.Unique(list.Flatten([[t for t in s if value.IsMissing(list.IndexOf(t, later))] for s in seen]))
+io.Print("no domain before the first slow call:", value.Len(before) == 1)
+io.Print("a domain waits between the calls of a burst:", value.Len(others) > 0)
+io.Print("a thousand calls on a few domains:", value.Len(others) <= 40)
+io.Print("it leaves once idle:", value.Len(later) <= 2)
+spin(1)
+io.Print("started")
+sys.Sleep(20)
+io.Print("not stopped")

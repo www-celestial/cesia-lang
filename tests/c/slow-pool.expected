@@ -1,0 +1,6 @@
+no domain before the first slow call: true
+a domain waits between the calls of a burst: true
+a thousand calls on a few domains: true
+it leaves once idle: true
+started
+exit 143
