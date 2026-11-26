@@ -415,8 +415,9 @@ hot, donc un programme qui ne devient jamais hot ne le paie jamais.
 
 ### Quand le code devient hot
 
-- Une version d'une fonction dont l'inférence prouve que le résultat est un nombre, un entier ou un float, après
-  1 000 appels. Le haut d'un fichier, une cell ou du code tapé à un prompt n'en est jamais une : une fois qu'il a
+- Une version d'une fonction, quoi qu'elle donne, après 1 000 appels ; une qui donne une autre valeur qu'un nombre,
+  tant qu'aucune boucle hot ni version de nombres n'a chargé le JIT, après 16 000 (plus bas, *Les versions qui donnent
+  des valeurs*). Le haut d'un fichier, une cell ou du code tapé à un prompt n'en est jamais une : une fois qu'il a
   tourné, ses variables sont copiées de sa frame (la place de ses variables sur la pile) vers son module, où les autres
   fichiers, les fonctions définies ensuite et les variables d'une session les lisent, et du code machine de lui tout
   entier les garderait dans des registres, écrites dans la frame seulement à un checkpoint : sous `CESIA_JIT=always`,
@@ -1035,6 +1036,89 @@ L'interpréteur de Lua appelle `string.len` en 24 ns par tour, contre 27 pour Ce
 sa pile, là où celui de Cesia fait un array et les met dans des boîtes, comme une native les prend. Node et LuaJIT font
 de tels appels du code machine ; Cesia ne le fait que pour les natives que son JIT connaît.
 
+### Les versions qui donnent des valeurs
+
+Jusqu'au 25 novembre 2026, une version n'était du code machine entière que si l'inférence prouvait que son résultat est
+un nombre. Un test qui boucle et donne un Bool, comme `isPrime(k)`, une recherche qui donne un indice ou `missing`, une
+récursion qui fait des maps, restaient interprétés, et une boucle qui en appelait une aussi, car le code machine
+n'appelle que du code machine : autour de `if isPrime(k)`, `for k in 1..300000` tournait dans l'interpréteur, et chaque
+appel d'`isPrime` entrait dans le code machine pour son `while` et en sortait. Maintenant une version est candidate quoi
+qu'elle donne :
+
+- Ses variables sans type sont des valeurs dans des registres, comme ses paramètres et son résultat. Une valeur est
+  marquée partagée là où l'interpréteur la marque ([copy-on-write](#value-semantics-et-copy-on-write)) : quand une
+  variable en prend une qu'une autre variable, un champ ou une case tient, quand un `return` en donne une, et quand un
+  appel en passe une à un paramètre que la fonction appelée garde, comme un paramètre qu'elle rend. Le code machine
+  n'avait pas cette dernière marque, pour les appels qu'il inlinait aussi : après `q = same(p)`, avec `same(p) = p`,
+  `q.X = 5.0` changeait aussi `p`, dans le code machine seulement, un bug du JIT que `tests/jit/value-results.ce`
+  vérifie maintenant dans les trois modes.
+- Une valeur prise comme condition est testée comme `true` ou `false` ; toute autre est l'erreur de l'interpréteur à la
+  condition, avec son message : le code natif met la valeur dans un slot de la frame et donne le code de l'erreur, et le
+  test de l'interpréteur lui-même fait le message. Une valeur comparée à `missing`, `true` ou `false` est une
+  comparaison de deux mots.
+- L'appel d'une telle version par une boucle est un appel du code natif au code natif une fois que cette version se
+  lower (se traduit en IR), avec les versions qu'elle appelle. Un *dry lowering* (une traduction faite pour voir, puis
+  jetée) en décide avant que l'appel n'y engage son unité, pour qu'un appel que le code machine ne sait pas faire, dans
+  une branche que la boucle prend rarement, reste une instruction laissée à l'interpréteur. Une version dont le corps
+  appelle une native que le JIT ne fait pas, ou tient un texte fait de morceaux, un `match`, un `?`, un `in`, une
+  compréhension ou une fonction littérale, est refusée tout de suite, avant que les versions qu'elle appelle ne soient
+  traduites pour rien.
+
+Le difficile est la mémoire. Le code natif ne rappelle jamais OCaml, donc rien ne collecte pendant qu'il tourne : chaque
+tour d'une boucle *réserve* les mots qu'il va faire, et quand le minor heap (le petit tas où vont les nouveaux blocs) en
+manque, l'exécution sort, l'allocation de l'interpréteur collecte, et l'exécution revient. Une frame imbriquée, la frame
+d'un appel que fait le code natif, ne peut pas sortir, car les registres de son appelant seraient perdus. Une frame
+imbriquée à court de place *s'arrête* donc : l'appel d'une boucle revient alors à l'interpréteur, qui fait cette
+instruction, et la boucle continue en code machine à son tour suivant ; une version entière, appelée par l'interpréteur,
+tourne une fois de plus après une collection, et quand elle est encore à court, l'interpréteur fait l'appel depuis son
+début, avec les mêmes pas, puisque rien ne s'en est vu. Une version à court de place deux fois fait plus que ce que le
+minor heap tient entre deux collections : ses appels sont ceux de l'interpréteur ensuite. Pour que ces arrêts soient
+rares, une boucle dont les appels font des valeurs vérifie, à chaque tour, la place d'un huitième du minor heap en plus
+de ses propres mots, 262 144 mots une fois le tas agrandi, pour qu'une collection arrive au début d'un tour, où
+l'exécution peut sortir, plutôt qu'au fond d'une récursion. Et ce que le code natif fait après un appel vérifie sa place
+à nouveau, juste après cet appel, dont les frames imbriquées ont pu prendre ce que le tour avait vérifié : le fuzzer (un
+programme qui fabrique des programmes au hasard et compare les résultats) a trouvé ce cas, un arbre de maps fait par une
+récursion au-delà du minor heap, qui écrivait en dessous.
+
+Charger le JIT coûte environ une milliseconde. Un programme court qui appelle 1 500 fois une aide sur des textes,
+qu'aucun JIT ne compile, prenait 4,0 ms, et 5,0 une fois que de telles versions devenaient natives à 1 000 appels ; une
+version qui donne une valeur attend maintenant 16 000 appels tant que rien n'a chargé le JIT, et le programme prend 4,43
+ms, contre 4,39 avec le binaire de main (médianes de 21 exécutions). Et entrer dans le code natif depuis l'interpréteur
+coûtait environ 250 ns, surtout le travail du moteur lui-même avant et après une exécution, sur des tableaux qu'une
+version entière laisse vides ; une telle unité s'en passe maintenant, et l'entrée coûte environ 85 ns (10^6 appels d'une
+petite version qui en appelle une autre, depuis une boucle que l'interpréteur garde, contre l'interpréteur seul).
+
+Mesuré le 26 novembre 2026, profil `release`, 21 exécutions de chacun alternées avec le binaire de main, du début du
+processus à sa fin, pendant que d'autres travaux tournaient sur la machine (charge de 2,6 à 4,0) ; la médiane, puis
+l'exécution la plus rapide et la plus lente, en ms :
+
+| Programme | Avant | Maintenant | Interpréteur seul |
+|---|---:|---:|---:|
+| les nombres premiers sous 300 000, `isPrime(k)` un test qui boucle | 244,6 (233,6–321,5) | 159,0 (152,0–238,3) | 615,6 |
+| 20 000 arbres de 127 maps faits par une récursion, depuis une boucle | 131,7 (124,3–142,5) | 49,9 (42,6–62,8) | 114,8 |
+| la même récursion, 100 000 appels depuis une boucle que l'interpréteur garde | 283,1 (271,7–308,4) | 110,0 (103,2–134,2) | 286,0 |
+| une recherche qui donne un entier ou `missing`, 200 000 appels | 189,8 (178,7–236,5) | 113,1 (110,6–193,6) | 769,5 |
+
+Les programmes de `bench/` sont les mêmes qu'avant, dans le bruit : ils ne font pas de tels appels. À côté des géants,
+les mêmes programmes, le processus entier : les nombres premiers prennent 159 ms, contre Python 3.14 1 061, Node 26 110,
+Go 1.26 121, Lua 5.5 337 et LuaJIT 2.1 57 ; les arbres 49,9, contre Python 438, Node 80, Go 89, Lua 661 et LuaJIT 198.
+Node, Go et LuaJIT gagnent les nombres premiers : la boucle est une division, `math.Mod(n, d)`, à chaque tour, que Go et
+Cesia font sur 64 bits, Node sur 32 quand ses nombres y tiennent, et LuaJIT en floats ; Cesia vérifie aussi le
+dépassement de chaque `d * d` et compte ses pas. Les arbres sont à Cesia : une map est quelques mots pris au minor heap
+en déplaçant un pointeur, faite entière, donc sans write barrier (le travail que demande au collector l'écriture d'un
+pointeur dans un vieux bloc), et une exécution ne collecte rien avant sa fin.
+
+Ce qui garde encore une version dehors est dans la partie suivante. Le code d'un serveur en est le cas : le chemin d'une
+requête de Centauri, sa porte, sa session et sa route, appelle des natives à chaque pas, `dict.GetOr`, `text.Contains`,
+`sys.Now`, les fonctions de `std/http`, fait des textes et tient des closures (des fonctions qui gardent des variables
+d'ailleurs), et aucune de ses versions ne se lower, avant comme maintenant : une requête publique prend 19,2 µs, comme
+avec le binaire de main (médianes de 21 exécutions de 20 000 requêtes chacune, sans le réseau), et un serveur de
+Centauri répond à 13 000 requêtes de `/hello` par seconde sur un cœur, à côté de 28 000 pour `std/http` seul et de 28
+000 par cœur pour le `net/http` de Go. Le code natif devrait appeler OCaml pour elles, avec chaque valeur qu'il tient
+écrite dans la frame avant, car le collector peut la déplacer, les piles relues après, car un appel peut les agrandir,
+et une native qui attend, comme une fiber attend le réseau, jamais appelée de là, car une attente ne peut pas quitter
+une frame C : un appel d'OCaml depuis le code natif est du C, au-delà du budget de la colle.
+
 ### Le contrat
 
 Le même programme donne la même sortie, les mêmes erreurs aux mêmes lignes et les mêmes limites, dans l'interpréteur et
@@ -1066,6 +1150,12 @@ une différence est un bug du JIT.
 - une boucle du haut d'un fichier qui affecte une variable du module qu'une fonction qu'elle appelle, sans l'inliner
   (sans copier son corps sur place), lit : cette fonction lirait la variable dans son module pendant que le code machine
   la tient dans un registre ;
+- une version entière qui lit les champs de ses valeurs ou calcule avec des valeurs sans type : quand elle devient hot,
+  il n'y a pas de frame sur laquelle parier, et un pari qui échoue n'aurait pas d'autre retour que son appel entier ;
+  inlinée dans une boucle, son corps est fait avec les paris de la boucle ;
+- une version entière avec une boucle dont les appels font des valeurs, ou qui écrit dans un array : une frame imbriquée
+  à court de place ne pourrait pas revenir à l'interpréteur, qui ne reprend aucune fonction en son milieu ; ses boucles
+  ont leur propre code machine ;
 - sous un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables), les fonctions qui
   tiennent un breakpoint (une ligne où le programme doit s'arrêter) et le code que vous parcourez pas à pas ;
 - tout sur arm64, comme les puces d'Apple, pour l'instant : les programmes y tournent dans l'interpréteur, avec les mêmes

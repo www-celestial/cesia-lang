@@ -1,0 +1,8 @@
+(** For the tests that must name a port before their program runs, in a --allow or to another process: cesia run
+    --allow net=own free-port.ce prints a port of this machine that the system gave free, and closes it. A port written in
+    a test could be held by a server of another suite that runs beside it; a test that runs one program alone listens on
+    port 0 itself, and asks net.Port. *)
+use std/io
+use std/net
+
+io.Print(net.Port(net.Listen(0)!))

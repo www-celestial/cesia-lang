@@ -22,3 +22,7 @@ exception Unseen
     from a value slot that [Engine] writes before each run ([Ir.func.moving]), rather than taking its number as a
     constant. *)
 val mark : world -> int -> int -> unit
+
+(** Marks a version whose nested frames were short of room in the young heap: code lowered after calls it in the
+    interpreter. *)
+val starve : version -> unit

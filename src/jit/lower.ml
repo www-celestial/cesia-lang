@@ -112,6 +112,10 @@ and dyn = {
       (* where the statement starts: its block and the instructions before it there, where its copies go when needed *)
   mutable vars : int list;  (* the registers of the variables the statement may assign *)
   mutable need : int ref option;  (* the words of allocation since the last [Reserve] *)
+  mutable rechecks : int ref list;
+      (* the room checked again after each call since the last [Reserve], whose nested frames may have taken it
+         ([Ir.Recheck]): an allocation adds its words to each, as any of them may be the last on its way here *)
+  mutable stopless : bool;  (* a region's call since then that can't bail: no allocation may follow before the next *)
   consts : t Vec.t;
   mutable known : (int * int * int * int) list;
       (* in the block being built: a register of a map or struct already checked, its constant or -1 - its shape, and the
@@ -143,6 +147,12 @@ and dyn = {
 and unit_ = {
   versions : version Vec.t;
   moving : (int * int * Ir.kind) Vec.t;  (* the variables of modules read from slots in the unit, as [Ir.func.moving] *)
+  whole : bool;
+      (* its first function is a version as a whole, not a loop: a value read elsewhere is marked shared where the
+         interpreter marks it, as nothing writes it back *)
+  table : t Vec.t;
+      (* the constants of all its functions, one table, in the value slots of the outermost frame: a nested function
+         reads its own there *)
 }
 
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
@@ -189,6 +199,31 @@ let assigned ?(sets = true) ?cold acc e =
        true)
     e;
   !acc
+
+(* The natives the JIT makes itself, by name, as [call_expr] and [cond] take them. *)
+let known_natives =
+  [ "Div"; "Mod"; "Hypot"; "SinDegrees"; "CosDegrees"; "TanDegrees"; "Abs"; "Len"; "Sum"; "Max"; "Min"; "Kind"; "IsInt";
+    "IsFloat"; "IsNumber"; "IsText"; "IsArray"; "IsDict"; "IsFunction"; "IsBool"; "IsMissing"; "Float"; "Sqrt"; "Exp"; "Log";
+    "Sin"; "Cos"; "Tan"; "Asin"; "Acos"; "Atan"; "Log10"; "Log2"; "Log1p"; "Expm1"; "Sinh"; "Cosh"; "Tanh"; "Asinh";
+    "Acosh"; "Atanh" ]
+
+(* Does a version's body hold what a version as a whole never lowers: a call of a native the JIT doesn't make, a text
+   made of parts, a match, a ?, an in, a comprehension or a function literal. Looked at before its lowering, which would
+   lower the versions it calls first, to find it later. *)
+let hopeless (w : world) (b : block) =
+  let found = ref false in
+  let rec go (e : expr) =
+    if not !found then
+      match e.e with
+      | Interp _ | In_op _ | Question _ | Match _ | Comp _ | Lambda _ -> found := true
+      | Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args; _ } ->
+        (match w.modules.(m).cells.(k) with
+         | Native { nname; _ } when not (List.mem nname known_natives) -> found := true
+         | _ -> Array.iter (fun (a : arg) -> go a.value) args)
+      | _ -> walk (fun (x : expr) -> if x == e then true else (go x; false)) e
+  in
+  Array.iter go b;
+  !found
 
 (* The deepest nest of loops in [b]: 0 without a loop, 1 when every loop in it is innermost. *)
 let rec nest (b : block) =
@@ -297,6 +332,24 @@ let tick ?resume st l at =
   p
 
 let kind_of = function TI -> Ir.Kint | TF -> Ir.Kfloat | _ -> raise No
+
+(* The kind of a version's result: a number, or any other value, in a value register. *)
+let ret_kind = function TI -> Ir.Kint | TF -> Ir.Kfloat | _ -> Ir.Kval
+
+(* Does a version give a number. *)
+let gives_number (v : version) = v.ret == TI || v.ret == TF
+
+(* A dry lowering of a version as a nested function of a unit, with the versions it calls: whether it lowers, before a
+   call commits its unit to it. Set below, once [start] and [func] are defined. *)
+let dry : (world -> version -> bool) ref = ref (fun _ _ -> false)
+
+(* The versions whose nested frames were short of room in the young heap, which native code can't collect: their runs
+   make more than it holds between two collections, so a call of one stays the interpreter's. The last [most_starved]. *)
+let starved : version list ref = ref []
+let most_starved = 64
+
+let starve (v : version) =
+  if not (List.memq v !starved) then starved := v :: List.filteri (fun i _ -> i < most_starved - 1) !starved
 let ty st (e : expr) = st.ver.tn.(e.id)
 
 let plain st i =
@@ -534,13 +587,15 @@ let const st (v : t) =
   let rec find j = if j = Vec.length cs then (Vec.add_last cs v; j) else if same (Vec.get cs j) v then j else find (j + 1) in
   find 0
 
-(* Room for an allocation, in the words reserved at the last [Reserve]. *)
+(* Room for an allocation, in the words reserved at the last [Reserve], and in those checked again after each call since
+   ([Ir.Recheck]): conservative, each counts every allocation after it in the code. *)
 let alloc st words =
   match st.dyn.need with
-  | Some r ->
+  | Some r when not st.dyn.stopless ->
     r := !r + words;
+    List.iter (fun q -> q := !q + words) st.dyn.rechecks;
     if !r > 1024 then raise No
-  | None -> raise No
+  | _ -> raise No
 
 (* A number as a value: an Int or a Float, made in reserved room. *)
 let box st (x, k) =
@@ -617,6 +672,12 @@ let callee st (v : version) =
   let vs = st.unit.versions in
   let rec find i = if i = Vec.length vs then (Vec.add_last vs v; i) else if Vec.get vs i == v then i else find (i + 1) in
   find 1
+
+(* Is a version lowered in this unit already, or to be. *)
+let in_unit st (v : version) =
+  let vs = st.unit.versions in
+  let rec find i = i < Vec.length vs && (Vec.get vs i == v || find (i + 1)) in
+  find 0
 
 (* The outermost frame of a version calls its own nested copy instead of holding itself inlined: it runs once per call
    from the interpreter, and its code then costs MIR half the time to make. *)
@@ -1125,11 +1186,30 @@ and call_expr st e (call : call) =
        if v.state <> 2 then raise No;
        (* A default of a number only, which the callee's register then holds. *)
        Array.iteri (fun j t -> if t == TBot && v.tv.(j) != TI && v.tv.(j) != TF then raise No) sg;
-       let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && (v.ret == TI || v.ret == TF) in
-       (* Values in or out: only inlined, its body made here. *)
-       if not (numbers || (st.inl = [] && inlinable ~any:true v && not (own st v))) then raise No;
-       (* In the order of the parameters, as the interpreter's. *)
-       let vals = Array.map (Option.map (expr st)) slots in
+       let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && gives_number v in
+       let inlined = st.inl = [] && inlinable ~any:true v && not (own st v) in
+       (* Values in or out: inlined, its body made here, or called when it lowers, with the versions it calls; else the
+          call stays the interpreter's, as a statement it can't make. *)
+       if List.memq v !starved || not (numbers || inlined || in_unit st v || !dry st.w v) then raise No;
+       (* In the order of the parameters, as the interpreter's. A value for a parameter that the callee keeps, as one it
+          gives back, is marked shared when it is read elsewhere, as the interpreter's call shares it: two names then
+          hold it, and a write through one copies it first. *)
+       let vals =
+         Array.mapi
+           (fun j slot ->
+              Option.map
+                (fun (a : expr) ->
+                   match expr st a with
+                   | x, Ir.Kval ->
+                     (match a.e with
+                      | Var { b = Local _; _ } when not (Resolve.keeps proto.func j) -> ()
+                      | Var _ | Index _ | Field _ | Bang _ when not (number st x) -> emit st (Share x)
+                      | _ -> ());
+                     x, Ir.Kval
+                   | x -> x)
+                slot)
+           slots
+       in
        note st v;
        if st.inl = [] && inlinable ~any:true v && not (own st v) then
          inline_args st e v (Array.map (function Some x -> `S x | None -> `D) vals) None
@@ -1236,7 +1316,19 @@ and native_call st e (v : version) given =
   (* A parameter the call leaves out gets any number of its kind: the callee makes its default after its step. *)
   let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
   let call () =
-    fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back))
+    let r = fresh st (ret_kind v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back)) in
+    (* Its nested frames may take the room checked before: what is made after it checks again, at once, where the call
+       itself goes back: a region's statement bails as the call's would, a nested frame or a version as a whole stops;
+       after a region's call that can't bail, nothing is made. *)
+    (if st.dyn.need <> None then
+       let region = st.index = 0 && not st.unit.whole in
+       if region && back < 0 then st.dyn.stopless <- true
+       else begin
+         let q = ref 0 in
+         emit st (Ir.Recheck (q, if region then back else -1));
+         st.dyn.rechecks <- q :: st.dyn.rechecks
+       end);
+    r
   in
   let f = Cache.ready v.owner.func in
   let np = Array.length f.params in
@@ -1262,7 +1354,8 @@ and native_call st e (v : version) given =
   in
   match leaf with
   | Some (c, y)
-    when test c && simple y && Array.length args = np && (not f.has_self_tail) && List.for_all literal (List.init np Fun.id) ->
+    when test c && simple y && Array.length args = np && (not f.has_self_tail) && List.for_all literal (List.init np Fun.id)
+         && gives_number v && Array.for_all (fun j -> v.tv.(j) == TI || v.tv.(j) == TF) (Array.init np Fun.id) ->
     let k = kind_of v.ret in
     let r = reg st k and quick = block st and burn = block st and slow = block st and cont = block st in
     let base0 = facts st st.cur in
@@ -1336,6 +1429,12 @@ and cond st (e : expr) yes no =
     let x = truth st a in
     let y = truth st b in
     close st (Branch ((if op = Eq then Ir.Eq else Ne), Kint, x, y, yes, no))
+  (* A value against missing, true or false: words, equal only to themselves, as the interpreter's equality says. *)
+  | Bin (((Eq | Ne) as op), a, b) when (word b && snd (peek st a) = Ir.Kval) || (word a && snd (peek st b) = Ir.Kval) ->
+    (match expr st a, expr st b with
+     | (x, Ir.Kval), (y, Ir.Kval) -> close st (Branch ((if op = Eq then Ir.Eq else Ne), Kint, x, y, yes, no))
+     (* A number is none of them. *)
+     | _ -> close st (Jump (if op = Eq then no else yes)))
   | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) ->
     let op = match op with Lt -> Ir.Lt | Le -> Le | Gt -> Gt | Ge -> Ge | Eq -> Eq | _ -> Ne in
     let x = expr st a in
@@ -1379,12 +1478,11 @@ and cond st (e : expr) yes no =
         | _ -> is 257 yes no))
   (* A small function of one test, as isFinite(x) = value.IsNumber(x) and x - x == 0.0: its test made here. *)
   | Call ({ callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; self_tail = false; _ } as call)
-    when List.length st.inl < 2 && (match st.w.modules.(m).cells.(k) with Fun { env = [||]; _ } -> true | _ -> false) ->
+    when List.length st.inl < 2 && one_test st call <> None ->
     (match st.w.modules.(m).cells.(k) with
      | Fun { proto; _ } ->
        let a = args_of call proto.arity in
-       if Array.exists (fun (p : param) -> p.default <> None) proto.func.params then raise No;
-       let body = (match Lazy.force proto.func.body with [| { e = Return { rvalue = Some b; _ }; _ } |] | [| b |] -> b | _ -> raise No) in
+       let body = Option.get (one_test st call) in
        let v = Infer.version_for st.w proto (Array.map (ty st) a) in
        if v.state = 0 then Infer.run st.w v;
        if not (inlinable ~any:true v) || own st v then raise No;
@@ -1392,18 +1490,43 @@ and cond st (e : expr) yes no =
        note st v;
        inline_test st e v vals body yes no
      | _ -> raise No)
-  (* A value as a condition: true or false, else the interpreter says what it is. *)
-  | Var _ | Field _ | Index _ | Bang _ ->
+  (* A value as a condition: true or false, else the interpreter says what it is: in a region's loop, it does the
+     statement again; in a version as a whole, native code gives its error, at the condition. *)
+  | Var _ | Field _ | Index _ | Bang _ | Call _ ->
     (match expr st e with
      | x, Kval ->
-       let k = bail st and mid = block st and wrong = block st in
+       let mid = block st and wrong = block st in
+       let k = if st.dyn.bail <> None then Some (bail st) else None in
        close st (Branch (Eq, Kint, x, Word 5, yes, mid));
        st.cur <- mid;
        close st (Branch (Eq, Kint, x, Word 7, no, wrong));
        st.cur <- wrong;
-       close st (Bail k)
+       close st (match k with Some k -> Bail k | None -> Not_bool (x, site st e.pos))
      | _ -> raise No)
   | _ -> raise No
+
+(* The test of a small function whose body is one, as isFinite(x) = value.IsNumber(x) and x - x == 0.0, taken in
+   place: its body, when the call gives each parameter by its place. *)
+and one_test st (call : call) =
+  match call.callee.e with
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match st.w.modules.(m).cells.(k) with
+     | Fun { proto; env = [||] } when not (Array.exists (fun (p : param) -> p.default <> None) proto.func.params) ->
+       let b = match Lazy.force proto.func.body with [| { e = Return { rvalue = Some b; _ }; _ } |] | [| b |] -> Some b | _ -> None in
+       (match b with Some b when test_form st b -> Some b | _ -> None)
+     | _ -> None)
+  | _ -> None
+
+(* missing, true or false. *)
+and word (e : expr) = match e.e with Lmissing | Lbool _ -> true | _ -> false
+
+(* The kind an expression lowers to, without making it: only for a variable, else a value. *)
+and peek st (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when plain st i && st.regs.(i) >= 0 -> Ir.Reg st.regs.(i), Vec.get st.kinds st.regs.(i)
+  | Lint _ -> Ir.Int 0, Ir.Kint
+  | Lfloat _ -> Ir.Float 0., Ir.Kfloat
+  | _ -> (match ty st e with TI -> Ir.Int 0, Ir.Kint | TF -> Ir.Float 0., Ir.Kfloat | _ -> Ir.Int 0, Ir.Kval)
 
 (* What columns.Kind gives of a small array kept in slots or of an array of the region, known by its store. *)
 and store_kind st (call : call) =
@@ -1826,7 +1949,11 @@ and stmt st (e : expr) =
            nothing in native code changes it in place. *)
         (match expr st v with
          | x, Kval ->
-           (match v.e with Var _ | Index _ | Field _ | Bang _ when not (List.mem r st.dyn.lent) -> st.dyn.lent <- r :: st.dyn.lent | _ -> ());
+           (match v.e with
+            (* In a version as a whole, at once, as the interpreter's assignment: no run writes it back. *)
+            | (Var _ | Index _ | Field _ | Bang _) when st.index > 0 || st.unit.whole -> if not (number st x) then emit st (Share x)
+            | Var _ | Index _ | Field _ | Bang _ when not (List.mem r st.dyn.lent) -> st.dyn.lent <- r :: st.dyn.lent
+            | _ -> ());
            x
          | x -> box st x)
       | k when st.spec.(i) ->
@@ -1954,6 +2081,9 @@ and stmt st (e : expr) =
     (* A value, of a function whose result has no kind: stored, as the interpreter's return gives it. *)
     close st (Out (stored st v));
     st.cur <- block st
+  | Return { rvalue = Some v; _ } ->
+    give st (stored st v);
+    st.cur <- block st
   | Lint _ | Lfloat _ -> ()
   (* Native code runs no hook: a line with a breakpoint stays with the interpreter. *)
   | Hook h -> if Debug.armed st.w st.ver.owner.file (Pos.line e.pos) then raise No else st.live <- h.live
@@ -1978,9 +2108,16 @@ and inner_loop st f =
    and comes back once the interpreter's allocation collected, at [resume], a block before the loop that leads to the same
    place, else at a block of its own. *)
 and reserve ?resume st =
-  let l = match resume with Some l -> l | None -> let l = block st in goto st l; l in
   let need = ref 0 in
-  emit st (Reserve (need, point st l));
+  (* A nested frame can't leave for the collector: when the young heap lacks the room, it stops, and the call goes back
+     to the interpreter. *)
+  if st.index > 0 then emit st (Reserve (need, -1))
+  else begin
+    let l = match resume with Some l -> l | None -> let l = block st in goto st l; l in
+    emit st (Reserve (need, point st l))
+  end;
+  st.dyn.rechecks <- [];
+  st.dyn.stopless <- false;
   st.dyn.need <- Some need
 
 (* Can these statements allocate, outside the loops inside them: a map or struct made, a number stored as a value. *)
@@ -1989,7 +2126,8 @@ and allocates st (b : block) =
     match e.e with
     | Struct_lit _ -> true
     | Bin (_, x, y) | And (x, y) | Or (x, y) -> made x || made y
-    | Neg x | Not x | Field (x, _) | Bang x | Return { rvalue = Some x; _ } -> made x
+    | Return { rvalue = Some x; _ } -> made x || not (st.region || gives_number st.ver)
+    | Neg x | Not x | Field (x, _) | Bang x -> made x
     | If (c, y, n) -> made c || Array.exists made y || Array.exists made n
     | Index (x, a, _) -> made x || Array.exists (function Ix i -> made i | All -> false) a
     | Call c ->
@@ -2488,6 +2626,9 @@ and tail st (e : expr) =
     emit st (Ir.Tick (point st st.body, outer st, entry_step st st.inl st.ver));
     close st (Jump st.body)
   | _ when st.vret <> None -> vgive st (vexpr st e)
+  (* A value given in tail position, as the interpreter's: a local variable dies with the frame and stays owned; one read
+     elsewhere is marked shared. *)
+  | (Var { b = Cell _; _ } | Index _ | Field _ | Bang _) when st.ret_to = None && not (gives_number st.ver) -> give st (stored st e)
   | _ -> result st (expr st e)
 
 (* A value the body gives: of the kind of its version's result; inlined, where the version's result has no kind, of the
@@ -2498,8 +2639,10 @@ and result st (x, xk) =
     let r = reg st xk in
     st.ret_to <- Some (r, cont);
     give st x
-  | Some (r, _) when st.ver.ret != TI && st.ver.ret != TF -> if Vec.get st.kinds r <> xk then raise No else give st x
-  | _ -> give st (convert st (kind_of st.ver.ret) (x, xk))
+  | Some (r, _) when not (gives_number st.ver) -> if Vec.get st.kinds r <> xk then raise No else give st x
+  | _ when gives_number st.ver -> give st (convert st (kind_of st.ver.ret) (x, xk))
+  (* A version whose result has no kind gives a value: a number boxed. *)
+  | _ -> give st (match xk with Ir.Kval -> x | _ -> box st (x, xk))
 
 (* The end of a body: its result, or, inlined, the result in its register and on to the block after. *)
 and give st v =
@@ -2544,7 +2687,9 @@ let rec func st name =
      A self tail call gives every argument: it comes back after them. One kept as an array of floats, read from its
      slot, stays interpreted. *)
   let omitted = List.filter (fun j -> ver.sg.(j) == TBot) (List.init (Array.length f.params) Fun.id) in
-  if omitted = [] then ignore (tick st body (entry_step st st.inl ver))
+  (* The point after the frame's step, at its body when no default is made: where the room of the body is checked too. *)
+  let at_body = ref (-1) in
+  if omitted = [] then at_body := tick st body (entry_step st st.inl ver)
   else begin
     ignore (tick st (block st) (entry_step st st.inl ver));
     List.iter
@@ -2556,7 +2701,16 @@ let rec func st name =
       omitted;
     goto st body
   end;
+  (* The outermost frame of a version as a whole has room for what its body makes, outside its loops, checked at the
+     start of its body, where a run that lacks it comes back once the interpreter's allocation collected. *)
+  let need = ref 0 in
+  if not st.region then st.dyn.need <- Some need;
   tail_block st (Lazy.force f.body);
+  (* With calls, the outermost frame checks room for what their nested frames make too ([Engine.make]). *)
+  if !need > 0 || (st.index = 0 && (not st.region) && st.ncalls > 0) then begin
+    let b = Vec.get st.blocks body in
+    b.ins <- b.ins @ [ Ir.Reserve (need, if st.index > 0 then -1 else if !at_body >= 0 then !at_body else point st body) ]
+  end;
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)
   let params = List.filter_map (fun j -> if st.regs.(j) >= 0 then Some (var_of j) else None) (List.init (Array.length f.params) Fun.id) in
@@ -2584,7 +2738,7 @@ and finish ?(numbers = []) ?(sunk = []) ?(globals = []) st name ~params ~vars =
       (List.mapi (fun i v -> i, v) (Array.to_list st.vecs))
   in
   let n_hidden = n_hidden + vslots in
-  ( { Ir.name; params = Array.of_list params; result = (if st.region then Kint else kind_of ver.ret);
+  ( { Ir.name; params = Array.of_list params; result = (if st.region then Kint else ret_kind ver.ret);
       vars = Array.of_list (vars @ hidden); arrays = Vec.to_array st.arr; kinds = Vec.to_array st.kinds; blocks;
       resumes = Vec.to_array st.resumes; frame = ver.frame;
       size = ver.frame + max n_hidden (Vec.length st.dyn.consts + 1) + 2; hidden = n_hidden;
@@ -2595,7 +2749,7 @@ and finish ?(numbers = []) ?(sunk = []) ?(globals = []) st name ~params ~vars =
       (* An error writes a module's variables back to their cells too: one the code had assigned keeps that number. *)
       spills = st.w.hooks || globals <> []; globals = Array.of_list globals;
       stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent;
-      sunk = Array.of_list sunk; points = Vec.to_array st.dyn.points; vslots; vecs = Array.of_list vecs;
+      sunk = Array.of_list sunk; points = Vec.to_array st.dyn.points; looped = Vec.length st.infos > 0 || st.f.has_self_tail; ver; vslots; vecs = Array.of_list vecs;
       cells = Array.of_list st.dyn.cells; moved = Array.of_list st.dyn.moved; moving = [||] },
     Vec.to_array st.sites )
 
@@ -2717,7 +2871,7 @@ let numeric ?cold (loop : expr) i kept cells =
 let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) unit index (ver : version) =
   let f = Cache.ready ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
-  if (not region) && ver.ret != TI && ver.ret != TF then raise No;
+  if (not region) && (ver.ret == TBot || hopeless w (Lazy.force f.body)) then raise No;
   (* A whole function in native code skips the checks of its parameters' and result's types. *)
   if (not region) && Compile.checks ver then raise No;
   let kinds = Vec.create () in
@@ -2791,6 +2945,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
         regs.(i) <- Vec.push kinds (Option.value number ~default:Ir.Kval);
         spec.(i) <- number <> None
       end
+    (* A version as a whole: a variable of no type is a value in a register, as the interpreter's slot holds it. *)
+    | TA when (not region) && plain i -> regs.(i) <- Vec.push kinds Ir.Kval
     | _ -> ()
   done;
   (* A map read from a list of values for its fields only, as a map of floats now: kept as its values. *)
@@ -2867,7 +3023,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
     fast = Hashtbl.create 1; twins = Hashtbl.create 8; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
     fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1); globals;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
-            vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
+            vars = []; need = None; rechecks = []; stopless = false; consts = unit.table; known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
             inside = []; points = Vec.create (); copies = (false, false); colds = []; dead = false; starts = []; vslots = !vs; cells = [];
             moved = [] } }
 
@@ -2883,7 +3039,7 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
 
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
 let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
-  let u = { versions = Vec.create (); moving = Vec.create () } in
+  let u = { versions = Vec.create (); moving = Vec.create (); whole = first = None; table = Vec.create () } in
   Vec.add_last u.versions ver;
   let out = Vec.create () in
   match
@@ -2902,6 +3058,9 @@ let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
     let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     let fns = Array.map fst fs in
+    (* The constants of every function, in the outermost frame's value slots, after its frame. *)
+    let table = Vec.to_array u.table in
+    fns.(0) <- { (fns.(0)) with consts = table; size = max fns.(0).size (fns.(0).frame + Array.length table + 3) };
     (* The variables read from slots anywhere in the unit, in value slots of the outermost frame after its own. *)
     if Vec.length u.moving > 0 then begin
       let moving = Vec.to_array u.moving and f0 = fns.(0) in
@@ -2912,6 +3071,30 @@ let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
   | exception Unseen when ctx = None -> None
 
 let unit (w : world) (ver : version) = lower_unit w ver None
+
+(* A version and those it calls, lowered as nested functions of a unit of their own and dropped: at most [dry_most] of
+   them, else no. *)
+let dry_most = 16
+
+(* The versions a dry lowering refused, the last [dry_most_kept] of a world: each call of one is the interpreter's at once,
+   not lowered again with all it calls. A refusal is kept, not a success, which a unit then checks by lowering. *)
+let dry_refused : (world option * version list) ref = ref (None, [])
+let dry_most_kept = 256
+
+let () =
+  dry :=
+    fun w v ->
+      (match fst !dry_refused with Some x when x == w -> () | _ -> dry_refused := (Some w, []));
+      if List.memq v (snd !dry_refused) then false
+      else begin
+        let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create () } in
+        Vec.add_last u.versions v;
+        Vec.add_last u.versions v;
+        let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in
+        let ok = try go 1 with No | Unseen | Respec _ | Cold _ -> false in
+        if not ok then dry_refused := (Some w, v :: List.filteri (fun i _ -> i < dry_most_kept - 1) (snd !dry_refused));
+        ok
+      end
 
 (* A loop of a version, alone: it is entered at its start, its counter and bound already in their slots, or after the
    step of an iteration, and it ends at [Done] with every variable back in its slot. The first two hidden slots are its

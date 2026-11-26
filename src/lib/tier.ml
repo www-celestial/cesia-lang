@@ -11,9 +11,9 @@ let mode = ref hot
    reload; a version's native code as a whole would go on with the old code to its end. *)
 let watching = ref false
 
-(* A version runs natively after this many calls; a loop after this many checkpoints inside it. *)
+(* A version runs natively after this many calls, 16 times as many for a value while the JIT isn't loaded. *)
 let calls_before = 1000
-let checkpoints_before = 2
+let checkpoints_before = 2  (* and a loop after this many checkpoints inside it *)
 
 type loop = {
   mutable seen : int;
@@ -126,7 +126,7 @@ let free (w : world) = (not w.hooks) || (w.debug.mode == Running && not w.debug.
    ([Compile.run_main]), and such code keeps them in registers, written to the frame only at a checkpoint, so the cells
    would get the numbers of the last one. Its loops get regions, which write them back when they end. *)
 let watch (w : world) (ver : version) =
-  if on () && (ver.ret == TI || ver.ret == TF) && ver.owner.func.export_of = [||] then begin
+  if on () && ver.ret != TBot && ver.owner.func.export_of = [||] then begin
     let ri = ver.ri and rf = ver.rf and rv = ver.rv in
     let promote () =
       ver.ri <- ri;
@@ -134,10 +134,10 @@ let watch (w : world) (ver : version) =
       ver.rv <- rv;
       match loaded () with Some j -> j.promote w ver | None -> ()
     in
-    let calls = ref 0 in
+    let calls = ref 0 and soon () = !mode = always || ver.ret == TI || ver.ret == TF || Option.is_some !jit in
     let due () =
       incr calls;
-      if !calls >= (if !mode = always then 1 else calls_before) && free w then (promote (); true) else false
+      if (!calls >= calls_before || !mode = always) && (soon () || !calls >= 16 * calls_before) && free w then (promote (); true) else false
     in
     ver.ri <- (fun ctx -> if due () then ver.ri ctx else ri ctx);
     ver.rf <- (fun ctx -> if due () then ver.rf ctx else rf ctx);

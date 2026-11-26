@@ -14,9 +14,10 @@ defn keepWriting(c, n)
   end
 end
 
-listener = result.Unwrap(net.Listen(18082))
+listener = result.Unwrap(net.Listen(0))
+port = net.Port(listener)
 server = fiber.Spawn(() -> net.Accept(listener) then result.AndThen(c -> keepWriting(c, 200)))
 sys.Sleep(0)
-net.Close(result.Unwrap(net.Connect("127.0.0.1", 18082)))
+net.Close(result.Unwrap(net.Connect("127.0.0.1", port)))
 io.Print(result.Unwrap(fiber.Wait(server)) then result.MapErr(it.Kind))
 io.Print("alive")

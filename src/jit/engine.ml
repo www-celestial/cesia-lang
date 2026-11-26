@@ -14,6 +14,8 @@ type code = {
   mutable mir : nativeint;  (* the context of MIR that holds the code at [addr] *)
   mutable tier : tier;
   fn : Ir.func;  (* the unit's first function, whose frame is the interpreter's *)
+  vers : version array;  (* the version of each function of the unit *)
+  plain : bool;  (* nothing kept as a number, a map's values or a small array, no variable of a module: none to check *)
   ret : Ir.kind;  (* the kind of the version's result *)
   pure : bool;
   calls : bool;
@@ -26,6 +28,8 @@ type code = {
   mutable bails : int;  (* the runs that a failed guard sent back to the interpreter *)
   mutable colds : int;  (* the runs that ended for the interpreter to make a statement left to it *)
   mutable spent : int;  (* the steps of all its runs *)
+  mutable rooms : int;
+      (* the calls of a version as a whole that the interpreter made, its nested frames short of room twice *)
   worth : int;  (* the steps of native code that take about as long as making it: once its runs took them, it paid *)
   cells : (int * int * t) array;  (* the variables of modules that any function of the unit took as constants *)
   points : int array;  (* the sites a limit of steps names, as [Mirtext.text]'s: at a tick that leaves *)
@@ -92,12 +96,36 @@ let bug = function
     if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ Printexc.to_string e);
     true
 
+(* The words of the young heap that a unit whose nested frames allocate wants free where its outermost frame checks room:
+   an eighth of the young heap as it is when the unit is made, 2^21 words from the interpreter's first checkpoint on, so
+   that a collection always makes that room. *)
+let margin () = (Gc.get ()).minor_heap_size / 8
+
+(* Does a function reserve room, which a nested frame can't leave for. *)
+let reserves (f : Ir.func) =
+  Array.exists (fun (b : Ir.block) -> List.exists (function Ir.Reserve (n, _) -> !n > 0 | _ -> false) b.ins) f.blocks
+
+(* Does a function check room after a call, which stops a frame or a version as a whole. *)
+let rooms (f : Ir.func) =
+  Array.exists (fun (b : Ir.block) -> List.exists (function Ir.Recheck (n, k) -> !n > 0 && k < 0 | _ -> false) b.ins) f.blocks
+
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
+  (* A nested frame short of room stops the run: a region's call then bails, and the interpreter makes its statement; a
+     version as a whole goes back to the interpreter, which makes the call from its start, so its own frame must write
+     nothing that shows and come back to its body at no point but its start. *)
+  let nested_room = Array.exists reserves (Array.sub fns 1 (Array.length fns - 1)) || Array.exists rooms fns in
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
        come back through a call of the first function. *)
     if calls && (not pure) && fns.(0).loose then None
+    else if nested_room && (if loops = [||] then fns.(0).looped || not pure else fns.(0).loose) then None
     else begin
+      (* The room the outermost frame checks at its start and at each turn of its loops covers what nested frames make
+         then, up to [margin] words: a run comes back there after a collection rather than short in a nested frame. *)
+      if nested_room then begin
+        let margin = margin () in
+        Array.iter (fun (b : Ir.block) -> List.iter (function Ir.Reserve (n, p) when p >= 0 -> n := !n + margin | _ -> ()) b.ins) fns.(0).blocks
+      end;
       match
         let { Mirtext.text; entry; points; ticks; entries } = Mirtext.emit fns in
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
@@ -112,9 +140,13 @@ let make (w : world) (ver : version) fns start loops =
         let worth = lines * steps_per_line in
         let hot_at = if !Tier.mode = Tier.always then 0 else worth in
         let code =
-          { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint);
+          { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; vers = Array.map (fun (f : Ir.func) -> f.ver) fns;
+            plain =
+              fn.numbers = [||] && fn.sunk = [||] && fn.globals = [||] && fn.vecs = [||] && fn.moving = [||]
+              && Array.for_all (fun (f : Ir.func) -> f.cells = [||]) fns;
+            ret = (match ver.ret with TF -> Kfloat | TI -> Kint | _ -> Kval);
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
-            need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; worth;
+            need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; rooms = 0; worth;
             cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
             last = Array.make (Array.length fn.moving) Missing; points; ticks; entries }
         in
@@ -173,14 +205,10 @@ let numbers_fit ?(cells = true) (ctx : ctx) code =
 (* A status after which the run wrote its variables back to their slots. *)
 let wrote (fn : Ir.func) st = st = Ir.ok || st = Ir.fuel_out || st = Ir.bailed || st = Ir.gc || (st = Ir.error && fn.spills)
 
-(* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
-   comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
-   slots before, and boxed back after a run that wrote them. A [stale] run goes on after a checkpoint where a variable of
-   a module changed out of what the code takes: with the numbers the run started with. *)
-let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
+(* What a run takes from the frame before it starts: the variables kept as numbers unboxed into their hidden slots, the
+   maps kept as their values, the variables of modules in registers, the small arrays in slots. *)
+let unboxed (ctx : ctx) code =
   let b = ctx.b and w = ctx.w in
-  if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
-  if not (numbers_fit ~cells:(not stale) ctx code) then Ir.fallback else begin
   Array.iter
     (fun ((v : Ir.var), slot, flag) ->
        if flag >= 0 then ctx.i.(b + flag) <- 0;
@@ -212,7 +240,48 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
        match ctx.v.(b + slot) with
        | Array { store = F d; _ } as a when vec_fits a rows cols -> Float.Array.blit d 0 ctx.f (b + first) (rows * cols)
        | _ -> Float.Array.fill ctx.f (b + first) (rows * cols) 0.)
-    code.fn.vecs;
+    code.fn.vecs
+
+(* What a run that wrote its variables back gives the frame: each of those, boxed or made again. *)
+let boxed (ctx : ctx) code =
+  let b = ctx.b and w = ctx.w in
+  Array.iter
+    (fun ((v : Ir.var), slot, flag) ->
+       if flag < 0 || ctx.i.(b + flag) <> 0 then
+       ctx.v.(b + slot) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
+    code.fn.numbers;
+  Array.iter
+    (fun (parts, slot, carrier) ->
+       let floats n = F (Float.Array.sub ctx.f (b + parts) n) in
+       ctx.v.(b + slot) <-
+         (match carrier with
+          | Struct { shape; _ } -> Struct { shape; fields = floats (Array.length shape.names); r_owned = true }
+          | Dict { keys; _ } -> Dict { keys; vals = floats (Array.length keys.ks); d_owned = true }
+          | v -> v))
+    code.fn.sunk;
+  Array.iter
+    (fun ((v : Ir.var), m, k) ->
+       w.modules.(m).cells.(k) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
+    code.fn.globals;
+  Array.iter
+    (fun (first, slot, rows, cols, flag) ->
+       (* -2: one the loop only reads, still in its slot. *)
+       if flag = -1 || (flag >= 0 && ctx.i.(b + flag) <> 0) then
+         ctx.v.(b + slot) <- Arrays.of_float rows cols (Float.Array.sub ctx.f (b + first) (rows * cols)))
+    code.fn.vecs
+
+let imin (a : int) b = if a < b then a else b
+
+(* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
+   comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
+   slots before, and boxed back after a run that wrote them. A [stale] run goes on after a checkpoint where a variable of
+   a module changed out of what the code takes: with the numbers the run started with. A [plain] unit, as most versions
+   as a whole are, has none of them, and none to check. *)
+let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
+  let b = ctx.b and w = ctx.w in
+  if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
+  if (not code.plain) && not (numbers_fit ~cells:(not stale) ctx code) then Ir.fallback else begin
+  if not code.plain then unboxed ctx code;
   io.(Ir.io_code) <- 0;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
   let fuel0 = ctx.fuel in
@@ -235,53 +304,33 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
     end
   in
   io.(Ir.io_mem) <- mem;
-  io.(Ir.io_lim) <- min (min (ctx.cap - 2) depth) mem;
+  io.(Ir.io_lim) <- imin (imin (ctx.cap - 2) depth) mem;
   io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else w.steps_left - (ctx.refill - fuel0));
   io.(Ir.io_until) <- ctx.until - (ctx.refill - fuel0);
   io.(Ir.io_leave) <- (if leave then 1 else 0);
   (* The constants whose first field native code reads, after the frame, where nothing else is while it runs. *)
-  Array.iteri (fun j c -> ctx.v.(b + code.fn.frame + j) <- c) code.fn.consts;
+  let consts = code.fn.consts in
+  for j = 0 to Array.length consts - 1 do ctx.v.(b + code.fn.frame + j) <- consts.(j) done;
   (* The variables of modules read from slots, each of its kind, after them: native code reads them at its entry. *)
-  let at = Ir.moved_at code.fn in
-  Array.iteri
-    (fun j (m, k, _) ->
-       if not stale then code.last.(j) <- w.modules.(m).cells.(k);
-       ctx.v.(b + at + j) <- code.last.(j))
-    code.fn.moving;
+  if not code.plain then begin
+    let at = Ir.moved_at code.fn in
+    Array.iteri
+      (fun j (m, k, _) ->
+         if not stale then code.last.(j) <- w.modules.(m).cells.(k);
+         ctx.v.(b + at + j) <- code.last.(j))
+      code.fn.moving
+  end;
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
-  if wrote code.fn st then
-    Array.iter
-      (fun ((v : Ir.var), slot, flag) ->
-         if flag < 0 || ctx.i.(b + flag) <> 0 then
-         ctx.v.(b + slot) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
-      code.fn.numbers;
-  if wrote code.fn st then
-    Array.iter
-      (fun (parts, slot, carrier) ->
-         let floats n = F (Float.Array.sub ctx.f (b + parts) n) in
-         ctx.v.(b + slot) <-
-           (match carrier with
-            | Struct { shape; _ } -> Struct { shape; fields = floats (Array.length shape.names); r_owned = true }
-            | Dict { keys; _ } -> Dict { keys; vals = floats (Array.length keys.ks); d_owned = true }
-            | v -> v))
-      code.fn.sunk;
-  if wrote code.fn st then
-    Array.iter
-      (fun ((v : Ir.var), m, k) ->
-         w.modules.(m).cells.(k) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
-      code.fn.globals;
-  if wrote code.fn st then
-    Array.iter
-      (fun (first, slot, rows, cols, flag) ->
-         (* -2: one the loop only reads, still in its slot. *)
-         if flag = -1 || (flag >= 0 && ctx.i.(b + flag) <> 0) then
-           ctx.v.(b + slot) <- Arrays.of_float rows cols (Float.Array.sub ctx.f (b + first) (rows * cols)))
-      code.fn.vecs;
+  if (not code.plain) && wrote code.fn st then boxed ctx code;
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
-    Runtime.grow ctx (max (ctx.cap + 1) (min (2 * ctx.cap) (depth + 2)));
+    Runtime.grow ctx (max (ctx.cap + 1) (imin (2 * ctx.cap) (depth + 2)));
     run ~leave ~stale ctx code entry
+  end else if st = Ir.room_out then begin
+    (* A nested frame short of room: what the run did shows nowhere, its steps are not counted. *)
+    ctx.fuel <- fuel0;
+    st
   end else if st = Ir.frames_out then begin
     (* As the interpreter's call: the stacks grow, the frame entered, so that a limit reached names it; then the run starts
        again, as nothing it wrote shows. *)
@@ -300,7 +349,7 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
     (match code.tier with
      | Level1 l ->
        (* Stops at [hot_at]: no overflow, however long the wait for another unit's level 2. *)
-       l.steps <- min l.hot_at (l.steps + spent);
+       l.steps <- imin l.hot_at (l.steps + spent);
        if l.steps >= l.hot_at then rise code l.text l.entry
      | Making | Final -> ());
     st
@@ -317,7 +366,8 @@ let rec room n =
 
 (* An error of native code: the interpreter does the operation again, at the same site and on the same frames, so its
    message and trace are the interpreter's own. *)
-let fail (ctx : ctx) =
+let fail (ctx : ctx) (c : code) =
+  let b0 = io.(Ir.io_base) in
   ctx.b <- io.(Ir.io_frame);
   ctx.site <- io.(Ir.io_point);
   let a = io.(Ir.io_a) and b = io.(Ir.io_b) and code = io.(Ir.io_code) in
@@ -332,6 +382,13 @@ let fail (ctx : ctx) =
     (* As the interpreter's write: the array owned, so copied when shared, then the write, which fails. *)
     let top = Runtime.own ctx ctx.v.(ctx.b + b) in
     Arrays.write ctx top [| Arrays.At a |] (Float 0.)
+  end
+  else if code = Ir.err_cond then begin
+    (* As the interpreter's test of a condition: the value, from the slot native code put it in. *)
+    let slot = b0 + Ir.moved_at c.fn - 1 in
+    let v = ctx.v.(slot) in
+    ctx.v.(slot) <- Missing;
+    Runtime.fail ctx Type (Messages.condition (Value.describe v))
   end
   else if code = Ir.err_vec then begin
     (* A small array kept in slots: one of its shape says the same. *)
@@ -368,7 +425,7 @@ let root_point code = match code.loops with [||] -> -1 | a -> let _, _, _, p = a
    native code goes on to that step first; a whole version's native code goes on to its end, and its next call is the
    interpreter's. *)
 let go (ctx : ctx) code entry =
-  let rec again ?(leave = false) ?(stale = false) entry first =
+  let rec again ?(leave = false) ?(stale = false) ?(short = false) entry first =
     settle ();
     let st = run ~leave ~stale ctx code entry in
     if st = Ir.fuel_out then begin
@@ -385,10 +442,24 @@ let go (ctx : ctx) code entry =
       else again ~leave:(root_point code >= 0) ~stale:moved (p + 1) false
     end
     else if st = Ir.gc then begin
-      room io.(Ir.io_a);
+      if io.(Ir.io_a) > 4096 then Gc.minor () else room io.(Ir.io_a);
       again (io.(Ir.io_point) + 1) false
     end
-    else if st = Ir.error then fail ctx
+    else if st = Ir.room_out then begin
+      (* A nested frame of a version as a whole was short of room in the young heap: once more on an empty one, unless a
+         call of it was short there before; short again, the call goes back to the interpreter, from its start, the only
+         point where such a version's run comes back: the frame's own step is the call's, counted before native code. *)
+      if not short && code.rooms = 0 then begin
+        Gc.minor ();
+        again ~short:true entry first
+      end else begin
+        code.rooms <- code.rooms + 1;
+        Lower.starve code.vers.(io.(Ir.io_b));
+        if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ code.vers.(io.(Ir.io_b)).owner.pname ^ " short of room, a call made by the interpreter");
+        st
+      end
+    end
+    else if st = Ir.error then fail ctx code
     else if st = Ir.too_deep then begin
       ctx.b <- io.(Ir.io_frame);
       Runtime.limit "depth" (Hashtbl.find code.entries io.(Ir.io_point))
@@ -402,27 +473,42 @@ let go (ctx : ctx) code entry =
   in
   again entry true
 
+(* A version whose calls the interpreter made this many times, its nested frames short of room, is the interpreter's: its
+   runs make more than the young heap holds between two collections. *)
+let most_rooms = 4
+
 let result_float (ctx : ctx) code = Float.Array.get ctx.f (ctx.b + code.fn.frame)
 
 let int_entry code ri (ctx : ctx) =
-  if ctx.w.reloads <> code.reloads then ri ctx
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then ri ctx
   else if go ctx code 1 = Ir.ok then io.(Ir.io_int)
   else ri ctx
 
 let float_entry code rf (ctx : ctx) =
-  if ctx.w.reloads <> code.reloads then rf ctx
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then rf ctx
   else if go ctx code 1 = Ir.ok then result_float ctx code
   else rf ctx
 
+(* A value given: in the value slot after the constants, which then lets it go. *)
+let value_entry code rv (ctx : ctx) =
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then rv ctx
+  else if go ctx code 1 = Ir.ok then begin
+    let slot = ctx.b + code.fn.frame + Array.length code.fn.consts in
+    let v = ctx.v.(slot) in
+    ctx.v.(slot) <- Missing;
+    v
+  end
+  else rv ctx
+
 (* A version hot as a whole: its entries go native when it lowers. [Tier] put back its interpreted entries first. *)
 let promote (w : world) (ver : version) =
-  let ri = ver.ri and rf = ver.rf in
+  let ri = ver.ri and rf = ver.rf and rv = ver.rv in
   match Lower.unit w ver with
   | exception e when bug e -> ()
   | None -> ()
   (* A body without a loop or a call is as fast interpreted as the way in and out of native code. *)
-  | Some fns when not (fns.(0).calls || Array.length fns.(0).resumes > 1) -> ()
-  | Some fns when !Tier.watching && Array.length fns.(0).resumes > 1 -> ()
+  | Some fns when not (fns.(0).calls || fns.(0).looped) -> ()
+  | Some fns when !Tier.watching && fns.(0).looped -> ()
   | Some fns ->
     (match make w ver fns 0 [||] with
      | None -> ()
@@ -432,11 +518,11 @@ let promote (w : world) (ver : version) =
          ver.ri <- ri';
          ver.rv <- (fun ctx -> Int (ri' ctx));
          ver.rf <- (fun ctx -> float_of_int (ri' ctx))
-       end else begin
+       end else if ver.ret == TF then begin
          let rf' = float_entry code rf in
          ver.rf <- rf';
          ver.rv <- (fun ctx -> Float (rf' ctx))
-       end)
+       end else ver.rv <- value_entry code rv)
 
 (* A loop whose guesses lack a value yet, or whose code was dropped, is tried again, a few times. *)
 let max_tries = 8
@@ -569,6 +655,17 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
     if code.colds >= cold_runs && code.spent < code.colds * cold_steps then begin
       l.code <- None;
       l.failed <- true
+    end
+    else if why = Ir.room_code && (code.rooms <- code.rooms + 1; code.rooms > 1) then begin
+      (* A call whose nested frames were short of room twice, past the margin of the loop's turn: the loop is made again,
+         that version's calls the interpreter's. *)
+      let k = io.(Ir.io_b) in
+      if k > 0 then Lower.starve code.vers.(k);
+      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
+        prerr_endline ("jit: " ^ (if k > 0 then code.vers.(k).owner.pname else "a loop's call") ^ " short of room, its loop made again");
+      l.code <- None;
+      dropped l code;
+      l.seen <- 0
     end
     else if code.bails > 16 then begin
       l.code <- None;

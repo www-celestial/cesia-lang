@@ -19,6 +19,9 @@ fails.
 - In a loop, small arrays of floats, up to 15 cells, made and worked on cell by cell, as the state of an equation in
   `y + h * f(t, y)`: they are never made while the loop runs, and a function that gives one, as `f` here, is inlined.
 - Functions on numbers that call each other, as a recursion.
+- Functions that give any value, called from a loop or a recursion: a test that loops and gives a Bool, as `isPrime(k)`
+  in `for k in 1..n`, a search that gives a number or `missing`, a recursion that makes maps, as
+  [How Cesia works](internals.md#versions-that-give-values) shows.
 - In a loop, maps and structs: reading their fields, computing with them, making new ones, storing them in a list.
 - In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list, or `f()` with no
   argument: the machine code tests the functions the call met, at most four, and runs the one it finds, as
@@ -73,6 +76,8 @@ writes the new `Particle` in place of the old one, which nothing else holds, as
 ## What stays in the interpreter
 
 - Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse]: they are machine code already.
+  A function that calls one, builds a text, or holds a closure stays interpreted as a whole, as a server's code does,
+  its loops apart.
 - Loops over the elements of a list, `for x in xs`, and a call through a value that met five functions or more, or a
   function that captured variables of its own.
 - In a loop, a statement inside an if that it can't make, as the `return` of an error or an `io.Print`: that statement

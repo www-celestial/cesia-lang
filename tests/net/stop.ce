@@ -1,5 +1,5 @@
 use std/net
 use std/io
 use std/result
-listener = result.Unwrap(net.Listen(18089))
+listener = result.Unwrap(net.Listen(0))
 io.Print(net.Accept(listener) then result.MapErr(it.Kind))

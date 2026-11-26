@@ -13,7 +13,7 @@ be(n, k) = [math.Mod(math.Div(n, 256 ^ (k - i)), 256) for i in 1..k]
 n = 1048000
 (* A binary frame of 64-bit length, masked by a key of zeros, which leaves the payload as it is. *)
 frame = "$(text.FromBytes(list.Concat([130, 255], be(n, 8))))$(text.FromBytes([0, 0, 0, 0]))$(text.Repeat(n, "x"))"
-c = result.Unwrap(net.Connect("127.0.0.1", 18463))
+c = result.Unwrap(net.Connect("127.0.0.1", text.Number(sys.Args[1])))
 net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")
 _ = net.Read(c)
 size = text.ByteLength(frame)

@@ -6,6 +6,9 @@ use std/io
 use std/result
 use std/text
 
+served = net.Listen(0)!   (* a port the system gives free *)
+port = net.Port(served)
+
 crlf = "$(text.Char(13))$(text.Char(10))"
 forged = "1$(crlf)x-injected: yes"
 
@@ -16,12 +19,12 @@ handle(r) = match r.Path
 end
 
 defn get(path)
-  c = net.Connect("127.0.0.1", 18100)?
+  c = net.Connect("127.0.0.1", port)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   net.Read(c) then result.MapOk(r -> [text.Split(crlf, r)[1], r then text.Contains("x-injected")])
 end
 
-fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18100))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), listener = served))
 sys.Sleep(0)
 io.Print(get("/value"))
 io.Print(get("/name"))

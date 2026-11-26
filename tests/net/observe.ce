@@ -4,19 +4,22 @@ use std/fiber
 use std/io
 use std/log
 use std/metrics
+use std/net
 use std/sys
 use std/text
 
 app = http.App()
   then http.Get("/", r -> http.Plain("hi"))
   then http.Get("/metrics", r -> http.Plain(metrics.Text()))
-fiber.Spawn(() -> http.Serve(app then http.Wrap(http.Logger) then http.Wrap(http.Metrics), port = 18412))
+served = net.Listen(0)!
+port = net.Port(served)
+fiber.Spawn(() -> http.Serve(app then http.Wrap(http.Logger) then http.Wrap(http.Metrics), listener = served))
 sys.Sleep(0)
-log.Info("started", {Port: 18412})
+log.Info("started", {Port: port})
 for path in ["/", "/", "/nowhere"]
-  http.Fetch("http://127.0.0.1:18412$path")
+  http.Fetch("http://127.0.0.1:$port$path")
 end
-scraped = http.Fetch("http://127.0.0.1:18412/metrics").Value.Body
+scraped = http.Fetch("http://127.0.0.1:$port/metrics").Value.Body
 for line in text.Split("\n", scraped)
   if text.StartsWith("http_requests_total", line) or text.StartsWith("# TYPE", line) or text.StartsWith("http_request_seconds_count", line)
     io.Print(line)

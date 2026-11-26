@@ -3,13 +3,13 @@ limit-callers.ce:11:1: Limit "steps" reached.
   11 | twice(x) = x * 2
      | ^
   in twice (limit-callers.ce:11)
-  called from Integral (std/quad.ce:73)
+  called from Integral (std/quad.ce:N)
   called from run (limit-callers.ce:17)
 limit-callers.ce:13:1: Limit "depth" reached.
   13 | add(a, x) = a + x
      | ^
   in add (limit-callers.ce:13)
-  called from Reduce (std/list.ce:28)
+  called from Reduce (std/list.ce:N)
   called from run (limit-callers.ce:19)
 limit-callers.ce:12:1: Limit "depth" reached.
   12 | (b Box) Get() = b.V * 2
@@ -32,13 +32,13 @@ limit-callers.ce:11:1: Limit "steps" reached.
   11 | twice(x) = x * 2
      | ^
   in twice (limit-callers.ce:11)
-  called from Integral (std/quad.ce:73)
+  called from Integral (std/quad.ce:N)
   called from run (limit-callers.ce:17)
 limit-callers.ce:13:1: Limit "depth" reached.
   13 | add(a, x) = a + x
      | ^
   in add (limit-callers.ce:13)
-  called from Reduce (std/list.ce:28)
+  called from Reduce (std/list.ce:N)
   called from run (limit-callers.ce:19)
 limit-callers.ce:12:1: Limit "depth" reached.
   12 | (b Box) Get() = b.V * 2
@@ -61,13 +61,13 @@ limit-callers.ce:11:1: Limit "steps" reached.
   11 | twice(x) = x * 2
      | ^
   in twice (limit-callers.ce:11)
-  called from Integral (std/quad.ce:73)
+  called from Integral (std/quad.ce:N)
   called from run (limit-callers.ce:17)
 limit-callers.ce:13:1: Limit "depth" reached.
   13 | add(a, x) = a + x
      | ^
   in add (limit-callers.ce:13)
-  called from Reduce (std/list.ce:28)
+  called from Reduce (std/list.ce:N)
   called from run (limit-callers.ce:19)
 limit-callers.ce:12:1: Limit "depth" reached.
   12 | (b Box) Get() = b.V * 2

@@ -1,11 +1,14 @@
-(** Every function under a permission, run the same way under the three cases of permissions_*.cmd. *)
+(** Every function under a permission, run the same way under the cases of permissions-*.cmd; the port is that of
+    Args[1]. *)
 use std/net
 use std/sys
 use std/fiber
 use std/io
 use std/list
 use std/result
+use std/text
 
+port = text.Number(sys.Args[1])
 calls = [
   ["write", () -> sys.Write("perm_work/a", "x")],
   ["append", () -> sys.Append("perm_work/a", "y")],
@@ -16,8 +19,8 @@ calls = [
   ["remove", () -> sys.Remove("perm_work/a")],
   ["env", () -> sys.Env("CESIA_PERM")],
   ["run", () -> sys.Run("true")],
-  ["listen", () -> net.Listen(18102)],
-  ["connect", () -> net.Connect("127.0.0.1", 18102)]
+  ["listen", () -> net.Listen(port)],
+  ["connect", () -> net.Connect("127.0.0.1", port)]
 ]
 
 defn outcome(call)

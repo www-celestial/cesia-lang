@@ -1,0 +1,38 @@
+(** The ifs that take no end, in the style: fmt leaves this file as it is. *)
+use std/io
+use std/text
+use std/value
+
+defn sign(x)
+  (** A value first, then its condition: a if c else b. *)
+  s = "-" if x < 0 else ""
+  s
+end
+
+(* One after the other, and an if that needs its end after the else of one. *)
+cut(s, k) = "" if k <= 0 else text.Slice(1, k, s) if k < value.Len(s) else s
+picked = 1 if false else if true 2 else 3 end
+
+defn firstOver(xs, n)
+  (** A guard: return x if c and break if c, at the end of the line. *)
+  for x in xs
+    break if x > 10
+    return x if x > n
+  end
+  0
+end
+
+(* In the head of an if, an if starts the body; in a body, it is a conditional. *)
+inHead = if true if false 1 else 2 end else 3 end
+inBody = if true 5 if false else 6 end
+matched = match 7
+  v if v > 4 -> "big"
+  else -> "small"
+end
+
+(* With no else and not a guard, the if starts a statement of its own, as in Cesia 1.0. *)
+once = 1 if true
+  io.Print("once", once)
+end
+
+io.Print(sign(-2), cut("abc", 2), picked, firstOver([1, 5, 20], 3), inHead, inBody, matched)

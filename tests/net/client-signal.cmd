@@ -1,5 +1,6 @@
 out=$(mktemp)
-"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=127.0.0.1:18088 client-signal.ce > "$out" &
+port=$("$root/_build/default/src/bin/main.exe" run --allow net=own "$root/tests/free-port.ce")
+"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=127.0.0.1:$port client-signal.ce $port > "$out" &
 pid=$!
 # The signal comes once the program is in its loop, not after a fixed wait that a busy machine can outlast; at most 5 s.
 first=""

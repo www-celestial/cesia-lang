@@ -1,1 +1,1 @@
---allow net=:18401,net=127.0.0.1:18401
+--allow net=own

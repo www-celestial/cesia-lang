@@ -3,7 +3,8 @@
 use std/http
 use std/io
 use std/sys
+use std/text
 
 io.Print("serving")
-http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(sys.Sleep(30))"}), port = 18406)
+http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(sys.Sleep(30))"}), port = text.Number(sys.Args[1]))
 io.Print("never")

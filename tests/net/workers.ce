@@ -5,4 +5,4 @@ use std/text
 
 d = text.Char(36)
 pid = text.Trim(sys.Run("sh", args = ["-c", "echo $(d)PPID"]).Value.Out)
-http.Serve(http.App() then http.Get("/", r -> http.Plain(pid)), port = 18410)
+http.Serve(http.App() then http.Get("/", r -> http.Plain(pid)), port = text.Number(sys.Args[1]))

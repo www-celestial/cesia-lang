@@ -24,6 +24,9 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
   l'état d'une équation dans `y + h * f(t, y)` : ils ne sont jamais faits pendant que la boucle tourne, et une fonction
   qui en donne un, comme `f` ici, est inlinée (son corps mis à la place de l'appel).
 - Les fonctions sur des nombres qui s'appellent entre elles, comme dans une récursion.
+- Les fonctions qui donnent n'importe quelle valeur, appelées depuis une boucle ou une récursion : un test qui boucle et
+  donne un Bool, comme `isPrime(k)` dans `for k in 1..n`, une recherche qui donne un nombre ou `missing`, une récursion
+  qui fait des maps, comme le montre [Comment Cesia fonctionne](internals.md#les-versions-qui-donnent-des-valeurs).
 - Dans une boucle, les maps (des valeurs rangées sous des clés) et les structs (des valeurs dont les champs sont déclarés
   une fois) : lire leurs champs, calculer avec eux, en créer de nouvelles, les ranger dans une liste.
 - Dans une boucle, l'appel d'une fonction gardée dans une variable, comme `f(x)` où `f` vient d'une liste, ou `f()` sans
@@ -83,7 +86,9 @@ code machine garde ses deux floats dans des registres (les petites mémoires du 
 ## Ce qui reste dans l'interpréteur
 
 - Les appels aux fonctions des packages (du code groupé sous un nom) écrits en OCaml, comme [text.Split] ou
-  [json.Parse] : elles sont déjà du code machine.
+  [json.Parse] : elles sont déjà du code machine. Une fonction qui en appelle une, fait un texte ou tient une closure
+  (une fonction qui garde des variables d'ailleurs) reste interprétée entière, comme le code d'un serveur, ses boucles à
+  part.
 - Les boucles sur les éléments d'une liste, `for x in xs`, et un appel à travers une valeur qui a rencontré cinq
   fonctions ou plus, ou une fonction qui a capturé ses propres variables.
 - Dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme le `return` d'une erreur ou un

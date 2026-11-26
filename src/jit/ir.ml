@@ -114,7 +114,13 @@ type ins =
           is the interpreter's error of a read of an array of those rows and columns *)
   | Reserve of int ref * int
       (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
-          at the resume point, the interpreter's allocation collects, and the run comes back *)
+          at the resume point, the interpreter's allocation collects, and the run comes back; a nested frame, which
+          can't leave, stops ([room_out]) *)
+  | Recheck of int ref * int
+      (** [Recheck (need, k)]: right after a call, whose nested frames may have taken the room the last [Reserve]
+          checked, room for the allocations after it; when the young heap lacks it, a region's statement bails to [k]
+          ([room_code]), as the call itself would, and a nested frame or a version as a whole ([k] -1) stops
+          ([room_out]) *)
 
 type term =
   | Jump of int
@@ -132,6 +138,9 @@ type term =
   | Is_fun of value * int * int * int
       (** [Is_fun (v, code, yes, no)]: to [yes] if [v] is a function whose code has that identity ([proto.code]), else to [no] *)
   | Bail of int  (** the run bails before that statement *)
+  | Not_bool of value * int
+      (** [Not_bool (v, site)]: a condition that is no Bool, the interpreter's error at the site: the value goes to the
+          value slot of the outermost frame's [return], before [moved_at] *)
 
 type block = { mutable ins : ins list;  (** in order *) mutable term : term }
 
@@ -198,6 +207,8 @@ type func = {
       (* of the unit's first function: each variable of a module read from a slot by any function of the unit, by its
          number: module, cell, and the kind the code takes. [Engine] writes its value, checked of that kind, to the value
          slot [moved_at] + its number of the outermost frame before each run *)
+  looped : bool;  (** a loop or a self tail call in its own code: a run that comes back into its body *)
+  ver : Types.version;  (** the version it is made of *)
   points : int array;
       (* each point a guard goes back to: -1 for the statement of the region's loop of that number, else the node of a
          statement of a branch of an if in it, where the interpreter goes on *)
@@ -292,6 +303,13 @@ let bailed = 10
 
 let gc = 11  (** at [io_point], all variables written to their slots: the young heap lacks [io_a] words *)
 
+let room_out = 15
+
+let room_code = 17
+(** In [io_code] after a bail: a call's nested frame was short of room, [io_b] the number of its function in the unit. *)
+(** a nested frame lacks room in the young heap, which it can't leave for: nothing that shows was written since the run
+    started or the statement whose call bails *)
+
 (** Codes of errors: the interpreter redoes the operation with [io_a] and [io_b] to give its message. *)
 
 let err_add = 1
@@ -307,6 +325,8 @@ let err_read_nd = 9
 (** an index of [Offset] outside: [io_a] the count of indexes, from cell [io_ixs] on, [io_b] the array's slot *)
 
 let err_write_nd = 10
+
+let err_cond = 16  (** a condition that is no Bool: the value in the slot of [Not_bool] *)
 
 let err_vec = 15
 (** an index outside a small array kept in slots: [io_a] the index, [io_b] its rows, [io_ixs] its columns *)

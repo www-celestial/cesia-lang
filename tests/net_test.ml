@@ -4,6 +4,15 @@ open Cesia
 (* How many lines "tick" the program printed, which a slow resolution waits for on its own domain. *)
 let ticks = Atomic.make 0
 
+(* A port of this machine that the system gave free, closed again: one written here could be held by a server of a suite
+   that runs beside. *)
+let free_port () =
+  let s = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Unix.bind s (Unix.ADDR_INET (Unix.inet_addr_loopback, 0));
+  let port = match Unix.getsockname s with Unix.ADDR_INET (_, p) -> p | _ -> 0 in
+  Unix.close s;
+  port
+
 (* A program, with the uses of the packages that these name at its end, so that its lines stay as written. *)
 let run ?(grants = { Types.all = true; perms = [] }) source =
   let path = Filename.temp_file "net_test" ".ce" in
@@ -124,11 +133,12 @@ io.Print("end")
     | None -> raise Not_found
   in
   Cesia_sys.Net.resolver := resolve [ "127.x.wide.example", "0.0.0.0"; "near.example", "127.0.0.1" ];
+  let port = free_port () in
   check ~panics:true "net=:PORT listens on the address a name resolves to only when it is of this machine" "permission\nok\n"
-    (run ~grants:(net [ ":18311" ])
-       (kind ^ {|io.Print(kind(() -> net.Listen(18311, host = "127.x.wide.example")))
-io.Print(kind(() -> net.Listen(18311, host = "near.example")))
-|}));
+    (run ~grants:(net [ Printf.sprintf ":%d" port ])
+       (kind ^ Printf.sprintf {|io.Print(kind(() -> net.Listen(%d, host = "127.x.wide.example")))
+io.Print(kind(() -> net.Listen(%d, host = "near.example")))
+|} port port));
   Atomic.set names [];
   check ~panics:true "net=own looks up no name, and reaches its own listeners only while they are open"
     "permission\npermission\nok\nok\npermission\n"
@@ -146,10 +156,11 @@ io.Print(kind(() -> net.Connect("127.0.0.1", p)))
     Printf.printf "net=own looked up %s\n" (String.concat ", " (Atomic.get names));
     exit 1
   end;
+  let port = free_port () in
   check "net=own reaches its own listener on every address through 127.0.0.1" "ok\n"
-    (run ~grants:(net [ "own"; "0.0.0.0:18313" ])
-       (kind ^ {|l = result.Unwrap(net.Listen(18313, host = "0.0.0.0"))
-io.Print(kind(() -> net.Connect("127.0.0.1", 18313)))
-|}));
+    (run ~grants:(net [ "own"; Printf.sprintf "0.0.0.0:%d" port ])
+       (kind ^ Printf.sprintf {|l = result.Unwrap(net.Listen(%d, host = "0.0.0.0"))
+io.Print(kind(() -> net.Connect("127.0.0.1", %d)))
+|} port port));
   if Cesia_sys.Sys_modules.ram () < 1_000_000 then failwith "the RAM of the machine isn't known";
   print_endline "net_test: ok"

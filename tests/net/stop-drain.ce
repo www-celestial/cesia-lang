@@ -3,6 +3,7 @@
 use std/http
 use std/io
 use std/sys
+use std/text
 
 defn handle(r)
   if r.Path == "/slow"
@@ -11,5 +12,5 @@ defn handle(r)
   http.Plain("done $(r.Path)")
 end
 io.Print("serving")
-io.Print(http.Serve(http.App() then http.AnyMethod("*", handle), port = 18405, timeout = 5))
+io.Print(http.Serve(http.App() then http.AnyMethod("*", handle), port = text.Number(sys.Args[1]), timeout = 5))
 io.Print("after Serve")

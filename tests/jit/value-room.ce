@@ -1,0 +1,37 @@
+use std/io
+
+(* Trees of maps made by a recursion: a native loop calls it, and its nested frames make maps in room reserved at each
+   turn of the loop; past the young heap, which native code can't collect, the call goes back to the interpreter, which
+   makes it with the same steps; a version whose calls are short of room twice is called by the interpreter after. *)
+defn tree(n)
+  if n == 0
+    return {L: missing, R: missing}
+  end
+  {L: tree(n - 1), R: tree(n - 1)}
+end
+
+defn many(n, d)
+  t = missing
+  for i in 1..n
+    t = tree(d)
+  end
+  t
+end
+
+(* From the interpreter, which makes the text: the version as a whole, its call made by the interpreter when short. *)
+defn whole(n, d)
+  t = missing
+  s = ""
+  for i in 1..n
+    t = tree(d)
+    s = "$i"
+  end
+  s
+end
+
+x = many(400, 6)
+io.Print("small")
+y = many(6, 18)
+io.Print("big")
+io.Print(whole(1500, 5))
+io.Print(whole(6, 18))

@@ -1,0 +1,70 @@
+off, steps 2600001:
+small
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+default, steps 2600001:
+small
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+always, steps 2600001:
+small
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+  called from tree (value-room.ce:10)
+off, steps 4000000:
+small
+big
+1500
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+default, steps 4000000:
+small
+big
+1500
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+always, steps 4000000:
+small
+big
+1500
+value-room.ce:6:1: Limit "steps" reached.
+  6 | defn tree(n)
+    | ^
+  in tree (value-room.ce:6)
+  called from tree (value-room.ce:10)
+off, steps 100000000:
+small
+big
+1500
+6
+default, steps 100000000:
+small
+big
+1500
+6
+always, steps 100000000:
+small
+big
+1500
+6
+exit 0

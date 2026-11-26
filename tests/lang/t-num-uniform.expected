@@ -8,35 +8,35 @@
 t-num-uniform.ce:22:29: Uniform needs a size, not the number -1.
   22 |   io.Print(message(() -> num.Uniform(n)))
      |                             ^
-  in Uniform (std/num.ce:468)
+  in Uniform (std/num.ce:N)
   called from <anonymous> (t-num-uniform.ce:22)
   called from message (t-num-uniform.ce:11)
 Err("Uniform needs a size, not the number -1.")
 t-num-uniform.ce:22:29: Uniform needs a size, not the number 2.5.
   22 |   io.Print(message(() -> num.Uniform(n)))
      |                             ^
-  in Uniform (std/num.ce:468)
+  in Uniform (std/num.ce:N)
   called from <anonymous> (t-num-uniform.ce:22)
   called from message (t-num-uniform.ce:11)
 Err("Uniform needs a size, not the number 2.5.")
 t-num-uniform.ce:22:29: Uniform needs a size, not the text "x".
   22 |   io.Print(message(() -> num.Uniform(n)))
      |                             ^
-  in Uniform (std/num.ce:468)
+  in Uniform (std/num.ce:N)
   called from <anonymous> (t-num-uniform.ce:22)
   called from message (t-num-uniform.ce:11)
 Err("Uniform needs a size, not the text \"x\".")
 t-num-uniform.ce:22:29: Uniform needs a size, not an array.
   22 |   io.Print(message(() -> num.Uniform(n)))
      |                             ^
-  in Uniform (std/num.ce:468)
+  in Uniform (std/num.ce:N)
   called from <anonymous> (t-num-uniform.ce:22)
   called from message (t-num-uniform.ce:11)
 Err("Uniform needs a size, not an array.")
 t-num-uniform.ce:22:29: Uniform needs a size, not the number 1e300.
   22 |   io.Print(message(() -> num.Uniform(n)))
      |                             ^
-  in Uniform (std/num.ce:468)
+  in Uniform (std/num.ce:N)
   called from <anonymous> (t-num-uniform.ce:22)
   called from message (t-num-uniform.ce:11)
 Err("Uniform needs a size, not the number 1e300.")

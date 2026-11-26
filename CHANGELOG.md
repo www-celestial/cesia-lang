@@ -277,6 +277,16 @@
 
 ### Speed
 
+- The JIT compiles a function whatever it gives, not only one that gives a number: a test that loops and gives a Bool, a
+  search that gives a number or `missing`, a recursion that makes maps, and so the loop that calls one, as machine code
+  calls only machine code. Primes below 300,000 by `isPrime(k)` take 159 ms instead of 245 (Python 1,061, Node 110, Go
+  121, LuaJIT 57); 20,000 trees of 127 maps made by a recursion 50 instead of 132, where the interpreter alone takes 115
+  (Node 80, Go 89); the same recursion called 100,000 times by a loop the interpreter keeps, 110 instead of 283 (medians
+  of 21 runs, alternated). Coming into machine code from the interpreter costs about 85 ns instead of 250. Such a
+  function gets native at 1,000 calls once the JIT is loaded, and at 16,000 before, so that a short program calling a
+  helper of texts doesn't load the JIT for nothing. A server's request path stays interpreted, as it calls natives,
+  builds texts and holds closures at every step, which machine code can't: a request of Centauri takes the time it took.
+  The book's How Cesia works tells it, in English and in French.
 - `encode.Base64` makes its digits as numbers and the text by one call of `text.FromBytes`, instead of a text of four
   pieces for each three bytes: 125 bytes in 24 µs instead of 56, as the cursor of a page of Centauri, which writes one
   for each page; its output is the same, as RFC 4648's vectors and a property test against the version before check.
@@ -370,6 +380,24 @@
 
 ### Fixes
 
+- The golden tests compare a frame of a trace in `std/` with `N` for its line, `in Unwrap (std/result.ce:N)`, where
+  ten of them broke each time a comment of `std/` grew above the frame's line, with no fault: the frame and its
+  function are what they check, and the frames of a test's own files keep their lines.
+- The tests that listen, of `tests/net`, `tests/sys`, `tests/tls`, `tests/testing` and the book of `tests/site`, the
+  OCaml tests of `std/net` and `tools/reload-test.sh`, take a port that the system gives free, `net.Listen(0)` and
+  `net.Port`, or `tests/free-port.ce` where a `--allow` or another process names it first, where each wrote its own:
+  two suites running side by side, or a server of another program, took the same port, and a test failed that had no
+  fault.
+- `cesia fmt` reads an `if` that takes no `end` as the parser does: `a if c else b`, a guard `return x if c` or
+  `break if c`, opens no block, where it opened one that no `end` closed, so that every line after it moved two spaces
+  in: ten files of Ceres and two of Cesia's tests were named out of the style for it. An `if` after the `else` of
+  `a if c else b` opens one, and one right after the condition of an `if`, a `while`, a `for` or a `match` starts its
+  body. A file where fmt can't match each block with its `end` is now left as it is, named as a bug of fmt, and no
+  longer written wrong. A test formats every file of Cesia's code, tests and examples, and of Ceres, Centauri and Cemacs
+  when they are beside it: each keeps its tree, and fmt on its own output changes nothing.
+- Machine code marks a value shared when a call passes it to a parameter that the callee keeps, as one it gives back,
+  as the interpreter does: after `q = same(p)`, with `same(p) = p` inlined in a loop, a write `q.X = 5.0` changed `p`
+  too, under the JIT only.
 - A page compiled to WebAssembly no longer gives the event loop back in the middle of a frame: its slice of 8 ms
   started at its last yield only, so that the first checkpoint after a wait, as a page waits for its next event, yielded
   at once and painted a frame late, 18 to 35 ms (p99) while the invoices page of Ceres scrolled; it starts when the

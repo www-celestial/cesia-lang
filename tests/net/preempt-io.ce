@@ -14,9 +14,10 @@ defn answer(listener)
   result.Ok(missing)
 end
 
-listener = result.Unwrap(net.Listen(18083))
+listener = result.Unwrap(net.Listen(0))
+port = net.Port(listener)
 server = fiber.Spawn(() -> answer(listener))
 spinner = fiber.Spawn(forever)
 sys.Sleep(0)
-c = result.Unwrap(net.Connect("127.0.0.1", 18083))
+c = result.Unwrap(net.Connect("127.0.0.1", port))
 io.Print(net.Read(c))

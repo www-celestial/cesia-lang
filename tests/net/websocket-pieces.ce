@@ -8,7 +8,7 @@ use std/result
 use std/text
 
 done = fiber.Channel()
-l = result.Unwrap(net.Listen(18463))
+l = result.Unwrap(net.Listen(text.Number(sys.Args[1])))
 fiber.Spawn(() -> http.Serve(http.App() then http.Websocket("/echo", (m, send) -> send("[$(text.ByteLength(m))]") then (_ -> fiber.Send(true, done))), listener = l))
 io.Print("listening")
 _ = fiber.Receive(done, timeout = 60)
