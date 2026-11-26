@@ -1,0 +1,212 @@
+(* What an attacker tries against HTTP/3, each with its measure (RFC 9000 sections 8, 9, 21; RFC 9204 2.2.3; RFC 8470):
+   - amplification: a client whose address can't answer (its packets come, the server's are dropped) gets at most 3
+     times what it sent, and with validation a Retry first, no handshake of the server;
+   - a flood of 2,000 Initials from 2,000 ports: stateless Retries, the memory of the server barely moves, a real client
+     is served right after;
+   - connection ids: those of the server are random, 8 bytes at least, never the same for two connections;
+   - a packet of a connection replayed from another address (a spoofed migration): the connection doesn't move there,
+     nothing goes to that address but what a path challenge may cost, and the connection goes on;
+   - QPACK: an insertion into the table this side keeps empty ends the connection (QPACK_ENCODER_STREAM_ERROR), a
+     reference to it too (QPACK_DECOMPRESSION_FAILED), a head larger than 16 KiB gets 431, Huffman can't blow it up;
+   - streams: 1,000 asked at once, the server lets 100 run, the others wait their turn, and all get their answer;
+     a head that never ends is dropped after the timeout;
+   - early data: OpenSSL's QUIC takes none, and a request a proxy took in early data that would change something gets
+     425 (tests/quic/http3.ce). *)
+use std/fiber
+use std/http
+use std/http3
+use std/io
+use std/json
+use std/list
+use std/math
+use std/quic
+use std/result
+use std/sys
+use std/text
+use std/value
+
+cert = sys.Args[1]
+key = sys.Args[2]
+
+defn proxy(port)
+  (** The relay of udp-proxy.py in front of a server: {Port, Ask}. *)
+  p = sys.Start("python3", args = ["-I", "udp-proxy.py", "0", "$port"])?
+  first = sys.ReadOutput(p)?
+  ask(line) = sys.WriteInput(p, "$line\n") then result.AndThen(_ -> sys.ReadOutput(p)) then result.AndThen(json.Parse)
+  result.Ok({Port: text.Number(text.Trim(first)), Ask: ask, Stop: () -> sys.Stop(p)})
+end
+
+defn rss()
+  (** The resident memory of this process, in KiB. *)
+  line = [l for l in text.Lines(sys.Read("/proc/self/status")!) if text.StartsWith("VmRSS:", l)][1]
+  text.Number(text.Split(" ", text.Trim(text.ByteSlice(7, text.ByteLength(line), line)))[1])
+end
+
+defn app()
+  a = http.App() then http.Get("/", r -> http.Plain("hi")) then http.Post("/", r -> http.Plain("$(text.ByteLength(r.Body))"))
+  http.Handler(a)
+end
+
+defn serving(validate)
+  q = quic.Open()?
+  h3 = http3.Server(cert, key, q, port = 0, validate = validate)?
+  fiber.Spawn(() -> h3.Serve(app(), {Timeout: 2, MaxBody: 1048576, Streams: missing, Date: () -> "Thu, 26 Nov 2026 10:00:00 GMT", WebTransport: false}))
+  result.Ok({Port: h3.Port, Api: q})
+end
+
+defn get(conn, path)
+  (** A GET on a connection of HTTP/3, its status. *)
+  st = conn.Open(false)?
+  st.Write(http3.Frame(1, http3.EncodeHead([{Name: ":method", Value: "GET"}, {Name: ":scheme", Value: "https"}, {Name: ":authority", Value: "localhost"}, {Name: ":path", Value: path}])))?
+  st.End()?
+  status(st)
+end
+
+defn status(st)
+  (** The status of the response on a stream, or the Err of the stream. *)
+  got = st.Read()?
+  kind = http3.ReadVarint(got, 1)
+  size = if value.IsMissing(kind) missing else http3.ReadVarint(got, kind.Next) end
+  while value.IsMissing(size) or size.Next + size.Value - 1 > text.ByteLength(got)
+    more = st.Read()?
+    if more == ""
+      return result.Err({Kind: "http", Message: "no head"})
+    end
+    got = "$got$more"
+    kind = http3.ReadVarint(got, 1)
+    size = if value.IsMissing(kind) missing else http3.ReadVarint(got, kind.Next) end
+  end
+  fields = http3.DecodeHead(text.ByteSlice(size.Next, size.Next + size.Value - 1, got))?
+  st.Free()
+  result.Ok([f.Value for f in fields if f.Name == ":status"][1])
+end
+
+defn dialed(port, q)
+  conn = quic.Dial("127.0.0.1", port, q, verify = false, timeout = 3)?
+  control = conn.Open(true)?
+  control.Write("$(http3.Varint(0))$(http3.Frame(4, ""))")?
+  result.Ok(conn)
+end
+
+defn amplification()
+  out = []
+  for validate in [false, true]
+    s = serving(validate)?
+    p = proxy(s.Port)?
+    p.Ask("drop")?
+    _ = quic.Dial("127.0.0.1", p.Port, s.Api, verify = false, timeout = 1.5)
+    st = p.Ask("stats")?
+    p.Stop()
+    ratio = st.server / st.client
+    retry = value.Len(st.types) > 0 and math.BitAnd(st.types[1], 48) == 48
+    out = list.Append({Validate: validate, AtMost3: ratio <= 3, Retry: retry, Handshake: value.Len([t for t in st.types if math.BitAnd(t, 48) == 32]) > 0}, out)
+  end
+  out
+end
+
+defn flood()
+  s = serving(true)?
+  p = proxy(s.Port)?
+  c = dialed(p.Port, s.Api)?
+  c.Close(256)
+  before = rss()
+  f = p.Ask("flood 2000")
+  sys.Sleep(0.2)
+  grown = rss() - before
+  p.Stop()
+  f = f?
+  again = dialed(s.Port, s.Api)?
+  served = get(again, "/")?
+  again.Close(256)
+  {Answered: f.answered < 3 * f.sent, Grown: grown < 20000, Served: served}
+end
+
+defn ids()
+  s = serving(false)?
+  p = proxy(s.Port)?
+  for k in 1..5
+    c = dialed(p.Port, s.Api)?
+    c.Close(256)
+  end
+  st = p.Ask("stats")?
+  p.Stop()
+  {Distinct: value.Len(st.scids) >= 5 and value.Len(list.Unique(st.scids)) == value.Len(st.scids), Long: list.All([text.ByteLength(i) >= 16 for i in st.scids])}
+end
+
+defn spoof()
+  s = serving(false)?
+  p = proxy(s.Port)?
+  c = dialed(p.Port, s.Api)?
+  first = get(c, "/")?
+  sp = p.Ask("spoof")?
+  after = get(c, "/")?
+  c.Close(256)
+  p.Stop()
+  {Before: first, Bounded: sp.answered <= 3 * sp.sent, After: after}
+end
+
+defn qpack()
+  s = serving(false)?
+  out = {}
+  (* An insertion into the table of 0 bytes on the encoder's stream: Insert with Literal Name. *)
+  c = dialed(s.Port, s.Api)?
+  enc = c.Open(true)?
+  enc.Write("$(http3.Varint(2))$(text.FromBytes([0x63]))abc$(text.FromBytes([0x03]))xyz")?
+  sys.Sleep(0.3)
+  out.Insert = c.Ended()
+  (* A head that refers to the dynamic table: Required Insert Count 1. *)
+  c = dialed(s.Port, s.Api)?
+  st = c.Open(false)?
+  st.Write(http3.Frame(1, text.FromBytes([2, 0, 0x80])))?
+  st.End()?
+  sys.Sleep(0.3)
+  out.Dynamic = c.Ended()
+  (* A head of 20 KiB, a header of 4 bytes coded in Huffman as 30 bits each: refused, never decoded. *)
+  c = dialed(s.Port, s.Api)?
+  st = c.Open(false)?
+  big = "$(text.FromBytes([0, 0, 0x2f, 0x01]))x-big$(text.FromBytes([0xff, 0xff, 0x9e]))$(text.Repeat(20480, text.FromBytes([0xff])))"
+  st.Write(http3.Frame(1, big))?
+  st.End()?
+  out.Large = status(st)
+  c.Close(256)
+  out
+end
+
+defn streams()
+  s = serving(false)?
+  c = dialed(s.Port, s.Api)?
+  (* A head begun and never ended: the stream is dropped after the timeout of 2 s. *)
+  stuck = c.Open(false)?
+  stuck.Write(text.FromBytes([1, 40, 0]))?
+  started = sys.Now()
+  tasks = [fiber.Spawn(() -> get(c, "/")) for k in 1..1000]
+  got = [fiber.Wait(t, timeout = 30) for t in tasks]
+  done = sys.Now() - started
+  answered = value.Len([g for g in got if result.IsOk(g) and result.IsOk(g.Value) and g.Value.Value == "200"])
+  bad = [g for g in got if not (result.IsOk(g) and result.IsOk(g.Value) and g.Value.Value == "200")]
+  if value.Len(bad) > 0
+    io.Print("streams failed", value.Len(bad), bad[1])
+  end
+  dropped = stuck.Read()
+  c.Close(256)
+  {Answered: answered, Dropped: result.IsErr(dropped) or dropped.Value == "", Seconds: done < 30}
+end
+
+defn timed(name, f)
+  t = sys.Now()
+  v = f()
+  io.Print(name, v)
+  io.Print(name, "seconds", sys.Now() - t)
+end
+
+defn main()
+  io.Print("amplification", amplification())
+  io.Print("flood", flood())
+  io.Print("ids", ids())
+  io.Print("spoof", spoof())
+  io.Print("qpack", qpack())
+  io.Print("streams", streams())
+  result.Ok(missing)
+end
+
+io.Print(main())

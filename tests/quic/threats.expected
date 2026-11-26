@@ -1,0 +1,8 @@
+amplification [{Validate: false, AtMost3: true, Retry: false, Handshake: true}, {Validate: true, AtMost3: true, Retry: true, Handshake: false}]
+flood {Answered: true, Grown: true, Served: "200"}
+ids {Distinct: true, Long: true}
+spoof {Before: "200", Bounded: true, After: "200"}
+qpack {Insert: true, Dynamic: true, Large: Ok("431")}
+streams {Answered: 1000, Dropped: true, Seconds: true}
+Ok(missing)
+exit 0

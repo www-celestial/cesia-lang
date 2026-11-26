@@ -336,10 +336,14 @@ defn run(e, accepted)
     (* A datagram, a stream that wrote, or a timer: OpenSSL runs. A fiber that waits: only the check of it. *)
     heard = result.IsErr(got) or value.IsBool(got.Value.Value)
     if not heard
+      heard = dict.Has("Free", got.Value.Value)
       waiting = taken(e, got.Value.Value, waiting)
     end
     more = fiber.Receive(e.Waits, timeout = 0)
     while result.IsOk(more)
+      (* A stream freed gives its credit back: OpenSSL sends MAX_STREAMS at its next run, which a client that waits for
+         one more stream needs, and nothing else would bring. *)
+      heard = heard or dict.Has("Free", more.Value)
       waiting = taken(e, more.Value, waiting)
       more = fiber.Receive(e.Waits, timeout = 0)
     end
