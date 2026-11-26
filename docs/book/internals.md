@@ -1009,7 +1009,7 @@ in `src/sys/jit.c`, which runs an OCaml function of the JIT, and that function r
 
 **Which natives.** Those of `std/` that ask for no permission and never wait. A wait parks a fiber through an effect of
 OCaml, and an effect can't cross a call from C to OCaml: it raises `Effect.Unhandled` where it is performed (the OCaml
-manual, *Effect handlers*, *Semantics*). So the natives of `std/fiber`, of `std/websocket`, whose sockets call back,
+manual, *Effect handlers*, *Semantics*). So the natives of `std/fiber` but its tables, of `std/websocket`, whose sockets call back,
 of `std/cells`, `std/debug` and `std/sqlite3`, `sys.Sleep`, those that ask for a permission (files, the network,
 processes, C) and those of the packages, as Cepheus's, which may wait on a server, stay the interpreter's, and the
 unit with them: `CESIA_JIT_SHOW=1` names the native. A native that calls back into Cesia, as `value.Len` calls the

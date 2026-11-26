@@ -220,12 +220,16 @@ let known_natives =
 
 (* A native that machine code calls through OCaml, as the interpreter calls it: one of std/ that asks for no permission
    and never waits. A wait parks the fiber, which can't be done across the C frames of native code: the natives of
-   fibers, of sockets that call back, of the cells and the debugger, sys.Sleep and the natives of packages (which may
-   suspend) stay the interpreter's, and the unit with them. *)
+   fibers but their tables, of sockets that call back, of the cells and the debugger, sys.Sleep and the natives of
+   packages (which may suspend) stay the interpreter's, and the unit with them. *)
 let bridgeable (w : world) m (n : native) =
   let mname = w.modules.(m).mname in
+  let tables = [ "Table"; "Recall"; "Remember"; "Forget"; "Empty"; "Epoch"; "Admit" ] in
   n.perm = None && String.starts_with ~prefix:"std/" mname
-  && not (List.mem mname [ "std/fiber"; "std/websocket"; "std/cells"; "std/debug"; "std/sqlite3" ] || (mname = "std/sys" && n.nname = "Sleep"))
+  && not
+       (List.mem mname [ "std/websocket"; "std/cells"; "std/debug"; "std/sqlite3" ]
+        || (mname = "std/fiber" && not (List.mem n.nname tables))
+        || (mname = "std/sys" && n.nname = "Sleep"))
 
 (* What a version's body holds that a version as a whole never lowers: a call of a native the JIT doesn't make, a text
    made of parts, a match, a ?, an in, a comprehension or a function literal; or [None]. Looked at before its lowering,

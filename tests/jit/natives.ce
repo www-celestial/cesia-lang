@@ -1,11 +1,12 @@
 use std/dict
+use std/fiber
 use std/io
 use std/text
 use std/value
 
 (* Natives called from machine code, through OCaml: values kept across calls that allocate, so that a tiny young heap
    collects in each and moves them; texts and functions as constants; results that inference says are numbers; and a
-   native that calls back into Cesia, whose callback calls natives itself. *)
+   native that calls back into Cesia, whose callback calls natives itself; the tables of std/fiber. *)
 defn churn(n)
   m = {A: "x", B: "y"}
   keep = text.Repeat(3, "ab")
@@ -38,5 +39,20 @@ defn sizes(n)
   total
 end
 
+(* The tables of std/fiber, natives that never wait. *)
+defn tabled(n)
+  t = fiber.Table(100)
+  hits = 0
+  for k in 1..n
+    fiber.Remember("k", k, 1000.0, t)
+    v = fiber.Recall("k", 1.0, t)
+    if v != missing
+      hits = hits + 1
+    end
+  end
+  [hits, fiber.Recall("k", 1.0, t)]
+end
+
 io.Print(churn(20000))
 io.Print(sizes(20000))
+io.Print(tabled(20000))

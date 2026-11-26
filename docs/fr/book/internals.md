@@ -1132,7 +1132,7 @@ fonction exécute la native.
 **Quelles natives.** Celles de `std/` qui ne demandent aucune permission et n'attendent jamais. Une attente gare une
 fiber par un effect d'OCaml (un effet : le mécanisme d'OCaml 5 qui suspend un calcul pour le reprendre plus tard), et un
 effect ne peut pas traverser un appel de C vers OCaml : il lève `Effect.Unhandled` là où il est fait (le manuel d'OCaml,
-*Effect handlers*, *Semantics*). Donc les natives de `std/fiber`, de `std/websocket`, dont les sockets rappellent, de
+*Effect handlers*, *Semantics*). Donc les natives de `std/fiber` sauf ses tables, de `std/websocket`, dont les sockets rappellent, de
 `std/cells`, `std/debug` et `std/sqlite3`, `sys.Sleep`, celles qui demandent une permission (fichiers, réseau,
 processus, C) et celles des packages, comme celles de Cepheus, qui peuvent attendre un serveur, restent à
 l'interpréteur, et l'unité avec elles : `CESIA_JIT_SHOW=1` nomme la native. Une native qui rappelle Cesia, comme

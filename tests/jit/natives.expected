@@ -1,11 +1,14 @@
 off:
 [800000, "ababab", 3, ["a", "b", "c", "d"], {A: "x", B: "y"}]
 120000
+[20000, 20000]
 default:
 [800000, "ababab", 3, ["a", "b", "c", "d"], {A: "x", B: "y"}]
 120000
+[20000, 20000]
 always:
 [800000, "ababab", 3, ["a", "b", "c", "d"], {A: "x", B: "y"}]
 120000
+[20000, 20000]
 machine code calls natives
 exit 0
