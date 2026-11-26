@@ -323,6 +323,8 @@ end
 [standard error](glossary.md#standard-input-and-output): what went wrong reaches the screen even when the output goes to a
 file or a pipe, as in `cesia run lines.ce < sales.csv > count.txt`.
 
+![A terminal: lines.ce of the chapter Files counts the lines of sales.csv in a pipe and ends with the code 0; with nothing on its input it prints 0 lines, writes lines: nothing came in on the standard error, and ends with the code 1; with its output sent to count.txt, only the file gets the count.](images/files-streams.svg)
+
 ## The environment
 
 [sys.Env] reads an environment variable, or gives `missing`. It needs `--allow env`, or `env=PORT` for that one:

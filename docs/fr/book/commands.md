@@ -16,6 +16,8 @@ ou au programme qui l'a lancée : `$?` dans un shell.
 | `128 + N` | un deuxième signal d'arrêt (l'avis que le système envoie à un programme pour l'arrêter) a fini le programme aussitôt : 130 pour INT, 143 pour TERM |
 | tout autre | le code qu'un programme a donné à [sys.Exit] |
 
+![Un terminal : cesia new shop crée le projet ; cesia do run lance sa tâche run, qui affiche Hello from shop ; cesia test lance l'exemple de src/prices/tax.ce, 1 passé ; cesia check trouve un nom qui n'existe pas, Taxd, sans rien lancer, et son code de sortie est 1 ; cesia run d'un fichier absent dit qu'il ne peut pas le lire, avec le code de sortie 2.](../../book/images/commands-session-fr.svg)
+
 ## cesia run
 
 ```bash

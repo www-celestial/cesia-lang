@@ -58,6 +58,8 @@ end
 label(4)
 ```
 
+![The three places where Cesia checks a written type while the program runs, each with the message it gives: a parameter at each call, Half("ten"); a field each time it is written, c.Mass = "heavy"; a result each time the function gives one, label(4), whose n * 2 is no Text.](images/types-boundary.svg)
+
 ### A type that names nothing
 
 A type that names nothing is caught before the program starts:

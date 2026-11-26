@@ -10,10 +10,12 @@ Le message d'un bug montre d'abord son fichier, sa ligne et sa colonne, puis la 
 l'endroit :
 
 ```text
-shop.ce:3:9: Index 5 is outside this array of 3 elements.
+shop.ce:3:15: Index 5 is outside this array of 3 elements.
   3 | io.Print(names[5])
-    |         ^
+    |               ^
 ```
+
+![Deux messages de Cesia, chaque partie nommée : shop.ce:3:9, le fichier, la ligne et la colonne où il s'est arrêté, puis le message, Index 5 is outside this array of 3 elements ; la ligne du code ; une marque sous l'endroit ; puis un message du parser avec son conseil sur la ligne du dessous, quoi faire.](../../book/images/messages-anatomy-fr.svg)
 
 ## Lire le code
 

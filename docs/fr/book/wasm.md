@@ -133,6 +133,8 @@ cesia run --allow read=.,net=:8080 serve.ce
 La console de la page (F12) montre les cinq lignes qu'affiche `cesia run loan.ce`, un message chacune. Cette page a
 tourné ainsi dans Chrome 158, et `node loan.js` dans Node 26, tous deux pareils à `cesia run loan.ce`, octet pour octet.
 
+![Un terminal : cesia build --target wasm loan.ce écrit loan.wasm, loan.js et loan.sites à côté de loan.ce ; node loan.js affiche la mensualité et trois mois du prêt, puis No schedule pour un prêt de rien ; cesia run loan.ce affiche les mêmes lignes.](../../book/images/wasm-build-fr.svg)
+
 ## La sortie et les erreurs
 
 `io.Print` écrit sur la sortie standard dans Node, et dans la console de la page, un appel de `console.log` par ligne.

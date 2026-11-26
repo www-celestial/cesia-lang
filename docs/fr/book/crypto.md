@@ -68,6 +68,8 @@ Chacun prend environ 70 ms et 64 Mio, sur un thread à lui : les autres fibers t
 serveur continue de répondre pendant que quelqu'un se connecte. 50 connexions à la fois prennent 1 518 ms en tout, là
 où l'une après l'autre prenaient 3 645 ms ; voir [C et C++](c.md#un-appel-qui-prend-du-temps).
 
+![Ce que crypto.HashPassword garde pour correct horse, partie par partie : argon2id, l'algorithme ; v=19, sa version ; la mémoire, les passes et les voies qu'il a pris ; le sel, des octets au hasard ; le hash. Le même mot de passe haché de nouveau donne un autre sel et un autre hash, et crypto.CheckPassword lit tout ce qu'il lui faut dans le texte.](../../book/images/crypto-password-fr.svg)
+
 ## Comparer des secrets
 
 `==` s'arrête au premier octet qui diffère : le temps qu'il prend dit donc à un attaquant combien d'octets étaient justes,

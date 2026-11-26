@@ -60,6 +60,8 @@ end
 label(4)
 ```
 
+![Les trois endroits où Cesia vérifie un type écrit pendant que le programme tourne, chacun avec son message : un paramètre à chaque appel, Half("ten") ; un champ à chaque écriture, c.Mass = "heavy" ; un résultat chaque fois que la fonction en donne un, label(4), dont n * 2 n'est pas un Text.](../../book/images/types-boundary-fr.svg)
+
 ### Un type qui ne nomme rien
 
 Un type qui ne nomme rien est repéré avant que le programme démarre :

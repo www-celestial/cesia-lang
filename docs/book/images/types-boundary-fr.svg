@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="310" viewBox="0 0 720 310">
+<title>Les trois endroits où Cesia vérifie un type écrit pendant que le programme tourne, chacun avec son message : un paramètre à chaque appel, Half(&quot;ten&quot;) ; un champ à chaque écriture, c.Mass = &quot;heavy&quot; ; un résultat chaque fois que la fonction en donne un, label(4), dont n * 2 n'est pas un Text.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="720" height="310" fill="#fff"/>
+<text x="16" y="24" class="h">le code qui tourne</text>
+<text x="360" y="24" class="h">où il s'arrête, et pourquoi</text>
+<rect class="term" x="16" y="48" width="300" height="48" rx="4"/>
+<text x="28" y="68" class="c">Half(&quot;ten&quot;)</text>
+<text x="28" y="88" class="a">vérifié à l'appel</text>
+<line class="la" x1="320" y1="64" x2="349" y2="64"/><polygon fill="#3a5ad9" points="356,64 348,60 348,68"/>
+<text x="362" y="68" class="e">Half: x must be a Float, found a Text.</text>
+<rect class="term" x="16" y="110" width="300" height="66" rx="4"/>
+<text x="28" y="130" class="c">c = Car(1000.0)</text>
+<text x="28" y="148" class="c">c.Mass = &quot;heavy&quot;</text>
+<text x="28" y="168" class="a">vérifié quand le champ est écrit</text>
+<line class="la" x1="320" y1="126" x2="349" y2="126"/><polygon fill="#3a5ad9" points="356,126 348,122 348,130"/>
+<text x="362" y="130" class="e">Car: Mass must be a Float, found a Text.</text>
+<rect class="term" x="16" y="190" width="300" height="102" rx="4"/>
+<text x="28" y="210" class="c">defn label(n Int) Text</text>
+<text x="28" y="228" class="c">  n * 2</text>
+<text x="28" y="246" class="c">end</text>
+<text x="28" y="264" class="c">label(4)</text>
+<text x="28" y="284" class="a">vérifié quand le résultat est donné</text>
+<line class="la" x1="320" y1="206" x2="349" y2="206"/><polygon fill="#3a5ad9" points="356,206 348,202 348,210"/>
+<text x="362" y="210" class="e">label: the result must be a Text, found an Int.</text>
+</svg>

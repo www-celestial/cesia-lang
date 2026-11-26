@@ -15,6 +15,8 @@ The *exit code* of a command is the number it gives back to the shell or the pro
 | `128 + N` | a second stop signal ended the program at once: 130 for INT, 143 for TERM |
 | any other | the code a program gave to [sys.Exit] |
 
+![A terminal: cesia new shop makes the project; cesia do run runs its task run, which prints Hello from shop; cesia test runs the example of src/prices/tax.ce, 1 passed; cesia check finds a name that doesn't exist, Taxd, without running anything, and its exit code is 1; cesia run of a file that isn't there says it can't read it, with the exit code 2.](images/commands-session.svg)
+
 ## cesia run
 
 ```bash

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="794.0" height="268" viewBox="0 0 794.0 268">
+<title>A terminal: lines.ce of the chapter Files counts the lines of sales.csv in a pipe and ends with the code 0; with nothing on its input it prints 0 lines, writes lines: nothing came in on the standard error, and ends with the code 1; with its output sent to count.txt, only the file gets the count.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="794.0" height="268" fill="#fff"/>
+<rect class="term" x="1" y="1" width="377.0" height="266" rx="4"/>
+<text x="16" y="26" class="c"><tspan class="p">$ </tspan>cat sales.csv | cesia run lines.ce</text>
+<text x="16" y="46" class="c">11 lines</text>
+<line class="l" x1="383.0" y1="42" x2="399.0" y2="42"/>
+<text x="405.0" y="46" class="s">standard output</text>
+<text x="16" y="66" class="c"><tspan class="p">$ </tspan>echo $?</text>
+<text x="16" y="86" class="c">0</text>
+<line class="l" x1="383.0" y1="82" x2="399.0" y2="82"/>
+<text x="405.0" y="86" class="s">exit code 0: all went well</text>
+<text x="16" y="106" class="c"><tspan class="p">$ </tspan>cesia run lines.ce &lt; /dev/null</text>
+<text x="16" y="126" class="c">0 lines</text>
+<line class="l" x1="383.0" y1="122" x2="399.0" y2="122"/>
+<text x="405.0" y="126" class="s">standard output</text>
+<text x="16" y="146" class="c e">lines: nothing came in</text>
+<line class="l" x1="383.0" y1="142" x2="399.0" y2="142"/>
+<text x="405.0" y="146" class="s">standard error</text>
+<text x="16" y="166" class="c"><tspan class="p">$ </tspan>echo $?</text>
+<text x="16" y="186" class="c">1</text>
+<line class="l" x1="383.0" y1="182" x2="399.0" y2="182"/>
+<text x="405.0" y="186" class="s">exit code 1: sys.Exit(1)</text>
+<text x="16" y="206" class="c"><tspan class="p">$ </tspan>cesia run lines.ce &lt; sales.csv &gt; count.txt</text>
+<line class="l" x1="383.0" y1="202" x2="399.0" y2="202"/>
+<text x="405.0" y="206" class="s">the output goes to the file, the screen shows nothing</text>
+<text x="16" y="226" class="c"><tspan class="p">$ </tspan>cat count.txt</text>
+<text x="16" y="246" class="c">11 lines</text>
+</svg>

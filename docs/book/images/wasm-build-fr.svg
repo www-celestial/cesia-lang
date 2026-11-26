@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="930.0" height="328" viewBox="0 0 930.0 328">
+<title>Un terminal : cesia build --target wasm loan.ce écrit loan.wasm, loan.js et loan.sites à côté de loan.ce ; node loan.js affiche la mensualité et trois mois du prêt, puis No schedule pour un prêt de rien ; cesia run loan.ce affiche les mêmes lignes.</title>
+<style>
+text{font-family:system-ui,sans-serif;font-size:13px;fill:#1f2328}
+.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.p{fill:#57606a}
+.s{fill:#57606a}
+.e{fill:#b42318}
+.a{fill:#3a5ad9}
+.h{font-weight:600}
+.term{fill:#f6f8fa;stroke:#8c959f;stroke-width:1}
+.box{fill:#fff;stroke:#3a5ad9;stroke-width:1.4}
+.mark{fill:#dbe4ff}
+.l{stroke:#57606a;stroke-width:1;fill:none}
+.la{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+</style>
+<rect width="930.0" height="328" fill="#fff"/>
+<rect class="term" x="1" y="1" width="542.0" height="326" rx="4"/>
+<text x="16" y="26" class="c"><tspan class="p">$ </tspan>cesia build --target wasm loan.ce</text>
+<line class="l" x1="548.0" y1="22" x2="564.0" y2="22"/>
+<text x="570.0" y="26" class="s">compilé en WebAssembly</text>
+<text x="16" y="46" class="c"><tspan class="p">$ </tspan>ls</text>
+<text x="16" y="66" class="c">loan.ce  loan.js  loan.sites  loan.wasm</text>
+<line class="l" x1="548.0" y1="62" x2="564.0" y2="62"/>
+<text x="570.0" y="66" class="s">le module, son chargeur, les endroits des erreurs</text>
+<text x="16" y="86" class="c"><tspan class="p">$ </tspan>node loan.js</text>
+<line class="l" x1="548.0" y1="82" x2="564.0" y2="82"/>
+<text x="570.0" y="86" class="s">le chargeur le lance dans Node</text>
+<text x="16" y="106" class="c">Each month: 1055.67</text>
+<text x="16" y="126" class="c">Month 1: 666.67 of interest, 199610.99 still owed</text>
+<text x="16" y="146" class="c">Month 2: 665.37 of interest, 199220.69 still owed</text>
+<text x="16" y="166" class="c">Month 3: 664.07 of interest, 198829.08 still owed</text>
+<text x="16" y="186" class="c">No schedule: a loan needs an amount and a number of years above 0</text>
+<text x="16" y="206" class="c"><tspan class="p">$ </tspan>cesia run loan.ce</text>
+<line class="l" x1="548.0" y1="202" x2="564.0" y2="202"/>
+<text x="570.0" y="206" class="s">les mêmes lignes, octet pour octet</text>
+<text x="16" y="226" class="c">Each month: 1055.67</text>
+<text x="16" y="246" class="c">Month 1: 666.67 of interest, 199610.99 still owed</text>
+<text x="16" y="266" class="c">Month 2: 665.37 of interest, 199220.69 still owed</text>
+<text x="16" y="286" class="c">Month 3: 664.07 of interest, 198829.08 still owed</text>
+<text x="16" y="306" class="c">No schedule: a loan needs an amount and a number of years above 0</text>
+</svg>

@@ -6,6 +6,8 @@ texts. A file that Cesia accepts means the same to any TOML reader, and anything
 guess. A key that Cesia doesn't know stops `cesia do` with its line, so a typo can't go unseen. The keys of `[site]` are the exception: `cesia doc --site` reads them, and it is
 the one that checks them.
 
+![A cesia.toml, each of its tables beside the command that reads it: the table project for every command, deps.ceres for cesia pkg and use deps/www-celestial/ceres, tasks.serve for cesia do serve, test for cesia test, site for cesia doc --site.](images/toml-sections.svg)
+
 ## `[project]`
 
 ```toml

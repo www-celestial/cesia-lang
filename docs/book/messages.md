@@ -8,10 +8,12 @@ when it has one, then what to do, where neither says it. All of them live in one
 A message of a bug shows its file, line and column first, then the line with a mark under the place:
 
 ```text
-shop.ce:3:9: Index 5 is outside this array of 3 elements.
+shop.ce:3:15: Index 5 is outside this array of 3 elements.
   3 | io.Print(names[5])
-    |         ^
+    |               ^
 ```
+
+![Two messages of Cesia, each part named: shop.ce:3:9, the file, line and column where it stopped, then the message, Index 5 is outside this array of 3 elements; the line of the code; a mark under the place; then a message of the parser with its hint on the line below, what to do.](images/messages-anatomy.svg)
 
 ## Reading the code
 

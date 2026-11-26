@@ -329,6 +329,8 @@ end
 sortie pour ce qui n'a pas marché : ce qui a mal tourné arrive à l'écran même quand la sortie va dans un fichier ou un
 pipe, comme dans `cesia run lines.ce < sales.csv > count.txt`.
 
+![Un terminal : lines.ce du chapitre Fichiers compte les lignes de sales.csv dans un pipe et finit avec le code 0 ; sans rien en entrée, il affiche 0 lines, écrit lines: nothing came in sur la sortie d'erreur et finit avec le code 1 ; sa sortie envoyée dans count.txt, seul le fichier reçoit le compte.](../../book/images/files-streams-fr.svg)
+
 ## L'environnement
 
 [sys.Env] lit une variable d'environnement, ou donne `missing`. Elle demande `--allow env`, ou `env=PORT` pour cette

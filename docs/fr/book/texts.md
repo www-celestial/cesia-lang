@@ -282,6 +282,8 @@ text.ByteLength("é") -->
 text.Bytes("é") -->
 ```
 
+![Le texte café en caractères et en octets : quatre caractères comptés depuis 1, c a f é, où é prend deux des cinq octets d'UTF-8, 195 et 169 ; value.Len donne 4, text.Slice(2, 3) donne af, text.ByteLength donne 5.](../../book/images/texts-positions-fr.svg)
+
 [text.Byte] donne un octet, par sa position à partir de 1, [text.ByteFind] la position en octets d'une partie, en
 cherchant à partir d'un octet donné, et [text.FromBytes] le texte d'une liste d'octets. [text.Code] donne le code point
 d'un caractère, son numéro dans Unicode, et [text.Char] le caractère d'un code point :
