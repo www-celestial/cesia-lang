@@ -148,6 +148,18 @@ publisher moves it.
   compiler project", Red Hat Developer, 2020.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. The backend that makes Cesia's
   machine code from the text of its IR, copied into `src/sys/mir/`.
+- The OCaml manual, version 5.5, chapter *Interfacing C with OCaml*, sections *Living in harmony with the garbage
+  collector* and *Advanced topic: callbacks from C to OCaml*. <https://ocaml.org/manual/5.5/intfc.html>. A value held
+  across an allocation or a call of OCaml is declared to the collector, `CAMLparam`, `CAMLlocal`, `CAMLlocalN`, as the
+  collector moves young values; an exception skips the C code between it and the OCaml that called it. Cesia's machine
+  code holds its values in a block of local roots of that layout around each call into OCaml, and catches every
+  exception before it reaches the C.
+- The OCaml manual, version 5.5, chapter *Effect handlers*, section *Semantics*. <https://ocaml.org/manual/5.5/effects.html>.
+  "It is not possible for an effect to cross a call to caml_callback": why a native that parks a fiber is never called
+  from machine code.
+- Alfred V. Aho, Monica S. Lam, Ravi Sethi, Jeffrey D. Ullman. *Compilers: Principles, Techniques, and Tools*, 2nd
+  edition, Addison-Wesley, 2006, section 9.2.5, *Live-Variable Analysis*. The backward analysis that says which values a
+  program reads after a point: those Cesia's machine code keeps as roots around a call into OCaml.
 
 ## WebAssembly
 

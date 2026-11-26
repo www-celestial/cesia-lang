@@ -4,6 +4,13 @@ open Ast
 (* Anything outside what the JIT takes: the version or the loop stays interpreted. *)
 exception No
 
+(* Why the last version or loop refused stays interpreted, when the refusal has a name: CESIA_JIT_SHOW prints it. *)
+let why = ref ""
+
+let no reason =
+  why := reason;
+  raise No
+
 (* A guess that needs a value the frame doesn't hold yet: the loop can be lowered again later. *)
 exception Unseen
 
@@ -153,6 +160,10 @@ and unit_ = {
   table : t Vec.t;
       (* the constants of all its functions, one table, in the value slots of the outermost frame: a nested function
          reads its own there *)
+  natives : native Vec.t;  (* the natives its functions call through OCaml, as [Ir.func.natives] *)
+  calls_show : bool;
+      (* a unit lowered again because it calls natives: a call of one of its functions may have called one, which shows,
+         so nothing after it in the statement goes back to the interpreter, which would make it again *)
 }
 
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
@@ -207,18 +218,37 @@ let known_natives =
     "Sin"; "Cos"; "Tan"; "Asin"; "Acos"; "Atan"; "Log10"; "Log2"; "Log1p"; "Expm1"; "Sinh"; "Cosh"; "Tanh"; "Asinh";
     "Acosh"; "Atanh" ]
 
-(* Does a version's body hold what a version as a whole never lowers: a call of a native the JIT doesn't make, a text
-   made of parts, a match, a ?, an in, a comprehension or a function literal. Looked at before its lowering, which would
-   lower the versions it calls first, to find it later. *)
+(* A native that machine code calls through OCaml, as the interpreter calls it: one of std/ that asks for no permission
+   and never waits. A wait parks the fiber, which can't be done across the C frames of native code: the natives of
+   fibers but their tables, of sockets that call back, of the cells and the debugger, sys.Sleep and the natives of
+   packages (which may suspend) stay the interpreter's, and the unit with them. *)
+let bridgeable (w : world) m (n : native) =
+  let mname = w.modules.(m).mname in
+  let tables = [ "Table"; "Recall"; "Remember"; "Forget"; "Empty"; "Epoch"; "Admit" ] in
+  n.perm = None && String.starts_with ~prefix:"std/" mname
+  && not
+       (List.mem mname [ "std/websocket"; "std/cells"; "std/debug"; "std/sqlite3" ]
+        || (mname = "std/fiber" && not (List.mem n.nname tables))
+        || (mname = "std/sys" && n.nname = "Sleep"))
+
+(* What a version's body holds that a version as a whole never lowers: a call of a native the JIT doesn't make, a text
+   made of parts, a match, a ?, an in, a comprehension or a function literal; or [None]. Looked at before its lowering,
+   which would lower the versions it calls first, to find it later. *)
 let hopeless (w : world) (b : block) =
-  let found = ref false in
+  let found = ref None in
   let rec go (e : expr) =
-    if not !found then
+    if !found = None then
       match e.e with
-      | Interp _ | In_op _ | Question _ | Match _ | Comp _ | Lambda _ -> found := true
+      | Interp _ -> found := Some "a text of parts"
+      | In_op _ -> found := Some "an in"
+      | Question _ -> found := Some "a ?"
+      | Match _ -> found := Some "a match"
+      | Comp _ -> found := Some "a comprehension"
+      | Lambda _ -> found := Some "a function literal"
       | Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args; _ } ->
         (match w.modules.(m).cells.(k) with
-         | Native { nname; _ } when not (List.mem nname known_natives) -> found := true
+         | Native ({ nname; _ } as n) when not (List.mem nname known_natives || bridgeable w m n) ->
+           found := Some (Printf.sprintf "the native %s.%s" w.modules.(m).mname nname)
          | _ -> Array.iter (fun (a : arg) -> go a.value) args)
       | _ -> walk (fun (x : expr) -> if x == e then true else (go x; false)) e
   in
@@ -581,7 +611,8 @@ let const st (v : t) =
     match a, b with
     | Dict { keys = x; _ }, Dict { keys = y; _ } -> x == y
     | Struct { shape = x; _ }, Struct { shape = y; _ } -> x == y
-    | _ -> false
+    | Text x, Text y -> String.equal x y
+    | _ -> a == b
   in
   let cs = st.dyn.consts in
   let rec find j = if j = Vec.length cs then (Vec.add_last cs v; j) else if same (Vec.get cs j) v then j else find (j + 1) in
@@ -690,6 +721,8 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   (* Words of [Types.t] that are no block. *)
   | Lmissing -> Word 1, Kval
   | Lbool b -> Word (if b then 5 else 7), Kval
+  (* A text, as the interpreter's literal: a constant of the unit, which a native takes. *)
+  | Ltext t -> fresh st Kval (fun r -> Value (r, const st (Text t)))
   | Var { b; _ } when global st b <> None -> let r = Option.get (global st b) in Reg r, Vec.get st.kinds r
   (* A variable of a module, as eps = 2.2e-16 at the top of a file, its own one that a function reads included: only the
      code of the file's top assigns one, a region of it in a register (above) when its loop does, so its number now is a
@@ -700,7 +733,14 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     let v = st.w.modules.(m).cells.(k) in
     if moves st.w m k then (match v with Int _ -> slot_of st m k Kint, Kint | Float _ -> slot_of st m k Kfloat, Kfloat | _ -> raise No)
     else begin
-      let c = match v with Int n -> (Ir.Int n, Ir.Kint) | Float x when Float.is_finite x -> Float x, Kfloat | _ -> raise No in
+      (* A text or a function, which nothing changes in place, as a constant of the unit too. *)
+      let c =
+        match v with
+        | Int n -> (Ir.Int n, Ir.Kint)
+        | Float x when Float.is_finite x -> Float x, Kfloat
+        | Text _ | Fun _ | Native _ -> fresh st Kval (fun r -> Value (r, const st v))
+        | _ -> raise No
+      in
       if not (List.exists (fun (m', k', _) -> m' = m && k' = k) st.dyn.cells) then st.dyn.cells <- (m, k, v) :: st.dyn.cells;
       c
     end
@@ -709,6 +749,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     (match st.w.modules.(m).cells.(k) with
      | Int n -> Int n, Kint
      | Float x when Float.is_finite x -> Float x, Kfloat
+     | (Fun _ | Native _) as v -> fresh st Kval (fun r -> Value (r, const st v))
      | _ -> raise No)
   | Bin (((Add | Sub | Mul) as op), a, b) ->
     let x = expr st a in
@@ -1138,7 +1179,10 @@ and call_expr st e (call : call) =
           carry st base join;
           Ir.Reg r, Kint
         | _ -> raise No)
-     | Native { nname = "Len"; _ } ->
+     | Native { nname = "Len"; _ }
+       when (match call.args with
+             | [| { aname = None; value = { e = Var { b = Local i; _ }; _ } } |] -> st.vecs.(i) <> None || st.arrays.(i) >= 0
+             | _ -> false) ->
        let a = args_of call 1 in
        (match a.(0).e with
         | Var { b = Local i; _ } when st.vecs.(i) <> None -> Int (Option.get st.vecs.(i)).n, Kint
@@ -1170,6 +1214,11 @@ and call_expr st e (call : call) =
        (match snd x, snd y with
         | (Ir.Kfloat | Kint), k when k = snd x -> select st ~kind:k (if name = "Max" then Ir.Gt else Lt) (fst y) (fst x), k
         | _ -> raise No)
+     | Native n when bridgeable st.w m n ->
+       let a = args_of call (Array.length call.args) in
+       if Array.length a < n.min_args || Array.length a > n.max_args then raise No;
+       native st e n (Array.map (fun x -> box st (expr st x)) a)
+     | Native { nname; _ } -> no (Printf.sprintf "the native %s.%s" st.w.modules.(m).mname nname)
      | Fun _ when made_here st e <> None -> record st e
      | Fun { proto; env = [||] } ->
        (* The arguments go to the parameters they name, as the interpreter's direct call binds them, and a parameter
@@ -1256,6 +1305,28 @@ and frame_of_struct st pos (proto : proto) sname sfields =
   let shape = Value.shape_of st.w ?sname ~m:st.w.modules.(proto.pm).host (Array.map fst sfields) in
   const st (Struct { shape; fields = Trie.no_vals; r_owned = false })
 
+(* A call of a native through OCaml, its arguments values, as the interpreter's: it shows, so nothing after it in the
+   statement goes back to the interpreter, which would call it again; the room reserved before is checked again after it,
+   as after a call. *)
+and native st e (n : native) args =
+  let ns = st.unit.natives in
+  let rec find k = if k = Vec.length ns then (Vec.add_last ns n; k) else if Vec.get ns k == n then k else find (k + 1) in
+  let k = find 0 and at = site st e.pos in
+  let r = fresh st Kval (fun r -> Native (r, k, args, at)) in
+  shows st;
+  st.dyn.ticked <- true;
+  (match st.dyn.need with
+   | Some _ ->
+     let q = ref 0 in
+     emit st (Ir.Recheck (q, -1));
+     st.dyn.rechecks <- q :: st.dyn.rechecks
+   | None -> ());
+  (* Its type, as inference found it from the native's: a number there is the interpreter's number too. *)
+  match ty st e with
+  | TI -> fresh st Kint (fun q -> Num (q, fst r, Only_int, at))
+  | TF -> fresh st Kfloat (fun q -> Num (q, fst r, Number, at))
+  | _ -> r
+
 (* A call of a function held in a value: a bet on the functions the interpreter saw this call reach, the last first, each
    tested in turn and called as a direct call is; any other goes back to the interpreter. This is the polymorphic inline
    cache of Hölzle, Chambers and Ungar (ECOOP 1991), its entries filled by the interpreter's type feedback. *)
@@ -1317,6 +1388,7 @@ and native_call st e (v : version) given =
   let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
   let call () =
     let r = fresh st (ret_kind v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, entry_step st st.inl v, back)) in
+    if st.unit.calls_show then shows st;
     (* Its nested frames may take the room checked before: what is made after it checks again, at once, where the call
        itself goes back: a region's statement bails as the call's would, a nested frame or a version as a whole stops;
        after a region's call that can't bail, nothing is made. *)
@@ -2133,8 +2205,8 @@ and allocates st (b : block) =
     | Call c ->
       (match c.callee.e with
        | Var { b = Cell { m; k; stable = true }; _ } ->
-         (* An inlined body may make a map or box a number. *)
-         (match st.w.modules.(m).cells.(k) with Fun _ -> true | _ -> false)
+         (* An inlined body may make a map or box a number, a native's arguments are boxed. *)
+         (match st.w.modules.(m).cells.(k) with Fun _ | Native _ -> true | _ -> false)
        (* A call through a value may box what its functions give. *)
        | Var { b = Local _; _ } -> true
        | _ -> false)
@@ -2744,13 +2816,13 @@ and finish ?(numbers = []) ?(sunk = []) ?(globals = []) st name ~params ~vars =
       size = ver.frame + max n_hidden (Vec.length st.dyn.consts + 1) + 2; hidden = n_hidden;
       consts = Vec.to_array st.dyn.consts; restores = Vec.to_array st.dyn.restores;
       keeps = Vec.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Vec.length st.sites) (-1);
-      pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ | Into _ | Draw _ -> true | _ -> false));
+      pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ | Into _ | Draw _ | Native _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Vec.to_array st.chains;
       (* An error writes a module's variables back to their cells too: one the code had assigned keeps that number. *)
       spills = st.w.hooks || globals <> []; globals = Array.of_list globals;
       stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent;
       sunk = Array.of_list sunk; points = Vec.to_array st.dyn.points; looped = Vec.length st.infos > 0 || st.f.has_self_tail; ver; vslots; vecs = Array.of_list vecs;
-      cells = Array.of_list st.dyn.cells; moved = Array.of_list st.dyn.moved; moving = [||] },
+      cells = Array.of_list st.dyn.cells; moved = Array.of_list st.dyn.moved; moving = [||]; natives = [||] },
     Vec.to_array st.sites )
 
 (* What the lowering of a region leaves out of what it looks at, from the statements of its branches that didn't lower
@@ -2870,10 +2942,14 @@ let numeric ?cold (loop : expr) i kept cells =
    [values] names it: an iteration then boxes and unboxes nothing. *)
 let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) unit index (ver : version) =
   let f = Cache.ready ver.owner.func in
-  if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
-  if (not region) && (ver.ret == TBot || hopeless w (Lazy.force f.body)) then raise No;
-  (* A whole function in native code skips the checks of its parameters' and result's types. *)
-  if (not region) && Compile.checks ver then raise No;
+  if ver.state <> 2 then raise No;
+  if not region then begin
+    if Array.length f.captures > 0 then no "a closure";
+    if ver.ret == TBot then no "no result";
+    Option.iter no (hopeless w (Lazy.force f.body));
+    (* A whole function in native code skips the checks of its parameters' and result's types. *)
+    if Compile.checks ver then no "checks of its types"
+  end;
   let kinds = Vec.create () in
   let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Vec.create () in
   let np = Array.length f.params in
@@ -3037,10 +3113,33 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
        fn.sites.(j) <- Vec.length s - 1)
     pos
 
+(* A call of a native from machine code costs about 100 ns more than the interpreter's, the way into OCaml and back
+   (2026-11-26: a loop of 20 operations of floats takes 27 ns a turn in machine code, 137 interpreted; with a call of
+   dict.Has, 200 and 210), and an operation of machine code saves about 5.5 ns on the interpreter's: a unit is made
+   only when its operations are at least [bridge_ops] for each of its calls of natives, else the interpreter, which calls
+   natives for less, keeps it (the same loop three times over, 60 operations a call: 220 ms against 420). A call of a
+   function of the unit counts as 4, as the interpreter's costs that. CESIA_JIT=always makes every unit, for tests. *)
+let bridge_ops = 24
+
+let work (f : Ir.func) =
+  Array.fold_left
+    (fun (w, n) (b : Ir.block) ->
+       List.fold_left
+         (fun (w, n) -> function
+            | Ir.Native _ -> w, n + 1
+            | Call _ -> w + 4, n
+            | Move _ | Incr _ | Bump _ | Tick _ | Steps _ | Burn | Frame _ | Enter _ | Enter_or_bail _ | Keep _ | Reserve _
+            | Recheck _ | Share _ | Value _ | Len _ | Dim _ ->
+              w, n
+            | _ -> w + 1, n)
+         (w, n) b.ins)
+    (0, 0) f.blocks
+
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
-let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
-  let u = { versions = Vec.create (); moving = Vec.create (); whole = first = None; table = Vec.create () } in
+let rec lower_unit ?(calls_show = false) ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
+  let u = { versions = Vec.create (); moving = Vec.create (); whole = first = None; table = Vec.create (); natives = Vec.create (); calls_show } in
   Vec.add_last u.versions ver;
+  why := "";
   let out = Vec.create () in
   match
     let st0 = start ~region:(first <> None) ?ctx ?scope ?values ?cold w u 0 ver in
@@ -3052,12 +3151,23 @@ let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
       let st = start w u !i v in
       Vec.add_last out (func st (Printf.sprintf "f%d" !i));
       incr i
-    done
+    done;
+    (* A call through OCaml may collect, which moves what an array read in place holds: none beside it. *)
+    if Vec.length u.natives > 0 && List.exists (fun ((f : Ir.func), _) -> f.arrays <> [||] || f.vslots > 0) (Vec.to_list out) then
+      no "a native beside an array read in place"
   with
+  | () when Vec.length u.natives > 0 && not calls_show ->
+    let ops, natives = List.fold_left (fun (w, n) ((f : Ir.func), _) -> let a, b = work f in w + a, n + b) (0, 0) (Vec.to_list out) in
+    if ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
+      why := Printf.sprintf "%d operations for %d calls of natives" ops natives;
+      None
+    end
+    else lower_unit ~calls_show:true ?ctx ?scope ?values ?cold w ver first
   | () ->
     let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     let fns = Array.map fst fs in
+    fns.(0) <- { (fns.(0)) with natives = Vec.to_array u.natives };
     (* The constants of every function, in the outermost frame's value slots, after its frame. *)
     let table = Vec.to_array u.table in
     fns.(0) <- { (fns.(0)) with consts = table; size = max fns.(0).size (fns.(0).frame + Array.length table + 3) };
@@ -3087,7 +3197,7 @@ let () =
       (match fst !dry_refused with Some x when x == w -> () | _ -> dry_refused := (Some w, []));
       if List.memq v (snd !dry_refused) then false
       else begin
-        let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create () } in
+        let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create (); natives = Vec.create (); calls_show = false } in
         Vec.add_last u.versions v;
         Vec.add_last u.versions v;
         let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in

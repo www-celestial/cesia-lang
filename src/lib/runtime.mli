@@ -86,6 +86,10 @@ val own : ctx -> t -> t
 (** To call before allocating n words. [ctx.site] must be up to date: it bounds the stack. *)
 val reserve : ctx -> int -> unit
 
+(** Is the fiber in a call of a native from machine code: the JIT's C frames are on its stack, which no effect of OCaml
+    crosses, so it waits where it is, as the main program does ([Fiber]). Set by the JIT. *)
+val bridged : (ctx -> bool) ref
+
 (** Stops the program on this limit. *)
 val limit : string -> int -> 'a
 

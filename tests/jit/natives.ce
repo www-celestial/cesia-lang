@@ -1,0 +1,58 @@
+use std/dict
+use std/fiber
+use std/io
+use std/text
+use std/value
+
+(* Natives called from machine code, through OCaml: values kept across calls that allocate, so that a tiny young heap
+   collects in each and moves them; texts and functions as constants; results that inference says are numbers; and a
+   native that calls back into Cesia, whose callback calls natives itself; the tables of std/fiber. *)
+defn churn(n)
+  m = {A: "x", B: "y"}
+  keep = text.Repeat(3, "ab")
+  total = 0
+  last = missing
+  for k in 1..n
+    parts = text.Split(",", "a,b,c,d")
+    big = text.Repeat(40, "z")
+    has = dict.Has("A", m)
+    size = text.ByteLength(big)
+    if has
+      total = total + size
+    end
+    last = dict.Put("C", parts, m)
+  end
+  [total, keep, value.Len(last), dict.Get("C", last), m]
+end
+
+struct Bag { n, word }
+
+(* What value.Len counts: a callback from the native. *)
+(b Bag) len() = text.ByteLength(text.Repeat(b.n, b.word))
+
+defn sizes(n)
+  total = 0
+  for k in 1..n
+    s = value.Len(Bag(3, "ab"))
+    total = total + s
+  end
+  total
+end
+
+(* The tables of std/fiber, natives that never wait. *)
+defn tabled(n)
+  t = fiber.Table(100)
+  hits = 0
+  for k in 1..n
+    fiber.Remember("k", k, 1000.0, t)
+    v = fiber.Recall("k", 1.0, t)
+    if v != missing
+      hits = hits + 1
+    end
+  end
+  [hits, fiber.Recall("k", 1.0, t)]
+end
+
+io.Print(churn(20000))
+io.Print(sizes(20000))
+io.Print(tabled(20000))

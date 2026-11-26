@@ -1,0 +1,33 @@
+use std/io
+use std/sys
+use std/text
+use std/value
+
+(* A recursion through a native: each level calls value.Len from machine code, which calls the next level back. Past 64
+   levels of natives called from machine code, what they call back is the interpreter's, whose stack grows. *)
+struct Down { n }
+
+(* What value.Len counts: the level below, plus one. *)
+(d Down) len() = down(d.n)
+
+defn down(n)
+  if n == 0
+    return 0
+  end
+  deep(n - 1) + 1
+end
+
+defn deep(n)
+  total = 0
+  for k in 1..1
+    total = total + value.Len(Down(n))
+  end
+  total
+end
+
+warm = 0
+for k in 1..3000
+  warm = warm + deep(2)
+end
+io.Print(warm)
+io.Print(deep(text.Number(sys.Args[1])))
