@@ -1,10 +1,12 @@
-(** std/encode in a program compiled to WebAssembly: Hex, its native, in Cesia, which cesia build --target wasm takes for
-    std/encode's of the same name, with the same result; UrlEncode and the others of std/encode follow it. *)
+(** std/encode in a program compiled to WebAssembly: Hex and Base64, its natives, in Cesia, which cesia build --target wasm
+    takes for std/encode's of the same name, with the same result; UrlEncode and the others of std/encode follow it. *)
 use std/list
 use std/math
 use std/text
+use std/value
 
 digits = "0123456789abcdef"   (* The figures of hexadecimal, in lower case. *)
+base64Codes = text.Bytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")   (* The bytes of the digits of Base64. *)
 
 defn Hex(s)
   (** The hexadecimal text of the bytes of a text, in lower case. *)
@@ -15,4 +17,30 @@ defn Hex(s)
     out = list.Append(text.Slice(lo, lo, digits), list.Append(text.Slice(hi, hi, digits), out))
   end
   text.Join("", out)
+end
+
+defn Base64(s)
+  (** The Base64 text of the bytes of a text, standard alphabet, with padding (RFC 4648, 4). *)
+  codes = text.Bytes(s)
+  n = value.Len(codes)
+  whole = math.Div(n, 3)
+  left = n - 3 * whole
+  out = list.Fill(61, 4 * whole + (if left > 0 4 else 0 end))
+  for i in 1..whole
+    word = codes[3 * i - 2] * 65536 + codes[3 * i - 1] * 256 + codes[3 * i]
+    out[4 * i - 3] = base64Codes[math.Div(word, 262144) + 1]
+    out[4 * i - 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
+    out[4 * i - 1] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
+    out[4 * i] = base64Codes[math.Mod(word, 64) + 1]
+  end
+  if left > 0
+    (* the last one or two bytes; each one missing leaves a = of the Fill *)
+    word = codes[3 * whole + 1] * 65536 + (if left == 2 codes[n] * 256 else 0 end)
+    out[4 * whole + 1] = base64Codes[math.Div(word, 262144) + 1]
+    out[4 * whole + 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
+    if left == 2
+      out[4 * whole + 3] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
+    end
+  end
+  text.FromBytes(out)
 end

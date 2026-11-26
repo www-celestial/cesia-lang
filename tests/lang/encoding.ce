@@ -36,6 +36,11 @@ defn oldBase64(s)
   text.Join("", parts)
 end
 isBase64AsBefore() = test.ForAll(bs -> encode.Base64(text.FromBytes(bs)) == oldBase64(text.FromBytes(bs)) and result.Unwrap(encode.Unbase64(encode.Base64(text.FromBytes(bs)))) == text.FromBytes(bs), gen.List(gen.Int(0, 255), max = 70))
+(* The native against the loop of Cesia that it replaced, on longer texts too, as the cursor of a page; and the URL
+   alphabet of RFC 4648 section 5, made of it as Centauri makes it, read back by Unbase64. *)
+isBase64NativeAsBefore() = test.ForAll(bs -> encode.Base64(text.FromBytes(bs)) == oldBase64(text.FromBytes(bs)), gen.List(gen.Int(0, 255), max = 400), cases = 300)
+urlForm(s) = text.Replace("=", "", text.Replace("/", "_", text.Replace("+", "-", encode.Base64(s))))
+isBase64UrlRoundTrip() = test.ForAll(bs -> value.Equal(encode.Unbase64(urlForm(text.FromBytes(bs))), result.Ok(text.FromBytes(bs))), gen.List(gen.Int(0, 255), max = 200), cases = 500)
 isUrlEncode() = encode.UrlEncode("a b&é") == "a%20b%26%C3%A9"
 isUrlDecode() = encode.UrlDecode("a%20b+c%26%C3%A9") == "a b c&é" and encode.UrlDecode("100%") == "100%"
 isQuery() = value.Equal(encode.ParseQuery("a=1&b=two+words&c=&d"), {"a": "1", "b": "two words", "c": "", "d": ""})
