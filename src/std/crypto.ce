@@ -4,11 +4,13 @@
     in 0.47 µs where a call through std/c took 3.6; isSame compares in OCaml, every byte read, in 0.16 µs where it took
     3.4. They take s as the others do. *)
 use std/c
+use std/encode
 use std/bug
 use std/list
 use std/math
 use std/result
 use std/text
+use std/value
 
 (** The size in bytes of a key of Seal and of a secret key of BoxPair.
 
@@ -84,7 +86,7 @@ defn Open()
   })
 end
 
-sized(value, size, name) = bug.Assert(text.ByteLength(value) == size, "$name has $size bytes.")
+sized(bytes, size, name) = bug.Assert(text.ByteLength(bytes) == size, "$name has $size bytes.")
 
 defn out(size, inputs, f)
   (** Runs f on a fresh output block and the blocks of the inputs, then gives the output bytes. *)
@@ -295,3 +297,378 @@ end
 
       text.ByteLength(stored) < PasswordSize --> true *)
 PasswordSize = 128
+
+(** The algorithms of KeyPair, SignWith and VerifyWith, by their names in JOSE (RFC 7518) and COSE (RFC 9053): RS256 is
+    RSASSA-PKCS1-v1_5 with SHA-256, PS256 RSASSA-PSS with SHA-256, MGF1 with SHA-256 and a salt of 32 bytes, both with
+    an RSA key of 2048 bits or more; ES256 is ECDSA on the curve P-256 with SHA-256.
+
+      Algorithms --> ["RS256", "PS256", "ES256"] *)
+Algorithms = ["RS256", "PS256", "ES256"]
+
+defn OpenSsl()
+  (** Loads libcrypto, the library of OpenSSL 3, for the signatures of the web and HMAC-SHA-1: an Ok of the api that
+      KeyPair, SignWith, VerifyWith and HmacSha1 take as their last argument o, or an Err. Run with --allow ffi=crypto.
+      libsodium has no RSA nor ECDSA, which ID tokens and passkeys need, nor HMAC-SHA-1, which TOTP needs; Ed25519 stays
+      Sign and Verify's, one way for each algorithm, and Open stays as it was.
+
+        o = OpenSsl()!
+        text.ByteLength(HmacSha1("key", "message", o)) --> 20 *)
+  lib = c.Open("crypto", version = 3)?
+  fetch = c.Fn("EVP_MD_fetch", ["ptr", "text", "ptr"], "ptr", lib)?
+  sha256 = fetch(missing, "SHA256", missing)
+  sha1 = fetch(missing, "SHA1", missing)
+  if value.IsMissing(sha256) or value.IsMissing(sha1)
+    return result.Err({Kind: "crypto", Message: "OpenSSL has no SHA-256 or SHA-1."})
+  end
+  result.Ok({
+    Sha256: sha256,
+    Sha1: sha1,
+    ReadPublic: c.Fn("d2i_PUBKEY", ["ptr", "ptr", "i64"], "ptr", lib)?,
+    ReadSecret: c.Fn("d2i_AutoPrivateKey", ["ptr", "ptr", "i64"], "ptr", lib)?,
+    WritePublic: c.Fn("i2d_PUBKEY", ["ptr", "ptr"], "i32", lib)?,
+    Pkcs8: c.Fn("EVP_PKEY2PKCS8", ["ptr"], "ptr", lib)?,
+    WritePkcs8: c.Fn("i2d_PKCS8_PRIV_KEY_INFO", ["ptr", "ptr"], "i32", lib)?,
+    FreePkcs8: c.Fn("PKCS8_PRIV_KEY_INFO_free", ["ptr"], "void", lib)?,
+    FreeKey: c.Fn("EVP_PKEY_free", ["ptr"], "void", lib)?,
+    KeyType: c.Fn("EVP_PKEY_get_base_id", ["ptr"], "i32", lib)?,
+    KeyBits: c.Fn("EVP_PKEY_get_bits", ["ptr"], "i32", lib)?,
+    KeySize: c.Fn("EVP_PKEY_get_size", ["ptr"], "i32", lib)?,
+    GroupName: c.Fn("EVP_PKEY_get_group_name", ["ptr", "ptr", "u64", "ptr"], "i32", lib)?,
+    NewDigest: c.Fn("EVP_MD_CTX_new", [], "ptr", lib)?,
+    FreeDigest: c.Fn("EVP_MD_CTX_free", ["ptr"], "void", lib)?,
+    VerifyInit: c.Fn("EVP_DigestVerifyInit", ["ptr", "ptr", "ptr", "ptr", "ptr"], "i32", lib)?,
+    DigestVerify: c.Fn("EVP_DigestVerify", ["ptr", "ptr", "u64", "ptr", "u64"], "i32", lib)?,
+    SignInit: c.Fn("EVP_DigestSignInit", ["ptr", "ptr", "ptr", "ptr", "ptr"], "i32", lib)?,
+    DigestSign: c.Fn("EVP_DigestSign", ["ptr", "ptr", "ptr", "ptr", "u64"], "i32", lib)?,
+    Padding: c.Fn("EVP_PKEY_CTX_set_rsa_padding", ["ptr", "i32"], "i32", lib)?,
+    SaltSize: c.Fn("EVP_PKEY_CTX_set_rsa_pss_saltlen", ["ptr", "i32"], "i32", lib)?,
+    MaskHash: c.Fn("EVP_PKEY_CTX_set_rsa_mgf1_md", ["ptr", "ptr"], "i32", lib)?,
+    NewKeyContext: c.Fn("EVP_PKEY_CTX_new_from_name", ["ptr", "text", "ptr"], "ptr", lib)?,
+    FreeKeyContext: c.Fn("EVP_PKEY_CTX_free", ["ptr"], "void", lib)?,
+    KeygenInit: c.Fn("EVP_PKEY_keygen_init", ["ptr"], "i32", lib)?,
+    RsaBits: c.Fn("EVP_PKEY_CTX_set_rsa_keygen_bits", ["ptr", "i32"], "i32", lib)?,
+    Group: c.Fn("EVP_PKEY_CTX_set_group_name", ["ptr", "text"], "i32", lib)?,
+    Generate: c.Fn("EVP_PKEY_generate", ["ptr", "ptr"], "i32", lib)?,
+    GenerateSlow: c.Fn("EVP_PKEY_generate", ["ptr", "ptr"], "i32", lib, slow = true)?,
+    Hmac: c.Fn("HMAC", ["ptr", "ptr", "i32", "ptr", "u64", "ptr", "ptr"], "ptr", lib)?,
+    ClearErrors: c.Fn("ERR_clear_error", [], "void", lib)?
+  })
+end
+
+failed(message) = result.Err({Kind: "crypto", Message: message})
+
+defn decoded(read, der, o)
+  (** The key that read, d2i_PUBKEY or d2i_AutoPrivateKey, makes of DER bytes it takes whole, or missing. OpenSSL moves
+      the pointer it is given past what it read: bytes left after the key are refused, as one more way in. *)
+  size = text.ByteLength(der)
+  if size == 0
+    return missing
+  end
+  data = block(der)
+  at = c.Alloc(8)
+  c.Set("ptr", 0, data, at)
+  start = c.Get("i64", 0, at)
+  key = read(missing, at, size)
+  used = c.Get("i64", 0, at) - start
+  c.Free(at)
+  c.Free(data)
+  if not value.IsMissing(key) and used != size
+    o.FreeKey(key)
+    return missing
+  end
+  key
+end
+
+defn group(key, o)
+  (** The name of the curve of an EC key, as OpenSSL names it: prime256v1 for P-256. *)
+  name = c.Alloc(64)
+  size = c.Alloc(8)
+  got = if o.GroupName(key, name, 64, size) == 1 c.Load(0, list.Min(c.Get("u64", 0, size), 64), name) else "" end
+  c.Free(name)
+  c.Free(size)
+  got
+end
+
+defn fits(key, alg, o)
+  (** Is the key of the algorithm's type: an RSA key of 2048 bits or more for RS256 and PS256, an EC key on P-256 for
+      ES256? A key of another type never meets an algorithm that isn't its own. *)
+  kind = o.KeyType(key)
+  if alg == "ES256"
+    kind == 408 and group(key, o) == "prime256v1"
+  else
+    kind == 6 and o.KeyBits(key) >= 2048
+  end
+end
+
+defn padded(context, alg, o)
+  (** The padding of an RSA signature, set on the context that a DigestSignInit or DigestVerifyInit gave: 1 is PKCS #1
+      v1.5, 6 PSS. *)
+  if alg == "RS256"
+    o.Padding(context, 1) == 1
+  else if alg == "PS256"
+    o.Padding(context, 6) == 1 and o.SaltSize(context, 32) == 1 and o.MaskHash(context, o.Sha256) == 1
+  else
+    true
+  end
+end
+
+defn digested(key, alg, init, f, o)
+  (** Runs f on a digest context set up by init, DigestSignInit or DigestVerifyInit, for the key and the algorithm,
+      then frees it: missing, and f not run, when OpenSSL refuses the setup. *)
+  ctx = o.NewDigest()
+  slot = c.Alloc(8)
+  ready = not value.IsMissing(ctx) and init(ctx, slot, o.Sha256, missing, key) == 1 and padded(c.Get("ptr", 0, slot), alg, o)
+  r = if ready f(ctx) else missing end
+  o.FreeDigest(ctx)
+  c.Free(slot)
+  r
+end
+
+defn VerifyWith(signature, message, public, alg, o)
+  (** Is this signature the one of the message under the public key, for the algorithm, one of Algorithms? public is
+      the DER of a SubjectPublicKeyInfo, as RsaKey and EcKey make from a JWK or a COSE key; an ES256 signature is DER,
+      as SignWith gives it and WebAuthn sends it: EcdsaDer reads the 64 bytes of a JWT. Never an error: false for any
+      bytes that aren't a signature of the message, a key of another type than the algorithm's, an RSA key under 2048
+      bits, an EC key off P-256 or an algorithm that isn't one of the three.
+
+        pair = KeyPair("ES256", o)!
+        signed = SignWith("pay 10", pair.Secret, "ES256", o)!
+        VerifyWith(signed, "pay 10", pair.Public, "ES256", o) --> true
+        VerifyWith(signed, "pay 99", pair.Public, "ES256", o) --> false
+        VerifyWith(signed, "pay 10", pair.Public, "RS256", o) --> false *)
+  if not (alg in Algorithms)
+    return false
+  end
+  key = decoded(o.ReadPublic, public, o)
+  if value.IsMissing(key)
+    o.ClearErrors()
+    return false
+  end
+  size = text.ByteLength(message)
+  check(ctx) = out(0, [signature, message], (out, b) -> o.DigestVerify(ctx, b[1], text.ByteLength(signature), b[2], size)).Status == 1
+  valid = fits(key, alg, o) and digested(key, alg, o.VerifyInit, check, o) == true
+  o.FreeKey(key)
+  o.ClearErrors()
+  valid
+end
+
+defn SignWith(message, secret, alg, o)
+  (** An Ok of the signature of a message under a secret key, the DER of a PKCS #8 PrivateKeyInfo as KeyPair gives it,
+      for the algorithm, one of Algorithms; ES256 gives DER, which EcdsaRaw turns into the 64 bytes of a JWT. An Err for
+      a key that isn't one, or that isn't of the algorithm. RS256 gives the same bytes each time; PS256 and ES256 draw
+      random ones, and each verifies.
+
+        SignWith("pay 10", pair.Secret, "ES256", o) then result.IsOk --> true
+        SignWith("pay 10", pair.Secret, "RS256", o) then result.MapErr(it.Message) --> result.Err("This key isn't one of RS256.") *)
+  if not (alg in Algorithms)
+    return failed("$alg is none of $Algorithms.")
+  end
+  key = decoded(o.ReadSecret, secret, o)
+  if value.IsMissing(key)
+    o.ClearErrors()
+    return failed("This isn't a secret key in DER.")
+  end
+  if not fits(key, alg, o)
+    o.FreeKey(key)
+    o.ClearErrors()
+    return failed("This key isn't one of $alg.")
+  end
+  room = o.KeySize(key)
+  size = c.Alloc(8)
+  c.Set("u64", 0, room, size)
+  length = text.ByteLength(message)
+  sign(ctx) = out(room, [message], (out, b) -> o.DigestSign(ctx, out, size, b[1], length))
+  r = digested(key, alg, o.SignInit, sign, o)
+  used = c.Get("u64", 0, size)
+  c.Free(size)
+  o.FreeKey(key)
+  o.ClearErrors()
+  if not value.IsMissing(r) and r.Status == 1 result.Ok(text.ByteSlice(1, used, r.Bytes)) else failed("OpenSSL couldn't sign.") end
+end
+
+defn encoded(write, x)
+  (** The DER that write, i2d_PUBKEY or i2d_PKCS8_PRIV_KEY_INFO, gives of x: asked its size first, then written into a
+      block of that size, never into memory of OpenSSL's. *)
+  size = write(x, missing)
+  if size <= 0
+    return missing
+  end
+  data = c.Alloc(size)
+  at = c.Alloc(8)
+  c.Set("ptr", 0, data, at)
+  written = write(x, at)
+  der = if written == size c.Load(0, size, data) else missing end
+  c.Free(at)
+  c.Free(data)
+  der
+end
+
+defn KeyPair(alg, o)
+  (** An Ok of a new pair of keys for the algorithm, one of Algorithms: Public, the DER of a SubjectPublicKeyInfo, for
+      VerifyWith, and Secret, the DER of a PKCS #8 PrivateKeyInfo, for SignWith. RSA keys have 2048 bits, EC keys are on
+      P-256. An Err for another algorithm. An RSA key takes some 50 ms, on a thread of its own, as HashPassword: the
+      other fibers run meanwhile. An EC key takes some 30 µs, less than a thread would, and is made at once.
+
+        rsa = KeyPair("RS256", o)!
+        text.ByteLength(rsa.Public) --> 294
+        text.ByteLength(pair.Public) --> 91
+        KeyPair("HS256", o) then result.IsErr --> true *)
+  if not (alg in Algorithms)
+    return failed("$alg is none of $Algorithms.")
+  end
+  ec = alg == "ES256"
+  ctx = o.NewKeyContext(missing, if ec "EC" else "RSA" end, missing)
+  if value.IsMissing(ctx)
+    o.ClearErrors()
+    return failed("OpenSSL has no $alg keys.")
+  end
+  slot = c.Alloc(8)
+  made = o.KeygenInit(ctx) == 1 and (if ec o.Group(ctx, "P-256") == 1 and o.Generate(ctx, slot) == 1 else o.RsaBits(ctx, 2048) == 1 and o.GenerateSlow(ctx, slot) == 1 end)
+  o.FreeKeyContext(ctx)
+  key = if made c.Get("ptr", 0, slot) else missing end
+  c.Free(slot)
+  if value.IsMissing(key)
+    o.ClearErrors()
+    return failed("OpenSSL couldn't make a $alg key.")
+  end
+  public = encoded(o.WritePublic, key)
+  info = o.Pkcs8(key)
+  secret = if value.IsMissing(info) missing else encoded(o.WritePkcs8, info) end
+  if not value.IsMissing(info)
+    o.FreePkcs8(info)
+  end
+  o.FreeKey(key)
+  o.ClearErrors()
+  if value.IsMissing(public) or value.IsMissing(secret)
+    return failed("OpenSSL couldn't write a $alg key.")
+  end
+  result.Ok({Public: public, Secret: secret})
+end
+
+defn HmacSha1(key, message, o)
+  (** The HMAC-SHA-1 of a message under a key of any length, as 20 bytes: what TOTP, RFC 6238, computes for the codes of
+      authenticator apps. SHA-1 is broken for signatures, not for HMAC, whose proof needs less of its hash (Bellare, 2006).
+      For anything else, HmacSha256.
+
+        encode.Hex(HmacSha1("Jefe", "what do ya want for nothing?", o)) --> "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79" *)
+  r = out(20, [key, message], (out, b) -> o.Hmac(o.Sha1, b[1], text.ByteLength(key), b[2], text.ByteLength(message), out, missing))
+  bug.Assert(not value.IsMissing(r.Status), "OpenSSL refused this HMAC.")
+  r.Bytes
+end
+
+defn derSize(n)
+  (** The length of a DER value: one byte under 128, else 128 plus the count of the bytes of n, big-endian. *)
+  if n < 128
+    return text.FromBytes([n])
+  end
+  digits = []
+  while n > 0
+    digits = list.Concat([math.Mod(n, 256)], digits)
+    n = math.Div(n, 256)
+  end
+  text.FromBytes(list.Concat([128 + value.Len(digits)], digits))
+end
+
+der(tag, body) = "$(text.FromBytes([tag]))$(derSize(text.ByteLength(body)))$body"   (* A DER value: its tag, its length, its body. *)
+
+defn derInteger(bytes)
+  (** A DER INTEGER of an unsigned big-endian number: its leading zeros dropped, one put back before a high bit, as an
+      INTEGER is signed. *)
+  first = text.ByteFindAny(text.Char(0), 1, bytes, not = true)
+  digits = if value.IsMissing(first) text.Char(0) else text.ByteSlice(first, text.ByteLength(bytes), bytes) end
+  if text.Byte(1, digits) >= 128
+    digits = "$(text.Char(0))$digits"
+  end
+  der(2, digits)
+end
+
+rsaAlgorithm = text.FromBytes([0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, 0x05, 0x00])   (* rsaEncryption, NULL *)
+ecPrefix = text.FromBytes([0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01, 0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04])   (* id-ecPublicKey, prime256v1, an uncompressed point *)
+
+defn RsaKey(n, e)
+  (** An Ok of the DER of the SubjectPublicKeyInfo of an RSA key, for VerifyWith, from its modulus n and its exponent e,
+      big-endian bytes: the n and e of a JWK after encode.Unbase64, or the -1 and -2 of a COSE key. Leading zero bytes
+      may be there or not. An Err for an empty n or e. Pure Cesia, a few DER writes: no OpenSSL.
+
+        tiny = RsaKey(text.FromBytes([0xC5, 0x01]), text.FromBytes([1, 0, 1]))!
+        encode.Hex(tiny) --> "301e300d06092a864886f70d0101010500030d00300a020300c5010203010001"
+        RsaKey(text.FromBytes([0, 0, 0xC5, 0x01]), text.FromBytes([1, 0, 1])) --> result.Ok(tiny)
+        RsaKey("", "e") then result.IsErr --> true *)
+  if text.ByteLength(n) == 0 or text.ByteLength(e) == 0
+    return failed("An RSA key needs its n and its e.")
+  end
+  body = der(0x30, "$(derInteger(n))$(derInteger(e))")
+  result.Ok(der(0x30, "$rsaAlgorithm$(der(3, "$(text.Char(0))$body"))"))
+end
+
+defn EcKey(x, y)
+  (** An Ok of the DER of the SubjectPublicKeyInfo of a P-256 key, for VerifyWith, from the 32 bytes of each of its
+      coordinates: the x and y of a JWK after encode.Unbase64, or the -2 and -3 of a COSE key. An Err unless both have 32
+      bytes. OpenSSL checks that the point is on the curve when VerifyWith reads it. Pure Cesia: no OpenSSL.
+
+        text.ByteLength(EcKey(text.Repeat(32, "x"), text.Repeat(32, "y"))!) --> 91
+        EcKey("x", "y") then result.IsErr --> true *)
+  if text.ByteLength(x) != 32 or text.ByteLength(y) != 32
+    return failed("A P-256 key needs 32 bytes for x and 32 for y.")
+  end
+  result.Ok("$ecPrefix$x$y")
+end
+
+defn EcdsaDer(raw)
+  (** An Ok of an ES256 signature in DER, the ECDSA-Sig-Value that VerifyWith takes, from the 64 bytes r and s of a JWS,
+      RFC 7518 section 3.4. An Err for another length.
+
+        raw = "$(text.Repeat(31, text.Char(0)))$(text.Char(1))$(text.Repeat(32, text.FromBytes([0x80])))"
+        text.ByteSlice(1, 14, encode.Hex(EcdsaDer(raw)!)) --> "30260201010221"
+        EcdsaDer("short") then result.IsErr --> true *)
+  if text.ByteLength(raw) != 64
+    return failed("An ES256 signature of a JWS has 64 bytes.")
+  end
+  result.Ok(der(0x30, "$(derInteger(text.ByteSlice(1, 32, raw)))$(derInteger(text.ByteSlice(33, 64, raw)))"))
+end
+
+defn derPart(s, at)
+  (** The 32 bytes of the DER INTEGER at byte at, from 1, of an ES256 signature, and the byte after it, or missing when
+      it isn't one in DER: a positive number in its fewest bytes, of 32 bytes at most. *)
+  n = text.ByteLength(s)
+  if at + 2 > n or text.Byte(at, s) != 2
+    return missing
+  end
+  size = text.Byte(at + 1, s)
+  if size < 1 or size > 33 or at + 1 + size > n
+    return missing
+  end
+  first = text.Byte(at + 2, s)
+  if first >= 128 or (size > 1 and first == 0 and text.Byte(at + 3, s) < 128)
+    return missing
+  end
+  digits = text.ByteSlice(if first == 0 and size > 1 at + 3 else at + 2 end, at + 1 + size, s)
+  if text.ByteLength(digits) > 32
+    return missing
+  end
+  {Bytes: "$(text.Repeat(32 - text.ByteLength(digits), text.Char(0)))$digits", Next: at + 2 + size}
+end
+
+defn EcdsaRaw(signature)
+  (** An Ok of the 64 bytes r and s that a JWS holds, RFC 7518 section 3.4, from an ES256 signature in DER, as SignWith
+      gives it. An Err for anything that isn't the DER of two INTEGERs of 32 bytes at most. EcdsaDer goes back.
+
+        sig = SignWith("pay 10", pair.Secret, "ES256", o)!
+        text.ByteLength(EcdsaRaw(sig)!) --> 64
+        EcdsaDer(EcdsaRaw(sig)!) --> result.Ok(sig)
+        EcdsaRaw("nonsense") then result.IsErr --> true *)
+  bad = failed("This isn't an ES256 signature in DER.")
+  n = text.ByteLength(signature)
+  if n < 8 or n > 72 or text.Byte(1, signature) != 0x30 or text.Byte(2, signature) != n - 2
+    return bad
+  end
+  r = derPart(signature, 3)
+  if value.IsMissing(r)
+    return bad
+  end
+  s = derPart(signature, r.Next)
+  if value.IsMissing(s) or s.Next != n + 1
+    return bad
+  end
+  result.Ok("$(r.Bytes)$(s.Bytes)")
+end

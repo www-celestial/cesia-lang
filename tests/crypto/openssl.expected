@@ -1,0 +1,53 @@
+RFC 7515 A.2, RS256 true
+signed again, the RFC's bytes true
+a changed byte of the message, the signature, the key false false false
+as PS256, ES256, rs256, none [false, false, false, false, false]
+the key with a byte after it false
+n with leading zeros true
+RFC 7515 A.3, ES256 true
+r || s back from DER true
+the raw signature itself false
+a changed byte of the message, r, s, x false false false false
+as RS256 and PS256 false false
+signed again with d true true
+an RSA secret for ES256, an EC one for RS256 Err({Kind: "crypto", Message: "This key isn't one of ES256."}) Err({Kind: "crypto", Message: "This key isn't one of RS256."})
+openssl RS256, and the same bytes signed here true true
+openssl PS256, salt 32 and salt 20 true false
+openssl PS256 as RS256, RS256 as PS256 false false
+PS256 signed here true true false
+openssl ES256 true
+ES256 signed here true
+an RSA key of 1024 bits false Err({Kind: "crypto", Message: "This key isn't one of RS256."})
+secp256k1 false Err({Kind: "crypto", Message: "This key isn't one of ES256."})
+P-384 false
+an RSA-PSS key false
+a public key as a secret, a secret as a public key Err({Kind: "crypto", Message: "This isn't a secret key in DER."}) false
+RS256 294 true [true, false, false] false
+PS256 294 true [false, true, false] false
+ES256 91 true [false, false, true] false
+KeyPair of HS256 Err({Kind: "crypto", Message: "HS256 is none of [\"RS256\", \"PS256\", \"ES256\"]."}) SignWith of none Err({Kind: "crypto", Message: "none is none of [\"RS256\", \"PS256\", \"ES256\"]."})
+two pairs differ, and one's signature fails the other's key true false
+an empty message true
+a message of 10 MB true
+empty signature, key, both false false false
+a signature of 1 MB, a key of 1 MB false false
+a key of zeros, of 0xFF false false
+SignWith of an empty or a broken key Err({Kind: "crypto", Message: "This isn't a secret key in DER."}) Err({Kind: "crypto", Message: "This isn't a secret key in DER."})
+a point off the curve false
+Err({Kind: "crypto", Message: "An RSA key needs its n and its e."}) Err({Kind: "crypto", Message: "An RSA key needs its n and its e."})
+true true
+Err({Kind: "crypto", Message: "An ES256 signature of a JWS has 64 bytes."}) true
+zeros 3006020100020100 true
+not DER [true, true, true, true, true, true, true, true, true, true, true]
+one in DER Ok("00000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001")
+b617318655057264e28bc0b6fb378c8ef146be00
+effcdf6ae5eb2fa2d27416d5f184df9c259a7c79
+125d7342b9ac11cd91a39af48aa17b4f63f175d3
+4c9007f4026250c6bc8414f9bf50c86c2d7235da
+4c1a03424b55e07fe7f27be1d58bb9324a9a5a04
+aa4ae5e15272d00e95705637ce8a3b55ed402112
+e8e99d0f45237d786d6bbaa7965c7808bbff1a91
+an empty key and message fbdb1d1b18aa6c08324b7d64b71fb76370690e1d
+TOTP ["94287082", "07081804", "14050471", "89005924", "69279037", "65353130"]
+Ok(missing)
+exit 0

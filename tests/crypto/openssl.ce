@@ -1,0 +1,190 @@
+(** The signatures and HMAC-SHA-1 of std/crypto through OpenSSL: the exact vectors of RFC 7515 (JWS, appendices A.2 and A.3),
+    RFC 2202 (HMAC-SHA-1) and RFC 6238 (TOTP, appendix B, its SHA-1 column), and keys and signatures that OpenSSL 4.1's
+    command made, in keys/, each checked by it with openssl dgst -verify before it was kept:
+
+      openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 (and 1024), -algorithm RSA-PSS, -algorithm EC with
+        ec_paramgen_curve P-256, P-384 and secp256k1; openssl pkey -pubout -outform DER, and -outform DER for PKCS #8
+      openssl dgst -sha256 -sign KEY, with -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 (and 20) for PSS
+
+    Each refusal has its line: a key of another type than the algorithm, a short RSA key, a curve that isn't P-256, a
+    changed byte of the message, the signature or the key, empty and huge inputs. *)
+use std/bug
+use std/crypto
+use std/encode
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+
+file(name) = sys.Read("keys/$name")!
+bytes(xs) = text.FromBytes(xs)
+url(s) = encode.Unbase64(s)!
+
+defn changed(s, at)
+  (** s with its byte at, from 1, changed: one bit flipped. *)
+  b = text.Byte(at, s)
+  "$(text.ByteSlice(1, at - 1, s))$(bytes([math.BitXor(b, 1)]))$(text.ByteSlice(at + 1, text.ByteLength(s), s))"
+end
+
+(* DER, to write the secret keys of the RFC: a tag, a length, a body. *)
+defn length(n)
+  if n < 128
+    return bytes([n])
+  end
+  if n < 256 bytes([0x81, n]) else bytes([0x82, math.Div(n, 256), math.Mod(n, 256)]) end
+end
+der(tag, body) = "$(bytes([tag]))$(length(text.ByteLength(body)))$body"
+integer(s) = der(2, if text.Byte(1, s) >= 128 "$(text.Char(0))$s" else s end)
+
+defn rsaSecret(jwk)
+  (** The PKCS #8 of an RSA key from the parts of its JWK, RFC 8017 appendix A.1.2. *)
+  parts = [integer(url(jwk[k])) for k in ["n", "e", "d", "p", "q", "dp", "dq", "qi"]]
+  key = der(0x30, "$(der(2, text.Char(0)))$(text.Join("", parts))")
+  algorithm = der(0x30, "$(der(6, bytes([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01])))$(bytes([5, 0]))")
+  der(0x30, "$(der(2, text.Char(0)))$algorithm$(der(4, key))")
+end
+
+defn ecSecret(jwk)
+  (** The PKCS #8 of a P-256 key from the parts of its JWK, RFC 5915 inside RFC 5208. *)
+  curve = der(6, bytes([0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07]))
+  point = der(0xA1, der(3, "$(bytes([0, 4]))$(url(jwk.x))$(url(jwk.y))"))
+  key = der(0x30, "$(der(2, text.Char(1)))$(der(4, url(jwk.d)))$point")
+  algorithm = der(0x30, "$(der(6, bytes([0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01])))$curve")
+  der(0x30, "$(der(2, text.Char(0)))$algorithm$(der(4, key))")
+end
+
+defn totp(seed, time, o)
+  (** The 8 digits of TOTP at a time in seconds, RFC 6238: HOTP of RFC 4226 on the count of 30 seconds, big-endian. *)
+  count = math.Div(time, 30)
+  counter = bytes([math.Mod(math.Div(count, 256 ^ (8 - k)), 256) for k in 1..8])
+  h = crypto.HmacSha1(seed, counter, o)
+  at = math.BitAnd(text.Byte(20, h), 15) + 1
+  code = math.BitAnd(text.Byte(at, h), 127) * 16777216 + text.Byte(at + 1, h) * 65536 + text.Byte(at + 2, h) * 256 + text.Byte(at + 3, h)
+  text.PadLeft(8, "0", "$(math.Mod(code, 100000000))")
+end
+
+defn main()
+  o = crypto.OpenSsl()?
+
+  (* RFC 7515 A.2: RS256, its key as a JWK; PKCS #1 v1.5 is deterministic, so signing again gives the RFC's bytes. *)
+  rfc = {
+    n: "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
+    e: "AQAB",
+    d: "Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97IjlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYTCBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLhBOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ",
+    p: "4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdiYrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPGBY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc",
+    q: "uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxaewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA-njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc",
+    dp: "BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3QCLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0",
+    dq: "h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-kyNlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU",
+    qi: "IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2oy26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLUW0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U"
+  }
+  payload = "eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ"
+  input = "eyJhbGciOiJSUzI1NiJ9.$payload"
+  signature = url("cC4hiUPoj9Eetdgtv3hF80EGrhuB__dzERat0XF9g2VtQgr9PJbu3XOiZj5RZmh7AAuHIm4Bh-0Qc_lF5YKt_O8W2Fp5jujGbds9uJdbF9CUAr7t1dnZcAcQjbKBYNX4BAynRFdiuB--f_nZLgrnbyTyWzO75vRK5h6xBArLIARNPvkSjtQBMHlb1L07Qe7K0GarZRmB_eSN9383LcOLn6_dO--xi12jzDwusC-eOkHWEsqtFZESc6BfI7noOPqvhJ1phCnvWh6IeYI2w9QOYEUipUTI8np6LbgGY9Fs98rqVt5AXLIhWkWywlVmtVrBp0igcN_IoypGlUPQGe77Rw")
+  public = crypto.RsaKey(url(rfc.n), url(rfc.e))?
+  io.Print("RFC 7515 A.2, RS256", crypto.VerifyWith(signature, input, public, "RS256", o))
+  io.Print("signed again, the RFC's bytes", crypto.SignWith(input, rsaSecret(rfc), "RS256", o) == result.Ok(signature))
+  io.Print("a changed byte of the message, the signature, the key", crypto.VerifyWith(signature, changed(input, 30), public, "RS256", o), crypto.VerifyWith(changed(signature, 100), input, public, "RS256", o), crypto.VerifyWith(signature, input, changed(public, 150), "RS256", o))
+  io.Print("as PS256, ES256, rs256, none", [crypto.VerifyWith(signature, input, public, alg, o) for alg in ["PS256", "ES256", "rs256", "none", ""]])
+  io.Print("the key with a byte after it", crypto.VerifyWith(signature, input, "$public$(text.Char(0))", "RS256", o))
+  io.Print("n with leading zeros", crypto.RsaKey("$(text.Repeat(3, text.Char(0)))$(url(rfc.n))", url(rfc.e)) == result.Ok(public))
+
+  (* RFC 7515 A.3: ES256, its signature r || s as a JWS holds it; ECDSA draws a nonce, so a new signature differs and
+     verifies. *)
+  jwk = {x: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU", y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0", d: "jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"}
+  ecInput = "eyJhbGciOiJFUzI1NiJ9.$payload"
+  raw = url("DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q")
+  ecPublic = crypto.EcKey(url(jwk.x), url(jwk.y))?
+  ecSignature = crypto.EcdsaDer(raw)?
+  io.Print("RFC 7515 A.3, ES256", crypto.VerifyWith(ecSignature, ecInput, ecPublic, "ES256", o))
+  io.Print("r || s back from DER", crypto.EcdsaRaw(ecSignature) == result.Ok(raw))
+  io.Print("the raw signature itself", crypto.VerifyWith(raw, ecInput, ecPublic, "ES256", o))
+  io.Print("a changed byte of the message, r, s, x", crypto.VerifyWith(ecSignature, changed(ecInput, 5), ecPublic, "ES256", o), crypto.VerifyWith(crypto.EcdsaDer(changed(raw, 10))!, ecInput, ecPublic, "ES256", o), crypto.VerifyWith(crypto.EcdsaDer(changed(raw, 50))!, ecInput, ecPublic, "ES256", o), crypto.VerifyWith(ecSignature, ecInput, changed(ecPublic, 40), "ES256", o))
+  io.Print("as RS256 and PS256", crypto.VerifyWith(ecSignature, ecInput, ecPublic, "RS256", o), crypto.VerifyWith(ecSignature, ecInput, ecPublic, "PS256", o))
+  mine = crypto.SignWith(ecInput, ecSecret(jwk), "ES256", o)?
+  io.Print("signed again with d", mine != ecSignature, crypto.VerifyWith(mine, ecInput, ecPublic, "ES256", o))
+  io.Print("an RSA secret for ES256, an EC one for RS256", crypto.SignWith(ecInput, rsaSecret(rfc), "ES256", o), crypto.SignWith(input, ecSecret(jwk), "RS256", o))
+
+  (* What OpenSSL's command signed: the same bytes for RS256, its PS256 and ES256 verify; and what is refused although
+     OpenSSL made a valid signature of it. *)
+  message = file("message.txt")
+  rsa = file("rsa-2048-public.der")
+  io.Print("openssl RS256, and the same bytes signed here", crypto.VerifyWith(file("rs256.sig"), message, rsa, "RS256", o), crypto.SignWith(message, file("rsa-2048-secret.der"), "RS256", o) == result.Ok(file("rs256.sig")))
+  io.Print("openssl PS256, salt 32 and salt 20", crypto.VerifyWith(file("ps256.sig"), message, rsa, "PS256", o), crypto.VerifyWith(file("ps256-salt-20.sig"), message, rsa, "PS256", o))
+  io.Print("openssl PS256 as RS256, RS256 as PS256", crypto.VerifyWith(file("ps256.sig"), message, rsa, "RS256", o), crypto.VerifyWith(file("rs256.sig"), message, rsa, "PS256", o))
+  mine = crypto.SignWith(message, file("rsa-2048-secret.der"), "PS256", o)?
+  io.Print("PS256 signed here", mine != file("ps256.sig"), crypto.VerifyWith(mine, message, rsa, "PS256", o), crypto.VerifyWith(mine, message, rsa, "RS256", o))
+  io.Print("openssl ES256", crypto.VerifyWith(file("es256.sig"), message, file("p256-public.der"), "ES256", o))
+  io.Print("ES256 signed here", crypto.VerifyWith(crypto.SignWith(message, file("p256-secret.der"), "ES256", o)!, message, file("p256-public.der"), "ES256", o))
+  io.Print("an RSA key of 1024 bits", crypto.VerifyWith(file("rsa-1024.sig"), message, file("rsa-1024-public.der"), "RS256", o), crypto.SignWith(message, file("rsa-1024-secret.der"), "RS256", o))
+  io.Print("secp256k1", crypto.VerifyWith(file("secp256k1.sig"), message, file("secp256k1-public.der"), "ES256", o), crypto.SignWith(message, file("secp256k1-secret.der"), "ES256", o))
+  io.Print("P-384", crypto.VerifyWith(file("p384.sig"), message, file("p384-public.der"), "ES256", o))
+  io.Print("an RSA-PSS key", crypto.VerifyWith(file("rsa-pss.sig"), message, file("rsa-pss-public.der"), "PS256", o))
+  io.Print("a public key as a secret, a secret as a public key", crypto.SignWith(message, rsa, "RS256", o), crypto.VerifyWith(file("rs256.sig"), message, file("rsa-2048-secret.der"), "RS256", o))
+
+  (* KeyPair, each algorithm: sizes, a round trip, the other algorithms refused. *)
+  for alg in crypto.Algorithms
+    pair = crypto.KeyPair(alg, o)?
+    signed = crypto.SignWith("hello", pair.Secret, alg, o)?
+    others = [crypto.VerifyWith(signed, "hello", pair.Public, other, o) for other in crypto.Algorithms]
+    io.Print(alg, text.ByteLength(pair.Public), text.Byte(1, pair.Secret) == 0x30, others, crypto.VerifyWith(signed, "hellO", pair.Public, alg, o))
+  end
+  io.Print("KeyPair of HS256", crypto.KeyPair("HS256", o), "SignWith of none", crypto.SignWith("m", "k", "none", o))
+  two = [crypto.KeyPair("ES256", o)!, crypto.KeyPair("ES256", o)!]
+  io.Print("two pairs differ, and one's signature fails the other's key", two[1].Public != two[2].Public, crypto.VerifyWith(crypto.SignWith("m", two[1].Secret, "ES256", o)!, "m", two[2].Public, "ES256", o))
+
+  (* Empty and huge inputs: never an error. *)
+  pair = crypto.KeyPair("ES256", o)?
+  io.Print("an empty message", crypto.VerifyWith(crypto.SignWith("", pair.Secret, "ES256", o)!, "", pair.Public, "ES256", o))
+  huge = text.Repeat(1000000, "0123456789")
+  io.Print("a message of 10 MB", crypto.VerifyWith(crypto.SignWith(huge, pair.Secret, "ES256", o)!, huge, pair.Public, "ES256", o))
+  io.Print("empty signature, key, both", crypto.VerifyWith("", "m", pair.Public, "ES256", o), crypto.VerifyWith("s", "m", "", "ES256", o), crypto.VerifyWith("", "", "", "ES256", o))
+  io.Print("a signature of 1 MB, a key of 1 MB", crypto.VerifyWith(text.Repeat(100000, "0123456789"), "m", pair.Public, "ES256", o), crypto.VerifyWith(ecSignature, ecInput, text.Repeat(100000, "0123456789"), "ES256", o))
+  io.Print("a key of zeros, of 0xFF", crypto.VerifyWith(ecSignature, ecInput, text.Repeat(91, text.Char(0)), "ES256", o), crypto.VerifyWith(ecSignature, ecInput, bytes(list.Fill(255, 91)), "ES256", o))
+  io.Print("SignWith of an empty or a broken key", crypto.SignWith("m", "", "ES256", o), crypto.SignWith("m", text.ByteSlice(1, 100, file("p256-secret.der")), "ES256", o))
+  io.Print("a point off the curve", crypto.VerifyWith(ecSignature, ecInput, crypto.EcKey(url(jwk.x), changed(url(jwk.y), 32))!, "ES256", o))
+
+  (* RsaKey, EcKey, EcdsaDer and EcdsaRaw: their refusals. *)
+  io.Print(crypto.RsaKey("", "e"), crypto.RsaKey("n", ""))
+  io.Print(crypto.EcKey(text.Repeat(31, "x"), text.Repeat(32, "y")) then result.IsErr, crypto.EcKey(text.Repeat(32, "x"), text.Repeat(33, "y")) then result.IsErr)
+  io.Print(crypto.EcdsaDer(text.Repeat(63, "r")), crypto.EcdsaDer(text.Repeat(65, "r")) then result.IsErr)
+  zero = crypto.EcdsaDer(text.Repeat(64, text.Char(0)))?
+  io.Print("zeros", encode.Hex(zero), crypto.EcdsaRaw(zero) == result.Ok(text.Repeat(64, text.Char(0))))
+  wrong = [
+    "",
+    bytes([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01]),
+    bytes([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x00]),
+    bytes([0x31, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01]),
+    bytes([0x30, 0x07, 0x02, 0x02, 0x00, 0x01, 0x02, 0x01, 0x01]),
+    bytes([0x30, 0x06, 0x02, 0x01, 0x81, 0x02, 0x01, 0x01]),
+    bytes([0x30, 0x06, 0x02, 0x00, 0x02, 0x02, 0x01, 0x01]),
+    bytes([0x30, 0x06, 0x04, 0x01, 0x01, 0x02, 0x01, 0x01]),
+    bytes([0x30, 0x81, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01]),
+    "$(bytes([0x30, 0x26, 0x02, 0x21]))$(text.Repeat(33, text.Char(0x11)))$(bytes([0x02, 0x01, 0x01]))",
+    "$(bytes([0x30, 0x27, 0x02, 0x22, 0x00]))$(text.Repeat(33, bytes([0x81])))$(bytes([0x02, 0x01, 0x01]))"
+  ]
+  io.Print("not DER", [crypto.EcdsaRaw(w) then result.IsErr for w in wrong])
+  io.Print("one in DER", crypto.EcdsaRaw(bytes([0x30, 0x07, 0x02, 0x02, 0x00, 0x80, 0x02, 0x01, 0x01])) then result.MapOk(encode.Hex))
+
+  (* RFC 2202, HMAC-SHA-1: its seven cases. *)
+  cases = [
+    [text.Repeat(20, bytes([0x0b])), "Hi There"],
+    ["Jefe", "what do ya want for nothing?"],
+    [text.Repeat(20, bytes([0xaa])), text.Repeat(50, bytes([0xdd]))],
+    [bytes([k for k in 1..25]), text.Repeat(50, bytes([0xcd]))],
+    [text.Repeat(20, bytes([0x0c])), "Test With Truncation"],
+    [text.Repeat(80, bytes([0xaa])), "Test Using Larger Than Block-Size Key - Hash Key First"],
+    [text.Repeat(80, bytes([0xaa])), "Test Using Larger Than Block-Size Key and Larger Than One Block-Size Data"]
+  ]
+  for c in cases
+    io.Print(encode.Hex(crypto.HmacSha1(c[1], c[2], o)))
+  end
+  io.Print("an empty key and message", encode.Hex(crypto.HmacSha1("", "", o)))
+
+  (* RFC 6238 appendix B, the SHA-1 column: 8 digits, its seed of 20 bytes. *)
+  io.Print("TOTP", [totp("12345678901234567890", t, o) for t in [59, 1111111109, 1111111111, 1234567890, 2000000000, 20000000000]])
+  result.Ok(missing)
+end
+
+io.Print(main())
