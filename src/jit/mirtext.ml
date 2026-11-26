@@ -78,7 +78,8 @@ let regs_of (i : Ir.ins) =
   | Load (r, a, _, _) -> [ r ], [ a ]
   | Cached (r, x, c) -> [ r ], v x @ [ c ]
   | Test (r, _, x, y) -> [ r ], v x @ v y
-  | Int_of (r, x) -> [ r ], v x
+  | Int_of (r, x) | Bytes_of (r, x) -> [ r ], v x
+  | Keyed (r, x, c) -> [ r ], v x @ [ c ]
   | Set_at (_, i, _, x) -> [], i :: v x
   | Enter (r, _, _, _, _) | Enter_or_bail (r, _) -> [], [ r ]
   | Share x | Vset (_, x) -> [], v x
@@ -725,6 +726,21 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
       pr "  mov x2, i64:8(r%d)\n  mov x2, i64:0(x2)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n" c;
       pr "  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n  bne %s, x1, 1\n  mov x2, i64:0(x2)\n" v miss;
       pr "  mov x4, i64:-8(x2)\n  ursh x4, x4, 10\n  ble %s, x4, x3\n  mov r%d, i64:0(x2, x3, 8)\n%s:\n" miss r miss
+    | Keyed (r, v, c) ->
+      (* A map (tag 8) of the cache's keys; a place below 0 says they lack the key. *)
+      let v = in_reg Kval v and miss = label () and absent = label () in
+      pr "  mov r%d, 3\n  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  bne %s, x1, 8\n" r v miss v miss;
+      pr "  mov x1, i64:0(%s)\n  mov x2, i64:0(r%d)\n  bne %s, x1, x2\n" v c miss;
+      pr "  mov x2, i64:8(r%d)\n  mov x2, i64:0(x2)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  blt %s, x3, 0\n" c absent;
+      pr "  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n  bne %s, x1, 1\n  mov x2, i64:0(x2)\n" v miss;
+      pr "  mov x4, i64:-8(x2)\n  ursh x4, x4, 10\n  ble %s, x4, x3\n  mov r%d, i64:0(x2, x3, 8)\n  jmp %s\n" miss r miss;
+      pr "%s:\n  mov r%d, 9\n%s:\n" absent r miss
+    | Bytes_of (r, v) ->
+      (* A Text (tag 2) holds its string, whose block of n words ends with the byte 8n - 1 - its length. *)
+      let v = in_reg Kval v and miss = label () in
+      pr "  mov r%d, -2\n  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  bne %s, x1, 2\n" r v miss v miss;
+      pr "  mov x2, i64:0(%s)\n  mov x1, i64:-8(x2)\n  ursh x1, x1, 10\n  lsh x1, x1, 3\n  sub x1, x1, 1\n" v;
+      pr "  add x3, x2, x1\n  mov x4, u8:0(x3)\n  sub x1, x1, x4\n  lsh r%d, x1, 1\n%s:\n" r miss
     | Int_of (r, v) -> let v = in_reg Kval v in pr "  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" v r
     | Test (r, cmp, x, y) ->
       (* Words compare as themselves, texts by the words of their strings (OCaml pads a string's block alike for each

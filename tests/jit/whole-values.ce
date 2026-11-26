@@ -1,0 +1,81 @@
+use std/io
+use std/sys
+use std/text
+use std/value
+
+(* Values in versions as a whole, which have no frame to guess from: fields through inline caches (maps of a literal's
+   keys, maps grown by writes whose keys maps of fewer values hold, structs, a map of floats, a deep map, a site that
+   meets several), tests and arithmetic of values, texts of parts, lists; then the interpreter's errors at their sites:
+   a key that isn't there, a test of a list, an Int past 63 bits, a text in arithmetic, and a hole whose call printed
+   before a later hole failed. *)
+struct Point { X, Y }
+
+defn pick(r)
+  out = 0
+  if r.Kind == "user"
+    out = out + 1
+  end
+  if r.Size >= 3
+    out = out + 10
+  end
+  if r.Owner == missing
+    out = out + 100
+  end
+  {N: r.Name, L: text.ByteLength(r.Name), P: place(r), S: r.Size * 2 + 1, O: out, T: "$(r.Name)/$(r.Size):$(out)"}
+end
+
+defn place(r)
+  [r.Kind, r.Size - 1, r.Name != r.Kind, [1, 2.5], [[1, 2], [3, 4]]]
+end
+
+defn coords(p)
+  [p.X, p.Y, sum(p)]
+end
+
+sum(p) = p.X + p.Y
+
+defn noisy(x)
+  if x == 0
+    io.Print("noisy $x")
+  end
+  x
+end
+
+defn order(r)
+  "$(r.Name) then $(noisy(r.Size)) then $(r.Missing)"
+end
+
+a = {Name: "ana", Kind: "user", Size: 1, Owner: missing}
+b = {Kind: "user"}
+b.Name = "bob"
+b.Size = 3
+b.Owner = 7
+c = {Name: "cy", Kind: "k", Size: 3.5, Owner: missing}
+deep = {}
+for i in 1..40
+  deep["k$i"] = i
+end
+deep.Name = "deep"
+deep.Kind = "user"
+deep.Size = 4
+deep.Owner = missing
+out = []
+for i in 1..1500
+  out = [pick(a), pick(b), pick(c), pick(deep), coords(Point(i, 2)), coords({X: 1.5, Y: 2.5}), coords(Point(2, 0.5))]
+end
+io.Print(out)
+case = sys.Args[1]
+if case == "key"
+  io.Print(coords({Y: 1}))
+else if case == "list"
+  pick({Name: "n", Kind: [1, 2], Size: 1, Owner: 1})
+else if case == "big"
+  io.Print(pick({Name: "n", Kind: "k", Size: 4611686018427387900, Owner: 1}))
+else if case == "text"
+  pick({Name: "n", Kind: "k", Size: "s", Owner: 1})
+else
+  for i in 1..1500
+    _ = order({Name: "x", Size: i, Missing: 1})
+  end
+  order({Name: "y", Size: 0})
+end

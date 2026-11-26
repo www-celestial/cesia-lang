@@ -95,7 +95,12 @@ type ins =
           or a struct of the shape the field was last read from, whose store of integers holds the field's place: when
           [v] has those keys or that shape, its values in a store of values with that place, [r] gets the value there;
           else [r] gets [Undef], a word no field holds, and the code reads the field through OCaml ([Lower]) *)
+  | Keyed of int * value * int
+      (** [Keyed (r, m, c)]: a key of the map [m] through an inline cache [c], as [Cached]: [r] gets the value there,
+          or the word 9, no value, when the cache says that keys made whole lack it, or [Undef] when [m] is no map of
+          those keys, and the code asks OCaml ([Lower]) *)
   | Int_of of int * value  (** the integer of a value that the code checked is an Int, unchecked *)
+  | Bytes_of of int * value  (** the bytes of a text, an integer; -1 for any other value, which the code asks OCaml of *)
   | Test of int * cmp * value * value
       (** [Test (r, cmp, a, b)]: [a cmp b] of two values, as the interpreter's test: [r] gets [true] or [false] when
           machine code can tell, of two words ([Eq], [Ne]), two texts ([Eq], [Ne]) or two Ints, else [Undef], and the

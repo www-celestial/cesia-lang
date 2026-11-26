@@ -1025,6 +1025,57 @@ and list_of st (e : expr) rows =
   Array.iteri (fun i row -> Array.iteri (fun j x -> cells.((j * r) + i) <- stored st x) row) rows;
   native st e (own_native "list" (r * cols) (fun _ a -> Arrays.of_vals r cols a)) cells
 
+(* dict.Get, dict.Has or dict.GetOr of a key written in the code: the map's value there through an inline cache, as a
+   field ([Ir.Keyed]), which also holds that keys made whole lack the key; a miss calls the native's work through OCaml
+   ([Dict.get], its error naming the native), which fills the cache. Its value is shared, as the native gives it. *)
+and cached_key st (e : expr) name key x other =
+  let c = const st (Text (Printf.sprintf "\000key %s" key)) in
+  let k = Text key in
+  let h = Trie.hash k in
+  let run ctx (a : t array) =
+    let m = a.(Array.length a - 1) in
+    let found = Dict.get ctx name k m in
+    (match m with
+     | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+       let j = Trie.index keys (Trie.nvals vals) h k in
+       if j >= 0 && (match vals with V _ -> true | _ -> false) then !ic_write c (Dict { keys; vals = I [| j |]; d_owned = false })
+       else if j < 0 && Trie.is_whole keys then !ic_write c (Dict { keys; vals = I [| -1 |]; d_owned = false })
+     | _ -> ());
+    match name, found with
+    | "Has", f -> Value.of_bool (Option.is_some f)
+    | _, Some v -> Value.share v
+    | "GetOr", None -> a.(0)
+    | _, None -> Missing
+  in
+  let cr = reg st Kval in
+  emit st (Value (cr, c));
+  let r = reg st Kval and hit = block st and absent = block st and slow = block st and join = block st and test = block st in
+  emit st (Keyed (r, x, cr));
+  let base = facts st st.cur in
+  close st (Branch (Eq, Kint, Reg r, Word 3, slow, test));
+  carry st base test;
+  st.cur <- test;
+  close st (Branch (Eq, Kint, Reg r, Word 9, absent, hit));
+  carry st base hit;
+  st.cur <- hit;
+  if name = "Has" then emit st (Move (r, Word 5)) else emit st (Share (Reg r));
+  goto st join;
+  carry st base absent;
+  st.cur <- absent;
+  emit st (Move (r, match name, other with "Has", _ -> Ir.Word 7 | "GetOr", Some d -> d | _ -> Word 1));
+  goto st join;
+  carry st base slow;
+  st.cur <- slow;
+  let args = match other with Some d -> [| d; x |] | None -> [| x |] in
+  emit st (Move (r, native_value st e (own_native ("slow " ^ name) (Array.length args) run) args));
+  goto st join;
+  carry st base join;
+  (* Its type, as inference found it from the native's, as [native] takes it. *)
+  match ty st e with
+  | TI -> fresh st Kint (fun q -> Num (q, Reg r, Only_int, site st e.pos))
+  | TF -> fresh st Kfloat (fun q -> Num (q, Reg r, Number, site st e.pos))
+  | _ -> Ir.Reg r, Ir.Kval
+
 (* A field the code may read: not a small field of a struct of another package, the interpreter's error. *)
 and visible st (shape : shape) name =
   not (shape.sm >= 0 && shape.sname <> None && (not (Lexer.is_public name)) && st.w.modules.(st.ver.owner.pm).host <> shape.sm)
@@ -1348,6 +1399,33 @@ and call_expr st e (call : call) =
         | (Ir.Kfloat | Kint), k when k = snd x -> select st ~kind:k (if name = "Max" then Ir.Gt else Lt) (fst y) (fst x), k
         | _ when bridgeable st.w m n -> native st e n [| box st x; box st y |]
         | _ -> raise No)
+     (* A key written in the code, of a map: through an inline cache, as a field. *)
+     | Native ({ nname = ("Get" | "Has" | "GetOr") as name; _ } as n)
+       when st.w.modules.(m).mname = "std/dict" && bridgeable st.w m n
+            && (match call.args with
+                | [| { aname = None; value = { e = Ltext _; _ } }; _ |] -> name <> "GetOr"
+                | [| { aname = None; value = { e = Ltext _; _ } }; { aname = None; _ }; { aname = None; _ } |] -> name = "GetOr"
+                | _ -> false) ->
+       let key = (match call.args.(0).value.e with Ltext t -> t | _ -> raise No) in
+       let other = if name = "GetOr" then Some (box st (expr st call.args.(1).value)) else None in
+       let x = box st (expr st call.args.(Array.length call.args - 1).value) in
+       cached_key st e name key x other
+     (* The bytes of a text, in machine code; anything else, the native's. *)
+     | Native ({ nname = "ByteLength"; _ } as n)
+       when st.w.modules.(m).mname = "std/text" && bridgeable st.w m n
+            && (match call.args with [| { aname = None; _ } |] -> true | _ -> false) ->
+       let x = box st (expr st call.args.(0).value) in
+       let r = reg st Kint and slow = block st and join = block st in
+       emit st (Bytes_of (r, x));
+       let base = facts st st.cur in
+       close st (Branch (Eq, Kint, Reg r, Int (-1), slow, join));
+       carry st base slow;
+       st.cur <- slow;
+       let v, at = native_site st e (own_native "slow ByteLength" 1 (fun ctx a -> n.run ctx a)) [| x |] in
+       emit st (Num (r, v, Only_int, at));
+       goto st join;
+       carry st base join;
+       Ir.Reg r, Ir.Kint
      | Native n when bridgeable st.w m n -> native st e n (placed st n call)
      | Native { nname; _ } -> no (Printf.sprintf "the native %s.%s" st.w.modules.(m).mname nname)
      | Fun _ when made_here st e <> None -> record st e
@@ -2992,18 +3070,28 @@ let rec func st name =
      A self tail call gives every argument: it comes back after them. One kept as an array of floats, read from its
      slot, stays interpreted. *)
   let omitted = List.filter (fun j -> ver.sg.(j) == TBot) (List.init (Array.length f.params) Fun.id) in
+  (* The version of no types, which a call of any arguments takes, computes a default of each parameter whose slot the
+     call left without a value, [Undef], as the interpreter's (Compile.compile_version): in their order with the others. *)
+  let generic = (match ver.owner.generic with Some g -> g == ver | None -> false) && st.index = 0 in
+  let unset = List.filter (fun j -> generic && ver.sg.(j) != TBot && f.params.(j).default <> None) (List.init (Array.length f.params) Fun.id) in
   (* The point after the frame's step, at its body when no default is made: where the room of the body is checked too. *)
   let at_body = ref (-1) in
-  if omitted = [] then at_body := tick st body (entry_step st st.inl ver)
+  if omitted = [] && unset = [] then at_body := tick st body (entry_step st st.inl ver)
   else begin
     ignore (tick st (block st) (entry_step st st.inl ver));
     List.iter
       (fun j ->
          match f.params.(j).default with
-         | Some d when st.regs.(j) >= 0 -> emit st (Move (var st j, convert st (Vec.get st.kinds (var st j)) (expr st d)))
-         | Some _ when st.arrays.(j) < 0 -> ()
+         | Some d when List.mem j unset && st.regs.(j) >= 0 && Vec.get st.kinds st.regs.(j) = Ir.Kval ->
+           let make = block st and next = block st in
+           close st (Branch (Eq, Kint, Reg st.regs.(j), Word 3, make, next));
+           st.cur <- make;
+           emit st (Move (st.regs.(j), stored_x st d (expr st d)));
+           goto st next
+         | Some d when st.regs.(j) >= 0 && not (List.mem j unset) -> emit st (Move (var st j, convert st (Vec.get st.kinds (var st j)) (expr st d)))
+         | Some _ when st.arrays.(j) < 0 && not (List.mem j unset) -> ()
          | _ -> raise No)
-      omitted;
+      (List.filter (fun j -> List.mem j omitted || List.mem j unset) (List.init (Array.length f.params) Fun.id));
     goto st body
   end;
   (* The outermost frame of a version as a whole has room for what its body makes, outside its loops, checked at the
