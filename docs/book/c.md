@@ -167,7 +167,16 @@ line, at most 64 for each of those places, and one more stops its fiber with an 
 can't take the memory of a thousand hashes at once. A slow function takes at most 6 numbers, pointers or texts, and
 doesn't call back; its texts are copied for it, and the blocks it is given stay alive until it returns, even if a fiber
 frees one meanwhile. No other fiber may write into those blocks while it runs: C would read them at the same time.
-Each call starts a thread of its own, which costs about 220 microseconds on Linux: `slow` is for calls of a millisecond or more.
+Each call runs on a *domain*, OCaml's thread on a core of its own. Starting one costs about 220 microseconds on Linux, and
+its end empties the young heap of every domain at once, in a *stop of the world*: what lives there moves to the old heap,
+2 ms for a server that holds 1.4 MB of young values. So in a burst, each call starting less than 2 ms after the end of
+the last, as a loop or a line of sign-ins, the domain of a call waits for the next: 5,000 calls in a row cost 13 µs a call [10, 17] instead of 104 [97, 214] (medians of 21 runs alternated, load 8.8 to 9.3). A call alone still starts a
+domain that leaves once done, and a program that never calls slowly has none. A domain that waits takes part in every
+stop of the world of the garbage collector, and the major collection goes about half as fast while one waits (the OCaml
+manual, chapter "Parallel programming"; Sivaramakrishnan and others, *Retrofitting Parallelism onto OCaml*, 2020): waiting
+longer would cost memory. Bursts of 100 calls every 0.3 s in a program that keeps 20,000 lists changing, for 3 s: a
+domain that waits 50 ms after each burst took its old heap from 4.0 to 6.0 million words at most, 2 ms from 4.0 to 4.0,
+and 126 young collections instead of 1,040. `slow` is for calls of a millisecond or more, or for many in a row.
 
 Measured on 2026-11-13, 50 sign-ins at once against a server of [std/http], each a [crypto.CheckPassword], while a
 fiber asks the same server `/ping` every 5 ms (`bench/signin.ce`): before, every sign-in waited for the others, and

@@ -261,6 +261,73 @@ use std/test
       [v * 10 for v in ch] --> [10, 20]
       fiber.Receive(ch).Error.Kind --> "closed" *)
 
+(** fiber.Table(most)
+    A table that every fiber reads and writes at once, without a message: what each request of a server reads, as its
+    session, or counts, as its rate limits. Each key, a text, holds a value until a time, and the table holds most keys at
+    most: past them, a new key first drops those whose time passed, then those due soonest, the oldest written first,
+    down to three quarters of most. What it holds may thus go at any time: it is a cache, and what must not be lost lives
+    in a fiber that owns it. Its keys are spread by a hash of random seed, so that no choice of keys slows it down. Every
+    fiber runs on the program's main thread, and each call on a table runs to its end before another fiber runs: none
+    sees it half written. Each process of cesia run --workers has its own.
+
+      sessions = fiber.Table(100000)
+      fiber.Remember("ana", {Id: 7}, 1060, sessions)
+      fiber.Recall("ana", 1000, sessions).Id --> 7 *)
+
+(** fiber.Recall(key, now, table)
+    The value kept under a key, or missing when there is none or its time is not after now, a number of seconds. A key
+    past its time leaves the table.
+
+      t = fiber.Table(10)
+      fiber.Remember("k", "v", 1060, t)
+      fiber.Recall("k", 1059, t) --> "v"
+      fiber.Recall("k", 1060, t) --> missing *)
+
+(** fiber.Remember(key, value, until, table, epoch = missing)
+    Keeps a value under a key until a time, in place of the one it held. With epoch, a number that fiber.Epoch gave, it
+    keeps it only if the table wasn't emptied since: what a request read from a database before an Empty, which a
+    sign-out made meanwhile, never comes back after it.
+
+      t = fiber.Table(10)
+      e = fiber.Epoch(t)
+      fiber.Empty(t)
+      fiber.Remember("k", "read before", 1060, t, epoch = e)
+      fiber.Recall("k", 1000, t) --> missing *)
+
+(** fiber.Forget(key, table)
+    Drops a key of a table: its next Recall gives missing.
+
+      t = fiber.Table(10)
+      fiber.Remember("k", "v", 1060, t)
+      fiber.Forget("k", t)
+      fiber.Recall("k", 1000, t) --> missing *)
+
+(** fiber.Empty(table)
+    Drops every key of a table, and counts one more in its epoch.
+
+      t = fiber.Table(10)
+      fiber.Empty(t)
+      fiber.Epoch(t) --> 1 *)
+
+(** fiber.Epoch(table)
+    How many times Empty emptied a table: what Remember's epoch compares.
+
+      fiber.Epoch(fiber.Table(10)) --> 0 *)
+
+(** fiber.Admit(keys, rates, now, table)
+    Does a request pass the rate limits of these keys now: each key, a text, has its rate {Per, Period, Burst}, Per
+    requests every Period seconds and Burst at once. It is GCRA, the generic cell rate algorithm of ATM networks (ITU-T
+    I.371): a key keeps the time its next request is due, and a request passes when it comes no earlier than that time
+    minus (Burst - 1) * Period / Per. All of them pass, and each counts the request, or none counts it. The answer is
+    {Ok, Retry, Key}: Retry the seconds to wait and Key the first key that refused, when one did.
+
+      t = fiber.Table(1000)
+      rate = {Per: 2, Period: 60, Burst: 1}
+      fiber.Admit(["ip:203.0.113.7"], [rate], 1000, t).Ok --> true
+      no = fiber.Admit(["ip:203.0.113.7"], [rate], 1010, t)
+      [no.Ok, no.Retry, no.Key] --> [false, 20.0, "ip:203.0.113.7"]
+      fiber.Admit(["ip:203.0.113.7"], [rate], 1030, t).Ok --> true *)
+
 (** value.Len(x)
     The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
 

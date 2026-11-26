@@ -152,6 +152,7 @@ let signals =
 let after save =
   flush stdout;
   flush stderr;
+  Pool.stop ();
   (* The end of the run waits until the copy holds none of its descriptors, when the copy's end of this pipe closes with
      the others: a program started at once finds the port free and the lock free. *)
   match Unix.pipe () with

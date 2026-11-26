@@ -9,6 +9,9 @@ val cores : unit -> int
     heap kept all that their ends promoted. Here comes the slice that half a young heap of allocation asks for. *)
 val join : unit Domain.t -> unit
 
+(** The slice of [join] alone, for the end of a job on a domain that goes on. *)
+val pace : unit -> unit
+
 (** Runs [f 0] to [f (n - 1)], each on its own core. *)
 val each : int -> (int -> unit) -> unit
 

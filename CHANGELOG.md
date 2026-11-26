@@ -332,6 +332,28 @@
 
 ### Speed
 
+- A pool of domains for the slow calls of C (`c.Fn(..., slow = true)`, as `crypto.HashPassword` and `CheckPassword`) and
+  for the names that `net.Connect` looks up: in a burst, each call starting less than 2 ms after the end of the last, as
+  a loop or a line of sign-ins, the domain of a call waits for the next, so 5,000 slow calls in a row cost 13 µs a call [10, 17] instead of 104 [97, 214], and no
+  domain's end empties the young heap of every domain at each call (2 ms for a server that holds 1.4 MB of young
+  values). A call alone starts a domain that leaves once done, as before (a program of one slow call runs in the same 4.5 ms); a program that never calls slowly has none;
+  at most `Par.cores ()` wait, below the cores, as a domain that waits slows the major GC (the old heap of bursts of
+  100 calls in a program that churns: 4.0 million words at most, as before, with 2 ms; 6.0 with 50 ms). The domains
+  that wait block the signals, which reach the scheduler, and leave before the fork that saves the cache. The answers,
+  errors, places and line of 64 of the slow calls are as before. `tests/c/slow-pool` (no domain before the first call,
+  1,000 calls on a few, gone once idle, a signal while one waits); `tests/c/slow-memory` takes 4 s instead of 90.
+- `std/fiber`'s tables, what every fiber reads and writes at once without a message, for what a server reads at each
+  request: `fiber.Table(most)`, `Recall(key, now, table)`, `Remember(key, value, until, table, epoch = missing)`,
+  `Forget`, `Empty`, `Epoch`, and `Admit(keys, rates, now, table)`, GCRA's rate limits (ITU-T I.371), all of them or
+  none. Each key holds a value until a time; past most keys, those whose time passed go, then those due soonest, down to
+  three quarters; the keys are spread by a hash of random seed (no chosen keys make it slow). Each call runs to its end
+  before another fiber runs: a limit counts each request once. `epoch` keeps out of the table a value read before an
+  Empty. Centauri's sessions and limits use them, with no message to its state: a signed-in request in the program costs 38.0 µs [35.1, 59.0] instead of 44.8 [41.1, 100.8], a public one 22.5 instead of 24.9. `tests/lang/tables.ce`: a value read at its end, a forged key, a
+  flood of keys bounded, the ended first, the epoch, a copy kept as given, Admit as the state of a fiber did it in
+  Cesia (300 random cases), 50 fibers at once on one burst.
+- `encode.Base64` is a native, one pass in OCaml: 2.1 µs [1.8, 4.9] for the 125 bytes of a cursor instead of 26.8 [23.8, 51.8], the same bytes as the
+  loop of Cesia it replaces (a property test on texts up to 400 bytes, the URL alphabet read back); a page compiled to
+  WebAssembly keeps that loop.
 - The JIT compiles a function whatever it gives, not only one that gives a number: a test that loops and gives a Bool, a
   search that gives a number or `missing`, a recursion that makes maps, and so the loop that calls one, as machine code
   calls only machine code. Primes below 300,000 by `isPrime(k)` take 159 ms instead of 245 (Python 1,061, Node 110, Go

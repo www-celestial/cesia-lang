@@ -139,33 +139,22 @@ let port_arg ctx (v : Types.t) =
 
 let resolver = ref (fun host -> (Unix.gethostbyname host).Unix.h_addr_list.(0))
 
-(* The fiber waits on a pipe that the domain closes when it has the answer. With no domain left, it asks by itself. *)
+(* The fiber waits on a pipe that a domain of the pool closes when it has the answer. With no domain left, it asks by itself. *)
 let looked_up n ctx host =
   let resolve = !resolver in
   let reader, writer = Unix.pipe ~cloexec:true () in
   let answer = Atomic.make None in
-  let work () =
-    let found =
-      match resolve host with
-      | addr -> Some addr
-      | exception (Not_found | Invalid_argument _) -> None
-    in
-    Atomic.set answer (Some found);
-    Unix.close writer
-  in
-  match Domain.spawn work with
-  | exception Failure _ -> List.iter Unix.close [ reader; writer ]; resolve host
-  | domain ->
+  let work () = Atomic.set answer (Some (match resolve host with addr -> Some addr | exception _ -> None)) in
+  if not (Pool.run work (fun () -> Unix.close writer)) then (List.iter Unix.close [ reader; writer ]; resolve host)
+  else begin
     Poll.watch n.poll reader;
     while Atomic.get answer = None do
       Poll.read_ready n.poll ctx reader
     done;
     Poll.forget n.poll reader;
     Unix.close reader;
-    Par.join domain;
-    (match Atomic.get answer with
-     | Some (Some addr) -> addr
-     | _ -> raise Not_found)
+    match Atomic.get answer with Some (Some addr) -> addr | _ -> raise Not_found
+  end
 
 (* An address written out, or localhost: what needs no lookup. *)
 let literal host =

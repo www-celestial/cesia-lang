@@ -547,6 +547,9 @@ val channel_closed : t
 val select_timeout : t
 val need_channels : string -> t
 val channel_size : string -> t
+val need_table : string -> string -> t
+val table_most : string -> t
+val admit_rates : string -> t
 val sql_db_closed : t
 val sql_pool : float -> t
 val sql_pool_size : string -> t

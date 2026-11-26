@@ -6,9 +6,6 @@ use std/result
 use std/text
 use std/value
 
-base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-base64Codes = text.Bytes(base64Digits)   (* The bytes of its digits, read by one call when the package loads. *)
-
 defn Hex(s)
   (** The hexadecimal text of the bytes of a text, in lower case. hex, a native of this package, writes it in one pass.
 
@@ -53,31 +50,11 @@ defn Unhex(s)
 end
 
 defn Base64(s)
-  (** The Base64 text of the bytes of a text, with padding. Its digits are numbers until one call makes them a text.
+  (** The Base64 text of the bytes of a text, standard alphabet, with padding (RFC 4648, 4). base64, a native of this
+      package, writes it in one pass.
 
         Base64("hi") --> "aGk=" *)
-  codes = text.Bytes(s)
-  n = value.Len(codes)
-  whole = math.Div(n, 3)
-  left = n - 3 * whole
-  out = list.Fill(61, 4 * whole + (if left > 0 4 else 0 end))
-  for i in 1..whole
-    word = codes[3 * i - 2] * 65536 + codes[3 * i - 1] * 256 + codes[3 * i]
-    out[4 * i - 3] = base64Codes[math.Div(word, 262144) + 1]
-    out[4 * i - 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
-    out[4 * i - 1] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
-    out[4 * i] = base64Codes[math.Mod(word, 64) + 1]
-  end
-  if left > 0
-    (* the last one or two bytes; each one missing leaves a = of the Fill *)
-    word = codes[3 * whole + 1] * 65536 + (if left == 2 codes[n] * 256 else 0 end)
-    out[4 * whole + 1] = base64Codes[math.Div(word, 262144) + 1]
-    out[4 * whole + 2] = base64Codes[math.Mod(math.Div(word, 4096), 64) + 1]
-    if left == 2
-      out[4 * whole + 3] = base64Codes[math.Mod(math.Div(word, 64), 64) + 1]
-    end
-  end
-  text.FromBytes(out)
+  base64(s)
 end
 
 defn Unbase64(s)
