@@ -1184,7 +1184,7 @@ let packages =
                 in
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "LogSumExp", nat ~params:[| "a"; "b" |] ~ret:(function [| TFA |] | [| (TI | TF); (TI | TF) |] -> TF | _ -> TA) "LogSumExp" 1 2 log_sum_exp;
-      "Pi", Float (4. *. atan 1.);
+      "Pi", Float Float.pi;
       "E", Float 2.718281828459045;
       "Nan", Float nan;
       "Inf", Float infinity;

@@ -1,7 +1,9 @@
-(** Special functions: the gamma and beta functions and their logarithms, the incomplete gamma and beta ratios, the error
-    function and their inverses, as scipy.special and R give them. Each comes from a published method, said at its
+(** Special functions: the gamma and beta functions and their logarithms, the incomplete gamma and beta ratios, the
+    error function and their inverses, as scipy.special and R give them. Each comes from a published method, said at its
     function, and the chapter Statistics of the book gives the precision measured for each. A function of x also works
-    on an array, element by element; its other arguments are numbers. *)
+    on an array, element by element; its other arguments are numbers. They compute with the exp, log and pow of the
+    system's C library, whose last bits differ from one system to another: the examples compare their results with
+    math.Near, within 1e-13. *)
 use std/bug
 use std/columns as col
 use std/math
@@ -263,7 +265,7 @@ defn Gamma(x)
       Gamma(x + 1) = x Gamma(x), and Stirling's series from 10.
 
         Gamma(5) --> 24.0
-        Gamma(0.5) --> 1.772453850905516
+        math.Near(Gamma(0.5), 1.772453850905516, rel = 1e-13) --> true
         Gamma([1, 2, 3]) --> [1.0, 1.0, 2.0] *)
   if value.IsNumber(x)
     return gammaF(1.0 * x)
@@ -285,8 +287,8 @@ end
 defn LogGamma(x)
   (** The logarithm of |Gamma(x)|, which stays finite where Gamma overflows, past 171.6.
 
-        LogGamma(100) --> 359.1342053695754
-        LogGamma(0.5) --> 0.5723649429247001 *)
+        math.Near(LogGamma(100), 359.1342053695754, rel = 1e-13) --> true
+        math.Near(LogGamma(0.5), 0.5723649429247001, rel = 1e-13) --> true *)
   if value.IsNumber(x)
     return lgamma(1.0 * x)
   end
@@ -329,7 +331,7 @@ end
 defn LogBeta(a, b)
   (** The logarithm of B(a, b), which stays finite for large a and b; b may be an array.
 
-        LogBeta(1000, 1000) --> -1388.482601635902 *)
+        math.Near(LogBeta(1000, 1000), -1388.482601635902, rel = 1e-13) --> true *)
   if value.IsNumber(a) and value.IsNumber(b)
     return lbeta(1.0 * a, 1.0 * b)
   end
@@ -441,7 +443,7 @@ defn Erfc(x)
   (** The complementary error function, 1 - Erf(x), computed directly so that it keeps its digits for a large x, down
       to about 1e-308 at x = 26.5.
 
-        Erfc(5) --> 1.537459794428035e-12 *)
+        math.Near(Erfc(5), 1.537459794428035e-12, rel = 1e-13) --> true *)
   if value.IsNumber(x)
     return erfcF(1.0 * x)
   end
@@ -575,7 +577,7 @@ end
 defn ErfcInv(y)
   (** The inverse of Erfc: the x where Erfc(x) = y, for y from 0 to 2, which keeps its digits for a small y.
 
-        ErfcInv(1e-100) --> 15.065574702592643 *)
+        math.Near(ErfcInv(1e-100), 15.065574702592643, rel = 1e-13) --> true *)
   if value.IsNumber(y)
     return erfcInvF(1.0 * y)
   end
@@ -795,9 +797,9 @@ defn GammaInc(a, x, upper = false)
       digits. NaN for a negative argument. x may be an array. The regions of DiDonato and Morris (1986): Temme's
       uniform expansion near x = a for a >= 20, series and continued fractions elsewhere.
 
-        GammaInc(2, 1) --> 0.2642411176571153
-        GammaInc(2, 1, upper = true) --> 0.7357588823428847
-        GammaInc(100, 200, upper = true) --> 1.843893649711574e-15 *)
+        math.Near(GammaInc(2, 1), 0.2642411176571153, rel = 1e-13) --> true
+        math.Near(GammaInc(2, 1, upper = true), 0.7357588823428847, rel = 1e-13) --> true
+        math.Near(GammaInc(100, 200, upper = true), 1.843893649711574e-15, rel = 1e-13) --> true *)
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(a) and value.IsNumber(x)
     return gammaInc(1.0 * a, 1.0 * x, up)
@@ -936,8 +938,8 @@ defn BetaInc(a, b, x, upper = false)
       B(a, b), for a, b >= 0 and x from 0 to 1; with upper, 1 - I_x(a, b), computed directly. NaN outside. x may be an
       array. The smaller tail comes from the power series or the continued fraction, the larger as one minus it.
 
-        BetaInc(2, 3, 0.5) --> 0.6875
-        BetaInc(1000, 1000, 0.45) --> 3.683198869007556e-6 *)
+        math.Near(BetaInc(2, 3, 0.5), 0.6875, rel = 1e-13) --> true
+        math.Near(BetaInc(1000, 1000, 0.45), 3.683198869007556e-6, rel = 1e-13) --> true *)
   up = if upper 1.0 else 0.0 end
   if value.IsNumber(a) and value.IsNumber(b) and value.IsNumber(x)
     return betaInc(1.0 * a, 1.0 * b, 1.0 * x, 1.0 - x, up)

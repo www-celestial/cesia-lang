@@ -1,7 +1,9 @@
 (** The zero of a function: Root, by Brent's method, as fzero in MATLAB and brentq in scipy; the minimum of a function:
     Minimize, by the L-BFGS method of Liu and Nocedal, as fminunc in MATLAB and minimize in scipy, and Simplex, by the
     method of Nelder and Mead, as fminsearch. The chapter Numerical methods of the book says what each promises, and
-    where it comes from. *)
+    where it comes from. A function that calls the C library, as math.Cos or a power of a float does, has other last
+    bits from one system to another, and so has its zero: the examples compare such a result with math.Near, within
+    1e-13. *)
 use std/bug
 use std/columns as col
 use std/math
@@ -49,8 +51,8 @@ defn Root(f, x, tol = 0.0)
       at the end is larger than at both ends of the bracket: a jump or a pole, as 1/x on [-1, 1], changes sign too, but
       is no zero. Its Best is the struct of the best point found.
 
-        Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0]).Value.X --> 2.0945514815423265
-        Root(x -> math.Cos(x) - x, 1.0).Value.X --> 0.7390851332151607
+        math.Near(Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0]).Value.X, 2.0945514815423265, rel = 1e-13) --> true
+        math.Near(Root(x -> math.Cos(x) - x, 1.0).Value.X, 0.7390851332151607, rel = 1e-13) --> true
         Root(x -> 1.0 / (x - 0.3), [0.0, 1.0]).Error.Message --> "optimize.Root: f changes sign near 0.30000000000000004, but |f| grows there to 18014398509481984.0: a jump or a pole, not a zero." *)
   if not (isFinite(tol) and tol >= 0.0)
     bug.Panic("optimize.Root: tol is $(brief(tol)); give a number of 0.0 or more.")
