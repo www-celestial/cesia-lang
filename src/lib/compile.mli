@@ -21,6 +21,9 @@ val checks : version -> bool
 (** Compiles and runs the file level of a module, at [ctx.b]: gives the value of its last statement. *)
 val run_main : ctx -> file:int -> m:int -> Ast.func -> t
 
+(** A field of a value read as the interpreter's [v.name] reads it in module [pm]: its value, or its error at [ctx.site]. *)
+val field_slow : ctx -> int -> t -> string -> t
+
 (** Calls a value, the called frame starting at [ctx.b + base]. *)
 val call_value : ctx -> base:int -> t -> t array -> t
 

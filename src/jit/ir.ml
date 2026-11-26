@@ -90,6 +90,16 @@ type ins =
   | Fields of int * value * int * int * int
       (** [Fields (r, s, sid, f, k)]: the fields of the struct [s] of shape [sid], in a store of floats ([f] 0) or of
           values (1); else bails *)
+  | Cached of int * value * int
+      (** [Cached (r, v, c)]: a field of the map or struct [v] through an inline cache, the value [c], a map of the keys
+          or a struct of the shape the field was last read from, whose store of integers holds the field's place: when
+          [v] has those keys or that shape, its values in a store of values with that place, [r] gets the value there;
+          else [r] gets [Undef], a word no field holds, and the code reads the field through OCaml ([Lower]) *)
+  | Int_of of int * value  (** the integer of a value that the code checked is an Int, unchecked *)
+  | Test of int * cmp * value * value
+      (** [Test (r, cmp, a, b)]: [a cmp b] of two values, as the interpreter's test: [r] gets [true] or [false] when
+          machine code can tell, of two words ([Eq], [Ne]), two texts ([Eq], [Ne]) or two Ints, else [Undef], and the
+          code tests them through OCaml ([Lower]) *)
   | Load of int * int * int * int
       (** [Load (r, a, i, k)]: cell [i] of those values or fields, a double when [r] is a float register; with [k] >= 0,
           when there are that many, else bails *)

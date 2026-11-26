@@ -37,6 +37,10 @@ type code = {
   entries : (int, int) Hashtbl.t;  (* the site a limit of depth names, by the site of the call, as [Mirtext.text]'s *)
   last : t array;  (* the values of [fn.moving] that the last run took *)
   natives : native array;  (* the natives its code calls through OCaml, by number: [Ir.Native] *)
+  caps : int array;
+      (* of a closure's version as a whole: the value slots of its captured variables, which its entry reads as
+         parameters. One that holds [Undef], a variable captured before it was assigned, sends the call to the
+         interpreter, whose read of it is the error *)
 }
 
 (* What the interpreter holds of it. *)
@@ -172,7 +176,8 @@ let make (w : world) (ver : version) fns start loops =
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
             need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; rooms = 0; worth;
             cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
-            last = Array.make (Array.length fn.moving) Missing; points; ticks; entries; natives = fn.natives }
+            last = Array.make (Array.length fn.moving) Missing; points; ticks; entries; natives = fn.natives;
+            caps = (if loops = [||] && start = 0 then Array.map (fun (_, j) -> ver.map.(j)) ver.owner.func.captures else [||]) }
         in
         Gc.finalise release code;
         Some code
@@ -605,19 +610,22 @@ let most_rooms = 4
 
 let result_float (ctx : ctx) code = Float.Array.get ctx.f (ctx.b + code.fn.frame)
 
+(* A captured variable without a value yet. *)
+let unset (ctx : ctx) code = code.caps <> [||] && Array.exists (fun k -> ctx.v.(ctx.b + k) == Undef) code.caps
+
 let int_entry code ri (ctx : ctx) =
-  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then ri ctx
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms || unset ctx code then ri ctx
   else if go ctx code 1 = Ir.ok then io.(Ir.io_int)
   else ri ctx
 
 let float_entry code rf (ctx : ctx) =
-  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then rf ctx
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms || unset ctx code then rf ctx
   else if go ctx code 1 = Ir.ok then result_float ctx code
   else rf ctx
 
 (* A value given: in the value slot after the constants, which then lets it go. *)
 let value_entry code rv (ctx : ctx) =
-  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms then rv ctx
+  if ctx.w.reloads <> code.reloads || code.rooms > most_rooms || unset ctx code then rv ctx
   else if go ctx code 1 = Ir.ok then begin
     let slot = ctx.b + code.fn.frame + Array.length code.fn.consts in
     let v = ctx.v.(slot) in
@@ -910,6 +918,14 @@ let install () =
     if ver.rv != rv && !Tier.mode <> Tier.always then judge w ver ri rf rv
   in
   Runtime.bridged := (fun ctx -> List.exists (fun r -> r.calling && r.rctx == ctx) !runs);
+  (* An inline cache filled by its slow path, which the running unit called: its table and its outermost frame's slot. *)
+  (Lower.ic_write :=
+     fun c v ->
+       match !runs with
+       | r :: _ ->
+         r.rcode.fn.consts.(c) <- v;
+         r.rctx.v.(r.rb + r.rcode.fn.frame + c) <- v
+       | [] -> ());
   Callback.register "cesia_jit_native" bridge;
   Callback.register "cesia_jit_io" io;
   Callback.register "cesia_jit_runs" runs;

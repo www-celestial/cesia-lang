@@ -76,6 +76,9 @@ let regs_of (i : Ir.ins) =
   | Keep (f, sp, q) -> [ f; sp; q ], []
   | Elem_at (r, _, i, _) -> [ r ], [ i ]
   | Load (r, a, _, _) -> [ r ], [ a ]
+  | Cached (r, x, c) -> [ r ], v x @ [ c ]
+  | Test (r, _, x, y) -> [ r ], v x @ v y
+  | Int_of (r, x) -> [ r ], v x
   | Set_at (_, i, _, x) -> [], i :: v x
   | Enter (r, _, _, _, _) | Enter_or_bail (r, _) -> [], [ r ]
   | Share x | Vset (_, x) -> [], v x
@@ -715,6 +718,37 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
       block_of v (Some 4) k;
       pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n" v (bail_to k) (tagged sid) v;
       pr "  bne %s, x1, %d\n  mov r%d, i64:0(x2)\n" (bail_to k) f r
+    | Cached (r, v, c) ->
+      (* The keys or shape of [v] against the cache's, then the place the cache holds against [v]'s store of values. *)
+      let v = in_reg Kval v and miss = label () in
+      pr "  mov r%d, 3\n  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, i64:0(%s)\n  mov x2, i64:0(r%d)\n  bne %s, x1, x2\n" r v miss v c miss;
+      pr "  mov x2, i64:8(r%d)\n  mov x2, i64:0(x2)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n" c;
+      pr "  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n  bne %s, x1, 1\n  mov x2, i64:0(x2)\n" v miss;
+      pr "  mov x4, i64:-8(x2)\n  ursh x4, x4, 10\n  ble %s, x4, x3\n  mov r%d, i64:0(x2, x3, 8)\n%s:\n" miss r miss
+    | Int_of (r, v) -> let v = in_reg Kval v in pr "  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" v r
+    | Test (r, cmp, x, y) ->
+      (* Words compare as themselves, texts by the words of their strings (OCaml pads a string's block alike for each
+         length, as caml_string_equal reads it), Ints by their integers; anything else is left to OCaml. *)
+      let x = (match x with Ir.Reg q -> "r" ^ string_of_int q | v -> pr "  mov x5, %s\n" (operand v); "x5") in
+      let y = (match y with Ir.Reg q -> "r" ^ string_of_int q | v -> pr "  mov x3, %s\n" (operand v); "x3") in
+      let eq = cmp = Ir.Eq || cmp = Ne in
+      let done_ = label () and imm = label () and ints = label () and loop = label () and same = label () in
+      (* What r gets when they are equal, and when they are not. *)
+      let yes, no = if cmp = Ir.Ne then 7, 5 else 5, 7 in
+      pr "  mov r%d, 3\n  and x0, %s, 1\n  and x1, %s, 1\n  add x2, x0, x1\n  beq %s, x2, 2\n  bne %s, x2, 0\n" r x y imm done_;
+      pr "  mov x0, u8:-8(%s)\n  mov x1, u8:-8(%s)\n  bne %s, x0, x1\n  beq %s, x0, 0\n" x y done_ ints;
+      if eq then begin
+        pr "  bne %s, x0, 2\n  mov x6, i64:0(%s)\n  mov x3, i64:0(%s)\n" done_ x y;
+        pr "  mov x2, i64:-8(x6)\n  ursh x2, x2, 10\n  mov x1, i64:-8(x3)\n  ursh x1, x1, 10\n" ;
+        pr "  mov r%d, %d\n  bne %s, x2, x1\n  mov x4, 0\n%s:\n  beq %s, x4, x2\n" r no done_ loop same;
+        pr "  mov x0, i64:0(x6, x4, 8)\n  mov x1, i64:0(x3, x4, 8)\n  bne %s, x0, x1\n  add x4, x4, 1\n  jmp %s\n" done_ loop;
+        pr "%s:\n  mov r%d, %d\n  jmp %s\n" same r yes done_
+      end
+      else pr "  jmp %s\n" done_;
+      pr "%s:\n  mov x0, i64:0(%s)\n  mov x1, i64:0(%s)\n  mov r%d, 5\n  b%s %s, x0, x1\n  mov r%d, 7\n  jmp %s\n" ints x y r
+        (cmp_name cmp) done_ r done_;
+      if eq then pr "%s:\n  mov r%d, %d\n  bne %s, %s, %s\n  mov r%d, %d\n%s:\n" imm r no done_ x y r yes done_
+      else pr "%s:\n%s:\n" imm done_
     | Load (r, a, i, k) ->
       if k >= 0 then pr "  mov x4, i64:-8(r%d)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" a (bail_to k) i;
       if fn.kinds.(r) = Kfloat then pr "  dmov r%d, d:%d(r%d)\n" r (8 * i) a else pr "  mov r%d, i64:%d(r%d)\n" r (8 * i) a
