@@ -12,6 +12,11 @@ cesia="$root/_build/default/src/bin/main.exe"
 verbose=0
 [ "${1:-}" = "-v" ] && { verbose=1; shift; }
 command -v node > /dev/null || { echo "wasm-test: node is needed" >&2; exit 2; }
+# A program with fibers waits through JavaScript Promise Integration (JSPI), which Node has from 26 on: in an older Node
+# such a program stops at its first wait with the message below, and counts as skipped, not as different.
+jspi=1
+node -e 'process.exit(typeof WebAssembly.Suspending === "function" ? 0 : 1)' || jspi=0
+nojspi="Fibers need JavaScript Promise Integration"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export XDG_CACHE_HOME="$tmp/cache"
@@ -46,6 +51,10 @@ for dir in "$@"; do
     if [ "$ran" = "$native" ]; then
       same=$((same + 1))
       [ $verbose = 1 ] && echo "same $dir/$name"
+    elif [ $jspi = 0 ] && grep -q "$nojspi" <<< "$ran"; then
+      skipped=$((skipped + 1))
+      echo "fibers: this Node has no JSPI" >> "$tmp/skips"
+      [ $verbose = 1 ] && echo "skip $dir/$name: fibers, this Node has no JSPI"
     else
       differ=$((differ + 1))
       echo "DIFFER: $dir/$name"
