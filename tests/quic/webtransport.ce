@@ -1,6 +1,7 @@
 (* WebTransport over HTTP/3 as live.js speaks it, without a browser: the extended CONNECT of a screen of std/live, its
    stream of messages (each its length then its text), the hello of version 2 and an action answered once; a session
-   asked of a server without webtransport refused with 400; a stream of a session that doesn't exist reset. *)
+   asked of a server without webtransport refused with 400; a stream of a session that doesn't exist reset; a ticket,
+   which gives a session the cookies of the page (a session carries none), used once, and a forged one refused. *)
 use std/http
 use std/http3
 use std/live
@@ -61,6 +62,11 @@ defn main()
   stray = conn.Open(false)?
   stray.Write("$(http3.Varint(65))$(http3.Varint(999))")?
   io.Print("stray", stray.Read() then result.MapErr(it.Kind))
+  (* A session carries no cookie: a ticket asked over TCP with them, used once, within 30 s. *)
+  tcp = tls.Client(tls.Open()!, verify = false)
+  asked = http.Fetch("https://127.0.0.1:$(h3.Port)/live/ticket", headers = [{Name: "cookie", Value: "sid=7"}, {Name: "origin", Value: "https://127.0.0.1:$(h3.Port)"}], secure = tcp)?
+  ticket = json.Parse(asked.Body)?.Ticket
+  io.Print("ticket", head(connect(conn, h3.Port, "/live?ticket=$ticket")?), head(connect(conn, h3.Port, "/live?ticket=$ticket")?), head(connect(conn, h3.Port, "/live?ticket=forged")?))
   conn.Close(256)
   plain = http3.Server(sys.Args[1], sys.Args[2], q, port = 0, validate = false)?
   served(a, plain.Port, plain, false)

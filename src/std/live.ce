@@ -64,9 +64,22 @@ defn Route(pattern, screen, a, actions = {}, resume = 120, buffer = 1048576, sam
         other = list.Append({Name: "origin", Value: "https://elsewhere.example"}, list.Append({Name: "host", Value: "shop.example"}, handshake))
         app({Method: "GET", Path: "/live", Query: "", Headers: other, Body: ""}).Status --> 403 *)
   o = {Screen: screen, Actions: actions, Resume: resume, Buffer: buffer, Same: if value.IsMissing(same) sameRequest else same end, Who: who,
-    Client: client, Kept: cell(dict.Dict())}
+    Client: client, Kept: cell(dict.Dict()), Tickets: fiber.Table(100000)}
   a then http.Get("$pattern/live.js", r -> {Status: 200, Body: script, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, o), r))
     then http.Route("CONNECT", pattern, r -> http.SameOrigin(s -> transported(s, o), r))
+    then http.Get("$pattern/ticket", r -> http.SameOrigin(s -> ticketed(s, o), r))
+end
+
+(* How long a ticket of WebTransport waits for its session: a page asks for it just before. *)
+ticketTime = 30
+
+defn ticketed(request, o)
+  (** A ticket for a WebTransport session, which carries no cookie (W3C WebTransport: its requests are made without
+      credentials): a page asks for one by a request that has its cookies, then opens its session with it in the
+      query, ?ticket=. The session then has this request's headers, its cookies among them, once, within 30 s. *)
+  ticket = newToken()
+  fiber.Remember(ticket, request.Headers, sys.Now() + ticketTime, o.Tickets)
+  {Status: 200, Body: json.Text({Ticket: ticket}), Headers: [{Name: "content-type", Value: "application/json"}, {Name: "cache-control", Value: "no-store"}]}
 end
 
 defn transported(request, o)
@@ -76,8 +89,36 @@ defn transported(request, o)
   if dict.Get("Protocol", request) != "webtransport"
     return {Status: 400, Body: "This route takes the WebTransport sessions of live.js."}
   end
-  c = {Request: request, First: fiber.Channel(size = 1), Bound: cell(missing), Epoch: cell(0), O: o}
+  r = request
+  ticket = if value.IsDict(r.Query) dict.Get("ticket", r.Query) else missing end
+  if value.IsText(ticket)
+    (* The headers of the request that got the ticket, once: its cookies say who the screen is for. *)
+    headers = fiber.Recall(ticket, sys.Now(), o.Tickets)
+    fiber.Forget(ticket, o.Tickets)
+    if value.IsMissing(headers)
+      return {Status: 403, Body: "This ticket is unknown, used or too old."}
+    end
+    r.Headers = headers
+    r.Cookies = cookiesOf(headers)
+    r.Query = dict.Drop("ticket", r.Query)
+  end
+  c = {Request: r, First: fiber.Channel(size = 1), Bound: cell(missing), Epoch: cell(0), O: o}
   {Status: 200, Body: "", Session: s -> sessioned(s, c)}
+end
+
+defn cookiesOf(headers)
+  (** The cookies of a request's headers, as std/http reads them for a handler (r.Cookies). *)
+  out = dict.Dict()
+  line = http.HeaderValue("cookie", headers)
+  if value.IsText(line)
+    for part in text.Split(";", line)
+      pair = text.Split("=", text.Trim(part))
+      if value.Len(pair) == 2
+        out[pair[1]] = encode.UrlDecode(pair[2])
+      end
+    end
+  end
+  out
 end
 
 defn sessioned(s, c)
@@ -587,15 +628,18 @@ script = "// live.js, the page's side of std/live: connect(url, options) opens a
 const pageNow = () => performance.timeOrigin + performance.now()
 const later = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : f => setTimeout(f, 0)
 const browser = typeof window === 'object' && typeof document === 'object'
-// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it and the page is https: a session
-// on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's variable integer) then its
-// UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The two are raced, as Happy
-// Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or within 300 ms of the
-// WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in sessionStorage, and only
-// WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked network.
+// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it, the page is https and the server
+// offers it: a session on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's
+// variable integer) then its UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The
+// two are raced, as Happy Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or
+// within 300 ms of the WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in
+// sessionStorage, and only WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked
+// network.
 const wtMark = 'cesia-webtransport-failed'
 function wtFailed() { try { return Date.now() < +(sessionStorage.getItem(wtMark) || 0) } catch (e) { return false } }
 function wtFail() { try { sessionStorage.setItem(wtMark, String(Date.now() + 600000)) } catch (e) {} }
+// The server says that it takes sessions: <meta name=webtransport content=on> in the page (http.Serve's webtransport).
+function offered() { return typeof document === 'object' && document.querySelector('meta[name=webtransport][content=on]') !== null }
 function wtLength(n) {
   if (n < 64) return [n]
   if (n < 16384) return [64 | (n >> 8), n & 255]
@@ -603,14 +647,14 @@ function wtLength(n) {
 }
 function overTransport(url, opened, failed, hashes) {
   const s = { readyState: 0, onmessage: null, onclose: null }
-  let t, writer = null, over = false
+  let t = null, writer = null, over = false
   const enc = new TextEncoder(), dec = new TextDecoder()
   const end = code => {
     if (over) return
     over = true
     const was = s.readyState
     s.readyState = 3
-    try { t.close() } catch (e) {}
+    try { if (t) t.close() } catch (e) {}
     if (was === 0) failed()
     else if (s.onclose) s.onclose({ code: code })
   }
@@ -623,9 +667,16 @@ function overTransport(url, opened, failed, hashes) {
   s.close = code => end(code || 1000)
   // A certificate of 14 days at most that the page already knows by its hash, as a test's or a machine's own.
   const known = hashes && hashes.length ? { serverCertificateHashes: hashes.map(h => ({ algorithm: 'sha-256', value: Uint8Array.from(atob(h), c => c.charCodeAt(0)) })) } : undefined
-  try { t = new WebTransport(url, known) } catch (e) { setTimeout(() => end(1006), 0); return s }
-  t.closed.then(() => end(1000), () => end(1006))
-  t.ready.then(async () => {
+  // A session carries no cookie: a ticket, asked with the page's cookies just before, says who it is for.
+  const u = new URL(url), at = new URL(url)
+  at.pathname = (u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname) + '/ticket'
+  at.search = ''
+  fetch(at, { credentials: 'same-origin', cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(async j => {
+    if (over) return
+    u.searchParams.set('ticket', j.Ticket)
+    t = new WebTransport(u.href, known)
+    t.closed.then(() => end(1000), () => end(1006))
+    await t.ready
     const stream = await t.createBidirectionalStream()
     writer = stream.writable.getWriter()
     if (over) return
@@ -661,7 +712,7 @@ function overTransport(url, opened, failed, hashes) {
 function dial(url, ready, failed, hashes) {
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
-  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && !wtFailed()
+  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && offered() && !wtFailed()
   let chosen = null, wsDead = false, wtDead = !race, grace = 0, wt = null
   const pick = s => {
     if (chosen) return

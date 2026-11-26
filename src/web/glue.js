@@ -197,15 +197,18 @@ function encode (j) {
   throw new TypeError('A function called by js.Call gives a number, a string, bytes, a boolean, null or an array.')
 }
 
-// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it and the page is https: a session
-// on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's variable integer) then its
-// UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The two are raced, as Happy
-// Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or within 300 ms of the
-// WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in sessionStorage, and only
-// WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked network.
+// WebTransport (draft-ietf-webtrans-http3) beside WebSocket, where the browser has it, the page is https and the server
+// offers it: a session on the WebSocket's own URL in https, one stream both ways, each message its length (QUIC's
+// variable integer) then its UTF-8 bytes, and it acts as a WebSocket (send, close, readyState, onmessage, onclose). The
+// two are raced, as Happy Eyeballs races IPv6 and IPv4 (RFC 8305): WebTransport is taken when it is ready first or
+// within 300 ms of the WebSocket, the other is closed. A session that fails marks the origin for 10 minutes in
+// sessionStorage, and only WebSocket goes there meanwhile, as where UDP doesn't pass: a page never waits on a blocked
+// network.
 const wtMark = 'cesia-webtransport-failed'
 function wtFailed() { try { return Date.now() < +(sessionStorage.getItem(wtMark) || 0) } catch (e) { return false } }
 function wtFail() { try { sessionStorage.setItem(wtMark, String(Date.now() + 600000)) } catch (e) {} }
+// The server says that it takes sessions: <meta name=webtransport content=on> in the page (http.Serve's webtransport).
+function offered() { return typeof document === 'object' && document.querySelector('meta[name=webtransport][content=on]') !== null }
 function wtLength(n) {
   if (n < 64) return [n]
   if (n < 16384) return [64 | (n >> 8), n & 255]
@@ -213,14 +216,14 @@ function wtLength(n) {
 }
 function overTransport(url, opened, failed, hashes) {
   const s = { readyState: 0, onmessage: null, onclose: null }
-  let t, writer = null, over = false
+  let t = null, writer = null, over = false
   const enc = new TextEncoder(), dec = new TextDecoder()
   const end = code => {
     if (over) return
     over = true
     const was = s.readyState
     s.readyState = 3
-    try { t.close() } catch (e) {}
+    try { if (t) t.close() } catch (e) {}
     if (was === 0) failed()
     else if (s.onclose) s.onclose({ code: code })
   }
@@ -233,9 +236,16 @@ function overTransport(url, opened, failed, hashes) {
   s.close = code => end(code || 1000)
   // A certificate of 14 days at most that the page already knows by its hash, as a test's or a machine's own.
   const known = hashes && hashes.length ? { serverCertificateHashes: hashes.map(h => ({ algorithm: 'sha-256', value: Uint8Array.from(atob(h), c => c.charCodeAt(0)) })) } : undefined
-  try { t = new WebTransport(url, known) } catch (e) { setTimeout(() => end(1006), 0); return s }
-  t.closed.then(() => end(1000), () => end(1006))
-  t.ready.then(async () => {
+  // A session carries no cookie: a ticket, asked with the page's cookies just before, says who it is for.
+  const u = new URL(url), at = new URL(url)
+  at.pathname = (u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname) + '/ticket'
+  at.search = ''
+  fetch(at, { credentials: 'same-origin', cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(async j => {
+    if (over) return
+    u.searchParams.set('ticket', j.Ticket)
+    t = new WebTransport(u.href, known)
+    t.closed.then(() => end(1000), () => end(1006))
+    await t.ready
     const stream = await t.createBidirectionalStream()
     writer = stream.writable.getWriter()
     if (over) return
@@ -271,7 +281,7 @@ function overTransport(url, opened, failed, hashes) {
 function dial(url, ready, failed, hashes) {
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
-  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && !wtFailed()
+  const race = typeof WebTransport === 'function' && url.startsWith('wss:') && offered() && !wtFailed()
   let chosen = null, wsDead = false, wtDead = !race, grace = 0, wt = null
   const pick = s => {
     if (chosen) return
