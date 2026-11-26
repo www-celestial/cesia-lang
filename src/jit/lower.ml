@@ -1839,12 +1839,28 @@ and value_arith st (e : expr) op x y =
   let x = box st x and y = box st y in
   let f = match op with Add -> Arith.add | Sub -> Arith.sub | _ -> Arith.mul in
   let r = reg st Kval and both = block st and ints = block st and slow = block st and join = block st in
+  let floats = block st and fboth = block st and fl = block st in
   let base = facts st st.cur in
   let tag v = fst (fresh st Kint (fun r -> Tag (r, v))) in
-  close st (Branch (Eq, Kint, tag x, Int 0, both, slow));
+  let tx = tag x in
+  close st (Branch (Eq, Kint, tx, Int 0, both, floats));
   carry st base both;
   st.cur <- both;
   close st (Branch (Eq, Kint, tag y, Int 0, ints, slow));
+  (* Two Floats, as add_a's: the operation of doubles, boxed. *)
+  carry st base floats;
+  st.cur <- floats;
+  close st (Branch (Eq, Kint, tx, Int 1, fboth, slow));
+  carry st base fboth;
+  st.cur <- fboth;
+  close st (Branch (Eq, Kint, tag y, Int 1, fl, slow));
+  carry st base fl;
+  st.cur <- fl;
+  let u = fresh st Kfloat (fun r -> Float_in (r, x)) and w = fresh st Kfloat (fun r -> Float_in (r, y)) in
+  let o = match op with Add -> Ir.Fadd | Sub -> Fsub | _ -> Fmul in
+  let n = fresh st Kfloat (fun r -> Op (o, r, fst u, fst w, -1)) in
+  emit st (Move (r, box st n));
+  goto st join;
   carry st base ints;
   st.cur <- ints;
   let u = fresh st Kint (fun r -> Int_of (r, x)) and w = fresh st Kint (fun r -> Int_of (r, y)) in
@@ -1877,9 +1893,21 @@ and value_test st (e : expr) op x y yes no =
           | False -> false
           | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v))))
   in
-  let r = reg st Kval and slow = block st and decided = block st in
-  emit st (Test (r, op, x, y));
+  let r = reg st Kval and slow = block st and decided = block st and floats = block st and fl = block st and other = block st in
   let base = facts st st.cur in
+  (* Two Floats, as eq_b's and the others': their doubles compared. *)
+  let tag v = fst (fresh st Kint (fun r -> Tag (r, v))) in
+  close st (Branch (Eq, Kint, tag x, Int 1, floats, other));
+  carry st base floats;
+  st.cur <- floats;
+  close st (Branch (Eq, Kint, tag y, Int 1, fl, other));
+  carry st base fl;
+  st.cur <- fl;
+  let u = fresh st Kfloat (fun r -> Float_in (r, x)) and w = fresh st Kfloat (fun r -> Float_in (r, y)) in
+  close st (Branch (op, Kfloat, fst u, fst w, yes, no));
+  carry st base other;
+  st.cur <- other;
+  emit st (Test (r, op, x, y));
   close st (Branch (Eq, Kint, Reg r, Word 3, slow, decided));
   carry st base slow;
   st.cur <- slow;

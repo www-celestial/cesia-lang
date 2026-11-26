@@ -1,0 +1,7 @@
+off:
+[[4.0, 3.75, -1.0], false, true, false, true, 4.0, 3.0, [1.5]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[true, false, true], true, false, false, true, 4.0, 4.0, [2]] [[false, true, true], false, true, true, false, 4, 6.0, [3]] [[false, true, true], false, true, true, false, 4.611686018427388e18, 9.223372036854776e18, [4611686018427387903]] [[true, false, true], true, false, false, true, 0.0, -0.0, [-0.0]]
+default:
+[[4.0, 3.75, -1.0], false, true, false, true, 4.0, 3.0, [1.5]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[true, false, true], true, false, false, true, 4.0, 4.0, [2]] [[false, true, true], false, true, true, false, 4, 6.0, [3]] [[false, true, true], false, true, true, false, 4.611686018427388e18, 9.223372036854776e18, [4611686018427387903]] [[true, false, true], true, false, false, true, 0.0, -0.0, [-0.0]]
+always:
+[[4.0, 3.75, -1.0], false, true, false, true, 4.0, 3.0, [1.5]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[false, true, false], false, true, false, false, nan, nan, [nan]] [[true, false, true], true, false, false, true, 4.0, 4.0, [2]] [[false, true, true], false, true, true, false, 4, 6.0, [3]] [[false, true, true], false, true, true, false, 4.611686018427388e18, 9.223372036854776e18, [4611686018427387903]] [[true, false, true], true, false, false, true, 0.0, -0.0, [-0.0]]
+exit 0

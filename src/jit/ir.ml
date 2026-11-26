@@ -100,6 +100,7 @@ type ins =
           or the word 9, no value, when the cache says that keys made whole lack it, or [Undef] when [m] is no map of
           those keys, and the code asks OCaml ([Lower]) *)
   | Int_of of int * value  (** the integer of a value that the code checked is an Int, unchecked *)
+  | Float_in of int * value  (** the double of a value that the code checked is a Float, unchecked *)
   | Bytes_of of int * value  (** the bytes of a text, an integer; -1 for any other value, which the code asks OCaml of *)
   | Test of int * cmp * value * value
       (** [Test (r, cmp, a, b)]: [a cmp b] of two values, as the interpreter's test: [r] gets [true] or [false] when

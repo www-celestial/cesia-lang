@@ -78,7 +78,7 @@ let regs_of (i : Ir.ins) =
   | Load (r, a, _, _) -> [ r ], [ a ]
   | Cached (r, x, c) -> [ r ], v x @ [ c ]
   | Test (r, _, x, y) -> [ r ], v x @ v y
-  | Int_of (r, x) | Bytes_of (r, x) -> [ r ], v x
+  | Int_of (r, x) | Bytes_of (r, x) | Float_in (r, x) -> [ r ], v x
   | Keyed (r, x, c) -> [ r ], v x @ [ c ]
   | Set_at (_, i, _, x) -> [], i :: v x
   | Enter (r, _, _, _, _) | Enter_or_bail (r, _) -> [], [ r ]
@@ -741,6 +741,7 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
       pr "  mov r%d, -2\n  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  bne %s, x1, 2\n" r v miss v miss;
       pr "  mov x2, i64:0(%s)\n  mov x1, i64:-8(x2)\n  ursh x1, x1, 10\n  lsh x1, x1, 3\n  sub x1, x1, 1\n" v;
       pr "  add x3, x2, x1\n  mov x4, u8:0(x3)\n  sub x1, x1, x4\n  lsh r%d, x1, 1\n%s:\n" r miss
+    | Float_in (r, v) -> let v = in_reg Kval v in pr "  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n" v r
     | Int_of (r, v) -> let v = in_reg Kval v in pr "  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" v r
     | Test (r, cmp, x, y) ->
       (* Words compare as themselves, texts by the words of their strings (OCaml pads a string's block alike for each
