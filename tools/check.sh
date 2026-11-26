@@ -5,12 +5,14 @@ cd "$(dirname "$0")/.."
 
 fail() { echo "check: $1" >&2; exit 1; }
 
-# Budget: 28,000 handwritten lines of the core, src/lib, src/bin and src/sys, the ceiling of the owner (raised from 26,000
-# on 2026-11-08, for the speed of maps and loops, and from 27,000 on 2026-11-12, for the load of packages)
+# Budget: 28,500 handwritten lines of the core, src/lib, src/bin and src/sys, the ceiling of the owner (raised from 26,000
+# on 2026-11-08, for the speed of maps and loops, from 27,000 on 2026-11-12, for the load of packages, and from 28,000
+# on 2026-11-26, for the calls of compiled code to OCaml's natives, a native table of sessions, a native Base64 and a
+# pool of domains for slow calls)
 # (src/lib/super.ml, src/lib/embedded.ml, src/lib/casefold.ml and src/sys/backend.ml are generated). The plugins the
 # binary loads at their first use, src/jit, src/sqlite, src/testing, src/debug and src/native, are outside it.
 lines=$(cat $(ls src/lib/*.ml src/lib/*.mli src/bin/*.ml src/sys/*.ml src/sys/*.mli src/sys/*.ml.in 2>/dev/null | grep -vE 'src/lib/(super|embedded|casefold)\.ml$|src/sys/backend\.ml$') 2>/dev/null | wc -l)
-[ "$lines" -le 28000 ] || fail "over budget: $lines lines of the core of 28000"
+[ "$lines" -le 28500 ] || fail "over budget: $lines lines of the core of 28500"
 
 # File names are separated with -. OCaml can't: a file name is a module name there.
 if hits=$(find . \( -name '*_*.ce' -o -name '*_*.cen' -o -name '*_*.sh' \) -not -path './_build/*' -not -path './docs/*' 2>/dev/null | grep .); then
@@ -45,9 +47,10 @@ fi
 # on 2026-11-22, for openat2, mkdirat, symlinkat, renameat, readlinkat and futimens, which the checks of read= and
 # write= and sys.CopyTree work with, then from 623 on 2026-11-23, for copy_file_range, with which sys.Copy and
 # sys.CopyTree copy the bytes of a file in the kernel, then from 638 on 2026-11-24, for LoadLibraryExA, with which a DLL of
-# a release's lib/ finds those it needs beside it on Windows, as $ORIGIN does on Linux).
+# a release's lib/ finds those it needs beside it on Windows, as $ORIGIN does on Linux, then from 650 on 2026-11-26, for
+# the calls of compiled code to OCaml's natives).
 c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c src/sys/jit.c | wc -l)
-[ "$c_lines" -le 650 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 650"
+[ "$c_lines" -le 800 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 800"
 
 # Change loop: a touched .ml, rebuilt and tested on the typed path in under 5 s, in the dev profile.
 budget_ms=5000
