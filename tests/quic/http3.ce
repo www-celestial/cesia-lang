@@ -22,13 +22,26 @@ defn rows(send)
   send("c,d\n")
 end
 
+defn scanned(r)
+  (** A route that takes its body in pieces: their count and their bytes. *)
+  n = 0
+  total = 0
+  got = r.Read()?
+  while got != ""
+    n += 1
+    total += text.ByteLength(got)
+    got = r.Read()?
+  end
+  http.Plain("$(r.Size) $total $(n > 1) $(r.Body == "")")
+end
+
 defn main()
   api = tls.Open()?
   q = quic.Open()?
   how(r) = if http.HeaderValue("connection", r.Headers) == "close" "tcp" else "h3" end
   a = http.App() then http.Get("/", r -> http.Plain("$(how(r)) $(r.Method) $(r.Peer) $(http.HeaderValue("host", r.Headers) == "127.0.0.1:$port") $(dict.Get("q", r.Query))"))
     then http.Post("/echo", r -> http.Plain("$(how(r)) $(text.ByteLength(r.Body))")) then http.Get("/rows", r -> http.Stream(rows))
-    then http.Get("/panic", r -> bug.Panic("no"))
+    then http.Get("/panic", r -> bug.Panic("no")) then http.Route("POST", "/scan", scanned, stream = 5000000)
   h3 = http3.Server(sys.Args[1], sys.Args[2], q, port = port, validate = false)?
   fiber.Spawn(() -> http.Serve(a, listener = served, wrap = tls.Server(sys.Args[1], sys.Args[2], api)?, http3 = h3, maxBody = 200000))
   sys.Sleep(0.05)
@@ -42,6 +55,7 @@ defn main()
   io.Print(ask("/echo", method = "POST", body = text.Repeat(150000, "x")).Value.Body)
   io.Print(ask("/echo", method = "POST", body = text.Repeat(250000, "x")).Value.Status)
   io.Print(ask("/rows").Value.Body)
+  io.Print(ask("/scan", method = "POST", body = text.Repeat(3000000, "s")).Value.Body, ask("/scan", method = "POST", body = text.Repeat(5000001, "s")).Value.Status)
   io.Print(ask("/nowhere").Value.Status, ask("/panic").Value.Status)
   head = ask("/", method = "HEAD")?
   io.Print(head.Status, head.Body == "", http.HeaderValue("content-length", head.Headers))

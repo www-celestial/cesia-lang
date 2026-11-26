@@ -735,6 +735,11 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
       return asked
     end
     http3.Broken(target.Host, target.Port)
+    (* Over TCP again, but never a request that may have reached the server and isn't idempotent (RFC 9110,
+       section 9.2.2): a payment would be paid twice. *)
+    if dict.Get("Sent", asked.Error) == true and value.IsMissing(list.IndexOf(method, ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]))
+      return asked
+    end
   end
   got = overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
   if target.Secure and not value.IsMissing(http3) and result.IsOk(got)

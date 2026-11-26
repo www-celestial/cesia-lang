@@ -500,6 +500,75 @@ defn bodyOf(st, rest, most)
   end
 end
 
+defn lengthOf(headers)
+  (** The length a request's content-length says, or missing when it says none, or nothing a number of 18 digits. *)
+  for h in headers
+    if h.Name == "content-length"
+      n = text.Number(text.Trim(h.Value))
+      return if value.IsInt(n) and n >= 0 and text.ByteLength(text.Trim(h.Value)) <= 18 n else missing end
+    end
+  end
+  missing
+end
+
+defn pieces(st, rest, size)
+  (** The Read of a request whose body comes in pieces: each call an Ok of the next bytes of its DATA frames, "" once
+      size bytes came and the stream ended, or an Err when it ends short, sends more, or is reset. The frames are never
+      gathered whole: a piece is what one read of the stream gave. *)
+  state = fiber.Channel(size = 1)
+  fiber.Send({Buf: rest, Left: 0, Got: 0}, state)
+  () -> piece(st, state, size)
+end
+
+defn piece(st, state, size)
+  s = fiber.Receive(state).Value
+  while true
+    if s.Left > 0
+      if s.Buf == ""
+        got = st.Read()
+        if result.IsErr(got) or got.Value == ""
+          fiber.Send(s, state)
+          return failed("The body of this request was cut short after $(s.Got) of its $size bytes.")
+        end
+        s.Buf = got.Value
+      end
+      n = list.Min(s.Left, text.ByteLength(s.Buf))
+      out = text.ByteSlice(1, n, s.Buf)
+      s.Buf = if n == text.ByteLength(s.Buf) "" else text.ByteSlice(n + 1, text.ByteLength(s.Buf), s.Buf) end
+      s.Left = s.Left - n
+      s.Got = s.Got + n
+      fiber.Send(s, state)
+      return if s.Got > size failed("This request sends more than its content-length.") else result.Ok(out) end
+    end
+    kind = ReadVarint(s.Buf, 1)
+    length = if value.IsMissing(kind) missing else ReadVarint(s.Buf, kind.Next) end
+    if value.IsMissing(length)
+      got = st.Read()
+      if result.IsErr(got) or got.Value == ""
+        fiber.Send(s, state)
+        return if s.Buf == "" and s.Got == size result.Ok("") else failed("The body of this request was cut short after $(s.Got) of its $size bytes.") end
+      end
+      s.Buf = "$(s.Buf)$(got.Value)"
+    else
+      s.Buf = if length.Next > text.ByteLength(s.Buf) "" else text.ByteSlice(length.Next, text.ByteLength(s.Buf), s.Buf) end
+      if kind.Value == dataFrame
+        s.Left = length.Value
+      else if length.Value > MaxHead
+        fiber.Send(s, state)
+        return failed("A frame in this body is too large.")
+      else
+        (* Another frame, as trailers or a reserved one: skipped. *)
+        skipped = gathered(st, s.Buf, length.Value)
+        if result.IsErr(skipped) or value.IsMissing(skipped.Value)
+          fiber.Send(s, state)
+          return failed("The body of this request was cut short.")
+        end
+        s.Buf = skipped.Value.Rest
+      end
+    end
+  end
+end
+
 defn answered(handle, request, timeout)
   (** The response of the handler, within timeout seconds, as std/http gives it: a panic answers 500, a handler that
       takes longer 503, and runs on alone. *)
@@ -593,12 +662,25 @@ defn exchange(st, conn, handle, options, sessions)
     return st.Free()
   end
   request = made.Value
-  body = if request.Method == "CONNECT" result.Ok("") else bodyOf(st, head.Rest, options.MaxBody) end
-  if result.IsErr(body)
-    refuse(st, body.Error, options)
-    return st.Free()
+  (* A route that takes its body in pieces (http.Route's stream) gets it so, as over HTTP/1.1, when it says its length. *)
+  most = if value.IsMissing(options.Streams) or request.Method == "CONNECT" missing else options.Streams(request.Path, request.Method) end
+  size = if value.IsMissing(most) missing else lengthOf(request.Headers) end
+  if not value.IsMissing(size)
+    if size > most
+      refuse(st, 413, options)
+      return st.Free()
+    end
+    request.Size = size
+    request.Read = pieces(st, head.Rest, size)
+    deadline += size / 65536
+  else
+    body = if request.Method == "CONNECT" result.Ok("") else bodyOf(st, head.Rest, options.MaxBody) end
+    if result.IsErr(body)
+      refuse(st, body.Error, options)
+      return st.Free()
+    end
+    request.Body = body.Value
   end
-  request.Body = body.Value
   if dict.Has("Protocol", request) and not (options.WebTransport and request.Protocol == "webtransport")
     refuse(st, 400, options)
     return st.Free()
@@ -1005,16 +1087,24 @@ defn ask(client, host, port, method, path, headers, body, timeout, maxBody, peer
       fields = list.Append({Name: name, Value: h.Value}, fields)
     end
   end
+  if body != "" or method != "GET" and method != "HEAD"
+    fields = list.Append({Name: "content-length", Value: "$(text.ByteLength(body))"}, fields)
+  end
   head = Frame(headersFrame, EncodeHead(fields))
   sent = st.Write(if body == "" head else "$head$(Frame(dataFrame, body))" end)
   if result.IsOk(sent)
     sent = st.End()
   end
-  got = if result.IsOk(sent) fiber.Wait(fiber.Spawn(() -> response(st, timeout, maxBody)), timeout = if value.IsMissing(timeout) missing else timeout * 10 end) else sent end
+  (* A server may answer before the whole body came, as a 413, then stop the stream (RFC 9114, section 4.1.2): its
+     answer is read even when the write failed. *)
+  got = fiber.Wait(fiber.Spawn(() -> response(st, timeout, maxBody)), timeout = if value.IsMissing(timeout) missing else timeout * 10 end)
+  if result.IsErr(sent) and (result.IsErr(got) or result.IsErr(got.Value))
+    got = result.Ok(sent)
+  end
   st.Free()
   match got
-    result.Ok(r) -> r
-    result.Err(e) -> failed("The HTTP/3 request to $host:$port failed: $(value.Text(dict.Get("Message", e)))")
+    result.Ok(r) -> if result.IsOk(r) r else result.Err({Kind: "http", Message: "The HTTP/3 request to $host:$port failed: $(value.Text(dict.Get("Message", r.Error)))", Sent: true}) end
+    result.Err(e) -> result.Err({Kind: "http", Message: "The HTTP/3 request to $host:$port failed: $(value.Text(dict.Get("Message", e)))", Sent: true})
   end
 end
 
