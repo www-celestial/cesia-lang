@@ -110,12 +110,13 @@ defn headerLine(h)
   "$line$crlf"
 end
 
-defn render(response, headOnly = false, closing = false, streamed = "")
+defn render(response, headOnly = false, closing = false, streamed = "", offer = "")
   (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out; with
       closing, a header tells the client that the server closes the connection after it. A streamed body has no length:
       streamed is "chunked" for its chunks, or "closed" for one that ends when the connection does. Every response has a
       Date, as RFC 9110 asks of a server with a clock (section 6.6.1), unless it has its own: dateLine, a native of this
-      package, makes its line again only when the second changes. *)
+      package, makes its line again only when the second changes. offer is the Alt-Svc line of a server that speaks
+      HTTP/3 too, made once by Serve and written as it is: a header added to each response would cost each request. *)
   status = response.Status
   bug.Assert(value.IsInt(status), "This response has a status that isn't an integer.")
   body = value.Text(response.Body)
@@ -134,7 +135,7 @@ defn render(response, headOnly = false, closing = false, streamed = "")
   end
   shown = if headOnly or streamed != "" "" else body end
   dated = if value.Len(extra) > 0 and ownDate(extra) "" else dateLine() end
-  "HTTP/1.1 $status $(Reason(status))$crlf$dated$lengthLine$custom$ending$crlf$shown"
+  "HTTP/1.1 $status $(Reason(status))$crlf$dated$offer$lengthLine$custom$ending$crlf$shown"
 end
 
 defn ownDate(headers)
@@ -150,7 +151,7 @@ end
 (** The text of a response with just a status and its reason, after which the server closes the connection. *)
 failure(status) = render({Status: status, Body: Reason(status)}, closing = true)
 
-defn ready(response, headOnly, chunked, last = false)
+defn ready(response, headOnly, chunked, last = false, offer = "")
   (** A response made ready to send: a struct with reply (its text, or its head when its body is streamed), upgrade (a
       function or missing), stream (the function of a body that Stream gives, missing for HEAD), chunked, and close,
       true when the server stops, or for the last response of its connection: the response tells the client, which asks
@@ -166,14 +167,15 @@ defn ready(response, headOnly, chunked, last = false)
   end
   streamed = if value.IsMissing(stream) "" else if chunked "chunked" else "closed" end
   closing = last or stopping() or streamed == "closed"
-  {Reply: render(response, headOnly = headOnly, closing = closing, streamed = streamed), Upgrade: upgrade, Stream: if headOnly missing else stream end,
+  {Reply: render(response, headOnly = headOnly, closing = closing, streamed = streamed, offer = offer), Upgrade: upgrade, Stream: if headOnly missing else stream end,
     Chunked: chunked, Close: closing}
 end
 
-defn answer(handle, request, left, chunked, last = false)
-  (** The response of a handler to a request, ready to send, within left seconds. A panic in the handler stops its own
-      fiber only, and answers 500. A handler that takes longer gets a 503, and the connection closes while it runs on. *)
-  match fiber.Wait(fiber.Spawn(() -> ready(if tooEarly(request) Plain("Too Early", status = 425) else handle(request) end, request.Method == "HEAD", chunked, last = last)), timeout = list.Max(0, left))
+defn answer(handle, request, left, chunked, last = false, offer = "")
+  (** The response of a handler to a request, ready to send, within left seconds, with the Alt-Svc line offer. A panic in
+      the handler stops its own fiber only, and answers 500. A handler that takes longer gets a 503, and the connection
+      closes while it runs on. *)
+  match fiber.Wait(fiber.Spawn(() -> ready(if tooEarly(request) Plain("Too Early", status = 425) else handle(request) end, request.Method == "HEAD", chunked, last = last, offer = offer)), timeout = list.Max(0, left))
     result.Ok(done) -> done
     result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Stream: missing, Chunked: chunked, Close: true}
   end
@@ -305,7 +307,7 @@ defn connection(handle, conn, buffer, options, deadline)
     request = parsed.Value.Request
     request.Peer = conn.Peer
     conn.Arm(0)
-    done = answer(handle, request, deadline - sys.Now(), parsed.Value.Chunked)
+    done = answer(handle, request, deadline - sys.Now(), parsed.Value.Chunked, offer = options.Offer)
     conn.Arm(options.Timeout)
     sent = conn.Write(done.Reply)
     if result.IsOk(sent) and not value.IsMissing(done.Stream)
@@ -386,7 +388,7 @@ defn inPieces(handle, conn, streamed, options, deadline)
   task = fiber.Spawn(() -> feeding(conn, streamed.First, streamed.Size, told, options.Timeout, start, pieces))
   request.Read = () -> piece(start, pieces)
   conn.Arm(0)
-  done = answer(handle, request, deadline - sys.Now() + streamed.Size / leastRate, streamed.Chunked, last = true)
+  done = answer(handle, request, deadline - sys.Now() + streamed.Size / leastRate, streamed.Chunked, last = true, offer = options.Offer)
   fiber.Cancel(task)
   _ = fiber.Wait(task)
   conn.Arm(options.Timeout)
@@ -501,15 +503,14 @@ defn serve(handle, port, host, timeout, maxBody, wrap, listener, streams = missi
       RFC 7838): a browser that hears it asks over QUIC next, and comes back to TCP by itself when UDP doesn't pass. *)
   listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end
   quic = missing
-  served = handle
+  offer = ""
   if not value.IsMissing(http3)
     quic = fiber.Spawn(() -> http3.Serve(r -> if tooEarly(r) Plain("Too Early", status = 425) else handle(r) end,
       {Timeout: timeout, MaxBody: maxBody, Streams: streams, Date: () -> dateValue(), WebTransport: webtransport}))
-    offer = "h3=\":$(http3.Port)\"; ma=86400"
-    served = r -> WithHeader("alt-svc", offer, handle(r))
+    offer = headerLine({Name: "alt-svc", Value: "h3=\":$(http3.Port)\"; ma=86400"})
   end
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
-  acceptLoop(served, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end, Streams: streams})?
+  acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end, Streams: streams, Offer: offer})?
   net.Close(listener)
   waitForConnections(sys.Now() + timeout)
   if not value.IsMissing(quic)
