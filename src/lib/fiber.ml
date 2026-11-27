@@ -122,6 +122,7 @@ let fiber_words = 270
    last steps are counted at [from], the site that spawned it. *)
 let finish fiber task from r =
   Runtime.settle fiber from;
+  Runtime.spare fiber;
   task.result <- Some r;
   task.cx <- None;
   List.iter (fun wake -> ignore (wake ())) (List.rev task.waiters);
