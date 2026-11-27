@@ -29,8 +29,8 @@ foot = ("Pinned to 2 physical cores (server, client); another measure may run on
 
 
 def num(x):
-    """x in seconds, two decimals, a comma in French."""
-    t = f"{x:.2f}"
+    """x in seconds with two decimals, or in milliseconds below 0.1 s; a comma in French."""
+    t = f"{x * 1000:.0f} ms" if x < 0.1 else f"{x:.2f} s"
     return t.replace(".", ",") if fr else t
 
 
@@ -50,7 +50,7 @@ for key, en, fr_name in profiles:
         o.append(f'<rect x="{x0}" y="{y + 3}" width="{max(2, med * scale):.1f}" height="14" rx="2" fill="{color}" fill-opacity="0.25" stroke="{color}"/>')
         o.append(f'<line class="r" x1="{x0 + xs[0] * scale:.1f}" y1="{y + 10}" x2="{x0 + xs[-1] * scale:.1f}" y2="{y + 10}"/>')
         at = x0 + max(2, med * scale, xs[-1] * scale) + 6
-        o.append(f'<text x="{at:.1f}" y="{y + 14}">{num(med)} s</text>')
+        o.append(f'<text x="{at:.1f}" y="{y + 14}">{num(med)}</text>')
         y += bar
     y += gap
 H = y + 24
