@@ -66,6 +66,7 @@ val pay_bytes : ctx -> int -> unit
 
 (** Grows the three stacks to hold [need] entries. *)
 val grow : ctx -> int -> unit
+val spare : ctx -> unit
 
 (** The stack lines of an error raised at site [at], most recent first. *)
 (** The site an error shows first: where it was raised, or the line of the program that called into a library of [std/]

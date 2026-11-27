@@ -90,7 +90,24 @@ let labels ctx (v : t) =
 
 let natives () =
   let families : (string, family) Hashtbl.t = Hashtbl.create 16 and order = ref [] and limits = Hashtbl.create 4 in
-  let series ctx kind (a : t array) make =
+  (* The series of the last calls, by their kind and name (the same texts) and labels (the same keys, the same plain values):
+     a route gives the same labels at each request, whose text and two lookups took a microsecond. *)
+  let recent = ref [] in
+  let plain = function Text _ | Int _ | Float _ | True | False | Missing -> true | _ -> false in
+  let rec series ctx kind (a : t array) make =
+    match if Array.length a > 2 then a.(2) else Undef with
+    | Dict { keys; vals = V d; _ } when Array.for_all plain d -> seen ctx kind a make keys d
+    | Undef | Missing -> seen ctx kind a make Trie.no_keys [||]
+    | _ -> find ctx kind a make
+  and seen ctx kind a make keys d =
+    let same (k, n, ks, vs, _) = k == kind && n == a.(0) && ks == keys && Array.length vs = Array.length d && Array.for_all2 ( == ) vs d in
+    match List.find_opt same !recent with
+    | Some (_, _, _, _, s) -> s
+    | None ->
+      let s = find ctx kind a make in
+      recent := (kind, a.(0), keys, Array.copy d, s) :: List.filteri (fun i _ -> i < 15) !recent;
+      s
+  and find ctx kind (a : t array) make =
     let name = Native.text_arg ctx "metrics" a.(0) in
     if not (valid (fun c -> letter c || c = ':') (fun c -> letter c || digit c || c = ':') name) then
       Runtime.fail ctx Type (Messages.metric_name name);

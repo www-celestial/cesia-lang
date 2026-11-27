@@ -1,0 +1,36 @@
+(* The search of a single byte goes eight bytes at a time, then the last eight again: text.Contains, ByteFind and Split
+   find it at every place of texts of 0 to 40 bytes, from every start, as a plain loop over the bytes does. *)
+use std/io
+use std/list
+use std/text
+use std/value
+
+defn plain(c, from, s)
+  for k in from..text.ByteLength(s)
+    if text.ByteSlice(k, k, s) == c
+      return k
+    end
+  end
+  missing
+end
+
+wrong = 0
+checked = 0
+for n in 0..40
+  for at in 0..n
+    s = text.Join("", [if k == at "\r" else "a" end for k in 1..n])
+    if text.Contains("\r", s) != (at >= 1)
+      wrong = wrong + 1
+    end
+    for from in 1..(n + 1)
+      checked = checked + 1
+      if text.ByteFind("\r", from, s) != plain("\r", from, s)
+        wrong = wrong + 1
+      end
+    end
+    if value.Len(text.Split("\r", s)) != (if at >= 1 2 else 1 end)
+      wrong = wrong + 1
+    end
+  end
+end
+io.Print("$checked searches, $wrong wrong")

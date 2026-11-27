@@ -1,0 +1,26 @@
+(* A fiber that ends gives its stacks to the next one that grows: fibers that recurse, end, panic or are cancelled in the
+   middle of a deep call, then others that take their stacks, each with its own values, none of the ones before. *)
+use std/fiber
+use std/io
+use std/list
+use std/result
+
+deep(n, tag) = if n == 0 [tag] else list.Concat(deep(n - 1, tag), [n]) end
+defn sum(n)
+  total = 0
+  for k in deep(n, 0)
+    total = total + k
+  end
+  total
+end
+boom(n) = if n == 0 [1][3] else 1 + boom(n - 1) end
+
+first = [fiber.Spawn(() -> sum(30 + k)) for k in 1..12]
+io.Print([fiber.Wait(t).Value for t in first])
+failed = [fiber.Spawn(() -> boom(25 + k)) for k in 1..4]
+io.Print([result.IsErr(fiber.Wait(t)) for t in failed])
+slow = fiber.Spawn(() -> sum(200))
+fiber.Cancel(slow)
+io.Print(fiber.Wait(slow).Error.Kind)
+again = [fiber.Spawn(() -> deep(3 + k, "f$k")) for k in 1..12]
+io.Print([fiber.Wait(t).Value for t in again])

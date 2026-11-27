@@ -30,12 +30,13 @@ let () =
       @ fail rt (Messages.dict_key a1) [ [ Lget 0; call rt "describe" ] ] [ Lget 1 ]);
   def "empty_dict" (fun rt -> [], [ v ], fun _ ->
       [ I32 1; I32 0; array_new_default rt.vals; Rnull (T rt.i64s); I64 0L; struct_new rt.keys; I32 0; array_new_default rt.vals; I32 0; I32 1; struct_new rt.map ]);
-  (* dict.Get, GetOr and Has: the place of the key, -1 when absent. *)
+  (* dict.Get, GetOr and Has: the place of the key, -1 when absent. GetOr's default, when it is given back, is shared, as
+     the native shares an argument it returns: a write to it then copies, and leaves the variable it came from alone. *)
   def "dict_find" (fun rt -> [ v; v; nn rt.bytes; I32 ], [ I32 ], fun _ ->
       [ Lget 0; Lget 3; call rt "check_key"; Lget 1; Lget 2; Lget 3; call rt "as_dict"; Lget 0; call rt "map_find" ]);
   def "dict_get" (fun rt -> [ v; v; v; nn rt.bytes; I32 ], [ v ], fun fb ->
       let k = local fb I32 in
-      [ Lget 0; Lget 2; Lget 3; Lget 4; call rt "dict_find"; Ltee k; I32 0; i32_lt_s; If (Bnone, [ Lget 1; ret ], []);
+      [ Lget 0; Lget 2; Lget 3; Lget 4; call rt "dict_find"; Ltee k; I32 0; i32_lt_s; If (Bnone, [ Lget 1; call rt "share"; ret ], []);
         Lget 2; call rt "as_map"; Cast (false, T rt.map); struct_get rt.map m_vals; Lget k; array_get rt.vals; call rt "share" ]);
   (* dict.Put: a copy with the key set, the original as it was. *)
   def "dict_put" (fun rt -> [ v; v; v; I32 ], [ v ], fun _ ->

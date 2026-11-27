@@ -176,7 +176,8 @@ let reshape ctx (a : t array) =
      | v -> v)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
-let is_ name test = name, nat name 1 1 (fun _ a -> Value.of_bool (test a.(0)))
+let tests = ref []
+let is_ name test = let n = nat name 1 1 (fun _ a -> Value.of_bool (test a.(0))) in tests := (n, test) :: !tests; name, n
 
 let rec abs_value ctx v =
   match v with
@@ -812,8 +813,16 @@ let find_long fold s part from = if String.length part > String.length s - from 
    in either case, in both. The rarest byte of [part], by [ranks], is looked for eight bytes at a time (SWAR): the word
    xor that byte repeated has a zero byte where it is; a letter is or'ed with 0x20 in each byte first, which turns its
    capital into it and no other byte. Each place found is then compared whole. *)
+(* One byte, as most parts are, a line end or a colon: eight bytes at a time, with no closure made. *)
+let rec byte_from s want c i n =
+  if i + 8 > n then if i >= n then -1 else if s.[i] = c then i else byte_from s want c (i + 1) n
+  else if Int64.equal (zero_bytes (Int64.logxor (String.get_int64_le s i) want)) 0L then
+    (if i + 16 > n && i + 8 < n then byte_from s want c (n - 8) n else byte_from s want c (i + 8) n)
+  else if s.[i] = c then i else byte_from s want c (i + 1) n
+
 let find_from ?(fold = false) s part from =
   if String.length part >= 32 then find_long fold s part from
+  else if String.length part = 1 && not fold then byte_from s (Int64.mul (Int64.of_int (Char.code part.[0])) ones) part.[0] from (String.length s)
   else begin
     let part = if fold then String.lowercase_ascii part else part in
     let n = String.length s and m = String.length part in
