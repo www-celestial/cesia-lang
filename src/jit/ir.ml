@@ -277,8 +277,12 @@ let cx_floor = 33
     left to the natives they call *)
 
 let cx_probe = 34
-(** The cell of the base past which a nested frame looks at the machine's stack again, which the C glue starts [probe]
-    frames above the run's base and folds into [io_lim], as native code does after each look *)
+(** The cell of the base past which a call of a nested frame looks at the machine's stack again, which the C glue starts
+    [probe] frames above the run's base and folds into [io_lim], as native code does after each look *)
+
+let cx_lim = 35
+(** The cell of [io_lim] as [Engine] gives it, before the C glue folds [cx_probe] into it, at the run's start and after
+    each call to OCaml: an inlined frame, which takes none of the machine's stack, tests it *)
 
 let probe = 16
 

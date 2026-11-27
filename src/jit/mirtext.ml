@@ -461,28 +461,23 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
 " check
       (cx Ir.cx_young) (8 * need) (cx (Ir.cx_young + 1)) (slow check)
   in
-  (* The machine's stack, which nested frames take, is looked at when a frame's base [at] passes the one in
-     [Ir.cx_probe], [Ir.probe] frames after the last look (a frame is 2 or more above its caller's): with room left, the
-     next look is that many frames on, and the check is made again at [check]; short, to [short]. Past a limit, [slow].
-     The limit is made again from its parts, as [Engine.limits] and the C glue make it. *)
-  let least s cells = List.iter (fun c -> let l = label () in Printf.bprintf s "  mov x1, %s\n  ble %s, x0, x1\n  mov x0, x1\n%s:\n" (cx c) l l) cells in
-  let probe at ~check ~short slow =
+  (* The machine's stack, which a call of a nested frame takes, is looked at when the callee's base [at] passes the one in
+     [Ir.cx_probe], [Ir.probe] frames after the last look (a frame is 2 or more above its caller's), which [Ir.io_lim]
+     holds when it is below the limits, in [Ir.cx_lim]. MIR's [bstart] reads the stack pointer with no call: a call
+     anywhere in a function sends the values that live across it to memory in its loops, which made a loop of calls of
+     closures 1.6 times slower. With room left, the next look is that many frames on, and the call goes on at [past];
+     short, to [short]. Past a limit, [slow]. An inlined frame takes none of the machine's stack: it tests [Ir.cx_lim],
+     the limits alone. *)
+  let probe at ~past ~short slow =
     let look =
+      let l = label () in
       stub (fun s ->
-          Printf.bprintf s "  call psp, cesia_jit_sp, x0\n  mov x1, %s\n  uble %s, x0, x1\n  add x0, %s, %d\n  mov %s, x0\n"
+          Printf.bprintf s "  bstart x0\n  mov x1, %s\n  uble %s, x0, x1\n  add x0, %s, %d\n  mov %s, x0\n"
             (cx Ir.cx_floor) short at (2 * Ir.probe) (cx Ir.cx_probe);
-          least s [ Ir.io_cap2; Ir.io_depth; Ir.io_mem ];
-          Printf.bprintf s "  mov %s, x0\n  jmp %s\n" (cx Ir.io_lim) check)
+          Printf.bprintf s "  mov x1, %s\n  ble %s, x0, x1\n  mov x0, x1\n%s:\n  mov %s, x0\n  bgt %s, %s, x0\n  jmp %s\n"
+            (cx Ir.cx_lim) l l (cx Ir.io_lim) slow at past)
     in
     stub (fun s -> Printf.bprintf s "  mov x0, %s\n  bgt %s, %s, x0\n  jmp %s\n" (cx Ir.cx_probe) look at slow)
-  in
-  (* A frame that takes none of the machine's stack, an inlined one, where it is short: on at [past], unless past a
-     limit, to [slow]. *)
-  let go_on at ~past slow =
-    stub (fun s ->
-        Printf.bprintf s "  mov x0, %s\n" (cx Ir.io_cap2);
-        least s [ Ir.io_depth; Ir.io_mem ];
-        Printf.bprintf s "  bgt %s, %s, x0\n  jmp %s\n" slow at past)
   in
   (* A call that can bail, where the machine's stack is short: the interpreter makes its statement. *)
   let machine_bail back =
@@ -551,10 +546,9 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
   let rec ins = function
     | Ir.Frame (r, _) -> pr "  add r%d, b, %d\n" r (offset r)
     | Enter (r, base, site, entry, _) when bridged ->
-      let at = "r" ^ string_of_int r and check = label () and past = label () in
+      let at = "r" ^ string_of_int r and check = label () in
       let slow = grow_stub at ~rs:(kept ()) ~extra:[] ~linked:false ~again:check ~deep:(deep_stub at base site entry) site in
-      let slow = probe at ~check ~short:(go_on at ~past slow) slow in
-      pr "%s:\n  mov x0, %s\n  bgt %s, r%d, x0\n%s:\n" check (cx Ir.io_lim) slow r past
+      pr "%s:\n  mov x0, %s\n  bgt %s, r%d, x0\n" check (cx Ir.cx_lim) slow r
     | Num (r, v, how, site) ->
       (* An Int's field, 2n + 1, as 2n; for a float, a Float's double, or an Int's made one; else the value to the
          outermost frame's slot of [Not_bool] and the interpreter's error. *)
@@ -601,8 +595,9 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
       pr "  add nb, b, %d\n" nb;
       let extra = List.filter_map (function Ir.Reg q when fn.kinds.(q) = Kval -> Some q | _ -> None) (Array.to_list args) in
       let slow = grow_stub "nb" ~rs ~extra ~linked:true ~again:check ~deep:(deep_stub "nb" (frame_of site) site entry) site in
-      let slow = probe "nb" ~check ~short:(deeper k args rs site entry after) slow in
-      pr "%s:\n  mov x0, %s\n  bgt %s, nb, x0\n  mov ip, %s\n  lsh xa, nb, 3\n  add ip, ip, xa\n" check (cx Ir.io_lim) slow (cx 0);
+      let past = label () in
+      let slow = probe "nb" ~past ~short:(deeper k args rs site entry after) slow in
+      pr "%s:\n  mov x0, %s\n  bgt %s, nb, x0\n%s:\n  mov ip, %s\n  lsh xa, nb, 3\n  add ip, ip, xa\n" check (cx Ir.io_lim) slow past (cx 0);
       base_in b "x0" (frame_of site);
       pr "  lsh x0, x0, 1\n  add x0, x0, 1\n  mov i64:0(ip), x0\n  mov i64:8(ip), %s\n" (tagged fn.sites.(site));
       pr "  inline Q%s%d, %sg%d, fuel, cx, nb, fuel%s\n%s:\n" prefix k prefix k
@@ -619,14 +614,10 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
     | Reserve (need, _) when bridged && !need > 0 -> let rs = kept () in room_check !need (room_stub !need rs)
     | Recheck (need, _) when bridged && !need > 0 -> let rs = kept () in room_check !need (room_stub !need rs)
     | Enter (r, base, site, entry, back) ->
-      let at = "r" ^ string_of_int r and check = label () and past = label () in
+      let at = "r" ^ string_of_int r in
       let slow = if back < 0 then deep_stub at base site entry else short at base site entry back in
-      let slow = probe at ~check ~short:(go_on at ~past slow) slow in
-      pr "%s:\n  mov x0, %s\n  bgt %s, r%d, x0\n%s:\n" check (cx Ir.io_lim) slow r past
-    | Enter_or_bail (r, k) ->
-      let at = "r" ^ string_of_int r and check = label () and past = label () and bail = bail_to k in
-      let slow = probe at ~check ~short:(go_on at ~past bail) bail in
-      pr "%s:\n  mov x0, %s\n  bgt %s, r%d, x0\n%s:\n" check (cx Ir.io_lim) slow r past
+      pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.cx_lim) slow r
+    | Enter_or_bail (r, k) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.cx_lim) (bail_to k) r
     | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (operand v)
     | Incr r -> pr "  add r%d, r%d, 2\n" r r
     | Op (((Add | Sub) as op), r, x, y, site) when site < 0 ->
@@ -717,13 +708,13 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
     | Keep (f, sp, q) -> pr "  mov r%d, fuel\n  mov r%d, %s\n  mov r%d, %s\n" f sp (cx Ir.io_spent) q (cx Ir.io_quantum)
     | Call (r, k, args, site, entry, back) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
-      let nb = offset (frame_of site) + callee_of site and check = label () in
+      let nb = offset (frame_of site) + callee_of site and past = label () in
       pr "  add nb, b, %d\n" nb;
       let slow = if back < 0 then deep_stub "nb" (frame_of site) site entry else short "nb" (frame_of site) site entry back in
       (* Where the machine's stack is short, the run stops, as nothing it did shows, and the interpreter makes the call
          from its start; or the statement bails, and the interpreter makes it. *)
       let out = if back < 0 then stub (fun s -> Printf.bprintf s "  mov x4, %d\n  jmp %s\n" fn.sites.(site) (shared "M")) else machine_bail back in
-      let slow = probe "nb" ~check ~short:out slow in
+      let slow = probe "nb" ~past ~short:out slow in
       let again () = again back in
       let up =
         let unwind =
@@ -742,7 +733,7 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
                 (cx Ir.io_status) g Ir.stack_out g Ir.frames_out room Ir.room_out mach Ir.machine_out unwind)
         end
       in
-      pr "%s:\n  mov x0, %s\n  bgt %s, nb, x0\n" check (cx Ir.io_lim) slow;
+      pr "  mov x0, %s\n  bgt %s, nb, x0\n%s:\n" (cx Ir.io_lim) slow past;
       pr "  inline Q%s%d, %sg%d, fuel, cx, nb, fuel%s\n" prefix k prefix k
         (String.concat "" (Array.to_list (Array.map (fun v -> ", " ^ operand v) args)));
       pr "  blt %s, fuel, 0\n  %s r%d, %s\n" up (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (result_cell fn.kinds.(r))
@@ -1260,7 +1251,7 @@ let func b ~prefix ~nested ~bridged ~index ~moved_at ~consts_at ~points ~ticks ~
 
 let used =
   [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow"; "log10"; "log2"; "log1p"; "expm1";
-    "sinh"; "cosh"; "tanh"; "asinh"; "acosh"; "atanh"; "hypot"; "fmod"; "round"; "caml_modify"; "cesia_jit_sp" ]
+    "sinh"; "cosh"; "tanh"; "asinh"; "acosh"; "atanh"; "hypot"; "fmod"; "round"; "caml_modify" ]
 
 (* The unit as one module: each function, and the single entry [e] of the first one, which the C glue calls with the
    context and which gives the status. *)
@@ -1272,7 +1263,7 @@ let emit (fns : Ir.func array) =
   (* A unit that calls OCaml: every function keeps its values around the calls that may collect. *)
   let bridged = Array.exists (fun (fn : Ir.func) -> Array.exists (fun (bk : Ir.block) -> List.exists (function Ir.Native _ -> true | _ -> false) bk.ins) fn.blocks) fns in
   pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " (if bridged then used @ [ "cesia_jit_native" ] else used));
-  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\npsp: proto i64\n";
+  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
   if bridged then pr "pnat: proto i64, p:cx, p:a, i64:n, i64:k, i64:at, i64:s, i64:f\n";
   Array.iteri
     (fun k (fn : Ir.func) ->

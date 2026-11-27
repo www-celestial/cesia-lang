@@ -75,10 +75,9 @@ void cesia_mir_failed(const char *what) {
 intnat cesia_jit_native(int64_t *cx, value *args, intnat n, intnat k, intnat at, intnat site, intnat fuel);
 
 /* The machine's stack: its lowest address, found once per thread. Machine code takes it down to cx[33], 256 KB above,
-   left to the natives it calls, and looks every 16 nested frames, at the base in cx[34]; a run starts with 512 KB. */
+   for natives; calls look every 16 frames, at a base cx[34] folded into their limit cx[6], cx[35] before it. */
 #define RESERVE (256 << 10)
 static _Thread_local char *stack_low;
-intnat cesia_jit_sp(void) { volatile char here = 0; return (intnat) &here; }
 static void find_low(char *sp) {
   stack_low = sp; /* unknown: no machine code on this thread */
 #if defined(_WIN32)
@@ -131,7 +130,6 @@ value cesia_jit_load(value text, value names, value level) {
   LIBM(log2) LIBM(log1p) LIBM(expm1) LIBM(sinh) LIBM(cosh) LIBM(tanh) LIBM(asinh) LIBM(acosh) LIBM(atanh) LIBM(hypot) LIBM(fmod) LIBM(round)
   MIR_load_external(mir, "caml_modify", caml_modify);
   MIR_load_external(mir, "cesia_jit_native", cesia_jit_native);
-  MIR_load_external(mir, "cesia_jit_sp", cesia_jit_sp);
   MIR_scan_string(mir, src);
   MIR_module_t m = DLIST_TAIL(MIR_module_t, *MIR_get_module_list(mir));
   MIR_load_module(mir, m);
@@ -170,7 +168,7 @@ typedef intnat entry(int64_t *);
 
 value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
   CAMLparam5(f, ints, floats, vals, io);
-  int64_t cx[35];
+  int64_t cx[36];
   mlsize_t n = Wosize_val(io);
   if (stack_low == NULL) find_low((char *) cx);
   if ((char *) cx - stack_low < 2 * RESERVE) CAMLreturn(Val_long(3));
@@ -183,6 +181,7 @@ value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
   cx[31] = (int64_t) &Caml_state->young_limit;
   cx[32] = (int64_t) &CAML_LOCAL_ROOTS;
   cx[33] = (int64_t) (stack_low + RESERVE);
+  cx[35] = cx[6];
   if (cx[6] > (cx[34] = cx[3] + 32)) cx[6] = cx[34];
   intnat status = ((entry *) Nativeint_val(f))(cx);
   for (mlsize_t k = 3; k < n; k++) Field(io, k) = Val_long(cx[k]);
@@ -229,6 +228,7 @@ intnat cesia_jit_native(int64_t *cx, value *args, intnat n, intnat k, intnat at,
   } else {
     if (k >= 0 || k < -2) args[0] = r;
     for (int j = 0; j < 5; j++) cx[back[j]] = Long_val(Field(*io, back[j]));
+    cx[35] = cx[6];
     if (cx[6] > cx[34]) cx[6] = cx[34];
   }
   return fuel;
