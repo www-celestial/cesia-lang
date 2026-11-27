@@ -1054,6 +1054,11 @@ quic-go, 0.45 times TCP (p below 1e-5 for all three).
 
 ![A download of 1 MB over 25 ms each way, 1 % lost and 20 Mbit/s at most, 21 rounds: Cesia over HTTP/3 on ngtcp2 with BBR 0.82 s, with CUBIC 0.98 s, with Reno 2.44 s, Cesia on OpenSSL's QUIC 3.45 s, quic-go 1.77 s, ngtcp2's example with BBR 0.79 s, Cesia over TCP 1.84 s.](images/http3-bottleneck.svg)
 
+Over a poor mobile network, 100 ms each way and 5 % lost (`stacks.sh d100l5`, 5 rounds, load average 9.6), the gap
+widens: BBR 2.30 s [2.23, 3.04], CUBIC 22.5 s, OpenSSL's QUIC 38.7 s, quic-go 19.5 s, ngtcp2's own server with BBR 2.68 s,
+Cesia's TCP 29.6 s: BBR 0.06 times OpenSSL's QUIC, 0.12 times quic-go, 0.08 times TCP (p = 0.009, the least that 5
+rounds can give).
+
 Where BBR loses: nowhere in these measures, but on a clean link, where the three are the same within the noise (24 to 26
 ms); BBR is known to take more than its share beside CUBIC flows when a bottleneck's buffer is shallow (version 3 makes
 it less so: it now backs off when more than 2 % of its packets are lost), which a machine alone can't measure. So BBR is

@@ -1130,6 +1130,11 @@ p = 0,0031), Reno 2,44 s, le QUIC d'OpenSSL 3,45 s, quic-go 1,77 s, TCP 1,84 s :
 
 ![Un téléchargement de 1 Mo sur 25 ms dans chaque sens, 1 % perdu et 20 Mbit/s au plus, 21 tours : Cesia en HTTP/3 sur ngtcp2 avec BBR 0,82 s, avec CUBIC 0,98 s, avec Reno 2,44 s, Cesia sur le QUIC d'OpenSSL 3,45 s, quic-go 1,77 s, l'exemple de ngtcp2 avec BBR 0,79 s, Cesia sur TCP 1,84 s.](../../book/images/http3-bottleneck-fr.svg)
 
+Sur un mauvais réseau mobile, 100 ms dans chaque sens et 5 % perdus (`stacks.sh d100l5`, 5 tours, charge moyenne
+9,6), l'écart se creuse : BBR 2,30 s [2,23 ; 3,04], CUBIC 22,5 s, le QUIC d'OpenSSL 38,7 s, quic-go 19,5 s, le serveur
+de ngtcp2 lui-même avec BBR 2,68 s, le TCP de Cesia 29,6 s : BBR prend 0,06 fois le temps du QUIC d'OpenSSL, 0,12 fois
+celui de quic-go, 0,08 fois celui de TCP (p = 0,009, le plus petit que 5 tours puissent donner).
+
 Là où BBR perd : nulle part dans ces mesures, sinon sur un lien propre, où les trois se valent aux écarts du hasard près
 (24 à 26 ms) ; BBR est connu pour prendre plus que sa part à côté de flux CUBIC quand le buffer d'un goulot (la file où
 les paquets attendent) est peu profond (la version 3 le fait moins : elle ralentit désormais quand plus de 2 % de ses
