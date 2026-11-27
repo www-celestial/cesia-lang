@@ -1,0 +1,41 @@
+use std/dict
+use std/io
+use std/sys
+use std/text
+
+(* dict.Get, dict.Has and dict.GetOr of keys written in the code, through inline caches: maps of a literal's keys (made
+   whole), maps grown by writes, a deep map, a map of floats, a key that's absent, a struct (the native's error); and
+   text.ByteLength in machine code, of a text, and of a number (the native's error). *)
+defn look(m)
+  a = dict.Get("Name", m)
+  b = dict.Has("Name", m)
+  c = dict.Has("Done", m)
+  d = dict.GetOr("Size", 0, m)
+  f = dict.GetOr("Done", "no", m)
+  g = dict.Get("Done", m)
+  [a, b, c, d, f, g, helper(m), text.ByteLength("$(a)é"), text.ByteLength(dict.GetOr("Kind", "", m))]
+end
+
+helper(m) = dict.Get("Name", m)
+
+struct P { Name }
+
+w = {Name: "w", Size: 1}
+g = {Kind: "g"}
+g.Name = "grown"
+deep = {}
+for i in 1..40
+  deep["k$i"] = i
+end
+deep.Name = "deep"
+fl = {Name: 1.5, Size: 2.5}
+out = []
+for i in 1..1500
+  w2 = {Name: "w$i", Size: i}
+  out = [look(w), look(g), look(deep), look(fl), look(w2), look({Done: true, Name: "d"})]
+end
+io.Print(out)
+if sys.Args[1] == "struct"
+  look(P("x"))
+end
+look({Name: "n", Kind: 7})

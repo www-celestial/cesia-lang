@@ -1,0 +1,41 @@
+struct off:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:10:11: Get needs a dictionary, not a P.
+  10 |   a = dict.Get("Name", m)
+     |           ^
+  dict.Fields(x) gives the public fields of a struct as a dictionary.
+  in look (whole-keys.ce:10)
+struct default:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:10:11: Get needs a dictionary, not a P.
+  10 |   a = dict.Get("Name", m)
+     |           ^
+  dict.Fields(x) gives the public fields of a struct as a dictionary.
+  in look (whole-keys.ce:10)
+struct always:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:10:11: Get needs a dictionary, not a P.
+  10 |   a = dict.Get("Name", m)
+     |           ^
+  dict.Fields(x) gives the public fields of a struct as a dictionary.
+  in look (whole-keys.ce:10)
+bytes off:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:16:63: ByteLength needs a text, not the number 7.
+  16 |   [a, b, c, d, f, g, helper(m), text.ByteLength("$(a)é"), text.ByteLength(dict.GetOr("Kind", "", m))]
+     |                                                               ^
+  in look (whole-keys.ce:16)
+bytes default:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:16:63: ByteLength needs a text, not the number 7.
+  16 |   [a, b, c, d, f, g, helper(m), text.ByteLength("$(a)é"), text.ByteLength(dict.GetOr("Kind", "", m))]
+     |                                                               ^
+  in look (whole-keys.ce:16)
+bytes always:
+[["w", true, false, 1, "no", missing, "w", 3, 0], ["grown", true, false, 0, "no", missing, "grown", 7, 1], ["deep", true, false, 0, "no", missing, "deep", 6, 0], [1.5, true, false, 2.5, "no", missing, 1.5, 5, 0], ["w1500", true, false, 1500, "no", missing, "w1500", 7, 0], ["d", true, true, 0, true, true, "d", 3, 0]]
+whole-keys.ce:16:63: ByteLength needs a text, not the number 7.
+  16 |   [a, b, c, d, f, g, helper(m), text.ByteLength("$(a)é"), text.ByteLength(dict.GetOr("Kind", "", m))]
+     |                                                               ^
+  in look (whole-keys.ce:16)
+machine code reads keys through caches
+exit 0

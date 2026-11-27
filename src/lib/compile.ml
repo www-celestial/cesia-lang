@@ -3667,7 +3667,8 @@ and call_value (ctx : ctx) ~base g args =
    callee, so it is put back: a native that calls back again, or fails, still names its call. *)
 and call_back (ctx : ctx) g args =
   let site = ctx.site in
-  let base = match (Vec.get ctx.w.sites site).sver with Some v -> v.size | None -> 0 in
+  (* The caller's version may be machine code's only, which the interpreter compiles now, for its size. *)
+  let base = match (Vec.get ctx.w.sites site).sver with Some v -> (if v.size = 0 then compile_version ctx v); v.size | None -> 0 in
   let r = call_value ctx ~base g args in
   ctx.site <- site;
   r

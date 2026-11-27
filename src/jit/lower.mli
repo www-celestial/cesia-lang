@@ -30,3 +30,7 @@ val mark : world -> int -> int -> unit
 (** Marks a version whose nested frames were short of room in the young heap: code lowered after calls it in the
     interpreter. *)
 val starve : version -> unit
+
+(** Writes a constant of the running unit's table, where its code reads it: the inline caches of its slow paths fill
+    themselves through it. Set by [Engine]. *)
+val ic_write : (int -> t -> unit) ref

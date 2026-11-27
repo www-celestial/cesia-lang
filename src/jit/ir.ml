@@ -90,6 +90,22 @@ type ins =
   | Fields of int * value * int * int * int
       (** [Fields (r, s, sid, f, k)]: the fields of the struct [s] of shape [sid], in a store of floats ([f] 0) or of
           values (1); else bails *)
+  | Cached of int * value * int
+      (** [Cached (r, v, c)]: a field of the map or struct [v] through an inline cache, the value [c], a map of the keys
+          or a struct of the shape the field was last read from, whose store of integers holds the field's place: when
+          [v] has those keys or that shape, its values in a store of values with that place, [r] gets the value there;
+          else [r] gets [Undef], a word no field holds, and the code reads the field through OCaml ([Lower]) *)
+  | Keyed of int * value * int
+      (** [Keyed (r, m, c)]: a key of the map [m] through an inline cache [c], as [Cached]: [r] gets the value there,
+          or the word 9, no value, when the cache says that keys made whole lack it, or [Undef] when [m] is no map of
+          those keys, and the code asks OCaml ([Lower]) *)
+  | Int_of of int * value  (** the integer of a value that the code checked is an Int, unchecked *)
+  | Float_in of int * value  (** the double of a value that the code checked is a Float, unchecked *)
+  | Bytes_of of int * value  (** the bytes of a text, an integer; -1 for any other value, which the code asks OCaml of *)
+  | Test of int * cmp * value * value
+      (** [Test (r, cmp, a, b)]: [a cmp b] of two values, as the interpreter's test: [r] gets [true] or [false] when
+          machine code can tell, of two words ([Eq], [Ne]), two texts ([Eq], [Ne]) or two Ints, else [Undef], and the
+          code tests them through OCaml ([Lower]) *)
   | Load of int * int * int * int
       (** [Load (r, a, i, k)]: cell [i] of those values or fields, a double when [r] is a float register; with [k] >= 0,
           when there are that many, else bails *)
@@ -256,6 +272,20 @@ let cx_roots = 32
 (** The cell of that context where the C glue writes the address of OCaml's list of local roots, which a unit that calls
     OCaml links its block of roots into around each call. *)
 
+let cx_floor = 33
+(** The cell where the C glue writes the lowest address of the machine's stack that nested frames may take: below, it is
+    left to the natives they call *)
+
+let cx_probe = 34
+(** The cell of the base past which a call of a nested frame looks at the machine's stack again, which the C glue starts
+    [probe] frames above the run's base and folds into [io_lim], as native code does after each look *)
+
+let cx_lim = 35
+(** The cell of [io_lim] as [Engine] gives it, before the C glue folds [cx_probe] into it, at the run's start and after
+    each call to OCaml: an inlined frame, which takes none of the machine's stack, tests it *)
+
+let probe = 16
+
 let restored = 1 lsl 20
 
 (* Added to the point of a [Bail]: a statement left to the interpreter, which a guess failed none of; one that is a
@@ -323,6 +353,10 @@ let gc = 11  (** at [io_point], all variables written to their slots: the young 
 
 let room_out = 15
 
+let machine_out = 16
+(** the machine's stack is short for a nested call that can't bail: nothing that shows was written, and the interpreter
+    makes the call from its start *)
+
 let room_code = 17
 (** In [io_code] after a bail: a call's nested frame was short of room, [io_b] the number of its function in the unit. *)
 (** a nested frame lacks room in the young heap, which it can't leave for: nothing that shows was written since the run
@@ -360,6 +394,7 @@ let written = 11
 
 let cold_code = 12  (** after a bail: no guess failed, the interpreter makes a statement that native code left to it *)
 let leaving_code = 13  (** the same, a [return] *)
+let machine_code = 21  (** the machine's stack was short for a call: the interpreter makes the statement *)
 
 (** The value slot of the outermost frame, from its base, where the variables of modules read from slots start: after
     its constants and the slot of a [return]'s value. *)
