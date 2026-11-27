@@ -10,9 +10,10 @@
   UDP socket (batches of datagrams, the peer's address of each), and one fiber drives each socket and its timers
   (three names of `net` that only `std/quic` sees). `congestion = "bbr"` (the default), `"cubic"` or `"reno"`; a
   connection goes on when the client's address changes (migration, the new path validated); 0-RTT on the server and,
-  with `quic.Dial(early = true)`, on the client, each ticket used once; NEW_TOKEN spares a returning client its Retry,
-  which is on by default (`validate`); a stream's `Last(bytes)` writes and ends it in one call, its `Early` says that
-  its bytes came in 0-RTT. Not on Windows yet. Cesia spoke OpenSSL's own QUIC first, whose NewReno grows its window
+  with `quic.Dial(early = true)`, on the client, each ticket used once (a connection's `Ticket(timeout)` waits for
+  the one of the next connection); NEW_TOKEN spares a returning client its Retry, which is on by default
+  (`validate`); a stream's `Last(bytes)` writes and ends it in one call, its `Early` says that its bytes came in
+  0-RTT. Not on Windows yet. Cesia spoke OpenSSL's own QUIC first, whose NewReno grows its window
   too slowly when acknowledgements come together and which has no migration nor 0-RTT: the same functions, on
   ngtcp2 now (the book says why, with the numbers).
 - `std/http3`: HTTP/3 (RFC 9114) and QPACK (RFC 9204) without a dynamic table. `http.Serve(..., http3 = http3.Server(...))`

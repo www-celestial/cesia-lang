@@ -14,6 +14,7 @@
 #   mark          the client's datagrams are recorded from now on (a flight to replay)
 #   replay        those datagrams sent again from a new socket, as an attacker who saw them would, and the bytes the
 #                 server answered within a second
+#   delay MS      the server's datagrams reach the client MS milliseconds later: a path with a round trip
 import json, select, socket, sys, time
 
 listen, server = int(sys.argv[1]), ("127.0.0.1", int(sys.argv[2]))
@@ -30,6 +31,8 @@ last_short = None
 recording = None
 dcids = []
 cid_len = None
+delay = 0.0
+held = []   # (time due, datagram) of the server, in order
 
 def server_packet(d):
     stats["server"] += len(d)
@@ -53,7 +56,13 @@ def answer(x):
 
 print(listen, flush=True)
 while True:
-    ready, _, _ = select.select([front, back, sys.stdin], [], [], 1.0)
+    now = time.time()
+    while held and held[0][0] <= now:
+        if client is not None and not dropping:
+            front.sendto(held[0][1], client)
+        held.pop(0)
+    wait = 1.0 if not held else max(0.0, min(1.0, held[0][0] - now))
+    ready, _, _ = select.select([front, back, sys.stdin], [], [], wait)
     for r in ready:
         if r is front:
             d, a = front.recvfrom(65536)
@@ -74,7 +83,9 @@ while True:
         elif r is back:
             d = back.recv(65536)
             server_packet(d)
-            if client is not None and not dropping:
+            if delay > 0:
+                held.append((time.time() + delay, d))
+            elif client is not None and not dropping:
                 front.sendto(d, client)
         else:
             line = sys.stdin.readline().split()
@@ -115,6 +126,9 @@ while True:
                 back = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 back.connect(server)
                 answer({"port": back.getsockname()[1]})
+            elif line[0] == "delay":
+                delay = int(line[1]) / 1000.0
+                answer("ok")
             elif line[0] == "dcids":
                 answer(dcids)
             elif line[0] == "mark":
