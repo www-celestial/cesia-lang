@@ -3567,17 +3567,26 @@ let dry_most = 16
 let dry_refused : (world option * version list) ref = ref (None, [])
 let dry_most_kept = 256
 
+(* The versions whose dry lowering is under way. One met again through those it calls, as two versions of a function
+   that call each other (betaQuantile(a, b, t, up) of std/stats calls betaQuantile(b, a, t, 0.0), the version of the
+   other order of types), passes here: the lowering under way checks it, as the caller's unit then holds it and lowers
+   it there. Lowering it again in a unit of its own met the other again, and so on, until memory was gone. *)
+let dry_active : version list ref = ref []
+
 let () =
   dry :=
     fun w v ->
       (match fst !dry_refused with Some x when x == w -> () | _ -> dry_refused := (Some w, []));
       if List.memq v (snd !dry_refused) then false
+      else if List.memq v !dry_active then true
       else begin
         let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create (); natives = Vec.create (); calls_show = false } in
         Vec.add_last u.versions v;
         Vec.add_last u.versions v;
         let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in
-        let ok = try go 1 with No | Unseen | Respec _ | Cold _ -> false in
+        let active = !dry_active in
+        dry_active := v :: active;
+        let ok = Fun.protect ~finally:(fun () -> dry_active := active) (fun () -> try go 1 with No | Unseen | Respec _ | Cold _ -> false) in
         if not ok then dry_refused := (Some w, v :: List.filteri (fun i _ -> i < dry_most_kept - 1) (snd !dry_refused));
         ok
       end
