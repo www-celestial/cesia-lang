@@ -546,11 +546,13 @@
   instead of 19,000, with a quarter fewer words for the collector. Behind the server, a fiber that ends gives its stacks
   to the next one that grows, as a request's fiber grew them four times (a fiber spawned and waited for, 20 calls deep:
   18,660 instructions, now 8,940), and a search of one byte goes eight bytes at a time with no closure made
-  (`text.Contains` of a line end in a header: 686 cycles, now 240). `bench/maps.ce` makes 7% fewer instructions,
+  (`text.Contains` of a line end in a header: 686 cycles, now 240): under 256 connections, a request of Centauri's
+  server takes 190,000 instructions instead of 268,000, and it answered 1.27 and 1.22 times the requests of before in
+  two runs of 21, paired by round, on a machine loaded by other jobs. `bench/maps.ce` makes 7% fewer instructions,
   `real/csv` 3%, the others and the start-up as before. The book's How Cesia works counts the request and measures the
-  JIT's rule of operations against calls of OCaml again (24 stays); Speed sets `/hello` beside Go, Node and Jetty, in
-  English and in French; `tests/lang/dict-keyed`, `tests/lang/text-find-byte` and `tests/net/metrics-labels` check each
-  new path against the natives.
+  JIT's rule of operations against calls of OCaml again (24 stays); Speed sets `/hello` beside Go, Node, Jetty and
+  Spring Boot, in English and in French; `tests/lang/dict-keyed`, `tests/lang/text-find-byte` and
+  `tests/net/metrics-labels` check each new path against the natives.
 
 ### Fixes
 

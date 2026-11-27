@@ -454,10 +454,44 @@ plot.Save(hello, "speed-hello.svg") -->
 
 The binary before and now answer alike: paired by round, now gave 1.01 times the requests of before (0.90 to 1.61),
 ahead in 15 rounds of 21, and in a second run of 21, 1.00 (0.76 to 2.33), ahead in 11; the units of the request path
-that lower now stay interpreted, as they make too few operations for their calls through OCaml
-([How Cesia works](internals.md#versions-as-a-whole-without-a-bet)). Java's `HttpServer` failed about 51,600
-requests in each measure, more than two fifths of what it was sent: it is the JDK's small server, for tools and tests, and Netty or
-Jetty, not measured here, are what a Java server runs on.
+that lower now stay interpreted, as they make too few operations for their calls through OCaml ([How Cesia
+works](internals.md#versions-as-a-whole-without-a-bet)). Java's `HttpServer` failed about 51,600 requests in each
+measure, more than two fifths of what it was sent: it is the JDK's small server, for tools and tests, and Netty or Jetty
+are what a Java server runs on: Jetty is measured below.
+
+Measured again on 2026-11-27 with the changes to the interpreter that [How Cesia
+works](internals.md#a-request-of-centauri-counted) counts, with Jetty 11 and Spring Boot 4.2 (Tomcat, virtual threads)
+in place of the JDK's small server, while other jobs loaded the machine far more (load 13.4 to 22.4): each server pinned
+to one core and its second thread, the load client to the other core of the pair, the same 21 rounds of 2 s. Other
+processes took the cores in turns, so each server's spread is wide:
+
+| Server | Requests a second | Cores | Requests a second per core | 99th percentile | Memory |
+|---|---:|---:|---:|---:|---:|
+| Centauri | 5,894 (1,920–10,952) | 0.88 | 7,186 | 128.4 ms | 48 MB |
+| Centauri, main's binary before | 4,299 (2,157–10,468) | 0.90 | 4,915 | 144.0 ms | 48 MB |
+| `std/http` alone | 14,269 (5,743–28,261) | 0.85 | 16,723 | 63.9 ms | 38 MB |
+| Go, `net/http` | 23,589 (12,220–40,279) | 1.20 | 19,303 | 56.2 ms | 17 MB |
+| Node, `http` | 13,817 (5,238–36,383) | 0.79 | 18,232 | 61.9 ms | 86 MB |
+| Java, Jetty 11 | 25,842 (12,275–40,367) | 1.19 | 25,270 | 39.7 ms | 354 MB |
+| Java, Spring Boot 4.2 | 14,209 (1,019–21,718) | 1.52 | 10,408 | 61.5 ms | 233 MB |
+
+```cesia allow=read,write
+servers = ["Centauri", "std/http", "Go", "Node", "Jetty", "Spring"]
+core = plot.Bars(servers, [[5894, 14269, 23589, 13817, 25842, 14209], [7186, 16723, 19303, 18232, 25270, 10408]],
+  label = ["requests a second", "per core"], color = ["#3a5ad9", "#999999"])
+pair = plot.Of([core], title = "/hello, one core and its second thread each: median of 21", x = "server",
+  y = "requests a second", size = [640, 360])
+plot.Save(pair, "speed-hello-core.svg") -->
+```
+
+Paired by round, Centauri now answered 1.27 times the requests of main's binary before (0.49 to 1.91), ahead in 15
+rounds of 21, and 1.22 times (0.63 to 4.21), ahead in 15, in a first run of 21 at a load of 13.8 to 32.6. The
+processor's counters, which such a load moves much less, say it more firmly: under the same 256 connections, a request
+of Centauri's server took 268,000 instructions of its process before and 190,000 now, 29% fewer, and 260,000 to 320,000
+cycles before, 190,000 to 200,000 now (3 runs of each, alternated). No request failed. Jetty answers 1.5 times
+`std/http` per core and 3.5 times Centauri: the JVM's JIT compiles its parser and the handler, where `std/http` parses
+in OCaml and runs the handler in the interpreter; Spring Boot, on Tomcat, its filters and its JSON writer, answers less
+than Jetty for the same work.
 
 **Where a giant wins, and why.** Per core, Node answers 1.3 times what `std/http` does and 3.2 times Centauri: its
 parser of HTTP is C, `llhttp`, and V8 compiles the handler; `std/http` parses in OCaml and runs the handler in the

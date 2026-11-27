@@ -513,13 +513,48 @@ hello = plot.Of([perSecond], title = "/hello under load: median of 21 measures",
 plot.Save(hello, "speed-hello.svg") -->
 ```
 
-Le binaire d'avant et celui de maintenant répondent pareil : apparié par tour, maintenant a donné 1,01 fois les
-requêtes d'avant (0,90 à 1,61), devant dans 15 tours sur 21, et dans une seconde série de 21, 1,00 (0,76 à 2,33), devant
-dans 11 ; les unités du chemin de requête qui se compilent maintenant restent interprétées, car elles font trop peu
-d'opérations pour leurs appels à travers OCaml ([Comment Cesia fonctionne](internals.md#les-versions-entières-sans-pari)).
-Le `HttpServer` de Java a fait échouer environ 51 600 requêtes à chaque mesure, plus de deux cinquièmes de ce qu'on lui envoyait :
-c'est le petit serveur du JDK, pour les outils et les tests, et Netty ou Jetty, pas mesurés ici, sont ce sur quoi tourne
-un serveur Java.
+Le binaire d'avant et celui de maintenant répondent pareil : apparié par tour, maintenant a donné 1,01 fois les requêtes
+d'avant (0,90 à 1,61), devant dans 15 tours sur 21, et dans une seconde série de 21, 1,00 (0,76 à 2,33), devant dans 11
+; les unités du chemin de requête qui se compilent maintenant restent interprétées, car elles font trop peu d'opérations
+pour leurs appels à travers OCaml ([Comment Cesia fonctionne](internals.md#les-versions-entières-sans-pari)). Le
+`HttpServer` de Java a fait échouer environ 51 600 requêtes à chaque mesure, plus de deux cinquièmes de ce qu'on lui
+envoyait : c'est le petit serveur du JDK, pour les outils et les tests, et Netty ou Jetty sont ce sur quoi tourne un
+serveur Java : Jetty est mesuré plus bas.
+
+Mesuré de nouveau le 2026-11-27 avec les changements de l'interpréteur que compte [Comment Cesia
+fonctionne](internals.md#une-requête-de-centauri-comptée), avec Jetty 11 et Spring Boot 4.2 (Tomcat, virtual threads,
+des threads légers de la JVM) à la place du petit serveur du JDK, pendant que d'autres travaux chargeaient bien plus la
+machine (charge 13,4 à 22,4) : chaque serveur épinglé sur un cœur et son second thread, le client de charge sur l'autre
+cœur de la paire, les mêmes 21 tours de 2 s. D'autres processus prenaient les cœurs à tour de rôle, donc l'écart de
+chaque serveur est large :
+
+| Serveur | Requêtes par seconde | Cœurs | Requêtes par seconde par cœur | 99e percentile | Mémoire |
+|---|---:|---:|---:|---:|---:|
+| Centauri | 5 894 (1 920–10 952) | 0,88 | 7 186 | 128,4 ms | 48 MB |
+| Centauri, le binaire de main d'avant | 4 299 (2 157–10 468) | 0,90 | 4 915 | 144,0 ms | 48 MB |
+| `std/http` seul | 14 269 (5 743–28 261) | 0,85 | 16 723 | 63,9 ms | 38 MB |
+| Go, `net/http` | 23 589 (12 220–40 279) | 1,20 | 19 303 | 56,2 ms | 17 MB |
+| Node, `http` | 13 817 (5 238–36 383) | 0,79 | 18 232 | 61,9 ms | 86 MB |
+| Java, Jetty 11 | 25 842 (12 275–40 367) | 1,19 | 25 270 | 39,7 ms | 354 MB |
+| Java, Spring Boot 4.2 | 14 209 (1 019–21 718) | 1,52 | 10 408 | 61,5 ms | 233 MB |
+
+```cesia allow=read,write
+servers = ["Centauri", "std/http", "Go", "Node", "Jetty", "Spring"]
+core = plot.Bars(servers, [[5894, 14269, 23589, 13817, 25842, 14209], [7186, 16723, 19303, 18232, 25270, 10408]],
+  label = ["requests a second", "per core"], color = ["#3a5ad9", "#999999"])
+pair = plot.Of([core], title = "/hello, one core and its second thread each: median of 21", x = "server",
+  y = "requests a second", size = [640, 360])
+plot.Save(pair, "speed-hello-core.svg") -->
+```
+
+Apparié par tour, Centauri a répondu maintenant à 1,27 fois les requêtes du binaire de main d'avant (0,49 à 1,91),
+devant dans 15 tours sur 21, et à 1,22 fois (0,63 à 4,21), devant dans 15, dans une première série de 21 à une charge de
+13,8 à 32,6. Les compteurs du processeur, qu'une telle charge déplace bien moins, le disent plus fermement : sous les
+mêmes 256 connexions, une requête du serveur de Centauri prenait 268 000 instructions de son processus avant et 190 000
+maintenant, 29 % de moins, et de 260 000 à 320 000 cycles avant, de 190 000 à 200 000 maintenant (3 runs de chaque,
+alternés). Aucune requête n'a échoué. Jetty répond à 1,5 fois `std/http` par cœur et à 3,5 fois Centauri : le JIT de la
+JVM compile son parser et le handler, là où `std/http` lit en OCaml et lance le handler dans l'interpréteur ; Spring
+Boot, sur Tomcat, avec ses filtres et son écriture de JSON, répond moins que Jetty pour le même travail.
 
 **Où un géant gagne, et pourquoi.** Par cœur, Node répond à 1,3 fois ce que répond `std/http` et à 3,2 fois Centauri :
 son parser (le lecteur) de HTTP est du C, `llhttp`, et V8 compile le handler ; `std/http` lit en OCaml et lance le
