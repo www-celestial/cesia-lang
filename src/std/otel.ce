@@ -191,16 +191,28 @@ defn Server(t, method, route, headers = [], attributes = {})
   attrs = dict.Merge({"http.request.method": method, "http.route": route}, attributes)
   span = {TraceId: traceId, SpanId: ids(16), Parent: if value.IsSome(parent) parent.SpanId else "" end,
     State: if value.IsSome(parent) kept(http.HeaderValue("tracestate", headers)) else "" end, Name: "$method $route", Kind: 2,
-    Start: sys.Now(), Attributes: attrs, Links: links, Events: [], Rec: sampled, Up: missing, T: t}
+    Start: sys.Now(), Attributes: attrs, Links: links, Events: [], Rec: sampled, Root: true, Up: missing, T: t}
   _ = setContext(if sampled span else "00-$traceId-$(span.SpanId)-00" end)
   span
 end
 
-defn Begin(name, kind = "internal", attributes = {})
+defn Begin(name, kind = "internal", attributes = {}, tracer = missing, links = [])
   (** Opens a span in the span of the fiber's context, its child, of kind "internal", "client" (a call to another
       service), "producer" or "consumer" (a message sent, or taken): the fiber's context until End. missing when the
-      fiber is in no sampled trace: End then does nothing, and nothing was made. *)
+      fiber is in a trace not sampled: End then does nothing, and nothing was made. Out of any trace, with a tracer,
+      it starts a trace of its own, as a job does: links, traceparents of the traces it comes from (the request that
+      asked for the job), are its links, and it is sampled when one of them is, else as the tracer samples; always
+      keeps it as a server's span. Out of any trace without a tracer, missing. *)
   up = context()
+  if value.IsMissing(up) and value.IsSome(tracer)
+    from = [l for l in [Parse(x) for x in links] if value.IsSome(l)]
+    traceId = ids(32)
+    sampled = tracer.Traces and (list.Any([l.Sampled for l in from]) or chosen(traceId, tracer.Sample))
+    span = {TraceId: traceId, SpanId: ids(16), Parent: "", State: "", Name: name, Kind: dict.GetOr(kind, 1, kinds), Start: sys.Now(), Attributes: attributes,
+      Links: from, Events: [], Rec: sampled, Root: true, Up: missing, T: tracer}
+    _ = setContext(if sampled span else "00-$traceId-$(span.SpanId)-00" end)
+    return span
+  end
   if not value.IsDict(up)
     return missing
   end
@@ -210,21 +222,25 @@ defn Begin(name, kind = "internal", attributes = {})
   span
 end
 
-defn End(span, failed = false, message = "", attributes = {}, error = missing)
+defn End(span, failed = false, message = "", attributes = {}, error = missing, name = missing)
   (** Ends a span of Server or Begin: the fiber's context is the one before it again, and the span joins the queue when
       its trace is sampled, or when always keeps it. failed marks it an error, with message; error, an exception that
-      was raised in it, becomes its event "exception" (its exception.message). attributes join its own. *)
+      was raised in it, becomes its event "exception" (its exception.message). attributes join its own; name, when
+      given, replaces its name, for a server that knows the route of a request once it answered it. *)
   if not value.IsDict(span)
     return missing
   end
   t = span.T
   _ = setContext(span.Up)
   now = sys.Now()
-  keep = span.Rec or (t.Traces and span.Kind == 2 and ((failed and t.Errors) or (value.IsSome(t.Slow) and now - span.Start > t.Slow)))
+  keep = span.Rec or (t.Traces and dict.Has("Root", span) and ((failed and t.Errors) or (value.IsSome(t.Slow) and now - span.Start > t.Slow)))
   if not keep
     return missing
   end
   span.End = now
+  if value.IsText(name)
+    span.Name = name
+  end
   span.Up = missing
   span.T = missing
   if value.Len(attributes) > 0
@@ -753,9 +769,11 @@ end
 
 defn zlib()
   (** The functions of zlib that gzip calls: an Ok, or an Err when zlib can't be opened (it needs ffi=z). *)
-  lib = c.Open("z", version = 1)
+  (* its own fiber: a permission refused is a panic there, an Err here *)
+  opened = fiber.Wait(fiber.Spawn(() -> c.Open("z", version = 1)))
+  lib = if result.IsOk(opened) opened.Value else opened end
   if result.IsErr(lib)
-    return result.Err({Kind: "otel", Message: "compression gzip needs zlib and the permission ffi=z: $(lib.Error.Message)"})
+    return result.Err({Kind: "otel", Message: "compression gzip needs zlib and the permission ffi=z: $(dict.GetOr("Message", value.Text(lib.Error), lib.Error))"})
   end
   result.Ok({Compress: c.Fn("compress2", ["ptr", "ptr", "ptr", "u64", "i32"], "i32", lib.Value)?, Bound: c.Fn("compressBound", ["u64"], "u64", lib.Value)?,
     Crc: c.Fn("crc32", ["u64", "ptr", "u32"], "u64", lib.Value)?})
