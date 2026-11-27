@@ -304,6 +304,7 @@ let run ?(fuel = max_int / 4) ?(until = max_int / 4) ?(entry = 0) (ver : version
   io.(Ir.io_quantum) <- fuel;
   io.(Ir.io_cap2) <- Array.length ints - 2;
   io.(Ir.io_depth) <- max_int / 4;
+  io.(Ir.io_mem) <- max_int / 4;
   io.(Ir.io_lim) <- Array.length ints - 2;
   io.(Ir.io_budget) <- max_int / 4;
   io.(Ir.io_until) <- until;
