@@ -202,12 +202,14 @@ let[@inline] eq_b ctx s p q =
   match p, q with
   | Int u, Int w -> u = w
   | Float u, Float w -> u = w
+  | Text u, Text w -> String.equal u w
   | _ -> slow_test ctx s Arith.eq p q
 
 let[@inline] ne_b ctx s p q =
   match p, q with
   | Int u, Int w -> u <> w
   | Float u, Float w -> u <> w
+  | Text u, Text w -> not (String.equal u w)
   | _ -> slow_test ctx s Arith.ne p q
 
 (* Entering a frame: its links are in the caller's argument area, so already covered. *)
