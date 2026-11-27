@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="430" viewBox="0 0 640 430">
+<title>TCP et TLS 1.3 font deux allers-retours avant une requête, QUIC un seul ; sur TCP un paquet perdu arrête toutes les requêtes de la connexion, sur QUIC seulement son propre stream</title>
+<style>
+text{font-family:system-ui, sans-serif;font-size:12px;fill:#1f2328}
+.h{font-weight:600;font-size:13px}
+.s{fill:#57606a}
+.c{font-family:ui-monospace, Menlo, Consolas, monospace;font-size:11px}
+.ln{stroke:#1f2328;stroke-width:1.2}
+.ar{stroke:#3a5ad9;stroke-width:1.4;fill:none}
+.bk{stroke:#57606a;stroke-width:1.4;fill:none}
+.lost{stroke:#c92a2a;stroke-width:1.6}
+.st{fill:#eef1fc;stroke:#3a5ad9;stroke-width:1}
+.wt{fill:#fff4e6;stroke:#e8590c;stroke-width:1}
+.dn{fill:#ebfbee;stroke:#2f9e44;stroke-width:1}
+.ls{fill:#fff;stroke:#c92a2a;stroke-width:1.4;stroke-dasharray:3 2}
+</style>
+<rect width="640" height="430" fill="#fff"/>
+<text class="h" x="160" y="22" text-anchor="middle">TCP, TLS 1.3, HTTP/1.1</text>
+<text class="s" x="160" y="38" text-anchor="middle">trois couches, chacune son handshake</text>
+<text x="40" y="58" text-anchor="middle">client</text><text x="280" y="58" text-anchor="middle">serveur</text>
+<line class="ln" x1="40" y1="64" x2="40" y2="244"/><line class="ln" x1="280" y1="64" x2="280" y2="244"/>
+<path class="bk" d="M40 72 L271.0 93.4"/><path d="M278.0 94.0L270.7 96.8L271.4 89.9z" fill="#57606a"/>
+<text class="c" x="160.0" y="76.0" text-anchor="middle">SYN</text>
+<path class="bk" d="M280 98 L49.0 119.4"/><path d="M42.0 120.0L48.6 115.9L49.3 122.8z" fill="#57606a"/>
+<text class="c" x="160.0" y="102.0" text-anchor="middle">SYN-ACK</text>
+<path class="bk" d="M40 124 L271.0 145.4"/><path d="M278.0 146.0L270.7 148.8L271.4 141.9z" fill="#57606a"/>
+<text class="c" x="160.0" y="128.0" text-anchor="middle">ACK, ClientHello</text>
+<path class="bk" d="M280 150 L49.0 171.4"/><path d="M42.0 172.0L48.6 167.9L49.3 174.8z" fill="#57606a"/>
+<text class="c" x="160.0" y="154.0" text-anchor="middle">ServerHello ... Finished</text>
+<path class="ar" d="M40 176 L271.0 197.4"/><path d="M278.0 198.0L270.7 200.8L271.4 193.9z" fill="#3a5ad9"/>
+<text class="c" x="160.0" y="180.0" text-anchor="middle">Finished, GET /</text>
+<path class="ar" d="M280 202 L49.0 223.4"/><path d="M42.0 224.0L48.6 219.9L49.3 226.8z" fill="#3a5ad9"/>
+<text class="c" x="160.0" y="206.0" text-anchor="middle">200 OK</text>
+<text class="h" x="160" y="262" text-anchor="middle">2 allers-retours avant la requête</text>
+<text class="h" x="480" y="22" text-anchor="middle">QUIC, HTTP/3</text>
+<text class="s" x="480" y="38" text-anchor="middle">le handshake de QUIC est celui de TLS 1.3</text>
+<text x="360" y="58" text-anchor="middle">client</text><text x="600" y="58" text-anchor="middle">serveur</text>
+<line class="ln" x1="360" y1="64" x2="360" y2="244"/><line class="ln" x1="600" y1="64" x2="600" y2="244"/>
+<path class="bk" d="M360 72 L591.0 93.4"/><path d="M598.0 94.0L590.7 96.8L591.4 89.9z" fill="#57606a"/>
+<text class="c" x="480.0" y="76.0" text-anchor="middle">Initial: ClientHello</text>
+<path class="bk" d="M600 98 L369.0 119.4"/><path d="M362.0 120.0L368.6 115.9L369.3 122.8z" fill="#57606a"/>
+<text class="c" x="480.0" y="102.0" text-anchor="middle">ServerHello ... Finished</text>
+<path class="ar" d="M360 124 L591.0 145.4"/><path d="M598.0 146.0L590.7 148.8L591.4 141.9z" fill="#3a5ad9"/>
+<text class="c" x="480.0" y="128.0" text-anchor="middle">Finished, GET /</text>
+<path class="ar" d="M600 150 L369.0 171.4"/><path d="M362.0 172.0L368.6 167.9L369.3 174.8z" fill="#3a5ad9"/>
+<text class="c" x="480.0" y="154.0" text-anchor="middle">200 OK</text>
+<text class="h" x="480" y="262" text-anchor="middle">1 aller-retour avant la requête</text>
+<line class="ln" x1="10" y1="280" x2="630" y2="280" style="stroke:#d0d7de"/>
+<text class="h" x="160" y="302" text-anchor="middle">un paquet perdu, sur TCP</text>
+<text class="h" x="480" y="302" text-anchor="middle">un paquet perdu, sur QUIC</text>
+<text class="s" x="20" y="322">un seul ordre pour tout : ce qui suit la perte attend</text>
+<text class="c" x="20" y="345"></text>
+<rect class="dn" x="84" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="95" y="345" text-anchor="middle" style="font-size:9px">A1</text>
+<rect class="dn" x="110" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="121" y="345" text-anchor="middle" style="font-size:9px">B1</text>
+<rect class="dn" x="136" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="147" y="345" text-anchor="middle" style="font-size:9px">C1</text>
+<rect class="ls" x="162" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="173" y="345" text-anchor="middle" style="font-size:9px">A2</text>
+<rect class="wt" x="188" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="199" y="345" text-anchor="middle" style="font-size:9px">B2</text>
+<rect class="wt" x="214" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="225" y="345" text-anchor="middle" style="font-size:9px">C2</text>
+<rect class="wt" x="240" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="251" y="345" text-anchor="middle" style="font-size:9px">A3</text>
+<rect class="wt" x="266" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="277" y="345" text-anchor="middle" style="font-size:9px">B3</text>
+<text class="s" x="20" y="372">A2 perdu : B2, C2, A3 ... l’attendent</text>
+<text class="s" x="340" y="322">un stream chacune : seule A attend</text>
+<text class="c" x="340" y="345">A</text>
+<rect class="dn" x="404" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="415" y="345" text-anchor="middle" style="font-size:9px">A1</text>
+<rect class="ls" x="430" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="441" y="345" text-anchor="middle" style="font-size:9px">A2</text>
+<rect class="wt" x="456" y="332" width="22" height="18" rx="3"/>
+<text class="c s" x="467" y="345" text-anchor="middle" style="font-size:9px">A3</text>
+<text class="c" x="340" y="369">B</text>
+<rect class="dn" x="404" y="356" width="22" height="18" rx="3"/>
+<text class="c s" x="415" y="369" text-anchor="middle" style="font-size:9px">B1</text>
+<rect class="dn" x="430" y="356" width="22" height="18" rx="3"/>
+<text class="c s" x="441" y="369" text-anchor="middle" style="font-size:9px">B2</text>
+<rect class="dn" x="456" y="356" width="22" height="18" rx="3"/>
+<text class="c s" x="467" y="369" text-anchor="middle" style="font-size:9px">B3</text>
+<text class="c" x="340" y="393">C</text>
+<rect class="dn" x="404" y="380" width="22" height="18" rx="3"/>
+<text class="c s" x="415" y="393" text-anchor="middle" style="font-size:9px">C1</text>
+<rect class="dn" x="430" y="380" width="22" height="18" rx="3"/>
+<text class="c s" x="441" y="393" text-anchor="middle" style="font-size:9px">C2</text>
+<rect class="dn" x="456" y="380" width="22" height="18" rx="3"/>
+<text class="c s" x="467" y="393" text-anchor="middle" style="font-size:9px">C3</text>
+<rect class="dn" x="20" y="400" width="14" height="12" rx="2"/><text class="s" x="40" y="410">arrivé, remis à sa requête</text>
+<rect class="wt" x="220" y="400" width="14" height="12" rx="2"/><text class="s" x="240" y="410">arrivé, attend le paquet perdu</text>
+<rect class="ls" x="460" y="400" width="14" height="12" rx="2"/><text class="s" x="480" y="410">perdu, renvoyé</text>
+</svg>

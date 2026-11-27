@@ -2,6 +2,37 @@
 
 ## 1.3.0
 
+### HTTP/3, QUIC and WebTransport
+
+- `std/quic`: QUIC (RFC 9000) through OpenSSL 3.6 or later, reached by `std/c` as `std/tls` reaches TLS: `quic.Server`,
+  `quic.Serve`, `quic.Dial`, their connections and streams. OpenSSL keeps the UDP socket, the packets and the timers;
+  one fiber drives it, waiting for a datagram or OpenSSL's next timer (three names of `net` that only `std/quic` sees).
+  Retry is on by default (`validate`). Not on Windows yet.
+- `std/http3`: HTTP/3 (RFC 9114) and QPACK (RFC 9204) without a dynamic table. `http.Serve(..., http3 = http3.Server(...))`
+  serves the same routes over QUIC beside TCP, and every response of TCP says so (`Alt-Svc`, RFC 7838);
+  `http.Fetch(..., http3 = http3.Client(api))` asks over HTTP/3 the servers that offered it, and over TCP again at once
+  when QUIC fails. QPACK's Huffman strings are decoded natively (Cesia took 145 µs for the 400 bytes of a browser's
+  request).
+- WebTransport over HTTP/3 (drafts 02 and 07, as Chrome speaks them): `http.Serve(..., webtransport = true)` lets the
+  routes of `std/live` take a session on their own path, the same screen, frames and resume; `live.js` and the glue of
+  WebAssembly pages race it against WebSocket (Happy Eyeballs, RFC 8305) when the page has `<meta name="webtransport"
+  content="on">`; `CertificateHashes` for a certificate of 14 days that no authority signed. `http3.Messages`. A
+  session carries no cookie: the page asks `<route>/ticket` with its cookies, and the session presents the ticket
+  once, within 30 s.
+- Over HTTP/3, a route that takes its body in pieces gets it so; `Fetch` reads an early answer (a 413) of a server that
+  stopped its upload, and never sends again over TCP a request that may have reached the server and isn't
+  idempotent.
+- `425 Too Early` (RFC 8470) for a request a proxy took in TLS's early data that would change something, over
+  HTTP/1.1 and HTTP/3; `http.Reason(425)`.
+- What OpenSSL's QUIC doesn't do yet: connection migration, 0-RTT, datagrams (RFC 9221); said in the book.
+- `bench/http3`: Cesia's HTTP/1.1 and HTTP/3 against quic-go, Caddy, nginx and ngtcp2, on a clean link and on links
+  that `netem` slows and makes lose packets; `stacks.sh` sets each QUIC stack beside OpenSSL's alone. The book says
+  what it found: HTTP/3 brings the slowest small requests of a lossy link sooner (p99 179 ms against 306 over TCP), but
+  a download of 1 MB at 1 % lost takes 4.7 s against 1.8 over TCP, the time of OpenSSL's QUIC alone, whose NewReno
+  grows its window too slowly (ngtcp2's BBR: 0.47 s); through a bottleneck of 20 Mbit/s, as a real path has, 1.9 s
+  against 1.2, what NewReno itself costs against Linux's CUBIC. A request over TCP costs what it cost before, HTTP/3 on
+  or off (21 rounds each, paired).
+
 ### When the connection drops
 
 - `std/live`, version 2 of its protocol: a screen outlives a break of its connection. A page that says `{Hello: 2}`

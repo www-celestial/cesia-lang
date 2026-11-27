@@ -241,6 +241,34 @@ publisher moves it.
   header, which no page can set; F. Valsorda. "Cross-Site Request Forgery", 13 August 2025.
   <https://words.filippo.io/csrf/>, and Go's `net/http.CrossOriginProtection`, Go 1.25.
   <https://pkg.go.dev/net/http#CrossOriginProtection>. The steps of [http.SameOrigin], and their limit with the scheme.
+- J. Iyengar, M. Thomson (editors). "QUIC: A UDP-Based Multiplexed and Secure Transport", RFC 9000, 2021.
+  <https://www.rfc-editor.org/rfc/rfc9000>; M. Thomson, S. Turner. "Using TLS to Secure QUIC", RFC 9001, 2021.
+  <https://www.rfc-editor.org/rfc/rfc9001>. Streams, Retry and the limit of 3 times before an address is proved
+  (section 8), migration (section 9), 0-RTT: [std/quic], through OpenSSL's QUIC.
+- J. Iyengar, I. Swett (editors). "QUIC Loss Detection and Congestion Control", RFC 9002, 2021.
+  <https://www.rfc-editor.org/rfc/rfc9002>; L. Xu, S. Ha, I. Rhee, V. Goel, L. Eggert. "CUBIC for Fast and
+  Long-Distance Networks", RFC 9438, 2023. <https://www.rfc-editor.org/rfc/rfc9438>; N. Cardwell, Y. Cheng, C. S. Gunn,
+  S. H. Yeganeh, V. Jacobson. "BBR: Congestion-Based Congestion Control", ACM Queue 14(5), 2016. The congestion
+  controls that [What it costs](http.md#what-it-costs) compares: OpenSSL 4.1's NewReno (`ssl/quic/cc_newreno.c`,
+  <https://github.com/openssl/openssl>) and ngtcp2 1.26's Reno, CUBIC and BBR (`lib/ngtcp2_cc.c`,
+  <https://github.com/ngtcp2/ngtcp2>).
+- M. Bishop (editor). "HTTP/3", RFC 9114, 2022. <https://www.rfc-editor.org/rfc/rfc9114>; C. Krasic, M. Bishop,
+  A. Frindell. "QPACK: Field Compression for HTTP/3", RFC 9204, 2022. <https://www.rfc-editor.org/rfc/rfc9204>, whose
+  Huffman code is HPACK's, R. Peon, H. Ruellan, RFC 7541, 2015, appendix B. <https://www.rfc-editor.org/rfc/rfc7541>:
+  [std/http3].
+- M. Nottingham, P. McManus, J. Reschke. "HTTP Alternative Services", RFC 7838, 2016.
+  <https://www.rfc-editor.org/rfc/rfc7838>; B. Schwartz, M. Bishop, E. Nygren. "Service Binding and Parameter
+  Specification via the DNS (SVCB and HTTPS Resource Records)", RFC 9460, 2023. <https://www.rfc-editor.org/rfc/rfc9460>.
+  How a browser finds HTTP/3.
+- M. Thomson, M. Nottingham, W. Tarreau. "Using Early Data in HTTP", RFC 8470, 2018.
+  <https://www.rfc-editor.org/rfc/rfc8470>. The 425 of [http.Serve].
+- A. Frindell, E. Kinnear, V. Vasiliev. "WebTransport over HTTP/3", draft-ietf-webtrans-http3.
+  <https://datatracker.ietf.org/doc/draft-ietf-webtrans-http3/>; R. Hamilton. "Bootstrapping WebSockets with HTTP/3",
+  RFC 9220, 2022 (extended CONNECT); D. Schinazi, L. Pardue. "HTTP Datagrams and the Capsule Protocol", RFC 9297,
+  2022; T. Pauly, E. Kinnear, D. Schinazi. "An Unreliable Datagram Extension to QUIC", RFC 9221, 2022. The sessions of
+  [std/live] over HTTP/3.
+- D. Schinazi, T. Pauly. "Happy Eyeballs Version 2: Better Connectivity Using Concurrency", RFC 8305, 2017.
+  <https://www.rfc-editor.org/rfc/rfc8305>. The race of WebTransport and WebSocket in `live.js`.
 - I. Fette, A. Melnikov. "The WebSocket Protocol", RFC 6455, 2011. <https://www.rfc-editor.org/rfc/rfc6455>. The server
   and the client of [std/websocket].
 - Y. Bernier. "Latency Compensating Methods in Client/Server In-game Protocol Design and Optimization". Valve, GDC 2001.

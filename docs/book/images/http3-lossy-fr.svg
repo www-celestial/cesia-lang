@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="354" viewBox="0 0 760 354">
+<title>Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % des paquets perdus</title>
+<style>text{font-family:system-ui, sans-serif;font-size:12px;fill:#1f2328}.h{font-weight:600;font-size:13px}.s{fill:#57606a}.b{fill:#e7f5ff;stroke:#1971c2}.c{fill:#fff4e6;stroke:#e8590c}.r{stroke:#57606a;stroke-width:1.2}</style>
+<rect width="760" height="354" fill="#fff"/>
+<text class="h" x="16" y="24">Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % des paquets perdus</text>
+<text class="s" x="16" y="42">une nouvelle connexion à chaque fois, le client est quic-go ; médiane des tours, la ligne du plus court au plus long</text>
+<text x="16" y="78">Cesia, HTTP/3 (le QUIC d’OpenSSL 4.1)</text>
+<rect class="c" x="330" y="66" width="170.5" height="16" rx="2"/>
+<line class="r" x1="359.5" y1="74" x2="565.9" y2="74"/>
+<text x="571.9" y="78">4,71 s [0,81 ; 6,51], n = 21</text>
+<text x="16" y="106">Le QUIC d’OpenSSL 4.1 seul, sa propre boucle</text>
+<rect class="c" x="330" y="94" width="181.1" height="16" rx="2"/>
+<line class="r" x1="355.7" y1="102" x2="580.0" y2="102"/>
+<text x="586.0" y="106">5,00 s [0,71 ; 6,90], n = 42</text>
+<text x="16" y="134">OpenSSL 4.1 des deux côtés</text>
+<rect class="c" x="330" y="122" width="176.9" height="16" rx="2"/>
+<line class="r" x1="408.7" y1="130" x2="557.3" y2="130"/>
+<text x="563.3" y="134">4,88 s [2,17 ; 6,27], n = 21</text>
+<text x="16" y="162">ngtcp2 1.26, Reno</text>
+<rect class="b" x="330" y="150" width="84.7" height="16" rx="2"/>
+<line class="r" x1="349.3" y1="158" x2="453.0" y2="158"/>
+<text x="459.0" y="162">2,34 s [0,53 ; 3,39], n = 21</text>
+<text x="16" y="190">ngtcp2 1.26, CUBIC</text>
+<rect class="b" x="330" y="178" width="52.0" height="16" rx="2"/>
+<line class="r" x1="346.0" y1="186" x2="476.8" y2="186"/>
+<text x="482.8" y="190">1,43 s [0,44 ; 4,05], n = 21</text>
+<text x="16" y="218">ngtcp2 1.26, BBR</text>
+<rect class="b" x="330" y="206" width="17.1" height="16" rx="2"/>
+<line class="r" x1="345.4" y1="214" x2="351.7" y2="214"/>
+<text x="357.7" y="218">0,47 s [0,43 ; 0,60], n = 21</text>
+<text x="16" y="246">quic-go 0.66, HTTP/3</text>
+<rect class="b" x="330" y="234" width="31.0" height="16" rx="2"/>
+<line class="r" x1="345.4" y1="242" x2="422.4" y2="242"/>
+<text x="428.4" y="246">0,86 s [0,43 ; 2,55], n = 42</text>
+<text x="16" y="274">Cesia, HTTP/1.1 sur TCP (CUBIC de Linux)</text>
+<rect class="b" x="330" y="262" width="65.7" height="16" rx="2"/>
+<line class="r" x1="352.0" y1="270" x2="494.2" y2="270"/>
+<text x="500.2" y="274">1,81 s [0,61 ; 4,53], n = 21</text>
+<text class="s" x="16" y="308">Le QUIC d’OpenSSL : NewReno seul, dont la fenêtre ne grandit ici que d’un paquet tous les 2 à 5</text>
+<text class="s" x="16" y="324">allers-retours, des paquets de 1 200 octets, sans pacing.</text>
+</svg>

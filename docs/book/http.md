@@ -865,9 +865,210 @@ A server serves `https` the same way: `wrap = tls.Server(certificate, key, api)?
 its certificate and its key, from a *certificate authority* such as Let's Encrypt. [std/tls] keeps the sockets with
 [std/net] and gives OpenSSL only memory buffers, so a handshake parks its fiber, never the whole server.
 
+## HTTP/3
+
+*HTTP/3* (RFC 9114) carries the same requests over *QUIC* (RFC 9000), a transport over UDP instead of TCP. Three things
+change for a client far away or on a poor network:
+
+- **The handshake is one round trip, not two.** TCP's handshake then TLS's take two round trips before the first
+  request; QUIC's handshake *is* TLS 1.3's (RFC 9001), so the request leaves after one: 200 ms less on a link of
+  100 ms each way.
+- **A lost packet holds up only its own request.** Over TCP, the bytes of every request of a connection come in one
+  order, and a packet lost stops them all until it comes again: *head-of-line blocking*. QUIC carries each request on
+  a *stream* of its own, and a loss stops only that stream.
+- **It is encrypted to the end**, its packet numbers and acknowledgements too: a box on the way can't read or change
+  them.
+
+[std/http3] serves the same application as HTTP/1.1, beside it: give [http.Serve] an `http3`, the listener that
+[http3.Server] opens on a UDP port, the TCP port of HTTPS by default as browsers look for it. The routes don't change,
+nor the middleware, nor the handlers: a request is the same `{Method, Path, Query, Headers, Body, Peer}`, and a route
+that takes its body in pieces (`stream`) gets it in pieces over HTTP/3 too.
+
+```cesia norun
+(* site.ce *)
+use std/http
+use std/http3
+use std/quic
+use std/result
+use std/tls
+app = http.App() then http.Get("/", r -> http.Plain("hi"))
+h3 = http3.Server("cert.pem", "key.pem", quic.Open()!, port = 8443)!
+http.Serve(app, port = 8443, wrap = tls.Server("cert.pem", "key.pem", tls.Open()!)!, http3 = h3)!
+```
+
+```bash
+cesia run --allow net,ffi=ssl,ffi=crypto site.ce
+curl --http3-only https://localhost:8443/
+```
+
+![TCP, TLS and HTTP/1.1 against QUIC and HTTP/3: TCP's handshake, then TLS's, then the request, two round trips before it; QUIC's handshake carries TLS's, one round trip; over TCP a packet lost stops the three requests of the connection, over QUIC only the stream it belonged to.](images/http3-stack.svg)
+
+### How a browser finds it
+
+A browser asks over TCP first: it can't know that a server speaks HTTP/3 before it has asked. So every response of TCP
+says it, `alt-svc: h3=":8443"; ma=86400` (*Alt-Svc*, RFC 7838): the next requests go over QUIC for a day. Where UDP
+doesn't pass, as in some company networks, the browser stays on TCP by itself. A DNS record of type `HTTPS` (RFC 9460)
+says it before the first request, `example.com. 3600 IN HTTPS 1 . alpn="h3,http/1.1"`, which saves that first trip
+over TCP.
+
+### The client
+
+[http.Fetch] does as a browser does with `http3 = http3.Client(api)`: it remembers the `Alt-Svc` of each origin, asks
+over HTTP/3 from then on on one connection kept open, and goes back to TCP at once when QUIC fails, that origin left
+alone for 5 minutes; but a request that may have reached the server and that isn't idempotent (RFC 9110, section
+9.2.2: any method but GET, HEAD, OPTIONS, PUT and DELETE) gives its error instead of going again over TCP, where a
+payment would be paid twice. `peer` checks the address that QUIC reaches too.
+
+```cesia norun
+api = tls.Open()!
+h3 = http3.Client(quic.Open()!)
+first = http.Fetch("https://example.com/", secure = tls.Client(api), http3 = h3)   (* over TCP: it hears Alt-Svc *)
+next = http.Fetch("https://example.com/", secure = tls.Client(api), http3 = h3)    (* over HTTP/3 *)
+```
+
+### WebTransport
+
+*WebTransport* (draft-ietf-webtrans-http3) gives a page what WebSocket gives, over HTTP/3: a *session* that a page opens
+with `new WebTransport(url)`, whose streams go both ways. With `webtransport = true`, the routes of [std/live] take a
+session on their own path, and the screen is the same, its frames, its actions and their resume: only the transport
+changes. `live.js` and the glue of a page compiled to WebAssembly *race* the two, as browsers race IPv6 and IPv4 (*Happy
+Eyeballs*, RFC 8305): they open both, take WebTransport when it is ready first or within 300 ms of the WebSocket, and
+close the other. A session that fails marks the origin for 10 minutes, and only WebSocket goes there meanwhile: a page
+never waits on a network that drops UDP. A session carries no cookie (the W3C's WebTransport makes its requests without
+them), and a screen is often its user's by a cookie: so the page first asks `/live/ticket` (the route's path, then
+`/ticket`) with its cookies, and opens its session with `?ticket=`; the screen gets the cookies of that request, once,
+within 30 s, and a ticket used, forged or late gets 403. A page asks for WebTransport only when it says so, by
+`<meta name="webtransport" content="on">`: a server without it is never asked. A server's certificate that no authority
+signed, as one of tests or of a machine of one's own, is trusted by its hash:
+`connect(url, {CertificateHashes: [base64 of its SHA-256]})`, for a certificate of 14 days at most, as browsers ask.
+
+### What OpenSSL's QUIC has, and what it hasn't yet
+
+[std/quic] is OpenSSL's QUIC, reached by [std/c] as [std/tls] reaches its TLS: OpenSSL keeps the UDP socket, the
+packets, their losses and their timers; one fiber drives it and waits for a datagram or for OpenSSL's next timer, so no
+fiber waits on another. QUIC needs OpenSSL 3.6 or later, which tells a server the address of each client (the `Peer`
+of a request, which limits by address count on); 3.5 has the server, not that address.
+
+| | OpenSSL 3.6, 4.0, 4.1 | What it means |
+|---|---|---|
+| Streams, flow control, loss recovery (RFC 9000, RFC 9002) | yes | |
+| Congestion control (RFC 9002, section 7) | NewReno alone, no pacing, packets of 1,200 bytes | a large download over a lossy link is slower than over TCP: [What it costs](#what-it-costs) |
+| Retry, the check that a client owns its address (RFC 9000, section 8.1) | yes, on by default | `validate = false` saves a round trip, only for tests |
+| Connection migration (section 9): a connection that goes on when the client's address changes, wifi to 4G | no | the client makes a new connection: [When the connection drops](#when-the-connection-drops) carries the screen over |
+| 0-RTT (RFC 9001, section 4.6): a request in the first packet of a connection that resumes | no | no request is ever taken in early data |
+| Datagrams (RFC 9221) | no | Chrome asks of a WebTransport server that it says it has them; it says so, and none ever comes |
+
+Behind a proxy that takes TLS's early data, as nginx with `ssl_early_data on` or a CDN, a request that would change
+something gets `425 Too Early` (RFC 8470), on HTTP/1.1 and HTTP/3: the proxy marks such a request `Early-Data: 1`, an
+attacker could send it again, and a payment replayed would be paid twice; the client sends it again after the
+handshake. GET, HEAD and OPTIONS pass.
+
+| System | Its OpenSSL | HTTP/3 |
+|---|---|---|
+| Arch Linux (2026-11) | 4.1.0, and 3.5.9 beside it | yes, through 4.1 |
+| Ubuntu 22.04, 24.04 | 3.0 | no: Serve gives TCP alone |
+| The releases of Cesia for macOS and Windows | 3.5.9, carried with them | no, until they carry 3.6 or later |
+
+### What an attacker tries
+
+Each row is a case of `tests/quic/threats.ce`, measured.
+
+| Attack | What stops it | Measured |
+|---|---|---|
+| Amplification: packets in the name of another address, for the server to flood it (RFC 9000, section 8) | at most 3 times what came from an address before it proved it owns it; Retry first | 4 Initials of 1,200 bytes in 3 s: 4,837 bytes out without Retry (1.01x); 273 to 364 with it (0.08x) |
+| A flood of handshakes | Retry keeps no state for an address not yet proved | 2,000 Initials (2.4 MB) from 2,000 ports: Retries back, 100 to 119 KB (0.05x), 0.2 MB more memory at most, a real client served at once |
+| Following a client by its connection ids | the server's ids are random, 8 bytes, new for each connection | 5 connections, 5 ids of 8 random bytes |
+| A packet of a connection replayed from another address, to move it there | no migration: the packet is dropped | 34 bytes sent from a new port: nothing back, the connection goes on |
+| QPACK's table filled to take the memory (RFC 9204, section 2.2.3) | the table is 0 bytes: no insertion, no reference to it | an insertion or a reference ends the connection; a head of 20 KiB gets 431 before any Huffman |
+| Streams by the thousand | OpenSSL lets 100 run at once (MAX_STREAMS), each head in the timeout | 1,000 at once: all 1,000 answered; a head never ended dropped after the timeout |
+| A request replayed in early data | no 0-RTT; 425 behind a proxy that takes it | `tests/quic/http3.ce` |
+
+### What it costs
+
+Measured with `bench/http3` (`setup.sh` builds what it needs, `all.sh` and `stacks.sh` measure, `flights.sh` draws what
+a client receives): one machine, each server on two cores and the client on two others, every link in a network
+namespace of its own where `netem` adds a path's delay and losses. Each number is the median of the rounds, then [the
+least, the most]. The giants: quic-go 0.66, Caddy 2 (on quic-go), nginx 1.27 with HTTP/3, and ngtcp2 1.26 (the QUIC of
+curl).
+
+On a clean link, the giants win everywhere, and HTTP/3 costs more than HTTP/1.1 to all:
+
+| clean link | Cesia HTTP/1.1 | Cesia HTTP/3 | the giants, HTTP/3 | the giants, HTTP/1.1 |
+|---|---|---|---|---|
+| requests a second (GET /, 16 connections, 7 rounds) | 20,513 [18,759, 22,014] | 5,929 [4,369, 6,296] | 11,168 (Caddy) to 15,595 (nginx) | 24,761 to 26,663 |
+| a download of 1 MB on a new connection | 19.8 ms | 24.7 ms | 8.9 (quic-go) to 12.5 ms (nginx) | 5.9 to 7.9 ms |
+| memory of an idle connection (200 of them) | 118 KB | 91 KB | 57 (quic-go) to 116 KB (nginx) | 23 to 29 KB |
+
+A request over HTTP/3 costs Cesia three and a half times what it costs over HTTP/1.1, the giants about twice: QUIC
+encrypts and acknowledges each packet of 1,200 bytes in user space, where TCP leaves this to the kernel.
+
+Over a link of 25 ms each way where 1 % of the packets are lost, the round trip bounds every server, near 300 requests a
+second with 16 connections, and two things differ:
+
+- **The slowest small requests come sooner over HTTP/3**: the slowest 1 % (p99) take 179 ms over Cesia's HTTP/3, 128
+  to 191 ms over the giants', against 305 to 398 ms over TCP; over 100 ms each way and 5 % lost, a poor mobile
+  network, 664 ms over Cesia's HTTP/3 against 990 ms over its TCP (601 to 626 over quic-go's and Caddy's HTTP/3, 1,079
+  over nginx's, 879 to 1,012 over TCP). A request whose packet is lost waits for QUIC's probe, about 1.5 round trips,
+  where TCP waits for its retransmission timer, 200 ms at least. This is what HTTP/3 brings today: the tail of small
+  requests on a poor network, a phone's.
+- **A large download is slower over HTTP/3, because of OpenSSL's QUIC**: 1 MB takes 4.7 s over Cesia's HTTP/3, 1.8 s
+  over its TCP, 0.9 s over quic-go, 0.5 s over ngtcp2 with BBR. Over 100 ms each way and 5 % lost, 42 s over Cesia's
+  HTTP/3, 41 s over nginx's, 19 s over quic-go's and Caddy's, 28 s over Cesia's TCP (3 downloads each: rough
+  figures).
+
+![A download of 1 MB over 25 ms each way and 1 % lost, 21 rounds: Cesia over HTTP/3 4.71 s, OpenSSL 4.1's QUIC alone 5.00 s, OpenSSL on both sides 4.88 s, ngtcp2 with Reno 2.34 s, with CUBIC 1.43 s, with BBR 0.47 s, quic-go 0.86 s, Cesia over TCP 1.81 s.](images/http3-lossy.svg)
+
+The time is OpenSSL's, not Cesia's: OpenSSL's QUIC alone, a small C server in its own loop (`bench/http3/openssl`), takes
+the same time (5.0 s against 4.7 s, Mann-Whitney p = 0.13 over 21 rounds each: no difference). The client's log (qlog)
+says why: OpenSSL sends one burst each round trip, then nothing until its acknowledgements come back, and its window, the
+bytes it may have in flight, stays between 4 and 12 packets of 1,200 bytes. Its congestion control is NewReno alone (RFC
+9002, section 7), and it grows that window by one packet every 2 to 5 round trips, where NewReno grows it every round
+trip: OpenSSL counts an acknowledged packet only while the bytes in flight stay within 3 packets of the window, and the
+acknowledgements of one burst come together, so that only the first three of each round trip count (`cc_newreno.c`,
+`newreno_on_data_acked`). The same NewReno in ngtcp2, which paces its packets and decides at the sending of each one
+whether the window was full, takes half the time (2.3 s, p = 3.5e-6); its CUBIC (RFC 9438) and its BBR take 1.4 and
+0.47 s. Nothing in OpenSSL 4.1's API changes this: its settings are the windows of flow control, the acknowledgement
+delay, the idle timeout and the write buffer.
+
+![What the client receives each 50 ms (one round trip) of a lossy download: quic-go up to 70 packets, its packets spread over the round trip; OpenSSL alone and Cesia a burst of 4 to 12 packets, then nothing for a round trip, over 4 to 5 seconds.](images/http3-flights.svg)
+
+A real path has a *bottleneck*, its slowest link, which spaces the packets of a burst. Through one of 20 Mbit/s
+(`stacks.sh d25l1r20`: the same 25 ms and 1 %), the acknowledgements come back spread over the round trip, OpenSSL
+counts more of them, and its NewReno no longer differs from ngtcp2's: 1 MB takes 3.1 s over OpenSSL alone and 2.6 s over
+ngtcp2's Reno (p = 0.21), 1.9 s over Cesia's HTTP/3 (against OpenSSL alone, p = 0.23: the same). What stays is NewReno
+itself, which halves its window at each loss and grows it back by one packet a round trip: ngtcp2's CUBIC takes 1.3 s,
+quic-go 1.4 s, Cesia's TCP, where Linux runs CUBIC, 1.2 s, and BBR, which measures the path instead of reading each loss
+as congestion, 0.78 s. Over such a path, Cesia's HTTP/3 still takes 1.7 times its TCP (p = 0.012). 21 rounds, the load
+average of the machine 4.1 [1.7, 7.4], other work running beside.
+
+![A download of 1 MB over 25 ms each way, 1 % lost and 20 Mbit/s at most, 21 rounds: Cesia over HTTP/3 1.95 s, OpenSSL 4.1's QUIC alone 3.14 s, ngtcp2 with Reno 2.58 s, with CUBIC 1.31 s, with BBR 0.78 s, quic-go 1.36 s, Cesia over TCP 1.15 s.](images/http3-bottleneck.svg)
+
+When the client's address changes in the middle of a download of 10 MB (`migrate.sh`), Cesia's QUIC, without migration,
+makes a new connection and asks for the rest, as TCP does:
+
+| address change after 2 MB | change to the next byte, clean | the same, 25 ms + 1 % |
+|---|---|---|
+| quic-go, migration | 0.5 ms | 101 ms |
+| quic-go, a new connection over QUIC | 2.3 ms | 103 ms |
+| Cesia, a new connection over QUIC (Retry, then the handshake) | 22 ms | 171 ms |
+| Cesia, a new connection over TCP | 9.1 ms | 223 ms |
+
+The TCP path doesn't pay for HTTP/3. Against the Cesia of before it (`ab.sh`: the same server file, HTTPS GET / with 16
+connections, 21 rounds alternated), this one serves 21,825 requests a second [13,895, 25,581], that one 19,457 [12,557,
+24,071]: 1.13 times by round [0.82, 1.61], Wilcoxon's signed-rank test p = 0.085, no difference. With HTTP/3 on beside
+it (`h3off.sh`, 21 rounds), TCP's requests go as fast as with it off: 22,066 [15,931, 24,345] against 21,628 [6,124,
+24,632], 1.05 times by round, p = 0.66. The `Alt-Svc` line that each response of TCP carries is made once, at the start:
+added to each response as a header, it cost 11 % (p = 0.006). The load average of the machine was 5.1 to 5.4 in the
+median, other work running beside, hence the wide bounds.
+
+So HTTP/3 is a setting, never a replacement: on for an application whose users are on phones and poor networks and make
+small requests, off where it would only cost, as for large downloads until Cesia speaks a QUIC whose congestion control
+keeps up (see [References](references.md#the-server-and-the-network) for RFC 9002 and the papers).
+
 ## Further reading
 
-RFC 9110 and RFC 9112 for HTTP, RFC 6455 for WebSocket, RFC 9846 for TLS 1.3, the Prometheus exposition format, and
+RFC 9110 and RFC 9112 for HTTP, RFC 9000, RFC 9001, RFC 9114 and RFC 9204 for QUIC and HTTP/3, draft-ietf-webtrans-http3
+for WebTransport, RFC 6455 for WebSocket, RFC 9846 for TLS 1.3, the Prometheus exposition format, and
 the Linux pages of `epoll`: see [References](references.md#the-server-and-the-network).
 
 ## Next
