@@ -1,0 +1,85 @@
+(* 0-RTT (RFC 9001, section 4.6): a client that met the server comes back with its ticket and sends its first request
+   before the handshake ends (Dial with early); the server answers a GET at once and says it came early (early-data:
+   1, RFC 8470), and a POST, which would change something, gets 425 Too Early. A ticket serves once: the next early
+   connection uses the ticket that the last one got. *)
+use std/fiber
+use std/http
+use std/http3
+use std/io
+use std/list
+use std/quic
+use std/result
+use std/net
+use std/sys
+use std/text
+use std/tls
+use std/value
+
+cert = sys.Args[1]
+key = sys.Args[2]
+hits = fiber.Channel(size = 1)
+fiber.Send(0, hits)
+
+defn counted(r)
+  n = fiber.Receive(hits).Value + 1
+  fiber.Send(n, hits)
+  early = http.HeaderValue("early-data", r.Headers)
+  http.Plain("$n $(if value.IsMissing(early) "-" else early end)")
+end
+
+defn ask(conn, method, path)
+  (** A request on a connection of HTTP/3: {Status, Body}. *)
+  st = conn.Open(false)?
+  st.Write(http3.Frame(1, http3.EncodeHead([{Name: ":method", Value: method}, {Name: ":scheme", Value: "https"}, {Name: ":authority", Value: "localhost"}, {Name: ":path", Value: path}])))?
+  st.End()?
+  got = ""
+  piece = st.Read()?
+  while piece != ""
+    got = "$got$piece"
+    piece = st.Read()?
+  end
+  st.Free()
+  frames = []
+  at = 1
+  while at <= text.ByteLength(got)
+    kind = http3.ReadVarint(got, at)
+    size = http3.ReadVarint(got, kind.Next)
+    frames = list.Append({Kind: kind.Value, Payload: text.ByteSlice(size.Next, size.Next + size.Value - 1, got)}, frames)
+    at = size.Next + size.Value
+  end
+  fields = http3.DecodeHead(frames[1].Payload)?
+  body = text.Join("", [f.Payload for f in frames if f.Kind == 0])
+  result.Ok({Status: [f.Value for f in fields if f.Name == ":status"][1], Body: body})
+end
+
+defn dialed(port, q, early)
+  conn = quic.Dial("127.0.0.1", port, q, verify = false, timeout = 3, early = early)?
+  control = conn.Open(true)?
+  control.Write("$(http3.Varint(0))$(http3.Frame(4, ""))")?
+  result.Ok(conn)
+end
+
+defn main()
+  q = quic.Open()?
+  served = net.Listen(0)?
+  port = net.Port(served)
+  h3 = http3.Server(cert, key, q, port = port)?
+  app = http.App() then http.Get("/count", counted) then http.Post("/pay", r -> http.Plain("paid"))
+  fiber.Spawn(() -> http.Serve(app, listener = served, wrap = tls.Server(cert, key, tls.Open()?)?, http3 = h3))
+  first = dialed(port, q, false)?
+  io.Print("first", ask(first, "GET", "/count")?)
+  first.Close(0)
+  for k in 1..2
+    (* Both requests at once, before the handshake ends: in 0-RTT. *)
+    again = dialed(port, q, true)?
+    paying = fiber.Spawn(() -> ask(again, "POST", "/pay"))
+    got = ask(again, "GET", "/count")?
+    paid = fiber.Wait(paying)??
+    late = ask(again, "POST", "/pay")?
+    io.Print("early", k, got, paid.Status, "after the handshake", late)
+    again.Close(0)
+  end
+  result.Ok(missing)
+end
+
+io.Print(main())

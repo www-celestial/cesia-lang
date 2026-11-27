@@ -181,6 +181,15 @@ defn accept(api, ctx, socket)
   shaken(t)
 end
 
+defn system(api, ctx)
+  (** The authorities the system trusts: those of OpenSSL's folder (/etc/ssl for the OpenSSL of a release, where Debian,
+      Ubuntu, Arch, Alpine, openSUSE and macOS keep them), and the bundle of Fedora and RHEL, which keep theirs
+      elsewhere; the file missing, nothing happens. *)
+  api.DefaultPaths(ctx)
+  api.LoadCa(ctx, "/etc/pki/tls/certs/ca-bundle.crt", missing)
+  api.ClearErrors()
+end
+
 defn Client(api, verify = true, ca = missing)
   (** For http.Fetch: secure = tls.Client(api). The server's certificate must be signed by an authority the system
       trusts, or, with ca, the path of a PEM file of authorities, by one of those instead, as a company's own; and it
@@ -189,7 +198,7 @@ defn Client(api, verify = true, ca = missing)
   ctx = api.CtxNew(api.ClientMethod())
   if verify
     if value.IsMissing(ca)
-      api.DefaultPaths(ctx)
+      system(api, ctx)
     else if api.LoadCa(ctx, ca, missing) != 1
       return (socket, host) -> failed("Can't read the authorities $ca.")
     end

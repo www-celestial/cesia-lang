@@ -10,8 +10,12 @@
      reference to it too (QPACK_DECOMPRESSION_FAILED), a head larger than 16 KiB gets 431, Huffman can't blow it up;
    - streams: 1,000 asked at once, the server lets 100 run, the others wait their turn, and all get their answer;
      a head that never ends is dropped after the timeout;
-   - early data: OpenSSL's QUIC takes none, and a request a proxy took in early data that would change something gets
-     425 (tests/quic/http3.ce). *)
+   - a change of the client's address (a NAT that rebinds): the connection goes on from the new one once the server
+     validated it (a client that moves itself takes a new connection id, and the server answers with a new one of the
+     client's: measured with ngtcp2's client, in the book; a NAT's rebinding may keep the ids, RFC 9000 section 9.5);
+   - 0-RTT replayed: the first flight of a client that sent a request in 0-RTT, sent again by an attacker once that
+     connection ended, gets a handshake but its request isn't served again: each ticket serves once. A request in
+     0-RTT that would change something gets 425 (tests/quic/early.ce). *)
 use std/fiber
 use std/http
 use std/http3
@@ -42,8 +46,18 @@ defn rss()
   text.Number(text.Split(" ", text.Trim(text.ByteSlice(7, text.ByteLength(line), line)))[1])
 end
 
+hits = fiber.Channel(size = 1)
+fiber.Send(0, hits)
+
+defn counted(r)
+  (** A GET that counts the times it was served. *)
+  n = fiber.Receive(hits).Value + 1
+  fiber.Send(n, hits)
+  http.Plain("$n")
+end
+
 defn app()
-  a = http.App() then http.Get("/", r -> http.Plain("hi")) then http.Post("/", r -> http.Plain("$(text.ByteLength(r.Body))"))
+  a = http.App() then http.Get("/", r -> http.Plain("hi")) then http.Post("/", r -> http.Plain("$(text.ByteLength(r.Body))")) then http.Get("/count", counted)
   http.Handler(a)
 end
 
@@ -81,8 +95,8 @@ defn status(st)
   result.Ok([f.Value for f in fields if f.Name == ":status"][1])
 end
 
-defn dialed(port, q)
-  conn = quic.Dial("127.0.0.1", port, q, verify = false, timeout = 3)?
+defn dialed(port, q, early = false)
+  conn = quic.Dial("127.0.0.1", port, q, verify = false, timeout = 3, early = early)?
   control = conn.Open(true)?
   control.Write("$(http3.Varint(0))$(http3.Frame(4, ""))")?
   result.Ok(conn)
@@ -145,6 +159,44 @@ defn spoof()
   {Before: first, Bounded: sp.answered <= 3 * sp.sent, After: after}
 end
 
+defn migrate()
+  s = serving(false)?
+  p = proxy(s.Port)?
+  c = dialed(p.Port, s.Api)?
+  before = get(c, "/")?
+  _ = p.Ask("rebind")?
+  after = get(c, "/")?
+  more = get(c, "/")?
+  c.Close(256)
+  p.Stop()
+  {Before: before, After: after, More: more}
+end
+
+defn replay()
+  s = serving(true)?
+  p = proxy(s.Port)?
+  c = dialed(p.Port, s.Api)?
+  _ = get(c, "/")?
+  c.Close(256)
+  _ = p.Ask("mark")?
+  early = dialed(p.Port, s.Api, early = true)?
+  served = get(early, "/count")?
+  early.Close(256)
+  once = peek(hits)
+  (* The connection is gone from the server (three of its round-trip timeouts), then the attacker sends its flight. *)
+  sys.Sleep(1)
+  r = p.Ask("replay")?
+  sys.Sleep(0.3)
+  p.Stop()
+  {Served: served, Once: once == 1, Replayed: r.datagrams > 1, Answered: r.answered > 0, Again: peek(hits) != once}
+end
+
+defn peek(ch)
+  v = fiber.Receive(ch).Value
+  fiber.Send(v, ch)
+  v
+end
+
 defn qpack()
   s = serving(false)?
   out = {}
@@ -204,6 +256,8 @@ defn main()
   io.Print("flood", flood())
   io.Print("ids", ids())
   io.Print("spoof", spoof())
+  io.Print("migrate", migrate())
+  io.Print("replay", replay())
   io.Print("qpack", qpack())
   io.Print("streams", streams())
   result.Ok(missing)

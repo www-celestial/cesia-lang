@@ -6,6 +6,9 @@ BENCH=${BENCH:-$HOME/.cache/quic/bench}
 CERTS=${CERTS:-$HOME/.cache/quic/certs}
 CESIA=${CESIA:-$HOME/.cache/quic/cesia-build/default/src/bin/main.exe}
 CESIA_MAIN=${CESIA_MAIN:-$HOME/.cache/quic/main-build/default/src/bin/main.exe}
+# Cesia before ngtcp2 (1.3 as first written, OpenSSL's own QUIC), with its serve.ce: the row "Cesia, OpenSSL's QUIC".
+CESIA_OPENSSL=${CESIA_OPENSSL:-$HOME/.cache/quic/bench/bin/cesia-0157b98d}
+SERVE_OPENSSL=${SERVE_OPENSSL:-$BENCH/serve-openssl.ce}
 GO=${GO:-/usr/local/go/bin/go}
 RES=${RES:-$BENCH/results}
 LOGS=$BENCH/logs
@@ -22,7 +25,8 @@ LOAD_CPUS=${LOAD_CPUS:-0,1,4,5}
 SERVER_CPUS=${SERVER_CPUS:-2,3,6,7}
 
 declare -A PORT=([cesia]=8443 [quicgo]=8444 [caddy]=8445 [nginx]=8446 [cesia-quic]=8450 [cesia-main]=8451
-  [cesia-noh3]=8452 [bare]=8460 [ngtcp2-reno]=8461 [ngtcp2-cubic]=8462 [ngtcp2-bbr]=8463)
+  [cesia-noh3]=8452 [cesia-openssl]=8453 [cesia-bbr]=8454 [cesia-reno]=8455 [bare]=8460 [ngtcp2-reno]=8461
+  [ngtcp2-cubic]=8462 [ngtcp2-bbr]=8463 [ngtcp2-gso]=8464)
 
 # quic-go everywhere (load generator, quic-go server, Caddy) without UDP GSO: netem must see each datagram, not a
 # 64 KB burst of them.
@@ -45,8 +49,15 @@ netem_args() {
 start_server() {
   local name=$1 port=${PORT[$1]} log=$LOGS/server-$1.log h3=1 tcp=1
   case $name in
-    cesia)
+    cesia | cesia-bbr | cesia-reno)
+      # HTTP/3 on ngtcp2, its congestion control CUBIC (the default), BBR or Reno.
+      local cc=cubic
+      [ "$name" = cesia ] || cc=${name#cesia-}
       taskset -c "$SERVER_CPUS" "$CESIA" run --allow ffi=ssl,ffi=crypto,net "$HERE/serve.ce" \
+        "$CERTS/cert.pem" "$CERTS/key.pem" "$port" 1 "$cc" >"$log" 2>&1 &
+      ;;
+    cesia-openssl)
+      taskset -c "$SERVER_CPUS" "$CESIA_OPENSSL" run --allow ffi=ssl,ffi=crypto,net "$SERVE_OPENSSL" \
         "$CERTS/cert.pem" "$CERTS/key.pem" "$port" 1 >"$log" 2>&1 &
       ;;
     cesia-noh3)
@@ -80,6 +91,12 @@ start_server() {
       # OpenSSL's QUIC alone (openssl/bare-h3.c): 1 MB for every request, over UDP only.
       tcp=0
       taskset -c "$SERVER_CPUS" "$BENCH/bin/bare-h3" "$CERTS/cert.pem" "$CERTS/key.pem" "$port" 1000000 >"$log" 2>&1 &
+      ;;
+    ngtcp2-gso)
+      # ngtcp2's example server with UDP GSO (its default): what sending a burst in one call saves, on a clean link only.
+      tcp=0
+      taskset -c "$SERVER_CPUS" "$BENCH/bin/ngtcp2-server" -q --cc=cubic -d "$BENCH/www" \
+        127.0.0.1 "$port" "$CERTS/key.pem" "$CERTS/cert.pem" >"$log" 2>&1 &
       ;;
     ngtcp2-reno | ngtcp2-cubic | ngtcp2-bbr)
       # ngtcp2's example server, TLS by the system's OpenSSL, without GSO: netem must see each datagram, not a burst.
@@ -143,9 +160,9 @@ stop_servers() {
   return 0
 }
 
-# load ARGS...: the load generator pinned to LOAD_CPUS.
+# load ARGS...: the load generator pinned to LOAD_CPUS; each line says the CPUs of the server and of the load.
 load() {
-  GOMAXPROCS=4 taskset -c "$LOAD_CPUS" "$BENCH/bin/load" -insecure "$@"
+  GOMAXPROCS=4 taskset -c "$LOAD_CPUS" "$BENCH/bin/load" -insecure -tag cpus="$SERVER_CPUS/$LOAD_CPUS" "$@"
 }
 
 # run_case OUT SERVER LOAD-ARGS...: one measured run, its JSON line appended to OUT: the server is started again
@@ -173,14 +190,37 @@ rotate() {
 }
 
 # The heavy lock: a file shared by the jobs of this machine that holds `main` when free. HEAVY_LOCK names it; when it
-# is unset, the measures run without it.
+# is unset, the measures run without it. HEAVY_LANES instead names several, each with its CPUs, as
+# "FILE=SERVER_CPUS/LOAD_CPUS FILE=...": the first free one is taken, and its CPUs pin the servers and the load, so that
+# two measures may run at once, each on its own cores.
 lock_take() {
+  if [ -n "${HEAVY_LANES:-}" ]; then
+    local lane file cpus c
+    while :; do
+      for lane in $HEAVY_LANES; do
+        file=${lane%%=*} cpus=${lane#*=}
+        c=$(cat "$file" 2>/dev/null || true)
+        if [ "$c" = main ]; then
+          LOCK_ENTRY="${BENCH_LABEL:-quic} bench $1 $(date +%H:%M)"
+          printf '%s\n' "$LOCK_ENTRY" >"$file"
+          sleep 1
+          if [ "$(cat "$file" 2>/dev/null)" = "$LOCK_ENTRY" ]; then
+            export HEAVY_LOCK=$file SERVER_CPUS=${cpus%/*} LOAD_CPUS=${cpus#*/}
+            echo "$(date +%H:%M:%S) lane $file: server CPUs $SERVER_CPUS, load CPUs $LOAD_CPUS" >&2
+            return 0
+          fi
+          LOCK_ENTRY=
+        fi
+      done
+      sleep 2
+    done
+  fi
   [ -n "${HEAVY_LOCK:-}" ] || { echo "HEAVY_LOCK unset: measuring without the lock" >&2; return 0; }
   local c
   while :; do
     c=$(cat "$HEAVY_LOCK" 2>/dev/null || true)
     if [ "$c" = main ]; then
-      LOCK_ENTRY="quic bench $1 $(date +%H:%M)"
+      LOCK_ENTRY="${BENCH_LABEL:-quic} bench $1 $(date +%H:%M)"
       printf '%s\n' "$LOCK_ENTRY" >"$HEAVY_LOCK"
       sleep 1
       [ "$(cat "$HEAVY_LOCK" 2>/dev/null)" = "$LOCK_ENTRY" ] && return 0
@@ -196,6 +236,8 @@ lock_release() {
   [ -n "${HEAVY_LOCK:-}" ] && [ -n "${LOCK_ENTRY:-}" ] || return 0
   [ "$(cat "$HEAVY_LOCK" 2>/dev/null)" = "$LOCK_ENTRY" ] && printf 'main\n' >"$HEAVY_LOCK"
   LOCK_ENTRY=
+  [ -n "${HEAVY_LANES:-}" ] && unset HEAVY_LOCK
+  return 0
 }
 
 # in_ns PROFILE WHAT SCRIPT ARGS...: outside the namespace, takes the lock, runs SCRIPT again inside ns.sh PROFILE,
@@ -210,6 +252,6 @@ in_ns() {
   "$HERE/ns.sh" "$profile" "$@" || rc=$?
   lock_release
   # Time for another job to take the lock before the next session of this one.
-  [ -n "${HEAVY_LOCK:-}" ] && sleep "${LOCK_PAUSE:-40}"
+  [ -n "${HEAVY_LOCK:-}${HEAVY_LANES:-}" ] && sleep "${LOCK_PAUSE:-40}"
   exit $rc
 }

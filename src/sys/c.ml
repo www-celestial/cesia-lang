@@ -7,6 +7,7 @@ external dlopen : string -> int = "cesia_dlopen"
 external dlsym : int -> string -> int = "cesia_dlsym"
 external dlerror : unit -> string = "cesia_dlerror"
 external cstring : int -> string = "cesia_cstring"
+external bytes_at : int -> int -> string = "cesia_bytes"
 
 type memory = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
@@ -341,7 +342,8 @@ let is_sqlite name =
 let open_library st ctx (a : Types.t array) =
   let name = c_name ctx "Open" a.(0) in
   if is_sqlite name then Fs.failure ctx.w "c" (Messages.c_sqlite name).text else begin
-  Runtime.check_perm ctx Ffi (Some name);
+  (* ngtcp2's libraries are the QUIC of std/quic on OpenSSL, which ffi=ssl opens with them: its one permission. *)
+  Runtime.check_perm ctx Ffi (Some (if List.mem name [ "ngtcp2"; "ngtcp2_crypto_ossl" ] then "ssl" else name));
   (* The first reason is the one for the most exact name. *)
   let load (found, reason) path =
     if found <> 0 then found, reason
@@ -499,6 +501,9 @@ let with_symbol ctx name (lib : Types.t) f =
      | 0 -> Fs.failure ctx.w "c" (Messages.c_no_function name).text
      | address -> f address)
   | v -> Runtime.fail ctx Type (Messages.c_need_library (Value.describe v))
+
+(* The address of a function, for C that takes a table of them, as ngtcp2's callbacks: Cesia never calls it. *)
+let symbol ctx (a : Types.t array) = with_symbol ctx (c_name ctx "Symbol" a.(0)) a.(1) (fun address -> Value.ok ctx.w (pointer address))
 
 let bind st ctx (a : Types.t array) =
   let name = c_name ctx "Fn" a.(0) in
@@ -719,8 +724,12 @@ let store st ctx (a : Types.t array) : Types.t =
   Missing
 
 let load st ctx (a : Types.t array) : Types.t =
-  let _, b = block_arg st ctx "Load" a.(2) in
   let at = Arrays.whole_index ctx a.(0) and n = Arrays.whole_index ctx a.(1) in
+  match a.(2) with
+  (* Bytes that C gives, as the data of a callback: C knows their size, as for c.Get. *)
+  | Handle { kind = "pointer"; id; _ } when n >= 0 && at >= 0 -> Runtime.pay_bytes ctx n; Types.Text (bytes_at (id + at) n)
+  | _ ->
+  let _, b = block_arg st ctx "Load" a.(2) in
   if n < 0 || at < 0 || at > b.size - n then fail ctx (Messages.c_offset at b.size "text");
   Runtime.pay_bytes ctx n;
   Types.Text (String.init n (fun k -> b.data.{at + k}))
@@ -734,6 +743,7 @@ let text st ctx (a : Types.t array) : Types.t =
 let natives st =
   [ "Open", Native.nat ~result:true ~params:[| "name"; "version" |] "Open" 1 2 (open_library st);
     "Fn", Native.nat ~result:true ~params:[| "name"; "args"; "ret"; "lib"; "callsBack"; "slow" |] "Fn" 4 6 (bind st);
+    "Symbol", Native.nat ~result:true ~params:[| "name"; "lib" |] "Symbol" 2 2 symbol;
     "Variadic", Native.nat "Variadic" 5 5 (variadic st);
     "Callback", Native.nat "Callback" 3 3 (c_callback st);
     "Struct", Native.nat "Struct" 1 1 (c_struct st);

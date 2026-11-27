@@ -25,7 +25,7 @@ cesia upgrade --nightly    # a build of main between releases, made by hand
 ```
 
 A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
-its own), libsodium, SQLite, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
+its own), libsodium, SQLite, OpenSSL 3.5, its long-term version, and on Linux and macOS ngtcp2, the QUIC of HTTP/3.
 Nothing else is installed by hand. From 1.0, the first number of a version rises when a change can break a program, the
 middle one when something is added, and the last one for a fix. [`CHANGELOG.md`](https://github.com/www-celestial/cesia-lang/blob/main/CHANGELOG.md) says what each version brings,
 and the notes of a release come from the messages of its commits.
