@@ -20,7 +20,10 @@ if len(profiles) != 1:
 profile = profiles.pop()
 
 names = {
-    ("cesia", "h3"): ("Cesia, HTTP/3 (OpenSSL 4.1's QUIC)", "Cesia, HTTP/3 (le QUIC d’OpenSSL 4.1)"),
+    ("cesia-bbr", "h3"): ("Cesia, HTTP/3 on ngtcp2, BBR (the default)", "Cesia, HTTP/3 sur ngtcp2, BBR (par défaut)"),
+    ("cesia", "h3"): ("Cesia, HTTP/3 on ngtcp2, CUBIC", "Cesia, HTTP/3 sur ngtcp2, CUBIC"),
+    ("cesia-reno", "h3"): ("Cesia, HTTP/3 on ngtcp2, Reno", "Cesia, HTTP/3 sur ngtcp2, Reno"),
+    ("cesia-openssl", "h3"): ("Cesia before, HTTP/3 on OpenSSL's QUIC", "Cesia avant, HTTP/3 sur le QUIC d’OpenSSL"),
     ("bare", "h3"): ("OpenSSL 4.1's QUIC alone, its own loop", "Le QUIC d’OpenSSL 4.1 seul, sa propre boucle"),
     ("bare", "bare-get"): ("OpenSSL 4.1 on both sides", "OpenSSL 4.1 des deux côtés"),
     ("nginx", "h3"): ("nginx 1.27, HTTP/3", "nginx 1.27, HTTP/3"),
@@ -35,11 +38,18 @@ picked = [(names[k][1 if fr else 0], k, sorted(rows[k])) for k in names if k in 
 TITLE = {"d25l1": ("A download of 1 MB, 25 ms each way, 1 % of the packets lost",
                    "Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % des paquets perdus"),
          "d25l1r20": ("A download of 1 MB, 25 ms each way, 1 % lost, 20 Mbit/s at most",
-                      "Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % perdu, 20 Mbit/s au plus")}
-FOOT = {"d25l1": ("OpenSSL's QUIC: NewReno alone, whose window grows here by one packet every 2 to 5 round trips, packets of 1,200 bytes, no pacing.",
-                  "Le QUIC d’OpenSSL : NewReno seul, dont la fenêtre ne grandit ici que d’un paquet tous les 2 à 5 allers-retours, des paquets de 1 200 octets, sans pacing."),
-        "d25l1r20": ("A bottleneck of 20 Mbit/s spaces the packets, as a real path does: OpenSSL's NewReno no longer differs from ngtcp2's (p = 0.21); CUBIC and BBR stay ahead.",
-                     "Un goulot de 20 Mbit/s espace les paquets, comme un vrai chemin : le NewReno d’OpenSSL ne diffère plus de celui de ngtcp2 (p = 0,21) ; CUBIC et BBR restent devant.")}
+                      "Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % perdu, 20 Mbit/s au plus"),
+         "d100l5": ("A download of 1 MB, 100 ms each way, 5 % of the packets lost",
+                    "Un téléchargement de 1 Mo, 100 ms dans chaque sens, 5 % des paquets perdus"),
+         "clean": ("A download of 1 MB on a clean link", "Un téléchargement de 1 Mo sur un lien propre")}
+FOOT = {"d25l1": ("Cesia's HTTP/3 counts a Retry, one round trip that the others don't make. Pinned to 2 physical cores (server, client), another measure may run on the 2 others.",
+                  "Le HTTP/3 de Cesia compte un Retry, un aller-retour que les autres ne font pas. Épinglé sur 2 cœurs physiques (serveur, client), une autre mesure peut tourner sur les 2 autres."),
+        "d25l1r20": ("A bottleneck of 20 Mbit/s spaces the packets, as a real path does. Pinned to 2 physical cores, another measure may run on the 2 others.",
+                     "Un goulot de 20 Mbit/s espace les paquets, comme un vrai chemin. Épinglé sur 2 cœurs physiques, une autre mesure peut tourner sur les 2 autres."),
+        "d100l5": ("100 ms each way and 5 % lost: a poor mobile network. Pinned to 2 physical cores, another measure may run on the 2 others.",
+                   "100 ms dans chaque sens et 5 % perdus : un mauvais réseau mobile. Épinglé sur 2 cœurs physiques, une autre mesure peut tourner sur les 2 autres."),
+        "clean": ("A clean link of the machine itself. Pinned to 2 physical cores, another measure may run on the 2 others.",
+                  "Un lien propre, celui de la machine elle-même. Épinglé sur 2 cœurs physiques, une autre mesure peut tourner sur les 2 autres.")}
 T = {"title": TITLE[profile][1 if fr else 0],
      "sub": ("une nouvelle connexion à chaque fois, le client est quic-go ; médiane des tours, la ligne du plus court au plus long" if fr else
              "a new connection each time, the client is quic-go's; median of the rounds, the line from the least to the most"),
@@ -74,7 +84,7 @@ for label, k, xs in picked:
     med = statistics.median(xs)
     o.append(f'<text x="16" y="{y + 14}">{label}</text>')
     x0 = 330
-    cls = "c" if k[0] in ("cesia", "bare") and k[1] != "h1" else "b"
+    cls = "c" if k[0].startswith("cesia") and k[1] != "h1" else "b"
     o.append(f'<rect class="{cls}" x="{x0}" y="{y + 2}" width="{max(2, med * scale):.1f}" height="16" rx="2"/>')
     o.append(f'<line class="r" x1="{x0 + xs[0] * scale:.1f}" y1="{y + 10}" x2="{x0 + xs[-1] * scale:.1f}" y2="{y + 10}"/>')
     at = x0 + max(2, med * scale, xs[-1] * scale) + 6

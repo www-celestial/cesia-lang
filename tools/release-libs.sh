@@ -2,22 +2,26 @@
 # Builds the C libraries a release holds beside its binary, so that nothing has to be installed by hand:
 # tools/release-libs.sh SYSTEM FOLDER puts them in FOLDER/lib, their licenses in FOLDER/lib/licenses. Run from the root of the
 # repository by the release job of the CI, which keeps FOLDER in its cache: a version changed here builds them again.
-#   linux-x86_64     OpenBLAS (BLAS and LAPACK, the kernels of every processor, no Fortran) and libsodium; OpenSSL stays
-#                    the system's, which gets its security fixes.
-#   macos-arm64      libsodium and OpenSSL 3.5, its long-term version; BLAS and LAPACK are macOS's own, Accelerate.
+#   linux-x86_64     OpenBLAS (BLAS and LAPACK, the kernels of every processor, no Fortran), libsodium, OpenSSL 3.5, its
+#                    long-term version (QUIC needs 3.5: the systems of Ubuntu 22.04 and 24.04 have 3.0), and ngtcp2 on it.
+#   macos-arm64      libsodium, OpenSSL 3.5 and ngtcp2; BLAS and LAPACK are macOS's own, Accelerate.
 #   windows-x86_64   OpenBLAS as its project publishes it for Windows, libsodium and OpenSSL 3.5 as on macOS, built in the
 #                    shell of MSYS2 for UCRT64 (msys2 -c), whose make, perl, python and gcc it needs.
-# All three hold SQLite: built from its amalgamation, the DLL that sqlite.org publishes on Windows.
+# All three hold SQLite: built from its amalgamation, the DLL that sqlite.org publishes on Windows. OpenSSL finds the
+# system's authorities in /etc/ssl on Linux and macOS (its OPENSSLDIR), where Debian, Ubuntu, Arch, Alpine, openSUSE and
+# macOS keep them; std/tls also reads Fedora's and RHEL's bundle. ngtcp2 is QUIC for std/quic, with its crypto for
+# OpenSSL's own QUIC TLS API (libngtcp2_crypto_ossl); not on Windows yet, where std/quic doesn't run.
 # The names are those c.Open and the BLAS search ask for: see src/sys/c.ml and src/sys/linalg.ml.
 set -eu
 system=$1
 root=$PWD
 out=$(mkdir -p "$2" && cd "$2" && pwd)
-openblas=0.3.28 sodium=1.0.20 openssl=3.5.9
+openblas=0.3.28 sodium=1.0.20 openssl=3.5.9 ngtcp2=1.26.0
 openblas_sha256=f1003466ad074e9b0c8d421a204121100b0751c96fc6fcf3d1456bd12f8a00a1
 openblas_win_sha256=4cbd0e5daa3fb083b18f5e5fa6eefe79e2f2c51a6d539f98a3c6309a21160042
 sodium_sha256=ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
 openssl_sha256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
+ngtcp2_sha256=7804aa0fa1c39942ba322a90805824c37231f7675b08d0c3cc4332858a7b085e
 # SQLite: its release, and the SHA3-256 of its files that sqlite.org publishes.
 sqlite=3540100 sqlite_year=2026 sqlite_version=3.54.1
 sqlite_sha3=92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30
@@ -28,8 +32,10 @@ mkdir -p "$lib/licenses"
 cd "$work"
 fetch() { curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$2" "$1"; }
 # A download checked against its SHA-256 before anything reads it. The fingerprints were checked by hand at each change of
-# version: OpenSSL's against the .sha256 it publishes, libsodium's against its minisign signatures, OpenBLAS's source
-# against the archive of its git tag; OpenBLAS publishes none for its Windows zip, so that one is the file as fetched then.
+# version: OpenSSL's against the .sha256 it publishes, libsodium's against its minisign signatures, ngtcp2's against the
+# PGP signature of its release (.asc, key 516B622918D15C478AB1EA3A5339A2BE82E07DEC, Tatsuhiro Tsujikawa), OpenBLAS's
+# source against the archive of its git tag; OpenBLAS publishes none for its Windows zip, so that one is the file as
+# fetched then.
 get() {  # url, file, sha256
   fetch "$1" "$2"
   have=$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$2")
@@ -77,28 +83,46 @@ build_sodium() {
   cp "libsodium-$sodium/LICENSE" "$lib/licenses/libsodium.txt"
 }
 
-build_openssl() {
+build_openssl() {  # target, then more options of Configure
   get "https://github.com/openssl/openssl/releases/download/openssl-$openssl/openssl-$openssl.tar.gz" openssl.tgz "$openssl_sha256"
   tar -xzf openssl.tgz
-  (cd "openssl-$openssl" && ./Configure "$1" shared no-tests --prefix="$work/prefix" --libdir=lib > /dev/null &&
+  (cd "openssl-$openssl" && ./Configure "$1" shared no-tests --prefix="$work/prefix" --libdir=lib "${@:2}" > /dev/null &&
     make -j"$jobs" > /dev/null && make install_sw > /dev/null)
   cp "openssl-$openssl/LICENSE.txt" "$lib/licenses/OpenSSL.txt"
+}
+
+# libngtcp2 and libngtcp2_crypto_ossl alone, on the OpenSSL just built: no examples, no nghttp3, no jemalloc.
+build_ngtcp2() {
+  get "https://github.com/ngtcp2/ngtcp2/releases/download/v$ngtcp2/ngtcp2-$ngtcp2.tar.xz" ngtcp2.txz "$ngtcp2_sha256"
+  tar -xJf ngtcp2.txz
+  (cd "ngtcp2-$ngtcp2" && PKG_CONFIG_PATH="$work/prefix/lib/pkgconfig" OPENSSL_CFLAGS="-I$work/prefix/include" \
+    OPENSSL_LIBS="-L$work/prefix/lib -lssl -lcrypto" ./configure --prefix="$work/prefix" --enable-lib-only \
+    --with-openssl --without-libnghttp3 --without-libev --without-jemalloc --disable-static > /dev/null &&
+    make -j"$jobs" install > /dev/null)
+  cp "ngtcp2-$ngtcp2/COPYING" "$lib/licenses/ngtcp2.txt"
 }
 
 case "$system" in
   linux-x86_64)
     build_openblas
     build_sodium
-    cp -L "$work/prefix/lib/libsodium.so.26" "$lib/"
+    build_openssl linux-x86_64 --openssldir=/etc/ssl
+    build_ngtcp2
+    for name in libsodium.so.26 libssl.so.3 libcrypto.so.3 libngtcp2.so.16 libngtcp2_crypto_ossl.so.0; do
+      cp -L "$work/prefix/lib/$name" "$lib/"
+    done
+    # Without their symbols: 6.7 MB for libcrypto, 1.2 for libssl, 371 KB for libngtcp2, 52 for its crypto (x86-64).
+    strip --strip-unneeded "$lib/libssl.so.3" "$lib/libcrypto.so.3" "$lib/libngtcp2.so.16" "$lib/libngtcp2_crypto_ossl.so.0"
     build_sqlite libsqlite3.so.0 -Wl,-soname,libsqlite3.so.0
     # A library finds the others beside it.
     for f in "$lib"/*.so*; do patchelf --set-rpath '$ORIGIN' "$f"; done
     ;;
   macos-arm64)
     build_sodium
-    build_openssl darwin64-arm64-cc
+    build_openssl darwin64-arm64-cc --openssldir=/etc/ssl
+    build_ngtcp2
     build_sqlite libsqlite3.0.dylib -Wl,-install_name,@loader_path/libsqlite3.0.dylib
-    for name in libsodium.26.dylib libssl.3.dylib libcrypto.3.dylib; do
+    for name in libsodium.26.dylib libssl.3.dylib libcrypto.3.dylib libngtcp2.16.dylib libngtcp2_crypto_ossl.0.dylib; do
       cp -L "$work/prefix/lib/$name" "$lib/"
     done
     # Each one names itself, and the others it needs, as beside it: their build folder is gone on the user's machine.

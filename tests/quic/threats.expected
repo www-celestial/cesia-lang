@@ -2,6 +2,8 @@ amplification [{Validate: false, AtMost3: true, Retry: false, Handshake: true}, 
 flood {Answered: true, Grown: true, Served: "200"}
 ids {Distinct: true, Long: true}
 spoof {Before: "200", Bounded: true, After: "200"}
+migrate {Before: "200", After: "200", More: "200"}
+replay {Served: "200", Once: true, Replayed: true, Answered: true, Again: false}
 qpack {Insert: true, Dynamic: true, Large: Ok("431")}
 streams {Answered: 1000, Dropped: true, Seconds: true}
 Ok(missing)

@@ -243,15 +243,20 @@ publisher moves it.
   <https://pkg.go.dev/net/http#CrossOriginProtection>. The steps of [http.SameOrigin], and their limit with the scheme.
 - J. Iyengar, M. Thomson (editors). "QUIC: A UDP-Based Multiplexed and Secure Transport", RFC 9000, 2021.
   <https://www.rfc-editor.org/rfc/rfc9000>; M. Thomson, S. Turner. "Using TLS to Secure QUIC", RFC 9001, 2021.
-  <https://www.rfc-editor.org/rfc/rfc9001>. Streams, Retry and the limit of 3 times before an address is proved
-  (section 8), migration (section 9), 0-RTT: [std/quic], through OpenSSL's QUIC.
+  <https://www.rfc-editor.org/rfc/rfc9001>. Streams, Retry, NEW_TOKEN and the limit of 3 times before an address is
+  proved (section 8), migration (section 9), 0-RTT (RFC 9001, section 4.6): [std/quic], on ngtcp2 (T. Tsujikawa and
+  others, <https://github.com/ngtcp2/ngtcp2>, MIT licence), its TLS by OpenSSL's QUIC TLS API (OpenSSL 3.5).
+- E. Rescorla. "The Transport Layer Security (TLS) Protocol Version 1.3", RFC 8446, 2018.
+  <https://www.rfc-editor.org/rfc/rfc8446>, section 8 (0-RTT and anti-replay: single-use tickets). Why each ticket of
+  [std/quic] serves once.
 - J. Iyengar, I. Swett (editors). "QUIC Loss Detection and Congestion Control", RFC 9002, 2021.
   <https://www.rfc-editor.org/rfc/rfc9002>; L. Xu, S. Ha, I. Rhee, V. Goel, L. Eggert. "CUBIC for Fast and
   Long-Distance Networks", RFC 9438, 2023. <https://www.rfc-editor.org/rfc/rfc9438>; N. Cardwell, Y. Cheng, C. S. Gunn,
-  S. H. Yeganeh, V. Jacobson. "BBR: Congestion-Based Congestion Control", ACM Queue 14(5), 2016. The congestion
-  controls that [What it costs](http.md#what-it-costs) compares: OpenSSL 4.1's NewReno (`ssl/quic/cc_newreno.c`,
-  <https://github.com/openssl/openssl>) and ngtcp2 1.26's Reno, CUBIC and BBR (`lib/ngtcp2_cc.c`,
-  <https://github.com/ngtcp2/ngtcp2>).
+  S. H. Yeganeh, V. Jacobson. "BBR: Congestion-Based Congestion Control", ACM Queue 14(5), 2016; N. Cardwell, I.
+  Swett, J. Beshay (editors). "BBR Congestion Control", draft-ietf-ccwg-bbr. <https://datatracker.ietf.org/doc/draft-ietf-ccwg-bbr/>
+  (BBR version 3, ngtcp2's). The congestion controls that [What it costs](http.md#what-it-costs-1) compares: OpenSSL
+  4.1's NewReno (`ssl/quic/cc_newreno.c`, <https://github.com/openssl/openssl>) and ngtcp2 1.26's Reno, CUBIC and BBR
+  (`lib/ngtcp2_cc.c`, `lib/ngtcp2_bbr.c`, <https://github.com/ngtcp2/ngtcp2>); BBR is the default of [std/http3].
 - M. Bishop (editor). "HTTP/3", RFC 9114, 2022. <https://www.rfc-editor.org/rfc/rfc9114>; C. Krasic, M. Bishop,
   A. Frindell. "QPACK: Field Compression for HTTP/3", RFC 9204, 2022. <https://www.rfc-editor.org/rfc/rfc9204>, whose
   Huffman code is HPACK's, R. Peon, H. Ruellan, RFC 7541, 2015, appendix B. <https://www.rfc-editor.org/rfc/rfc7541>:

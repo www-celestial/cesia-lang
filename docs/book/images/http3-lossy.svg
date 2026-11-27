@@ -4,38 +4,38 @@
 <rect width="760" height="354" fill="#fff"/>
 <text class="h" x="16" y="24">A download of 1 MB, 25 ms each way, 1 % of the packets lost</text>
 <text class="s" x="16" y="42">a new connection each time, the client is quic-go's; median of the rounds, the line from the least to the most</text>
-<text x="16" y="78">Cesia, HTTP/3 (OpenSSL 4.1's QUIC)</text>
-<rect class="c" x="330" y="66" width="170.5" height="16" rx="2"/>
-<line class="r" x1="359.5" y1="74" x2="565.9" y2="74"/>
-<text x="571.9" y="78">4.71 s [0.81, 6.51], n = 21</text>
-<text x="16" y="106">OpenSSL 4.1's QUIC alone, its own loop</text>
-<rect class="c" x="330" y="94" width="181.1" height="16" rx="2"/>
-<line class="r" x1="355.7" y1="102" x2="580.0" y2="102"/>
-<text x="586.0" y="106">5.00 s [0.71, 6.90], n = 42</text>
-<text x="16" y="134">OpenSSL 4.1 on both sides</text>
-<rect class="c" x="330" y="122" width="176.9" height="16" rx="2"/>
-<line class="r" x1="408.7" y1="130" x2="557.3" y2="130"/>
-<text x="563.3" y="134">4.88 s [2.17, 6.27], n = 21</text>
-<text x="16" y="162">ngtcp2 1.26, Reno</text>
-<rect class="b" x="330" y="150" width="84.7" height="16" rx="2"/>
-<line class="r" x1="349.3" y1="158" x2="453.0" y2="158"/>
-<text x="459.0" y="162">2.34 s [0.53, 3.39], n = 21</text>
+<text x="16" y="78">Cesia, HTTP/3 on ngtcp2, BBR (the default)</text>
+<rect class="c" x="330" y="66" width="21.7" height="16" rx="2"/>
+<line class="r" x1="350.7" y1="74" x2="354.0" y2="74"/>
+<text x="360.0" y="78">0.54 s [0.51, 0.59], n = 21</text>
+<text x="16" y="106">Cesia, HTTP/3 on ngtcp2, CUBIC</text>
+<rect class="c" x="330" y="94" width="45.6" height="16" rx="2"/>
+<line class="r" x1="350.0" y1="102" x2="456.9" y2="102"/>
+<text x="462.9" y="106">1.13 s [0.49, 3.13], n = 21</text>
+<text x="16" y="134">Cesia, HTTP/3 on ngtcp2, Reno</text>
+<rect class="c" x="330" y="122" width="73.4" height="16" rx="2"/>
+<line class="r" x1="354.1" y1="130" x2="466.6" y2="130"/>
+<text x="472.6" y="134">1.81 s [0.59, 3.37], n = 21</text>
+<text x="16" y="162">Cesia before, HTTP/3 on OpenSSL's QUIC</text>
+<rect class="c" x="330" y="150" width="170.6" height="16" rx="2"/>
+<line class="r" x1="363.3" y1="158" x2="580.0" y2="158"/>
+<text x="586.0" y="162">4.21 s [0.82, 6.17], n = 21</text>
 <text x="16" y="190">ngtcp2 1.26, CUBIC</text>
-<rect class="b" x="330" y="178" width="52.0" height="16" rx="2"/>
-<line class="r" x1="346.0" y1="186" x2="476.8" y2="186"/>
-<text x="482.8" y="190">1.43 s [0.44, 4.05], n = 21</text>
+<rect class="b" x="330" y="178" width="67.8" height="16" rx="2"/>
+<line class="r" x1="352.1" y1="186" x2="450.1" y2="186"/>
+<text x="456.1" y="190">1.67 s [0.55, 2.97], n = 21</text>
 <text x="16" y="218">ngtcp2 1.26, BBR</text>
-<rect class="b" x="330" y="206" width="17.1" height="16" rx="2"/>
-<line class="r" x1="345.4" y1="214" x2="351.7" y2="214"/>
-<text x="357.7" y="218">0.47 s [0.43, 0.60], n = 21</text>
+<rect class="b" x="330" y="206" width="19.0" height="16" rx="2"/>
+<line class="r" x1="346.9" y1="214" x2="355.2" y2="214"/>
+<text x="361.2" y="218">0.47 s [0.42, 0.62], n = 21</text>
 <text x="16" y="246">quic-go 0.66, HTTP/3</text>
-<rect class="b" x="330" y="234" width="31.0" height="16" rx="2"/>
-<line class="r" x1="345.4" y1="242" x2="422.4" y2="242"/>
-<text x="428.4" y="246">0.86 s [0.43, 2.55], n = 42</text>
+<rect class="b" x="330" y="234" width="64.4" height="16" rx="2"/>
+<line class="r" x1="345.7" y1="242" x2="443.0" y2="242"/>
+<text x="449.0" y="246">1.59 s [0.39, 2.79], n = 21</text>
 <text x="16" y="274">Cesia, HTTP/1.1 over TCP (Linux CUBIC)</text>
-<rect class="b" x="330" y="262" width="65.7" height="16" rx="2"/>
-<line class="r" x1="352.0" y1="270" x2="494.2" y2="270"/>
-<text x="500.2" y="274">1.81 s [0.61, 4.53], n = 21</text>
-<text class="s" x="16" y="308">OpenSSL's QUIC: NewReno alone, whose window grows here by one packet every 2 to 5 round trips, packets of</text>
-<text class="s" x="16" y="324">1,200 bytes, no pacing.</text>
+<rect class="b" x="330" y="262" width="93.7" height="16" rx="2"/>
+<line class="r" x1="367.4" y1="270" x2="490.2" y2="270"/>
+<text x="496.2" y="274">2.31 s [0.92, 3.96], n = 21</text>
+<text class="s" x="16" y="308">Cesia's HTTP/3 counts a Retry, one round trip that the others don't make. Pinned to 2 physical cores</text>
+<text class="s" x="16" y="324">(server, client), another measure may run on the 2 others.</text>
 </svg>
