@@ -1508,6 +1508,13 @@ defn run(e, s)
     if heard
       s = receive(e, s)
     end
+    if not value.IsMissing(first)
+      (* The fibers just answered often ask again at once, a response's write then its end: they run first, and what
+         they ask goes in the same packets. *)
+      s = commands(e, s, first)
+      sys.Sleep(0)
+      first = missing
+    end
     s = commands(e, s, first)
     s = expired(e, s)
     s = deliver(e, s)
@@ -1772,7 +1779,10 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   api.NewSessionCallback(ctx, api.Ticket)
   if verify
     if value.IsMissing(ca)
+      (* As std/tls: OpenSSL's folder, then Fedora's and RHEL's bundle. *)
       api.DefaultPaths(ctx)
+      api.LoadCa(ctx, "/etc/pki/tls/certs/ca-bundle.crt", missing)
+      api.ClearErrors()
     else if api.LoadCa(ctx, ca, missing) != 1
       api.CtxFree(ctx)
       return failed("Can't read the authorities $ca.")
