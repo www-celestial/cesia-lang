@@ -399,7 +399,8 @@ end
 defn gathering(t)
   (** The fiber of a tracer's queue: takes what the spans and lines send, keeps queue of them at most (the others
       dropped and counted, never waited for), and hands a batch to a fiber that sends it, every few seconds or once
-      batch wait, one export at a time. *)
+      batch wait, one export at a time. Each is kept encoded, as it will leave, a few hundred bytes, not the map it came
+      as: a queue full of 2,048 spans holds a megabyte, not ten. *)
   spans = []
   logs = []
   next = sys.Now() + t.Every
@@ -416,9 +417,9 @@ defn gathering(t)
       else if value.Len(spans) + value.Len(logs) >= t.Most
         count(t, "Dropped", 1)
       else if dict.Has("Log", v)
-        logs = list.Append(v, logs)
+        logs = list.Append(if t.Protocol == "json" json.Text(jsLog(v)) else bytesOf(2, pbLog(v)) end, logs)
       else
-        spans = list.Append(v, spans)
+        spans = list.Append(if t.Protocol == "json" json.Text(jsSpan(v)) else framed(pbSpan(v)) end, spans)
       end
     end
     if value.IsSome(flush)
@@ -472,11 +473,11 @@ end
 defn shipped(t, spans, logs)
   (** One export of a batch: its spans to /v1/traces, its lines to /v1/logs. *)
   if value.Len(spans) > 0
-    sent = post(t, "/v1/traces", if t.Protocol == "json" json.Text(jsTraces(t, spans)) else pbTraces(t, spans) end)
+    sent = post(t, "/v1/traces", if t.Protocol == "json" jsTraces(t, spans) else pbTraces(t, spans) end)
     count(t, if sent "Spans" else "Dropped" end, value.Len(spans))
   end
   if value.Len(logs) > 0
-    sent = post(t, "/v1/logs", if t.Protocol == "json" json.Text(jsLogs(t, logs)) else pbLogs(t, logs) end)
+    sent = post(t, "/v1/logs", if t.Protocol == "json" jsLogs(t, logs) else pbLogs(t, logs) end)
     count(t, if sent "Logs" else "Dropped" end, value.Len(logs))
   end
 end
@@ -651,7 +652,8 @@ defn pbSpan(s)
   text.Join("", parts)
 end
 
-pbTraces(t, spans) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", list.Flatten([[k2, varint(text.ByteLength(x)), x] for x in [pbSpan(s) for s in spans]])))"))")
+framed(x) = "$k2$(varint(text.ByteLength(x)))$x"                 (* A span as a field of ScopeSpans. *)
+pbTraces(t, spans) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", spans))"))")   (* spans: framed *)
 
 severities = {info: 9, warn: 13, error: 17}
 
@@ -667,7 +669,7 @@ defn pbLog(r)
   text.Join("", parts)
 end
 
-pbLogs(t, logs) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", [bytesOf(2, pbLog(r)) for r in logs]))"))")
+pbLogs(t, logs) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", logs))"))")   (* logs: framed *)
 
 defn pbMetric(t, f, now)
   (** A Metric of OTLP from a family of Families: a counter as a cumulative monotonic Sum, a histogram as a cumulative
@@ -743,7 +745,8 @@ defn jsSpan(s)
   out
 end
 
-jsTraces(t, spans) = {resourceSpans: [{resource: t.Js, scopeSpans: [{scope: {name: "cesia"}, spans: [jsSpan(s) for s in spans]}]}]}
+(* The batches of JSON, written around the spans or lines already written. *)
+jsTraces(t, spans) = "{\"resourceSpans\":[{\"resource\":$(json.Text(t.Js)),\"scopeSpans\":[{\"scope\":{\"name\":\"cesia\"},\"spans\":[$(text.Join(",", spans))]}]}]}"
 
 defn jsLog(r)
   (** A LogRecord of OTLP/JSON. *)
@@ -757,7 +760,7 @@ defn jsLog(r)
   out
 end
 
-jsLogs(t, logs) = {resourceLogs: [{resource: t.Js, scopeLogs: [{scope: {name: "cesia"}, logRecords: [jsLog(r) for r in logs]}]}]}
+jsLogs(t, logs) = "{\"resourceLogs\":[{\"resource\":$(json.Text(t.Js)),\"scopeLogs\":[{\"scope\":{\"name\":\"cesia\"},\"logRecords\":[$(text.Join(",", logs))]}]}]}"
 
 defn jsMetric(t, f, now)
   (** A Metric of OTLP/JSON. *)
