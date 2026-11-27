@@ -1018,7 +1018,11 @@ streams leave with the handshake, before it ends, and the answer comes one round
 packets could send them again, so each ticket serves once (OpenSSL keeps the tickets it gave and takes each back when it
 is used), and a request in 0-RTT that would change something gets `425 Too Early` (RFC 8470), which the client sends
 again after the handshake; a GET is answered at once. A server that takes no 0-RTT, as one restarted since, gets the same
-bytes again after the handshake, and the program sees nothing of it (`tests/quic/early.ce`).
+bytes again after the handshake, and the program sees nothing of it (`tests/quic/early.ce`). The ticket comes after
+the handshake, a round trip after [quic.Dial] gave the connection: a program that closes it at once, and wants 0-RTT the
+next time, first waits for it with `conn.Ticket(timeout)`. And only bytes written before the handshake ends go in
+0-RTT: on the machine's own link, whose round trip is a few microseconds, the handshake may end first, and they go
+after it.
 
 ```cesia norun
 conn = quic.Dial("example.com", 443, quic.Open()!, early = true)!   (* at once, with a ticket of before *)

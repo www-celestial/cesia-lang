@@ -1090,7 +1090,10 @@ nouveau : chaque ticket ne sert donc qu'une fois (OpenSSL garde les tickets qu'i
 sert), et une requête en 0-RTT qui changerait quelque chose reçoit `425 Too Early` (RFC 8470), que le client renvoie
 après le handshake ; un GET reçoit sa réponse aussitôt. Un serveur qui ne prend pas le 0-RTT, comme un serveur redémarré
 entre-temps, reçoit les mêmes octets de nouveau après le handshake, et le programme n'en voit rien
-(`tests/quic/early.ce`).
+(`tests/quic/early.ce`). Le ticket arrive après le handshake, un aller-retour après que [quic.Dial] a donné la
+connexion : un programme qui la ferme aussitôt, et veut le 0-RTT la fois suivante, l'attend d'abord avec
+`conn.Ticket(timeout)`. Et seuls les octets écrits avant la fin du handshake partent en 0-RTT : sur le lien de la machine
+elle-même, dont l'aller-retour se compte en microsecondes, le handshake peut finir avant, et ils partent après lui.
 
 ```cesia norun
 conn = quic.Dial("example.com", 443, quic.Open()!, early = true)!   (* at once, with a ticket of before *)

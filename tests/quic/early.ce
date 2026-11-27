@@ -1,11 +1,14 @@
 (* 0-RTT (RFC 9001, section 4.6): a client that met the server comes back with its ticket and sends its first request
    before the handshake ends (Dial with early); the server answers a GET at once and says it came early (early-data:
    1, RFC 8470), and a POST, which would change something, gets 425 Too Early. A ticket serves once: the next early
-   connection uses the ticket that the last one got. *)
+   connection uses the ticket that the last one got, which Ticket() waits for. The path has a round trip (udp-proxy.py
+   holds the server's datagrams 50 ms): on the machine's own link, with none, the server may end the handshake
+   before the client wrote its requests, which then go after it, as they should. *)
 use std/fiber
 use std/http
 use std/http3
 use std/io
+use std/json
 use std/list
 use std/quic
 use std/result
@@ -52,6 +55,15 @@ defn ask(conn, method, path)
   result.Ok({Status: [f.Value for f in fields if f.Name == ":status"][1], Body: body})
 end
 
+defn proxy(port)
+  (** The relay of udp-proxy.py in front of the server, the server's datagrams held 50 ms. *)
+  p = sys.Start("python3", args = ["-I", "udp-proxy.py", "0", "$port"])?
+  first = sys.ReadOutput(p)?
+  ask(line) = sys.WriteInput(p, "$line\n") then result.AndThen(_ -> sys.ReadOutput(p)) then result.AndThen(json.Parse)
+  ask("delay 50")?
+  result.Ok({Port: text.Number(text.Trim(first)), Stop: () -> sys.Stop(p)})
+end
+
 defn dialed(port, q, early)
   conn = quic.Dial("127.0.0.1", port, q, verify = false, timeout = 3, early = early)?
   control = conn.Open(true)?
@@ -66,19 +78,22 @@ defn main()
   h3 = http3.Server(cert, key, q, port = port)?
   app = http.App() then http.Get("/count", counted) then http.Post("/pay", r -> http.Plain("paid"))
   fiber.Spawn(() -> http.Serve(app, listener = served, wrap = tls.Server(cert, key, tls.Open()?)?, http3 = h3))
-  first = dialed(port, q, false)?
+  path = proxy(port)?
+  first = dialed(path.Port, q, false)?
   io.Print("first", ask(first, "GET", "/count")?)
+  io.Print("ticket", first.Ticket(3))
   first.Close(0)
   for k in 1..2
     (* Both requests at once, before the handshake ends: in 0-RTT. *)
-    again = dialed(port, q, true)?
+    again = dialed(path.Port, q, true)?
     paying = fiber.Spawn(() -> ask(again, "POST", "/pay"))
     got = ask(again, "GET", "/count")?
     paid = fiber.Wait(paying)??
     late = ask(again, "POST", "/pay")?
-    io.Print("early", k, got, paid.Status, "after the handshake", late)
+    io.Print("early", k, got, paid.Status, "after the handshake", late, "ticket", again.Ticket(3))
     again.Close(0)
   end
+  path.Stop()
   result.Ok(missing)
 end
 

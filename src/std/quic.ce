@@ -373,7 +373,7 @@ struct State { Conns, Streams, Cids, Timers, Dirty, Deliver, Fresh, Next, Out, N
     handshake ends (a client's); Ready the streams with bytes to send; Opens the fibers that wait for one more stream;
     Closing the asked close; Shut once closed; Kept the close packet sent, again to each packet of the peer; Sids its
     streams; Cids its connection IDs; Due its time in the heap. *)
-struct Conn { Id, Ptr, Ssl, Octx, User, Ref, Peer, Accepted, Gone, Wait, Alpn, Spawned, Hs, Ready, Opens, Closing, Shut, Kept, Sids, Cids, Due, Told }
+struct Conn { Id, Ptr, Ssl, Octx, User, Ref, Peer, Accepted, Gone, Wait, Alpn, Spawned, Hs, Ready, Opens, Closing, Shut, Kept, Sids, Cids, Due, Told, Ticket }
 
 (** A stream: In the channel of what it read, Chunks the blocks of what it sends until acknowledged, each {Block, Addr,
     Start, Size}; Queued, Sent and Acked offsets of its sending side; Fin asked, FinSent; Waiters the writes waiting
@@ -534,7 +534,7 @@ cidBytes(block) = c.Load(8, c.Get("u64", 0, block), block)   (* The bytes of an 
 defn newConn(e, s, ptr, ssl, octx, user, ref, peer)
   (** The record of a connection just made, and its first time in the heap. *)
   id = c.Get("u64", 0, user)
-  conn = Conn(id, ptr, ssl, octx, user, ref, peer, fiber.Channel(), cell(false), fiber.Channel(size = 1), missing, false, false, [], [], missing, false, missing, dict.Dict(), [], -1, false)
+  conn = Conn(id, ptr, ssl, octx, user, ref, peer, fiber.Channel(), cell(false), fiber.Channel(size = 1), missing, false, false, [], [], missing, false, missing, dict.Dict(), [], -1, false, fiber.Channel(size = 1))
   s.Conns[id] = conn
   s.Hs += 1
   s
@@ -842,6 +842,7 @@ defn event(e, s, ev)
     n = e.Api.EncodeEarly(conn.Ptr, e.Calls.Early, 256)
     if n > 0
       fiber.Remember(e.Origin, {Session: ev.Bytes, Params: c.Load(0, n, e.Calls.Early), Early: ev.Early}, sys.Now() + 3600, e.Api.Tickets)
+      put(true, conn.Ticket)
     end
     return s
   end
@@ -1383,6 +1384,12 @@ defn ended(e, s, id, why)
   end
   conn.Shut = true
   put(true, conn.Gone)
+  (* A client that waits for its ticket hears that none will come, unless one came. *)
+  if result.IsErr(fiber.Receive(conn.Ticket, timeout = 0))
+    fiber.Send(false, conn.Ticket)
+  else
+    put(true, conn.Ticket)
+  end
   if not conn.Hs
     put(failed(why), conn.Wait)
     s.Hs -= 1
@@ -1795,8 +1802,9 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
       Retry, by the token it gave, and its handshake resumes TLS; with early, when it gave a ticket for 0-RTT, Dial
       gives the connection at once, before the handshake ends, and the streams' first bytes go with it, in 0-RTT: a
       server may then refuse a request that changes something (425 Too Early, RFC 8470), and when it takes no 0-RTT
-      at all, the streams' bytes are sent again after the handshake, unseen. Each ticket is used once. It needs
-      OpenSSL and a server, so it has no example here. *)
+      at all, the streams' bytes are sent again after the handshake, unseen. Each ticket is used once; a connection's
+      Ticket(timeout) waits until the server gave the one of the next connection. It needs OpenSSL and a server, so it
+      has no example here. *)
   ctx = api.CtxNew(api.ClientMethod())
   if value.IsMissing(ctx)
     return failed("OpenSSL made no TLS context.")
@@ -1908,6 +1916,7 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
     conn.Alpn = resumed.Alpn
     handle = connection(e, conn)
     handle.Close = code -> ending(e, code, conn.Gone, task)
+    handle.Ticket = timeout -> ticketed(conn.Ticket, timeout)
     return result.Ok(handle)
   end
   waited = fiber.Receive(conn.Wait, timeout = timeout)
@@ -1920,6 +1929,7 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   conn.Alpn = selected(e, ssl)
   handle = connection(e, conn)
   handle.Close = code -> ending(e, code, conn.Gone, task)
+  handle.Ticket = timeout -> ticketed(conn.Ticket, timeout)
   result.Ok(handle)
 end
 
@@ -1959,6 +1969,19 @@ defn resume(e, ssl, ptr, origin, early)
     end
   end
   {Early: on, Alpn: alpn}
+end
+
+defn ticketed(kept, timeout)
+  (** A client's Ticket(timeout): waits until the server gave the ticket that the next connection to it resumes with,
+      in 0-RTT if it allows (TLS 1.3 sends it after the handshake, a round trip after Dial gave the connection, or
+      later): true once it is kept, false when the connection ended without one or timeout seconds passed first. A
+      program that closes a connection at once and wants 0-RTT the next time asks for it first. *)
+  got = fiber.Receive(kept, timeout = timeout)
+  if result.IsErr(got)
+    return false
+  end
+  fiber.Send(got.Value, kept)
+  got.Value
 end
 
 defn ending(e, code, gone, task)
