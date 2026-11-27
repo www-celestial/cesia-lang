@@ -243,6 +243,10 @@ defn blocksAfter(blocks, tokens, indent)
       else if opens
         out = list.Append("k", out)
       end
+    else if t == "else"
+      (* An else comes after the body of an arm: the head of a block is over, even when that body was a ( ) fmt doesn't
+         look into, as in if s 1 else if c (if a 2 else 3 end) else 5 if a else 6 end. *)
+      head = false
     else if head and k > 1 and starts(t) and ends(tokens[k - 1])
       head = false
     end
