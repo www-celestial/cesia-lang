@@ -19,7 +19,9 @@ for profile in ("clean", "d25l1"):
 fr = len(sys.argv) > 3 and sys.argv[3] == "fr"
 names = {
     ("quicgo", "h3", "migrate"): "QUIC, migration (quic-go both sides)",
-    ("cesia", "h3", "migrate"): "QUIC, Cesia's server (OpenSSL: no migration)",
+    ("cesia-bbr", "h3", "migrate"): "QUIC, migration (Cesia's server on ngtcp2)",
+    ("cesia-openssl", "h3", "reconnect"): "QUIC before, a new connection (Cesia on OpenSSL)",
+    ("cesia-bbr", "h3", "reconnect"): "QUIC, a new connection and the rest (Cesia)",
     ("quicgo", "h1", "reconnect"): "TCP, a new connection and Range (Go)",
     ("cesia", "h1", "reconnect"): "TCP, a new connection and the rest (Cesia)",
     ("cesia", "h3", "reconnect"): "QUIC, a new connection and the rest (Cesia)",
@@ -27,7 +29,9 @@ names = {
 if fr:
     names = {
         ("quicgo", "h3", "migrate"): "QUIC, migration (quic-go des deux côtés)",
-        ("cesia", "h3", "migrate"): "QUIC, Cesia (OpenSSL : pas de migration)",
+        ("cesia-bbr", "h3", "migrate"): "QUIC, migration (le serveur de Cesia sur ngtcp2)",
+        ("cesia-openssl", "h3", "reconnect"): "QUIC avant, une nouvelle connexion (Cesia sur OpenSSL)",
+        ("cesia-bbr", "h3", "reconnect"): "QUIC, une nouvelle connexion et le reste (Cesia)",
         ("quicgo", "h1", "reconnect"): "TCP, une nouvelle connexion et Range (Go)",
         ("cesia", "h1", "reconnect"): "TCP, une nouvelle connexion et le reste (Cesia)",
         ("cesia", "h3", "reconnect"): "QUIC, une nouvelle connexion et le reste (Cesia)",
