@@ -1759,6 +1759,15 @@ use std/test
       pow(2.0, 10.0) --> 1024.0
       result.IsErr(c.Fn("cosine", ["f64"], "f64", m)) --> true *)
 
+(** c.Symbol(name, lib)
+    The address of a function of a library, as a pointer: an Ok, or an Err if the library doesn't have it. For a C
+    library that takes a table of function pointers, as the callbacks of ngtcp2, where some of them are another C
+    library's own functions: C then calls C, and Cesia never calls it. Needs the ffi permission, as c.Open.
+
+      m = c.Open("m", version = 6).Value
+      result.IsOk(c.Symbol("cos", m)) --> true
+      result.IsErr(c.Symbol("cosine", m)) --> true *)
+
 (** c.Variadic(name, fixed, rest, ret, lib)
     Binds a function with a variable argument list, like printf: the types of the fixed arguments, then those of the ones used. An Ok of a Cesia function.
 
@@ -1846,7 +1855,8 @@ use std/test
       c.Get("u8", 1, b) --> 105 *)
 
 (** c.Load(offset, size, block)
-    A text of the given number of bytes read from a block at a byte offset.
+    A text of the given number of bytes read from a block at a byte offset, or from a pointer that C gives, as the
+    bytes a callback receives: C knows the size of that memory, and nothing checks the offset, as for c.Get.
 
       b = c.Alloc(8)
       c.Store("hello", 0, b)
