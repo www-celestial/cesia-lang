@@ -720,6 +720,15 @@ end
 wtStream = 65
 wtUni = 84
 
+defn closeOnce(shut, ch)
+  (** Closes a channel the first time only: shut is a cell that says whether it was. *)
+  was = fiber.Receive(shut).Value
+  fiber.Send(true, shut)
+  if not was
+    fiber.Close(ch)
+  end
+end
+
 defn session(st, conn, response, sessions, options)
   (** Runs a session that a handler accepted: its head of 2xx, then response.Session(s), whose s gives Accept(), an Ok
       of the next stream that the page opened in the session (Read, Write, End, Free as quic's), Messages(), the first
@@ -734,25 +743,28 @@ defn session(st, conn, response, sessions, options)
     return st.Free()
   end
   streams = fiber.Channel(size = 16)
+  (* Closed once, by whichever comes first: the handler's Close, the page's end of the CONNECT stream, the return. *)
+  shut = fiber.Channel(size = 1)
+  fiber.Send(false, shut)
   key = "$(st.Id)"
   fiber.Remember(key, streams, sys.Now() + 31536000, sessions)
   s = {Accept: () -> fiber.Receive(streams) then result.MapErr(e -> {Kind: "http", Message: "The session ended."}),
     Messages: () -> fiber.Receive(streams) then result.MapErr(e -> {Kind: "http", Message: "The session ended."}) then result.MapOk(Messages),
-    Close: () -> fiber.Close(streams)}
+    Close: () -> closeOnce(shut, streams)}
   (* The CONNECT stream itself: the page closes the session by ending it (or by a capsule, read and dropped). *)
   watcher = fiber.Spawn() do
     got = st.Read()
     while result.IsOk(got) and got.Value != ""
       got = st.Read()
     end
-    fiber.Close(streams)
+    closeOnce(shut, streams)
   end
   done = fiber.Wait(fiber.Spawn(() -> response.Session(s)))
   if result.IsErr(done)
     log.Error("webtransport: a session stopped", {Error: done.Error})
   end
   fiber.Forget(key, sessions)
-  fiber.Close(streams)
+  closeOnce(shut, streams)
   _ = st.End()
   fiber.Cancel(watcher)
   st.Free()
