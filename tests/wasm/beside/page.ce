@@ -1,0 +1,10 @@
+(* A JavaScript module that js.Call names, js/glue.js, imports others from its own folder: cesia build puts them beside
+   the program too, and the program fetches js/later.js only when glue.js imports it. tools/wasm-test.sh builds it and
+   runs it in Node, and checks that the loader imports only glue.js at the start. *)
+use std/fiber
+use std/io
+use std/js
+
+got = fiber.Channel()
+js.Call("./js/glue.js", "Later", [got])
+io.Print(fiber.Receive(got)!)

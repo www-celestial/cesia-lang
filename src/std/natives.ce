@@ -122,6 +122,29 @@ use std/test
 
       sys.Now() > 0.0 --> true *)
 
+(** sys.Usage()
+    What this process uses: {Cpu, Memory}. Cpu, the seconds of a processor it took since it started, in its own code
+    and in the system's for it, of all its threads: the share of a core over a while is the growth of Cpu over the
+    seconds of that while, as top shows it. Memory, the bytes of its memory in RAM now (its resident set: VmRSS on
+    Linux, the working set on Windows), missing where the system doesn't tell it. Needs no permission: a program learns
+    of itself alone, as Node's process.cpuUsage and process.memoryUsage. A call costs a few microseconds (a read of
+    /proc/self/statm on Linux).
+
+      u = sys.Usage()
+      u.Cpu > 0 --> true
+      value.IsMissing(u.Memory) or u.Memory > 1000000 --> true *)
+
+(** sys.Disk(path)
+    The bytes of the file system that holds a path, in an Ok: {Total, Used, Free}, Free what a program that isn't root
+    may still write, Used what is written, as df counts them (the blocks that root keeps are in neither): from statvfs,
+    GetDiskFreeSpaceEx on Windows. An Err when the path can't be read. Needs the read permission on the path: what a
+    file system holds and how it fills tells of the machine and of other programs, as Node's fs.statfs under its
+    permissions.
+
+      d = sys.Disk(test.Temp()).Value
+      d.Total > 0 and d.Used + d.Free <= d.Total --> true
+      result.IsErr(sys.Disk("$(test.Temp())/none")) --> true *)
+
 (** io.Print(...)
     Writes the texts of its arguments on one line, separated by spaces.
 

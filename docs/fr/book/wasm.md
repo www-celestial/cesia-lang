@@ -367,6 +367,12 @@ Et `index.html`, qui charge le programme :
 `cesia build --target wasm counter.ce`, puis servez le dossier comme pour [le prêt](#un-premier-programme-dans-une-page) :
 trois clics écrivent `3 clicks`, dans Chrome 158 et dans Firefox 160.
 
+*Un module qui vient plus tard.* Un module à côté du programme peut en importer d'autres de son propre dossier, comme
+`import('./more.js')` ou `import { f } from './more.js'` : `cesia build` les met aussi à côté du programme. Le loader
+n'importe au départ que les modules que `js.Call` nomme ; un module qu'ils importent par `import()` est demandé quand
+cette ligne s'exécute, et une page qui ne l'exécute jamais ne le demande jamais. Le `ceres.js` de Ceres prend ainsi la
+police de ses icônes, la première fois qu'une page dessine une icône : 32 Ko qu'une page sans icônes ne charge pas.
+
 *Le WebSocket.* Dans un programme compilé vers WebAssembly, [websocket.Dial], `websocket.Send` et `websocket.Close`
 sont le WebSocket de la page, ou de Node, par `cesia:websocket`, avec les mêmes arguments et résultats : `Dial` donne un
 `Conn` dont `Messages` reçoit chaque message, et qui se ferme quand la connexion finit. Le navigateur fait le handshake
