@@ -483,7 +483,7 @@ defn fresh()
   State(dict.Dict(), dict.Dict(), dict.Dict(), heap.Empty(), dict.Dict(), dict.Dict(), [], 1, 0, 0, 0, false)
 end
 
-ccOf(name) = if name == "bbr" 2 else if name == "reno" 0 else 1 end   (* NGTCP2_CC_ALGO_*: CUBIC otherwise. *)
+ccOf(name) = if name == "cubic" 1 else if name == "reno" 0 else 2 end   (* NGTCP2_CC_ALGO_*: BBR otherwise. *)
 
 defn settings(e, s, timeout)
   (** ngtcp2_settings of version 1: its congestion control, its time, the windows it may grow to (auto-tuned from the
@@ -1546,6 +1546,13 @@ defn run(e, s)
       s = stops(s)
     end
     wait = if s.Again 0 else if heap.IsEmpty(s.Timers) missing else list.Max(0, heap.Peek(s.Timers).Key - clock(e, s.Now)) / 1000000000.0 end
+    if not value.IsMissing(wait) and wait > 0 and wait < 0.001
+      (* The loop of sockets counts its timers in milliseconds: a timer sooner than that, as the pacing of a fast link
+         between two bursts, would wait a whole millisecond. The engine gives the other fibers their turn and comes
+         back. *)
+      wait = 0
+      s.Again = true
+    end
     if e.Server and not stopped
       (* The stop signal is looked at four times a second at least. *)
       wait = if value.IsMissing(wait) 0.25 else list.Min(wait, 0.25) end
@@ -1710,14 +1717,16 @@ end
 
 (* Servers and clients. *)
 
-defn Server(certificate, key, api, port = 443, host = "127.0.0.1", alpn = ["h3"], validate = true, congestion = "cubic")
+defn Server(certificate, key, api, port = 443, host = "127.0.0.1", alpn = ["h3"], validate = true, congestion = "bbr")
   (** A QUIC listener on a UDP port, for Serve: certificate and key are the paths of PEM files, as tls.Server takes, api
       what Open gave, and alpn the protocols it speaks, in the order it prefers them (RFC 7301): a client that offers
       none of them is refused during the handshake. port 0 lets the system choose one: Port gives it. With validate, a
       client proves that it owns its address before the server sends more than three times what it received (RFC 9000,
-      section 8.1): a Retry packet, which costs a round trip; validate = false saves it, only for tests. congestion is
-      "cubic" (RFC 9438), "bbr" or "reno" (RFC 9002), how fast it sends as the path allows. An Err when a file can't be
-      read or the port is taken. It needs OpenSSL, so it has no example here. *)
+      section 8.1): a Retry packet, which costs a round trip, spared to a client that comes back with the token it was
+      given; validate = false saves it, only for tests. congestion is how fast it sends as the path allows: "bbr" (BBR,
+      version 3, which measures the path and doesn't take each loss for congestion), "cubic" (RFC 9438) or "reno" (RFC
+      9002); BBR was the fastest on every link measured (the chapter HTTP). An Err when a file can't be read or the port
+      is taken. It needs OpenSSL, so it has no example here. *)
   ctx = api.CtxNew(api.ServerMethod())
   if value.IsMissing(ctx)
     return failed("OpenSSL made no TLS context.")
@@ -1777,7 +1786,7 @@ end
 
 Close(server) = close(server.Engine)   (** Stops a listener: Serve returns at its next pass. *)
 
-defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout = 10, peer = missing, congestion = "cubic", early = false)
+defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout = 10, peer = missing, congestion = "bbr", early = false)
   (** Connects to a QUIC server and makes the handshake within timeout seconds: an Ok of the connection, as Serve gives
       one to a server, or an Err. The server's certificate is checked as tls.Client checks it, against the system's
       authorities or those of the PEM file ca, and must name host; verify = false takes any, only for tests. peer is

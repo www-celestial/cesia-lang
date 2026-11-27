@@ -994,7 +994,7 @@ defn count(state, key, step)
   fiber.Remember(key, (if value.IsMissing(now) 0 else now end) + step, 2, state)
 end
 
-defn Server(certificate, key, api, port = 443, host = "127.0.0.1", validate = true, congestion = "cubic")
+defn Server(certificate, key, api, port = 443, host = "127.0.0.1", validate = true, congestion = "bbr")
   (** What http.Serve takes as http3 to serve HTTP/3 beside TCP: a QUIC listener on UDP port, which may be the TCP port
       of HTTPS, as browsers look for it (Alt-Svc, RFC 7838: Serve tells every response of TCP). certificate, key and
       validate are as quic.Server takes them, and congestion, the control of how fast it sends, api what quic.Open gave. An Err when OpenSSL has no QUIC server, a file
