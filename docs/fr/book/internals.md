@@ -206,6 +206,73 @@ dictionnaire de clés et de valeurs). Chaque endroit du code qui lit un champ, c
 le code, pour une seule forme. Quand la valeur suivante a la même forme, comme presque toujours dans une boucle, la
 lecture est une comparaison et un chargement. Une forme est décrite dans [Les valeurs en mémoire](#les-valeurs-en-mémoire).
 
+Le même cache sert [dict.Get], [dict.Has] et [dict.GetOr] quand leur clé est écrite dans le code, comme
+`dict.Has("Done", out)` : l'appel garde les clés de la dernière map rencontrée et la place de la clé parmi elles, comme
+le Smalltalk-80 de Deutsch et Schiffman gardait la dernière classe à chaque appel (POPL 1984), ou la marque qu'elle n'y
+est pas, qui tient pour des clés faites entières, celles d'un littéral, d'une native ou de JSON, qu'aucune map ne fait
+grandir sur place et que toute map qui les porte porte toutes. Une map d'autres clés, une map profonde ou une valeur qui
+n'est pas une map va à la native, comme avant. La native calculait le hash de la clé et la cherchait à chaque appel, et
+faisait un tableau de ses arguments et une option pour sa réponse : dans une boucle, `dict.Has` prenait 567 instructions
+et 396 cycles du processeur par appel, 212 et 66 désormais.
+
+Une condition qui est un test de std/value, comme `if value.IsMissing(x)`, exécute le test en ligne (inline, sans appel
+de fonction) : les natives de std/value gardent leur test par native (`Native.tests`), donc l'interpréteur exécute la
+fonction même que la native exécute, sans appel, sans tableau d'arguments et sans booléen entre les deux, et ce que dit
+un test n'est écrit qu'une fois. `==` et `!=` entre deux textes les comparent là où deux nombres sont comparés, sans le
+chemin lent qui compare aussi une liste case par case.
+
+### Une requête de Centauri, comptée
+
+Centauri, un framework de Cesia, répond à ses requêtes par sa porte, sa session, ses limites et son log. Son
+`bench/micro.ce` y répond dans le processus, sans le réseau ; un cas à la fois, une copie instrumentée de l'interpréteur
+a compté ce que fait une requête, et un profiler (un outil qui relève où un programme passe son temps), qui
+échantillonne le processus et remonte ses frames par leurs *frame pointers* (les pointeurs de frame, qu'OCaml 5 garde
+quand il est construit avec `+fp`) a donné où va son temps. Le `/hello` public fait 30 frames, dont 23 appels d'une
+fonction connue et 7 appels à travers une valeur, 89 lectures de champ, toutes trouvées dans leur cache, 78 appels de
+natives (24 de `value.IsMissing`, 9 de `value.Len`, 6 de `dict.Has`, 4 de `dict.Get`), 6 maps écrites en littéraux, de 7
+à 19 champs, et 3 textes faits de morceaux, et aucune closure. Les closures de l'interpréteur prenaient 54 % de son
+temps, réparties sur toutes leurs sortes, les lectures de champ 7 % ; les natives 40 %, dont `metrics.Add` 4,4 %, et
+`dict.Has`, `Get` et `GetOr` 5,9 % ensemble ; le collector 5 %. Sous charge, derrière [http.Serve], chaque requête
+exécutait aussi son handler dans une fiber dont les stacks grandissaient quatre fois ([Ce qu'il sert](#ce-quil-sert)),
+et cherchait deux fois une fin de ligne dans chaque ligne des headers de sa réponse.
+
+Ce qui a changé, chaque changement mesuré seul, en instructions de l'espace utilisateur par requête, que donnent les
+compteurs du processeur (`perf_event_open`) et que les autres travaux de la machine ne déplacent pas, le cas exécuté
+20 000 fois moins le même programme qui ne l'exécute pas :
+
+| Changement | `/hello` public | Une chose par son id, connecté |
+|---|---:|---:|
+| le binaire de main d'avant | 82 700 | 117 700 |
+| une réservation de mémoire ne fait pas de division ([La mémoire](#la-mémoire-et-le-garbage-collector)) | −2 100 | −600 |
+| `dict.Get`, `Has` et `GetOr` d'une clé écrite dans le code, par un cache | −5 800 | −7 700 |
+| `metrics.Add` retrouve sa série par son nom et ses labels | −5 800 | −5 700 |
+| `==` et `!=` entre deux textes en ligne | −2 800 | −3 400 |
+| les tests de std/value en ligne dans une condition | −4 100 | −2 200 |
+| désormais | **62 700** | **96 400** |
+
+Une requête de [std/http] seul, le même `/hello` sans rien autour, prend 14 500 au lieu de 19 000 ; une page de 20
+choses par Centauri 508 800 au lieu de 535 500, car la requête de Cepheus y domine. Les mots qu'une requête fait pour le
+collector sont passés de 1 415 à 1 008 pour la publique et de 2 288 à 1 675 pour celle d'un utilisateur connecté (les
+compteurs d'OCaml, `OCAMLRUNPARAM=v=0x400`).
+
+```cesia allow=read,write
+use std/plot
+
+cases = ["std/http alone", "Centauri, public", "Centauri, signed in"]
+counted = plot.Bars(cases, [[19.0, 82.7, 117.7], [14.5, 62.7, 96.4]], label = ["before", "now"],
+  color = ["#999999", "#3a5ad9"])
+request = plot.Of([counted], title = "A request in the process: thousands of instructions", x = "request",
+  y = "thousands of instructions", size = [640, 360])
+plot.Save(request, "internals-request.svg") -->
+```
+
+L'interpréteur prend encore plus de la moitié d'une requête, à aucun endroit en particulier. Dans une boucle, `if r.B ==
+2` prend 83 instructions de plus que `if k > 0`, un appel d'une fonction connue 111 de plus et un appel à travers une
+valeur 252 de plus : chaque nœud de l'arbre est une closure, un appel d'OCaml par un pointeur, et une requête en exécute
+quelques milliers. Le code machine ne prendrait cette part que là où il appelle OCaml moins souvent qu'il ne calcule
+([Ce qui reste dans l'interpréteur](#ce-qui-reste-dans-linterpréteur)) : le code de Centauri appelle une native toutes
+les deux à quatre opérations.
+
 ## Les valeurs en mémoire
 
 Chaque valeur de Cesia est une valeur d'un seul type OCaml, `Types.t` dans `src/lib/types.mli`, une *tagged union* (une
@@ -1202,6 +1269,14 @@ opérations de floats prend 27 ns par tour en code machine et 137 dans l'interpr
 ses appels de natives ; sinon l'interpréteur la garde, et `CESIA_JIT_SHOW=1` dit combien il en a comptées. Une boucle
 faite seulement de tels appels reste où elle était.
 
+Mesuré de nouveau le 2026-11-27 avec les compteurs de cycles de l'espace utilisateur du processeur : un tour d'une
+boucle de `k` multiplications et additions de floats et d'un appel de `value.Equal`, que le code machine fait à travers
+OCaml, prend 96 + 18,5 `k` cycles dans l'interpréteur et 206 + 8,5 `k` en code machine, le meilleur de 3 runs pour
+chaque `k` de 0, 4, 8, 16, 24, 32 et 48. Les deux se rejoignent à `k` = 11, que l'unité compte comme 25 opérations : 24
+reste la règle. [json.Text] et [list.Concat] restent des appels à travers OCaml : les deux font une nouvelle valeur, que
+le code machine ne sait pas faire seul, et leur propre travail, 1 800 et 1 400 instructions pour une map d'un champ et
+des listes de 1 et 2, est ce que dépense une boucle qui les appelle, l'appel de l'interpréteur autour 170.
+
 Mesuré le 2026-11-26, profil `release`, 21 exécutions de chacun en alternance avec le binaire de main, le processus
 entier, pendant que d'autres travaux tournaient sur la machine (charge 6,3 à 9,4) ; la médiane, puis l'exécution la plus
 rapide et la plus lente, en ms :
@@ -1648,6 +1723,18 @@ gardés dans un arbre équilibré ordonné par leur temps, qui compare désormai
 passer par la comparaison générique d'OCaml. Ces deux changements ont rendu la toute petite route un cinquième plus
 rapide, et la route JSON 14 % plus rapide que le binaire d'avant.
 
+Une fiber qui finit donne désormais ses trois stacks à la prochaine fiber qui doit grandir, qui les prend au lieu de
+faire les siennes : la fiber d'une requête les faisait grandir quatre fois, de 8 entrées à 144, 800 mots et une douzaine
+d'appels de C à chaque requête. Au plus 8 jeux attendent, de 4 096 entrées au plus, chacun vidé de ses valeurs quand il
+est donné, pour que rien ne reste vivant à travers lui ; une fiber qui ne grandit jamais, comme les milliers que les
+connexions inactives d'un serveur mettent en attente, garde ses 8 entrées. Une fiber lancée puis attendue qui descend à
+20 appels de profondeur prenait 18 660 instructions et 875 mots, 8 940 et 150 désormais. Une réponse cherche ensuite
+deux fois une fin de ligne dans chaque ligne de ses headers : la recherche d'un octet va huit octets à la fois sans
+faire de closure, puis relit les huit derniers, 240 cycles pour une ligne de 62 octets au lieu de 686. Et [metrics.Add]
+garde les séries de ses 16 derniers appels, retrouvées par le même nom et les mêmes labels, les mêmes clés et les mêmes
+valeurs simples, qu'il copie : le texte des labels d'une route et deux recherches dans des tables prenaient 5 900
+instructions, 630 désormais.
+
 À 1 000 connexions gardées ouvertes, un cœur sert 1 000 fibers à tour de rôle, et la *Little's law* (la loi de Little)
 fixe le plancher de la latence : un serveur qui répond à $\lambda$ requêtes par seconde avec $L$ d'entre elles en
 attente répond à chacune en $L / \lambda$ en moyenne, $1\,000 / 36\,200\ \text{s} = 27{,}6\ \text{ms}$ ici, donc son
@@ -1702,11 +1789,14 @@ l'atteignent jamais.
 
 Les grandes allocations sont comptées quand elles sont réservées, puisque le compte qu'OCaml fait de son heap ne les
 voit qu'à son cycle suivant, et le heap est regardé une fois chaque fois que leur compte depuis le dernier checkpoint
-complet ou la dernière collection complète passe un quart de la limite. Jusqu'au 25 novembre 2026, il l'était à chaque
-réservation passé le premier quart, et un serveur, dont les fibers de requêtes n'atteignent jamais de checkpoint
-complet, payait le compte d'OCaml, `Gc.quick_stat`, à chacune : après quelques minutes de service, du tiers à la moitié
-de son temps, sa route plaintext tombée de 29 300 à 14 900 requêtes par seconde (piles du processus échantillonnées
-avec `eu-stack`, 12 tours de 19 minutes alternés avec un serveur Go comme témoin).
+complet ou la dernière collection complète passe un quart de la limite ; sous le premier quart, une réservation ne fait
+aucune division, là où deux divisions du processeur et le `max` polymorphe d'OCaml, un appel de la comparaison de C,
+prenaient un quart de chaque texte fait de morceaux (une boucle qui fait `"$(a)\r\n"` prend 471 instructions par tour au
+lieu de 598). Jusqu'au 25 novembre 2026, il l'était à chaque réservation passé le premier quart, et un serveur, dont les
+fibers de requêtes n'atteignent jamais de checkpoint complet, payait le compte d'OCaml, `Gc.quick_stat`, à chacune :
+après quelques minutes de service, du tiers à la moitié de son temps, sa route plaintext tombée de 29 300 à 14 900
+requêtes par seconde (piles du processus échantillonnées avec `eu-stack`, 12 tours de 19 minutes alternés avec un
+serveur Go comme témoin).
 
 Le travail sur des arrays et des colonnes entières de [std/num], [std/frame] et [std/sql] tourne sur plusieurs cœurs, à
 travers les *domains* d'OCaml 5, ses threads du système : la moitié des cœurs logiques, 16 au plus, sauf si

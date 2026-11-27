@@ -191,6 +191,69 @@ the last *shape* it met and the place of the field in it, a *monomorphic inline 
 shape, as it nearly always does in a loop, the read is one comparison and one load. A shape is described in
 [Values in memory](#values-in-memory).
 
+The same cache serves [dict.Get], [dict.Has] and [dict.GetOr] when their key is written in the code, as
+`dict.Has("Done", out)`: the call keeps the keys of the last map it met and the place of the key in them, as Deutsch and
+Schiffman's Smalltalk-80 kept the last class at each call (POPL 1984), or the mark that they lack it, which holds for
+keys made whole, those of a literal, a native or JSON, which no map grows in place and which every map that holds them
+holds all of. A map of other keys, a deep map or a value that isn't a map goes to the native, as before. The native
+hashed the key and searched for it at each call, and made an array of its arguments and an option for its answer: in a
+loop, `dict.Has` took 567 instructions and 396 cycles of the processor a call, 212 and 66 now.
+
+A condition that is a test of std/value, as `if value.IsMissing(x)`, runs the test inline: the natives of std/value keep
+their test by native (`Native.tests`), so the interpreter runs the very function that the native runs, with no call, no
+array of arguments and no boolean between, and what a test says is written once. `==` and `!=` of two texts compare them
+where two numbers are compared, without the slow path that also compares a list cell by cell.
+
+### A request of Centauri, counted
+
+Centauri, a framework of Cesia, answers its requests through its door, its session, its limits and its log. Its
+`bench/micro.ce` answers them in the process, without the network; one case at a time, an instrumented copy of the
+interpreter counted what a request does, and a profiler that samples the process and walks its frames by their
+*frame pointers* (OCaml 5 built with `+fp`) gave where its time goes. The public `/hello` makes 30 frames, 23 of them
+calls of a known function and 7 calls through a value, 89 field reads, every one a hit of its cache, 78 calls of
+natives (24 of `value.IsMissing`, 9 of `value.Len`, 6 of `dict.Has`, 4 of `dict.Get`), 6 maps written as literals, of
+7 to 19 fields, and 3 texts of parts, and no closure. The interpreter's closures took 54% of its time, spread over
+every kind of them, field reads 7%; the natives 40%, among them `metrics.Add` 4.4%, and `dict.Has`, `Get` and `GetOr`
+5.9% together; the collector 5%. Under load, behind [http.Serve], each request also ran its handler in a fiber whose
+stacks grew four times ([What it serves](#what-it-serves)), and checked each line of its response's headers for a line
+end twice.
+
+What changed, each measured alone, in instructions of user space a request, which the processor's counters give
+(`perf_event_open`) and which other work on the machine doesn't move, the case run 20,000 times less the same program
+run with none:
+
+| Change | Public `/hello` | A thing by its id, signed in |
+|---|---:|---:|
+| main's binary before | 82,700 | 117,700 |
+| a reservation of memory makes no division ([Memory](#memory-and-the-garbage-collector)) | −2,100 | −600 |
+| `dict.Get`, `Has` and `GetOr` of a key written in the code, through a cache | −5,800 | −7,700 |
+| `metrics.Add` finds its series again by its name and labels | −5,800 | −5,700 |
+| `==` and `!=` of two texts inline | −2,800 | −3,400 |
+| the tests of std/value inline in a condition | −4,100 | −2,200 |
+| now | **62,700** | **96,400** |
+
+A request of [std/http] alone, the same `/hello` with nothing around it, takes 14,500 instead of 19,000; a page of 20
+things through Centauri 508,800 instead of 535,500, as Cepheus's query dominates it. The words that a request makes for
+the collector went from 1,415 to 1,008 for the public one and from 2,288 to 1,675 for the signed one (OCaml's counters,
+`OCAMLRUNPARAM=v=0x400`).
+
+```cesia allow=read,write
+use std/plot
+
+cases = ["std/http alone", "Centauri, public", "Centauri, signed in"]
+counted = plot.Bars(cases, [[19.0, 82.7, 117.7], [14.5, 62.7, 96.4]], label = ["before", "now"],
+  color = ["#999999", "#3a5ad9"])
+request = plot.Of([counted], title = "A request in the process: thousands of instructions", x = "request",
+  y = "thousands of instructions", size = [640, 360])
+plot.Save(request, "internals-request.svg") -->
+```
+
+The interpreter still takes more than half of a request, in no one place. In a loop, `if r.B == 2` takes 83 instructions
+more than `if k > 0`, a call of a known function 111 more and a call through a value 252 more: each node of the tree is
+a closure, a call of OCaml through a pointer, and a request runs some thousands of them. Machine code would take that
+share only where it calls OCaml less often than it computes ([What stays in the
+interpreter](#what-stays-in-the-interpreter)): Centauri's code calls a native every two to four operations.
+
 ## Values in memory
 
 Every value of Cesia is a value of one OCaml type, `Types.t` in `src/lib/types.mli`, a *tagged union*: a word that is
@@ -1070,6 +1133,14 @@ interpreter, and 200 and 210 with a call of `dict.Has` in each turn. So a unit i
 least 24 operations for each of its calls of natives; else the interpreter keeps it, and `CESIA_JIT_SHOW=1` says how
 many it counted. A loop made only of such calls stays where it was.
 
+Measured again on 2026-11-27 with the processor's counters of cycles of user space: a turn of a loop of `k`
+multiplications and additions of floats and one call of `value.Equal`, which machine code makes through OCaml, takes 96
++ 18.5 `k` cycles in the interpreter and 206 + 8.5 `k` in machine code, the best of 3 runs at each `k` of 0, 4, 8, 16,
+24, 32 and 48. The two meet at `k` = 11, which the unit counts as 25 operations: 24 stays the rule. [json.Text] and
+[list.Concat] stay calls through OCaml: both make a new value, which machine code can't make by itself, and their own
+work, 1,800 and 1,400 instructions for a map of one field and lists of 1 and 2, is what a loop of them spends, the
+interpreter's call around them 170.
+
 Measured on 2026-11-26, `release` profile, 21 runs of each alternated with main's binary, the whole process, while
 other work ran on the machine (load 6.3 to 9.4); the median, then the fastest and the slowest run, in ms:
 
@@ -1467,6 +1538,17 @@ request, are kept in a balanced tree ordered by their time, which now compares a
 through OCaml's generic comparison. Both made the tiny route a fifth faster and the JSON route 14 % faster than the
 binary before.
 
+A fiber that ends now gives its three stacks to the next fiber that must grow, which takes them instead of making its
+own: a request's fiber grew them four times, from 8 entries to 144, 800 words and a dozen calls of C at each request. At
+most 8 sets wait, of 4,096 entries at most, each emptied of its values as it is given, so that nothing stays alive
+through it; a fiber that never grows, as the thousands that a server's idle connections park, keeps its 8 entries. A
+fiber spawned and waited for that recurses 20 calls deep took 18,660 instructions and 875 words, 8,940 and 150 now. A
+response then checks each line of its headers for a line end, twice: a search of one byte goes eight bytes at a time
+with no closure made, then reads the last eight again, 240 cycles for a line of 62 bytes instead of 686. And
+[metrics.Add] keeps the series of its last 16 calls, found again by the same name and the same labels, the same keys and
+the same plain values, which it copies: the text of a route's labels and two lookups in tables took 5,900 instructions,
+630 now.
+
 At 1,000 kept connections, one core serves 1,000 fibers in turn, and *Little's law* sets the floor of the latency: a
 server that answers $\lambda$ requests a second with $L$ of them waiting answers each in $L / \lambda$ on average,
 $1{,}000 / 36{,}200\ \text{s} = 27.6\ \text{ms}$ here, so its 99th percentile can't come under that until it answers
@@ -1515,11 +1597,14 @@ before each large allocation, and at each megabyte of a text that values are wri
 if the memory still in use is past the limit: garbage alone never reaches it.
 
 The large allocations are counted as they are reserved, since OCaml's count of its heap sees them only at its next
-cycle, and the heap is looked at once each time their count since the last full checkpoint or full collection crosses
-a quarter of the limit. Until 2026-11-25 it was looked at at every reservation past the first quarter, and a server,
-whose request fibers never reach a full checkpoint, paid OCaml's count, `Gc.quick_stat`, at each one: after a few
-minutes of serving, a third to a half of its time, its plaintext route down from 29,300 to 14,900 requests a second
-(stacks of the process sampled with `eu-stack`, 12 rounds of 19 minutes alternated with a Go server as the control).
+cycle, and the heap is looked at once each time their count since the last full checkpoint or full collection crosses a
+quarter of the limit; below the first quarter, a reservation makes no division, where two divisions of the processor and
+OCaml's polymorphic `max`, a call of C's comparison, took a quarter of each text made of parts (a loop that makes
+`"$(a)\r\n"` takes 471 instructions a turn instead of 598). Until 2026-11-25 it was looked at at every reservation past
+the first quarter, and a server, whose request fibers never reach a full checkpoint, paid OCaml's count,
+`Gc.quick_stat`, at each one: after a few minutes of serving, a third to a half of its time, its plaintext route down
+from 29,300 to 14,900 requests a second (stacks of the process sampled with `eu-stack`, 12 rounds of 19 minutes
+alternated with a Go server as the control).
 
 The work on whole arrays and columns of [std/num], [std/frame] and [std/sql] runs on several cores, through OCaml 5's
 *domains*, its system threads: half the logical cores, at most 16, unless `CESIA_CORES` says otherwise. A small array

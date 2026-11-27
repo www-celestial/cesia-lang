@@ -532,9 +532,28 @@
 - A loop compiled to WebAssembly runs 1.7 times faster in Firefox when it is called often, as the inner loop of
   `mandel`, 133 ms to 76: its chunk counts its fuel and its caller refuels, where a call after the loop, its variables
   alive across it, made Firefox's Ion keep them in memory through the whole loop.
+- A request of Centauri costs a quarter less in the interpreter: `dict.Get`, `Has` and `GetOr` of a key written in the
+  code read through an inline cache of the map's keys at the call, as a field does, which also holds that keys made
+  whole lack the key (`dict.Has` in a loop: 567 instructions a call, now 212); a condition that is a test of std/value,
+  as `value.IsMissing`, runs the native's own test inline, with no call; `==` and `!=` of two texts compare them
+  directly; `metrics.Add` and `Observe` find the series of their last 16 calls again by their name and labels (5,900
+  instructions, now 630); a reservation of memory makes no division below the first quarter of the limit, where two
+  divisions and OCaml's polymorphic `max` took a quarter of each text of parts. In the process, Centauri's public
+  request takes 62,700 instructions instead of 82,700, a signed one 96,400 instead of 117,700, `std/http`'s alone 14,500
+  instead of 19,000, with a quarter fewer words for the collector. Behind the server, a fiber that ends gives its stacks
+  to the next one that grows, as a request's fiber grew them four times (a fiber spawned and waited for, 20 calls deep:
+  18,660 instructions, now 8,940), and a search of one byte goes eight bytes at a time with no closure made
+  (`text.Contains` of a line end in a header: 686 cycles, now 240). `bench/maps.ce` makes 7% fewer instructions,
+  `real/csv` 3%, the others and the start-up as before. The book's How Cesia works counts the request and measures the
+  JIT's rule of operations against calls of OCaml again (24 stays); Speed sets `/hello` beside Go, Node and Jetty, in
+  English and in French; `tests/lang/dict-keyed`, `tests/lang/text-find-byte` and `tests/net/metrics-labels` check each
+  new path against the natives.
 
 ### Fixes
 
+- Compiled to WebAssembly, `dict.GetOr` shares the default it gives back, as the native does: a list given as the
+  default, then written through the result, changed the variable it came from too (`[9, 2] [9, 2]` where `cesia run`
+  prints `[1, 2] [9, 2]`); `tests/lang/dict-keyed` found it under `tools/wasm-test.sh`.
 - A program gives the same floats on arm64 as on x86-64 and in WebAssembly. OCaml 5.5 compiles, on arm64 only, a product
   written inside an add or a sub into one fused instruction (fmadd, fmsub, fnmsub), which rounds once where the others
   round twice: `tests/jit/values-inlined.ce`, which looks for the root of `x * x - 2.0` with the interpreter's
