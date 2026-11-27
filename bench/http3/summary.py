@@ -5,6 +5,7 @@ Reads the JSON lines that rps.sh, download.sh, memory.sh, ab.sh and migrate.sh w
 by default) and prints Markdown tables."""
 
 import json
+import math
 import os
 import statistics
 import sys
@@ -35,6 +36,28 @@ def mmm(values, fmt="{:.0f}"):
 
 def load1(rows):
     return mmm([float(r["loadavg"].split()[0]) for r in rows if "loadavg" in r], "{:.1f}")
+
+
+def wilcoxon(ratios):
+    """The two-sided p of Wilcoxon's signed-rank test on the logarithms of paired ratios (normal approximation, ties
+    averaged): is one side faster in the rounds, beyond what the noise shared by both sides of a round explains?"""
+    d = [math.log(r) for r in ratios if r != 1]
+    n = len(d)
+    if n < 6:
+        return float("nan")
+    ranked = sorted(abs(x) for x in d)
+    rank = {}
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and ranked[j + 1] == ranked[i]:
+            j += 1
+        for k in range(i, j + 1):
+            rank[ranked[k]] = (i + j) / 2 + 1
+        i = j + 1
+    w = sum(rank[abs(x)] for x in d if x > 0)
+    mu, sd = n * (n + 1) / 4, math.sqrt(n * (n + 1) * (2 * n + 1) / 24)
+    return math.erfc(abs(w - mu) / sd / math.sqrt(2))
 
 
 def table(head, rows):
@@ -127,7 +150,7 @@ def ab():
         by[d["round"]][d["binary"]] = d["rps"]
     ratios = [v["quic"] / v["main"] for v in by.values() if "quic" in v and "main" in v]
     if ratios:
-        print(f"quic / main req/s, paired by round: {mmm(ratios, '{:.3f}')}\n")
+        print(f"quic / main req/s, paired by round: {mmm(ratios, '{:.3f}')}, Wilcoxon p = {wilcoxon(ratios):.2g}\n")
 
 
 def h3off():
@@ -146,7 +169,7 @@ def h3off():
         by[d["round"]][d["http3"]] = d["rps"]
     ratios = [v["on"] / v["off"] for v in by.values() if "on" in v and "off" in v]
     if ratios:
-        print(f"on / off req/s, paired by round: {mmm(ratios, '{:.3f}')}\n")
+        print(f"on / off req/s, paired by round: {mmm(ratios, '{:.3f}')}, Wilcoxon p = {wilcoxon(ratios):.2g}\n")
 
 
 def migrate():

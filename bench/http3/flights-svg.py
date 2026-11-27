@@ -76,6 +76,7 @@ for i, (label, counts, med) in enumerate(series):
     ly = T + 14 + i * 34
     o.append(f'<rect x="{W - R + 14}" y="{ly - 9}" width="14" height="4" rx="2" fill="{colors[i]}"/>')
     o.append(f'<text x="{W - R + 34}" y="{ly - 3}">{label}</text>')
-    o.append(f'<text class="s" x="{W - R + 34}" y="{ly + 12}">{med / 1000:.2f} s</text>')
+    secs = f"{med / 1000:.2f}"
+    o.append(f'<text class="s" x="{W - R + 34}" y="{ly + 12}">{secs.replace(".", ",") if fr else secs} s</text>')
 o.append('</svg>')
 open(sys.argv[1], "w").write("\n".join(o) + "\n")

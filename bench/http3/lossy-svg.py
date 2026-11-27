@@ -1,17 +1,23 @@
-# The picture of a lossy download, from the measures of stacks.sh and lossy.sh: one download of 1 MB on a new connection
-# over 25 ms each way and 1 % lost, for each QUIC stack (and TCP), the median of the rounds and the line from the least
-# to the most. python3 -I lossy-svg.py OUT.svg [fr] RESULTS.jsonl...
+# The picture of a lossy download, from the measures of stacks.sh (and of every stack with the profile d25l1r20): one
+# download of 1 MB on a new connection over 25 ms each way and 1 % lost (d25l1), or the same through a bottleneck of
+# 20 Mbit/s (d25l1r20), for each QUIC stack (and TCP), the median of the rounds and the line from the least to the
+# most; the profile is the one of the results. python3 -I lossy-svg.py OUT.svg [fr] RESULTS.jsonl...
 import json, statistics, sys
 
 fr = len(sys.argv) > 2 and sys.argv[2] == "fr"
 files = sys.argv[3:] if fr else sys.argv[2:]
 rows = {}
+profiles = set()
 for f in files:
     for line in open(f):
         m = json.loads(line)
         if "ms" not in m or m.get("errors"):
             continue
         rows.setdefault((m["server"], m["proto"]), []).append(m["ms"] / 1000)
+        profiles.add(m.get("profile", "d25l1"))
+if len(profiles) != 1:
+    sys.exit(f"one profile at a time, not {sorted(profiles)}")
+profile = profiles.pop()
 
 names = {
     ("cesia", "h3"): ("Cesia, HTTP/3 (OpenSSL 4.1's QUIC)", "Cesia, HTTP/3 (le QUIC d’OpenSSL 4.1)"),
@@ -26,13 +32,28 @@ names = {
     ("cesia", "h1"): ("Cesia, HTTP/1.1 over TCP (Linux CUBIC)", "Cesia, HTTP/1.1 sur TCP (CUBIC de Linux)"),
 }
 picked = [(names[k][1 if fr else 0], k, sorted(rows[k])) for k in names if k in rows]
-T = {"title": ("Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % des paquets perdus" if fr else
-               "A download of 1 MB, 25 ms each way, 1 % of the packets lost"),
+TITLE = {"d25l1": ("A download of 1 MB, 25 ms each way, 1 % of the packets lost",
+                   "Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % des paquets perdus"),
+         "d25l1r20": ("A download of 1 MB, 25 ms each way, 1 % lost, 20 Mbit/s at most",
+                      "Un téléchargement de 1 Mo, 25 ms dans chaque sens, 1 % perdu, 20 Mbit/s au plus")}
+FOOT = {"d25l1": ("OpenSSL's QUIC: NewReno alone, whose window grows here by one packet every 2 to 5 round trips, packets of 1,200 bytes, no pacing.",
+                  "Le QUIC d’OpenSSL : NewReno seul, dont la fenêtre ne grandit ici que d’un paquet tous les 2 à 5 allers-retours, des paquets de 1 200 octets, sans pacing."),
+        "d25l1r20": ("A bottleneck of 20 Mbit/s spaces the packets, as a real path does: OpenSSL's NewReno no longer differs from ngtcp2's (p = 0.21); CUBIC and BBR stay ahead.",
+                     "Un goulot de 20 Mbit/s espace les paquets, comme un vrai chemin : le NewReno d’OpenSSL ne diffère plus de celui de ngtcp2 (p = 0,21) ; CUBIC et BBR restent devant.")}
+T = {"title": TITLE[profile][1 if fr else 0],
      "sub": ("une nouvelle connexion à chaque fois, le client est quic-go ; médiane des tours, la ligne du plus court au plus long" if fr else
              "a new connection each time, the client is quic-go's; median of the rounds, the line from the least to the most"),
-     "foot": ("Le QUIC d’OpenSSL : NewReno seul, dont la fenêtre ne grandit ici que d’un paquet tous les 2 à 5 allers-retours, des paquets de 1 200 octets, sans pacing." if fr else
-              "OpenSSL's QUIC: NewReno alone, whose window grows here by one packet every 2 to 5 round trips, packets of 1,200 bytes, no pacing."),
+     "foot": FOOT[profile][1 if fr else 0],
      "s": " s"}
+
+
+SEP = " ; " if fr else ", "
+
+
+def num(x):
+    """x with two decimals, a comma in French."""
+    t = f"{x:.2f}"
+    return t.replace(".", ",") if fr else t
 W, top, line = 760, 64, 28
 # The footnote on lines of at most 105 characters.
 foot = [""]
@@ -57,7 +78,7 @@ for label, k, xs in picked:
     o.append(f'<rect class="{cls}" x="{x0}" y="{y + 2}" width="{max(2, med * scale):.1f}" height="16" rx="2"/>')
     o.append(f'<line class="r" x1="{x0 + xs[0] * scale:.1f}" y1="{y + 10}" x2="{x0 + xs[-1] * scale:.1f}" y2="{y + 10}"/>')
     at = x0 + max(2, med * scale, xs[-1] * scale) + 6
-    o.append(f'<text x="{at:.1f}" y="{y + 14}">{med:.2f} s [{xs[0]:.2f}, {xs[-1]:.2f}], n = {len(xs)}</text>')
+    o.append(f'<text x="{at:.1f}" y="{y + 14}">{num(med)} s [{num(xs[0])}{SEP}{num(xs[-1])}], n = {len(xs)}</text>')
     y += line
 for i, f in enumerate(foot):
     o.append(f'<text class="s" x="16" y="{y + 20 + 16 * i}">{f}</text>')
