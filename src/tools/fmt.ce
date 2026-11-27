@@ -212,7 +212,9 @@ defn blocksAfter(blocks, tokens, indent)
       before = if k > 1 tokens[k - 1] else "" end
       rest = if k < n tokens[(k + 1)..n] else [] end
       opens = true
-      if t == "if" and "->" in rest
+      if t == "if" and "->" in rest and k > 1 and ends(before)
+        (* The guard of a match arm follows its pattern, a value: v if v > 4 -> "big". After = the if is a block's,
+           and a -> on its line is a function's, as in title = if fresh x else () -> f(y) end. *)
         opens = false
       else if t == "if" and before == "else" and not ((k - 1) in elses)
         opens = false
