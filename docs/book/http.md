@@ -353,7 +353,7 @@ service behind another of its own.
 seconds. The spans wait in a queue that never makes a request wait: past `queue` (2,048) they are dropped and
 counted in `otel_dropped_total`; a fiber sends them by batches every `every` seconds, and tries a collector that is busy
 or gone again with a pause drawn at random under a bound that doubles (full jitter), or its `Retry-After`, five times.
-A metric of [std/metrics] holds 2,000 series at most, the others counted in one, `otel_metric_overflow="true"`, as
+They wait encoded as they will leave: a queue full of 2,048 spans takes 1.2 MB in protobuf, 2.3 in JSON. A metric of [std/metrics] holds 2,000 series at most, the others counted in one, `otel_metric_overflow="true"`, as
 OpenTelemetry advises: a label made of what a client sends, as a method, can't fill the memory.
 
 A sampled span costs about 15 µs from its start to the collector, in protobuf as in JSON; protobuf sends 2.4 times fewer

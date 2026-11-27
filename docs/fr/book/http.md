@@ -367,7 +367,8 @@ suivre ses ids, ce qui coûte 2,7 µs par requête ; `always` garde quand même 
 a pris plus de `slow` secondes. Les spans attendent dans une file qui ne fait jamais attendre une requête : au-delà de
 `queue` (2 048), ils sont jetés et comptés dans `otel_dropped_total` ; une fiber les envoie par *batches* (des lots)
 toutes les `every` secondes, et réessaie un collector occupé ou parti après une pause tirée au hasard sous une borne
-qui double (le *full jitter*), ou après son `Retry-After`, cinq fois. Une métrique de [std/metrics] tient au plus
+qui double (le *full jitter*), ou après son `Retry-After`, cinq fois. Ils attendent déjà encodés, tels qu'ils partiront :
+une file pleine de 2 048 spans prend 1,2 Mo en protobuf, 2,3 en JSON. Une métrique de [std/metrics] tient au plus
 2 000 séries, les autres comptées dans une seule, `otel_metric_overflow="true"`, comme le conseille OpenTelemetry : un
 label (une étiquette qui découpe une métrique en séries, comme `method`) fait de ce qu'envoie un client, comme une
 méthode, ne peut pas remplir la mémoire.
