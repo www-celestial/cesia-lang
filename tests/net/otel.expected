@@ -14,6 +14,9 @@ a malformed one is ignored: links 0
 -- a method made up by a client: _OTHER, the one sent kept aside
 named HTTP
 HTTP ["http.request.method=_OTHER", "http.request.method_original=BREW"]
+-- exports on one connection kept open to the collector
+exports: 3 spans: 3 connections: 1
+https without secure: endpoint: https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.
 -- protobuf
 type: application/x-protobuf holds the span's name: true its message: true its event: true bytes: 403
 -- not sampled: nothing of it leaves

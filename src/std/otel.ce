@@ -98,7 +98,7 @@ end
 defn Start(service = "app", version = "", instance = missing, environment = missing, endpoint = "http://127.0.0.1:4318",
   protocol = "protobuf", compression = "none", headers = [], sample = 1.0, always = ["errors", "slow"], slow = 1.0,
   trust = "restart", signals = ["traces", "metrics", "logs"], queue = 2048, batch = 512, every = 5, metricsEvery = 60,
-  timeout = 10, attributes = {}, send = missing, hooks = true)
+  timeout = 10, attributes = {}, send = missing, hooks = true, secure = missing)
   (** Starts sending this process's telemetry to a collector at endpoint, OTLP over HTTP (its /v1/traces, /v1/metrics
       and /v1/logs): an Ok of the tracer, or an Err of what is wrong. protocol "protobuf" or "json"; compression "none"
       or "gzip" (zlib's, which needs the permission ffi=z); headers, a list of {Name, Value}, go with each export, as
@@ -114,7 +114,10 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
       signals, the ones sent: "traces", "metrics" (std/metrics's, read every metricsEvery seconds: the numbers
       Prometheus reads, one source for both), "logs" (every line of std/log, its trace's ids with it; the "info" lines
       of a request not sampled stay out, its warnings and errors go). queue, the spans and log lines that wait at most;
-      batch, the most of one export; every, the seconds between two; timeout, the seconds of each try. send, a
+      batch, the most of one export; every, the seconds between two; timeout, the seconds of each try. The exports
+      go on one connection kept open to the collector (http.Kept), as the SDKs of Go and Java keep theirs, opened
+      again when the collector closed it; an https endpoint needs secure = tls.Client(api), as http.Fetch does, and
+      keeps its TLS session with the connection. send, a
       function of (path, body, headers) giving an Ok of {Status, Headers}, replaces the HTTP of a test. hooks false
       makes a tracer that sends only what it is given (Span, Log), as the spans of browsers under a resource of their
       own: the process's spans of engines and its lines stay with the tracer that took them. *)
@@ -133,6 +136,8 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
   end
   if value.IsMissing(send) and result.IsErr(http.ParseUrl("$endpoint/v1/traces"))
     wrong = list.Append("endpoint: an http:// or https:// address, not $endpoint.", wrong)
+  else if value.IsMissing(send) and value.IsMissing(secure) and text.StartsWith("https://", endpoint)
+    wrong = list.Append("endpoint: https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.", wrong)
   end
   if value.Len(wrong) > 0
     return result.Err({Kind: "otel", Message: text.Join(" ", wrong)})
@@ -151,7 +156,7 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
     Slow: if "slow" in always slow else missing end, Trust: trust, Traces: "traces" in signals, Metrics: "metrics" in signals,
     Logs: "logs" in signals, Most: queue, Batch: batch, Every: every, MetricsEvery: metricsEvery, Timeout: timeout,
     Queue: fiber.Channel(), Busy: cell(false), Ended: fiber.Channel(size = 1), Counts: cell({Spans: 0, Logs: 0, Dropped: 0, Exports: 0, Failed: 0, Bytes: 0}),
-    Send: send, Started: sys.Now(), Resource: res, Pb: pbResource(res), Js: jsResource(res)}
+    Send: send, Secure: secure, Keep: http.Kept(idle = 90), Started: sys.Now(), Resource: res, Pb: pbResource(res), Js: jsResource(res)}
   fiber.Spawn(() -> gathering(t))
   if t.Metrics
     fiber.Spawn(() -> measuring(t))
@@ -516,7 +521,7 @@ defn post(t, path, body)
   end
   count(t, "Bytes", text.ByteLength(body))
   for attempt in 1..5
-    got = if value.IsSome(t.Send) t.Send(path, body, headers) else http.Fetch("$(t.Endpoint)$path", method = "POST", body = body, headers = headers, timeout = t.Timeout, maxBody = 65536) end
+    got = if value.IsSome(t.Send) t.Send(path, body, headers) else http.Fetch("$(t.Endpoint)$path", method = "POST", body = body, headers = headers, timeout = t.Timeout, maxBody = 65536, secure = t.Secure, keep = t.Keep) end
     status = if result.IsOk(got) got.Value.Status else 0 end
     count(t, "Exports", 1)
     if status >= 200 and status < 300

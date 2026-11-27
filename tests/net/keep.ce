@@ -1,0 +1,96 @@
+(** Fetch with keep, a place of http.Kept: one connection for many requests, each response read to its end (a length,
+    chunks that come in pieces, a 204, a HEAD), and a new connection only when the server closed the last one, said
+    Connection: close, or the connection stayed idle too long; without keep, a connection each request. *)
+use std/fiber
+use std/http
+use std/io
+use std/net
+use std/result
+use std/sys
+use std/text
+use std/value
+
+crlf = "\r\n"
+opened = fiber.Channel(size = 100)
+
+defn answer(c, method, path)
+  (** The answer to a request of the test, and whether the connection goes on. *)
+  if path == "/chunked"
+    net.Write(c, "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$crlf$(crlf)5$(crlf)hel")?
+    sys.Sleep(0.01)
+    net.Write(c, "lo$(crlf)6$(crlf) world$(crlf)0$crlf$crlf")?
+  else if path == "/empty"
+    net.Write(c, "HTTP/1.1 204 No Content$crlf$crlf")?
+  else if path == "/bye"
+    net.Write(c, "HTTP/1.1 200 OK$(crlf)Content-Length: 3$(crlf)Connection: close$crlf$(crlf)bye")?
+    return result.Ok(false)
+  else
+    net.Write(c, "HTTP/1.1 200 OK$(crlf)Content-Length: 2$crlf$crlf$(if method == "HEAD" "" else "hi" end)")?
+  end
+  result.Ok(path != "/drop")
+end
+
+defn serving(c)
+  (** One connection: its requests one after the other, until the client or the test closes it. *)
+  buf = ""
+  while true
+    got = net.Read(c)
+    if result.IsErr(got) or got.Value == ""
+      net.Close(c)
+      return missing
+    end
+    buf = "$buf$(got.Value)"
+    at = text.ByteFind("$crlf$crlf", 1, buf)
+    while value.IsSome(at)
+      words = text.Split(" ", text.Split(crlf, text.ByteSlice(1, at - 1, buf))[1])
+      buf = if at + 4 > text.ByteLength(buf) "" else text.ByteSlice(at + 4, text.ByteLength(buf), buf) end
+      goes = answer(c, words[1], words[2])
+      if result.IsErr(goes) or not goes.Value
+        net.Close(c)
+        return missing
+      end
+      at = text.ByteFind("$crlf$crlf", 1, buf)
+    end
+  end
+end
+
+l = net.Listen(0)!
+fiber.Spawn(() -> while true
+  c = net.Accept(l)!
+  fiber.Send(1, opened)
+  fiber.Spawn(() -> serving(c))
+end)
+url = "http://127.0.0.1:$(net.Port(l))"
+total = fiber.Channel(size = 1)
+fiber.Send(0, total)
+defn connections()
+  (** The connections the server took so far. *)
+  n = fiber.Receive(total).Value
+  while result.IsOk(fiber.Receive(opened, timeout = 0))
+    n += 1
+  end
+  fiber.Send(n, total)
+  n
+end
+
+keep = http.Kept()
+shown(r) = if result.IsOk(r) "$(r.Value.Status) $(r.Value.Body)" else "Err $(r.Error.Message)" end
+io.Print("-- one connection for many requests")
+io.Print([shown(http.Fetch("$url/len", keep = keep)) for k in 1..3], "connections:", connections())
+io.Print("chunks in two pieces:", shown(http.Fetch("$url/chunked", keep = keep)), "a 204:", shown(http.Fetch("$url/empty", keep = keep)),
+  "a HEAD:", shown(http.Fetch("$url/len", method = "HEAD", keep = keep)), "connections:", connections())
+io.Print("-- the server closed it: the next request goes on a new one")
+io.Print(shown(http.Fetch("$url/drop", keep = keep)), shown(http.Fetch("$url/len", keep = keep)), "connections:", connections())
+io.Print("-- Connection: close")
+io.Print(shown(http.Fetch("$url/bye", keep = keep)), shown(http.Fetch("$url/len", keep = keep)), "connections:", connections())
+io.Print("-- fibers at once: a connection each, two kept")
+tasks = [fiber.Spawn(() -> shown(http.Fetch("$url/chunked", keep = keep))) for k in 1..4]
+io.Print([fiber.Wait(x).Value for x in tasks], "connections:", connections())
+io.Print([shown(http.Fetch("$url/len", keep = keep)) for k in 1..4], "connections:", connections())
+io.Print("-- idle too long")
+brief = http.Kept(idle = 0.05)
+a = shown(http.Fetch("$url/len", keep = brief))
+sys.Sleep(0.1)
+io.Print(a, shown(http.Fetch("$url/len", keep = brief)), "connections:", connections())
+io.Print("-- without keep: a connection each request")
+io.Print([shown(http.Fetch("$url/len")) for k in 1..2], "connections:", connections())

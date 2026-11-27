@@ -1,0 +1,15 @@
+-- one connection for many requests
+["200 hi", "200 hi", "200 hi"] connections: 1
+chunks in two pieces: 200 hello world a 204: 204  a HEAD: 200  connections: 1
+-- the server closed it: the next request goes on a new one
+200 hi 200 hi connections: 2
+-- Connection: close
+200 bye 200 hi connections: 3
+-- fibers at once: a connection each, two kept
+["200 hello world", "200 hello world", "200 hello world", "200 hello world"] connections: 6
+["200 hi", "200 hi", "200 hi", "200 hi"] connections: 6
+-- idle too long
+200 hi 200 hi connections: 8
+-- without keep: a connection each request
+["200 hi", "200 hi"] connections: 10
+exit 0

@@ -586,11 +586,13 @@ defn within(timeout, socket, f)
   if waited.Error.Kind == "timeout" result.Err({Kind: "timeout", Message: "The server sent nothing for $timeout seconds."}) else waited end
 end
 
-defn readResponse(read, maxBody)
+defn readResponse(read, maxBody, bodiless = false, exact = missing)
   (** Reads a whole response with read, a read of the connection: an Ok of its bytes, or an Err. The head comes first, at
       most maxHead bytes, each read searched for its end alone, after the last bytes before it, so that a head sent a byte
       at a time isn't searched or copied again at each read; then the body, at most maxBody bytes after the head, the
-      marks of a chunked one too, or to the end the content-length gives, or the end of the connection. *)
+      marks of a chunked one too, to the end the content-length gives, the end of its last chunk, or the end of the
+      connection; none after a 204, a 304 or a HEAD (bodiless). exact, a channel, is told whether the response ended
+      where its bytes did: the connection may then carry another one. *)
   pieces = {}
   total = 0
   tail = ""
@@ -611,12 +613,17 @@ defn readResponse(read, maxBody)
     total += text.ByteLength(more)
     tail = lastBytes(3, seen)
   end
-  needed = fullSize(text.ByteSlice(1, at, text.Join("", dict.Values(pieces))))
+  head = text.ByteSlice(1, at, text.Join("", dict.Values(pieces)))
+  needed = if bodiless or statusOf(head) == 204 or statusOf(head) == 304 at + 4 else fullSize(head) end
+  walk = if value.IsMissing(needed) and HeaderValue("transfer-encoding", responseHeaders(head)) == "chunked" {Left: 0, Line: "", Final: false, Done: false, Extra: 0} else missing end
+  if value.IsSome(walk) and total > at + 4
+    walk = chunkWalk(walk, text.ByteSlice(at + 5, total, text.Join("", dict.Values(pieces))))
+  end
   most = if value.IsMissing(maxBody) missing else at + 4 + maxBody end
   if not value.IsMissing(most) and not value.IsMissing(needed) and needed > most
     return failed("The body of this response is longer than maxBody, $maxBody bytes.")
   end
-  while value.IsMissing(needed) or total < needed
+  while (value.IsMissing(needed) and not (value.IsSome(walk) and walk.Done)) or (value.IsSome(needed) and total < needed)
     if not value.IsMissing(most) and total > most
       return failed("The body of this response is longer than maxBody, $maxBody bytes.")
     end
@@ -626,6 +633,12 @@ defn readResponse(read, maxBody)
     end
     pieces[value.Len(pieces)] = more
     total += text.ByteLength(more)
+    if value.IsSome(walk)
+      walk = chunkWalk(walk, more)
+    end
+  end
+  if value.IsSome(exact)
+    fiber.Send(if value.IsSome(walk) walk.Done and walk.Extra == 0 else value.IsSome(needed) and total == needed end, exact)
   end
   if not value.IsMissing(most) and total > most and value.IsMissing(needed)
     return failed("The body of this response is longer than maxBody, $maxBody bytes.")
@@ -641,6 +654,54 @@ defn hex(digits)
   else
     list.Reduce((acc, d) -> acc * 16 + d, 0, values)
   end
+end
+
+defn chunkWalk(w, more)
+  (** Where a chunked body is after more of its bytes: {Left, Line, Final, Done, Extra}: Left, the bytes of a chunk and
+      its line end still to come; Line, the start of a line not whole yet; Final, past the last chunk, in its
+      trailers; Done once the empty line after them came, or at a size that isn't one (unchunk then says the body is
+      malformed); Extra, the bytes that came after its end. Each byte is looked at once. *)
+  buf = "$(w.Line)$more"
+  n = text.ByteLength(buf)
+  pos = 1
+  left = w.Left
+  final = w.Final
+  while true
+    if left > 0
+      if n - pos + 1 <= left
+        return {Left: left - (n - pos + 1), Line: "", Final: final, Done: false, Extra: 0}
+      end
+      pos += left
+      left = 0
+    end
+    at = text.ByteFind(crlf, pos, buf)
+    if value.IsMissing(at)
+      return {Left: 0, Line: if pos <= n text.ByteSlice(pos, n, buf) else "" end, Final: final, Done: false, Extra: 0}
+    end
+    line = if at > pos text.ByteSlice(pos, at - 1, buf) else "" end
+    pos = at + 2
+    if final
+      if line == ""
+        return {Left: 0, Line: "", Final: true, Done: true, Extra: n - pos + 1}
+      end
+    else
+      size = hex(text.Lower(text.Trim(text.Split(";", line)[1])))
+      if value.IsMissing(size)
+        return {Left: 0, Line: "", Final: true, Done: true, Extra: 1}
+      end
+      if size == 0
+        final = true
+      else
+        left = size + 2
+      end
+    end
+  end
+end
+
+defn statusOf(head)
+  (** The status of the head of a response, or missing. *)
+  words = text.Split(" ", text.Split(crlf, head)[1])
+  if value.Len(words) >= 2 text.Number(words[2]) else missing end
 end
 
 defn unchunk(data)
@@ -665,8 +726,9 @@ defn unchunk(data)
   end
 end
 
-defn parseResponse(raw)
-  (** Reads the text of a response: an Ok of {Status, Headers, Body} (a chunked body is joined), or an Err. *)
+defn parseResponse(raw, bodiless = false)
+  (** Reads the text of a response: an Ok of {Status, Headers, Body} (a chunked body is joined; none after a 204, a 304
+      or a HEAD, bodiless, whatever its content-length says), or an Err. *)
   at = offset(blank, raw)
   firstEnd = offset(crlf, raw)
   words = text.Split(" ", if value.IsMissing(firstEnd) raw else cutAt(firstEnd, raw)[1] end)
@@ -679,7 +741,9 @@ defn parseResponse(raw)
     rest = cutAt(4, cut[2])[2]
     size = HeaderValue("content-length", headers)
     count = if value.IsText(size) text.Number(size) else text.ByteLength(rest) end
-    body = if HeaderValue("transfer-encoding", headers) == "chunked"
+    body = if bodiless or status == 204 or status == 304
+      result.Ok("")
+    else if HeaderValue("transfer-encoding", headers) == "chunked"
       unchunk(rest)
     else if not value.IsInt(count) or count < 0 or count > text.ByteLength(rest)
       failed("This response is cut short.")
@@ -702,7 +766,7 @@ defn hostOf(target)
   if target.Port == (if target.Secure 443 else 80 end) target.Host else "$(target.Host):$(target.Port)" end
 end
 
-defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing, http3 = missing)
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing, peer = missing, http3 = missing, keep = missing)
   (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
       answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api). A server
       silent for timeout seconds, as it starts TLS or between two reads of its response, gives an Err of kind
@@ -715,7 +779,9 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
       answer otherwise (DNS rebinding): what a program asks for another, at an address it was given, can't reach this
       machine or its network when peer refuses their addresses. With http3 = http3.Client(api), an https server that
       said it speaks HTTP/3 (its Alt-Svc header) is asked over QUIC from then on, and over TCP again at once if that
-      fails; peer checks that address too.
+      fails; peer checks that address too. With keep, a place that Kept made, the connection stays open after the
+      response for the next Fetch of the same keep to the same server, as the clients of Go and Java keep theirs: no
+      new TCP connection, nor TLS handshake, for each request; without it, each Fetch opens its own and closes it.
 
         Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http")
         l = net.Listen(0)!
@@ -742,7 +808,7 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
       return asked
     end
   end
-  got = overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
+  got = overTcp(target, method, body, headers, secure, timeout, maxBody, peer, keep)
   if target.Secure and not value.IsMissing(http3) and result.IsOk(got)
     offer = HeaderValue("alt-svc", got.Value.Headers)
     if value.IsText(offer)
@@ -752,8 +818,16 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeo
   got
 end
 
-defn overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
-  (** A request of Fetch over TCP, with TLS for https. *)
+defn overTcp(target, method, body, headers, secure, timeout, maxBody, peer, keep)
+  (** A request of Fetch over TCP, with TLS for https: on a connection that keep holds to this server, or a new one. *)
+  key = "$(if target.Secure "https" else "http" end)://$(target.Host):$(target.Port)"
+  held = if value.IsMissing(keep) missing else taken(keep, key) end
+  if value.IsSome(held)
+    got = asked(held, target, method, body, headers, timeout, maxBody, keep, key)
+    if not (result.IsErr(got) and dict.Get("Stale", got.Error) == true)
+      return got
+    end
+  end
   c = net.Connect(target.Host, target.Port)?
   if not value.IsMissing(peer)
     allowed = peer(net.Peer(c))
@@ -767,14 +841,111 @@ defn overTcp(target, method, body, headers, secure, timeout, maxBody, peer)
     net.Close(c)
     return made
   end
-  conn = made.Value
+  asked({Socket: c, Conn: made.Value, Kept: false}, target, method, body, headers, timeout, maxBody, keep, key)
+end
+
+defn asked(held, target, method, body, headers, timeout, maxBody, keep, key)
+  (** A request on an open connection and its response. Without keep the request says Connection: close; with it the
+      connection goes back to keep when the response let it stay open (HTTP/1.1, no Connection: close, its end known
+      and nothing after it), else it closes. A connection kept before that gives nothing back, the server having
+      closed it while it waited, is an Err with Stale: the request goes again on a new one, since none of it was
+      answered; one that the server was slow to answer is not, since it may have done it. *)
+  c = held.Socket
+  conn = held.Conn
   custom = text.Join("", list.Map(headerLine, headers))
   sized = if body == "" and method == "GET" "" else "Content-Length: $(text.ByteLength(body))$crlf" end
-  message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(hostOf(target))$(crlf)Connection: close$crlf$sized$custom$crlf$body"
+  closing = if value.IsMissing(keep) "Connection: close$crlf" else "" end
+  message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(hostOf(target))$crlf$closing$sized$custom$crlf$body"
   sent = conn.Write(message)
-  raw = if result.IsOk(sent) readResponse(() -> within(timeout, c, conn.Read), maxBody) else sent end
-  conn.Close()
-  parseResponse(raw?)
+  if value.IsMissing(keep)
+    raw = if result.IsOk(sent) readResponse(() -> within(timeout, c, conn.Read), maxBody, bodiless = method == "HEAD") else sent end
+    conn.Close()
+    return parseResponse(raw?, bodiless = method == "HEAD")
+  end
+  exact = fiber.Channel(size = 1)
+  seen = fiber.Channel(size = 1)
+  raw = if result.IsOk(sent) readResponse(() -> heard(within(timeout, c, conn.Read), seen), maxBody, bodiless = method == "HEAD", exact = exact) else sent end
+  nothing = result.IsErr(fiber.Receive(seen, timeout = 0))
+  if held.Kept and nothing and (result.IsErr(sent) or (result.IsOk(raw) and raw.Value == "") or (result.IsErr(raw) and dict.Get("Kind", raw.Error) != "timeout"))
+    conn.Close()
+    return result.Err({Kind: "http", Message: "The server closed this connection.", Stale: true})
+  end
+  out = if result.IsOk(raw) parseResponse(raw.Value, bodiless = method == "HEAD") else raw end
+  ended = fiber.Receive(exact, timeout = 0)
+  connection = if result.IsOk(out) HeaderValue("connection", out.Value.Headers) else missing end
+  closes = value.IsText(connection) and text.Contains("close", text.Lower(connection))
+  if result.IsOk(out) and result.IsOk(ended) and ended.Value and text.StartsWith("HTTP/1.1 ", raw.Value) and not closes
+    given(keep, key, {Socket: c, Conn: conn, Kept: true})
+  else
+    conn.Close()
+  end
+  out
+end
+
+defn heard(got, seen)
+  (** A read of a kept connection, telling seen once bytes came. *)
+  if result.IsOk(got) and text.ByteLength(got.Value) > 0
+    _ = fiber.Receive(seen, timeout = 0)
+    fiber.Send(true, seen)
+  end
+  got
+end
+
+defn Kept(idle = 30)
+  (** A place where Fetch keeps its connections open, for its keep: after a response, the connection stays there for
+      the next request of the same keep to the same server (HTTP/1.1's persistent connections, RFC 9112, section
+      9.3), as the clients of Go and Java keep theirs, which spares each request a TCP connection and, over https, a
+      TLS handshake. It holds two connections a server at most, each idle seconds at most without a request: older
+      ones are closed when it is next used. One that the server closed meanwhile is opened again, its request sent
+      again, as nothing of it was answered. Fibers may share it: each request has a connection of its own.
+
+        keep = Kept()
+        l = net.Listen(0)!
+        fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
+        [Fetch("http://127.0.0.1:$(net.Port(l))/", keep = keep)!.Body for k in 1..3] --> ["hi", "hi", "hi"] *)
+  ch = fiber.Channel(size = 1)
+  fiber.Send({Idle: idle, Open: dict.Dict()}, ch)
+  ch
+end
+
+defn taken(keep, key)
+  (** An open connection of keep to the server of key, taken out of it, or missing; those idle too long closed. *)
+  got = fiber.Receive(keep, timeout = 0)
+  if result.IsErr(got)
+    return missing
+  end
+  state = got.Value
+  now = sys.Now()
+  idle = dict.GetOr(key, [], state.Open)
+  live = [x for x in idle if x.Until > now]
+  found = if value.Len(live) > 0 live[value.Len(live)] else missing end
+  state.Open = dict.Put(key, if value.Len(live) > 0 list.Take(value.Len(live) - 1, live) else [] end, state.Open)
+  fiber.Send(state, keep)
+  for x in idle
+    if x.Until <= now
+      x.Conn.Close()
+    end
+  end
+  found
+end
+
+defn given(keep, key, held)
+  (** A connection back in keep for the next request to its server, or closed when keep holds two of them already. *)
+  got = fiber.Receive(keep, timeout = 0)
+  if result.IsErr(got)
+    held.Conn.Close()
+    return missing
+  end
+  state = got.Value
+  idle = dict.GetOr(key, [], state.Open)
+  room = value.Len(idle) < 2
+  if room
+    state.Open = dict.Put(key, list.Append(dict.Put("Until", sys.Now() + state.Idle, held), idle), state.Open)
+  end
+  fiber.Send(state, keep)
+  if not room
+    held.Conn.Close()
+  end
 end
 
 (** An application with no route and no middleware: it answers each request with a 404.
