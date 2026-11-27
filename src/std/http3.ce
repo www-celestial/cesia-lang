@@ -588,7 +588,12 @@ defn reply(st, response, head, options)
   body = if head or not value.IsMissing(produce) "" else value.Text(response.Body) end
   size = if value.IsMissing(produce) text.ByteLength(value.Text(response.Body)) else missing end
   first = Frame(headersFrame, headOf(response, options, size))
-  st.Write(if body == "" first else "$first$(Frame(dataFrame, body))" end)?
+  whole = if body == "" first else "$first$(Frame(dataFrame, body))" end
+  if value.IsMissing(produce) or head
+    (* A whole response: written and ended in one call, its bytes and its end in the same packets. *)
+    return st.Last(whole)
+  end
+  st.Write(whole)?
   if not value.IsMissing(produce) and not head
     defn send(piece)
       bug.Assert(value.IsText(piece), "A piece of a streamed body is a text.")

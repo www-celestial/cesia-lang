@@ -379,7 +379,7 @@ struct Conn { Id, Ptr, Ssl, Octx, User, Ref, Peer, Accepted, Gone, Wait, Alpn, S
     Start, Size}; Queued, Sent and Acked offsets of its sending side; Fin asked, FinSent; Waiters the writes waiting
     for acknowledgments; Pending bytes read for its fiber; FinIn; Closed by ngtcp2; Freed by its fiber; Remote opened by
     the peer; Early bytes came in 0-RTT. *)
-struct Stream { Sid, Conn, In, Chunks, Queued, Sent, Acked, Fin, FinSent, Shut, Waiters, Pending, FinIn, Closed, Freed, Remote, Early, Delivered }
+struct Stream { Sid, Conn, In, Chunks, Queued, Sent, Acked, Fin, FinSent, Shut, Waiters, Pending, FinIn, Closed, Freed, Remote, Early, Delivered, Got }
 
 defn cell(v)
   (** A value that fibers share: a channel that always holds one. *)
@@ -849,7 +849,7 @@ defn event(e, s, ev)
     return opens(e, s, ev.Id)
   end
   if k == "open"
-    t = Stream(ev.Sid, ev.Id, fiber.Channel(), [], 0, 0, 0, false, false, false, [], [], false, false, false, true, false, false)
+    t = Stream(ev.Sid, ev.Id, fiber.Channel(), [], 0, 0, 0, false, false, false, [], [], false, false, false, true, false, false, false)
     s.Streams[key(ev.Id, ev.Sid)] = t
     conn.Sids[ev.Sid] = true
     s.Conns[ev.Id] = conn
@@ -867,6 +867,7 @@ defn event(e, s, ev)
     end
     if math.BitAnd(ev.Flags, 1) != 0
       t.FinIn = true
+      t.Got = true
     end
     if math.BitAnd(ev.Flags, 2) != 0
       t.Early = true
@@ -991,7 +992,7 @@ defn opened(e, s, id, uni)
     return missing
   end
   sid = c.Get("i64", 0, box)
-  t = Stream(sid, id, fiber.Channel(), [], 0, 0, 0, false, false, false, [], [], false, false, false, false, false, true)
+  t = Stream(sid, id, fiber.Channel(), [], 0, 0, 0, false, false, false, [], [], false, false, false, false, false, true, false)
   s.Streams[key(id, sid)] = t
   conn.Sids[sid] = true
   s.Conns[id] = conn
@@ -1087,9 +1088,13 @@ defn command(e, s, m)
     return s
   end
   if k == "read"
+    (* The new credit (MAX_STREAM_DATA, MAX_DATA) is written at once after a read of a kilobyte or more, which a peer
+       whose window ran out waits for; a smaller one, as a request's head, goes with the next packet. *)
     e.Api.MoreStreamData(conn.Ptr, m.Sid, m.N)
     e.Api.MoreData(conn.Ptr, m.N)
-    s.Dirty[m.Id] = true
+    if m.N >= 1024
+      s.Dirty[m.Id] = true
+    end
     return s
   end
   if k == "free"
@@ -1097,7 +1102,7 @@ defn command(e, s, m)
     s.Streams[at] = t
     if not t.Closed
       (* Given back before its end: the peer is told to stop sending, and what wasn't ended is abandoned. *)
-      if t.Remote or math.BitAnd(t.Sid, 2) == 0
+      if not t.Got and (t.Remote or math.BitAnd(t.Sid, 2) == 0)
         e.Api.ShutdownRead(conn.Ptr, 0, t.Sid, 0)
       end
       if not t.Fin
@@ -1130,12 +1135,17 @@ defn command(e, s, m)
     fiber.Send(result.Ok(missing), m.Reply)
     return ready(s, conn, t)
   end
-  (* write *)
+  (* write, and its end with Last *)
   size = text.ByteLength(m.Bytes)
-  block = c.Alloc(size)
-  c.Store(m.Bytes, 0, block)
-  t.Chunks = list.Append({Block: block, Addr: addressOf(e, block), Start: t.Queued, Size: size}, t.Chunks)
-  t.Queued += size
+  if size > 0
+    block = c.Alloc(size)
+    c.Store(m.Bytes, 0, block)
+    t.Chunks = list.Append({Block: block, Addr: addressOf(e, block), Start: t.Queued, Size: size}, t.Chunks)
+    t.Queued += size
+  end
+  if dict.Has("End", m)
+    t.Fin = true
+  end
   if t.Queued - t.Acked <= most
     fiber.Send(result.Ok(missing), m.Reply)
   else
@@ -1232,14 +1242,18 @@ defn write(e, s, id)
     out = s.Out + 1
     conn = s.Conns[id]
     t = missing
+    dropped = false
     while value.Len(conn.Ready) > 0 and value.IsMissing(t)
       t = dict.Get(key(id, conn.Ready[1]), s.Streams)
       if value.IsMissing(t) or not sendable(t)
         conn.Ready = list.Skip(1, conn.Ready)
+        dropped = true
         t = missing
       end
     end
-    s.Conns[id] = conn
+    if dropped
+      s.Conns[id] = conn
+    end
     sid = -1
     count = 0
     flags = flagMore
@@ -1262,8 +1276,8 @@ defn write(e, s, id)
         fin = true
       end
     end
+    (* Writing calls back only for random bytes and new connection IDs: their events wait for the end of the loop. *)
     n = api.WriteStream(conn.Ptr, e.Outs.Paths[out], 1, calls.Pi, e.Outs.Slots[out], slot, calls.Written, flags, sid, calls.Vec, count, s.Now)
-    s = drain(e, s)
     written = if sid >= 0 c.Get("i64", 0, calls.Written) else -1 end
     if written >= 0 and not value.IsMissing(t) and dict.Has(key(id, sid), s.Streams)
       t = s.Streams[key(id, sid)]
@@ -1296,13 +1310,16 @@ defn write(e, s, id)
       (* Each stream in turn: the one that just sent goes after the others. *)
       if sid >= 0
         conn = s.Conns[id]
-        conn.Ready = list.Append(sid, [x for x in conn.Ready if x != sid])
-        s.Conns[id] = conn
+        if value.Len(conn.Ready) > 1
+          conn.Ready = list.Append(sid, [x for x in conn.Ready if x != sid])
+          s.Conns[id] = conn
+        end
       end
     end
     (* errWriteMore: the same packet takes more frames, of the next stream. *)
   end
   api.Paced(s.Conns[id].Ptr, s.Now)
+  s = drain(e, s)
   if packets == 64
     s.Again = true
     s.Dirty[id] = true
@@ -1660,12 +1677,14 @@ defn stream(e, t)
   (** The functions of one stream: Id, its number (RFC 9000, section 2.1: its two low bits say who opened it and
       whether it goes both ways); Read(), an Ok of the next bytes, of "" at its end, or an Err when it was reset or the
       connection ended; Write(bytes), which waits while a megabyte the peer hasn't acknowledged is on its way; End(), the
-      end of what this side sends; Reset(code), which abandons it both ways; Free(), once done with it; Early, true
-      when its first bytes came in 0-RTT, before the handshake ended (a request that an attacker may send again). *)
+      end of what this side sends; Last(bytes), Write then End in one call, the end in the same packets as the bytes;
+      Reset(code), which abandons it both ways; Free(), once done with it; Early, true when its first bytes came in
+      0-RTT, before the handshake ended (a request that an attacker may send again). *)
   id = t.Conn
   sid = t.Sid
   {Id: sid, Read: () -> read(e, id, sid, t.In), Write: bytes -> if bytes == "" result.Ok(missing) else ask(e, {K: "write", Id: id, Sid: sid, Bytes: bytes}) end,
-    End: () -> ask(e, {K: "end", Id: id, Sid: sid}), Reset: code -> tell(e, {K: "reset", Id: id, Sid: sid, Code: code}),
+    End: () -> ask(e, {K: "end", Id: id, Sid: sid}), Last: bytes -> ask(e, {K: "write", Id: id, Sid: sid, Bytes: bytes, End: true}),
+    Reset: code -> tell(e, {K: "reset", Id: id, Sid: sid, Code: code}),
     Free: () -> tell(e, {K: "free", Id: id, Sid: sid}), Early: t.Early}
 end
 
