@@ -1,0 +1,21 @@
+use std/io
+
+(* Floats in the arithmetic and the tests of values of a version as a whole, in machine code: NaN, -0.0, Ints beside
+   Floats, an Int past 2^53 beside a Float, as the interpreter's. *)
+defn f(a, b)
+  out = []
+  if a < b
+    out = [a + b, a * b, a - b]
+  else
+    out = [a == b, a != b, a >= b]
+  end
+  [out, a == b, a != b, a > b, a <= b, a + b, a * 2.0, g(a)]
+end
+
+g(x) = [x]
+
+nan = 0.0 / 0.0
+for i in 1..1500
+  _ = f(1.5, 2.5)
+end
+io.Print(f(1.5, 2.5), f(nan, nan), f(nan, 1.0), f(2, 2.0), f(3, 1), f(4611686018427387903, 1.0), f(-0.0, 0.0))

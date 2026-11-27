@@ -239,7 +239,6 @@ let hopeless (w : world) (b : block) =
   let rec go (e : expr) =
     if !found = None then
       match e.e with
-      | Interp _ -> found := Some "a text of parts"
       | In_op _ -> found := Some "an in"
       | Question _ -> found := Some "a ?"
       | Match _ -> found := Some "a match"
@@ -382,8 +381,15 @@ let starve (v : version) =
   if not (List.memq v !starved) then starved := v :: List.filteri (fun i _ -> i < most_starved - 1) !starved
 let ty st (e : expr) = st.ver.tn.(e.id)
 
+(* A variable a closure captured, in the outermost frame of its version as a whole: the interpreter's call wrote its value
+   to its slot before the frame's entry ([Compile.finish]), which native code reads as a parameter's; [Engine] checks it
+   holds one, not [Undef], before each run. *)
+let captured (f : func) i = Array.exists (fun (_, j) -> j = i) f.captures
+
+let caught st i = st.index = 0 && (not st.region) && st.inl = [] && captured st.f i
+
 let plain st i =
-  (st.f.cell_of = [||] || st.f.cell_of.(i) < 0) && not st.f.maybe_undef.(i)
+  (st.f.cell_of = [||] || st.f.cell_of.(i) < 0) && ((not st.f.maybe_undef.(i)) || caught st i)
 
 let var st i =
   if not (plain st i) || st.regs.(i) < 0 then raise No;
@@ -714,6 +720,19 @@ let in_unit st (v : version) =
    from the interpreter, and its code then costs MIR half the time to make. *)
 let own st (v : version) = st.index = 0 && v == Vec.get st.unit.versions 0
 
+(* Writes the constant [c] of the running unit's table, in the table and in the slot the outermost frame holds it in:
+   set by [Engine], which knows the run. *)
+let ic_write : (int -> t -> unit) ref = ref (fun _ _ -> ())
+
+(* A native of the JIT's own, which machine code calls through OCaml as it calls those of std/: the slow path of an
+   operation whose fast path machine code makes, or the operation itself, as the interpreter makes it. *)
+let own_native name n run =
+  { nname = "jit " ^ name; perm = None; params = [||]; min_args = n; max_args = n; ret_ty = (fun _ -> TA); run; f1 = None;
+    i2 = None; gives_result = false }
+
+(* Such a native behind a fast path, which a run calls only when the fast path misses: no cost of a call counted. *)
+let slow_path (n : native) = String.starts_with ~prefix:"jit slow " n.nname
+
 let rec expr st (e : expr) : Ir.value * Ir.kind =
   match e.e with
   | Lint n -> Int n, Kint
@@ -754,6 +773,8 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   | Bin (((Add | Sub | Mul) as op), a, b) ->
     let x = expr st a in
     let y = expr st b in
+    (* A version as a whole has no frame to guess a value's number from: arithmetic of values. *)
+    if st.ctx = None && (snd x = Kval || snd y = Kval) then value_arith st e op x y else
     let x, y = numbers st a b x y in
     (match snd x, snd y with
      | Kint, Kint ->
@@ -888,8 +909,9 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
        let f = (match fields with F _ -> 0 | _ -> 1) in
        let a = checked st v (-1 - ((2 * shape.sid) + f)) (fun r -> Ir.Fields (r, v, shape.sid, f, bail st)) in
        fresh st (if f = 0 then Kfloat else Kval) (fun r -> Load (r, a, j, -1))
-     | Some _ -> raise No
-     | None -> unseen st)
+     | Some _ -> cached_field st e v name
+     (* A version as a whole has no frame to guess from: an inline cache, which needs no guess. *)
+     | None -> if st.ctx = None then cached_field st e v name else unseen st)
   (* e!: the field of an Ok, as Field reads one of a struct; anything else fails the guard, and the interpreter does the
      statement again, to stop at the ! as it does. *)
   | Bang b ->
@@ -903,6 +925,8 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
      | Some _ -> raise No
      | None -> unseen st)
   | Struct_lit _ -> record st e
+  | Interp parts -> text_of_parts st e parts
+  | Array_lit rows -> list_of st e rows
   | Bin ((Lt | Le | Gt | Ge | Eq | Ne), _, _) | And _ | Or _ | Not _ -> truth st e, Kval
   | Call call when kind_test st call <> None -> truth st e, Kval
   | Call call -> call_expr st e call
@@ -910,6 +934,147 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
 
 (* A variable kept as a map or struct that the run never makes. *)
 and sunk_map st i = st.inl = [] && st.sunk.(i) <> None
+
+(* A field read through an inline cache (Deutsch and Schiffman, POPL 1984; Hölzle, Chambers and Ungar, ECOOP 1991): the
+   cache, a constant of the unit, holds a map of the keys or a struct of the shape the field was last read from, and the
+   field's place there, which machine code checks and reads ([Ir.Cached]); a miss reads the field through OCaml, as the
+   interpreter's read does ([Compile.field_slow]: its value, or its error at this site), and fills the cache when the
+   map's keys are a block's, or the struct's, and their values a store of values. The place of a field depends on the keys
+   or the shape alone, and its privacy on the package reading it: the sites of one name and one package share a cache. *)
+and cached_field st (e : expr) v name =
+  let pm = st.ver.owner.pm in
+  let c = const st (Text (Printf.sprintf "\000field %d %s" st.w.modules.(pm).host name)) in
+  let key = Text name in
+  let h = Trie.hash key in
+  let run ctx (a : t array) =
+    let x = a.(0) in
+    let r = Compile.field_slow ctx pm x name in
+    (match x with
+     | Struct { shape; fields = V _; _ } ->
+       let j = Value.field_index shape name in
+       if j >= 0 then !ic_write c (Struct { shape; fields = I [| j |]; r_owned = false })
+     | Dict { keys = { deep = Flat; _ } as keys; vals = V _ as vals; _ } ->
+       let j = Trie.index keys (Trie.nvals vals) h key in
+       if j >= 0 then !ic_write c (Dict { keys; vals = I [| j |]; d_owned = false })
+     | _ -> ());
+    r
+  in
+  let cr = reg st Kval in
+  emit st (Value (cr, c));
+  let r = reg st Kval and slow = block st and join = block st in
+  emit st (Cached (r, v, cr));
+  let base = facts st st.cur in
+  close st (Branch (Eq, Kint, Reg r, Word 3, slow, join));
+  carry st base slow;
+  st.cur <- slow;
+  emit st (Move (r, native_value st e (own_native ("slow field " ^ name) 1 run) [| v |]));
+  goto st join;
+  carry st base join;
+  Ir.Reg r, Ir.Kval
+
+(* A text of parts, "$a and $(f(b))", as the interpreter's: each hole's value made a text where it is evaluated, with the
+   memory and the steps that costs ([Value.text_of], [Runtime.reserve], [Runtime.pay_bytes]), then the pieces joined.
+   Through OCaml: a native of the JIT's own takes the values of the holes evaluated so far and gives the text of them and
+   of the literals around them, before a hole whose evaluation may fail or show, so that the order of what can fail is
+   the interpreter's; holes that can't, variables and literals, are taken together. *)
+and text_of_parts st (e : expr) parts =
+  let sure (x : expr) = match x.e with Lint _ | Lfloat _ | Ltext _ | Lbool _ | Lmissing -> true | Var { b = Local i; _ } -> plain st i | _ -> false in
+  (* The pieces of the text so far: literals, holes to make texts of, a text made already; and the values they take. *)
+  let pieces = ref [] and vals = ref [] and holes = ref 0 in
+  let flush () =
+    let template = Array.of_list (List.rev !pieces) and args = Array.of_list (List.rev !vals) in
+    let run ctx (a : t array) =
+      let text = function
+        | `L t -> t
+        | `T k -> (match a.(k) with Text t -> t | _ -> "")
+        | `H k ->
+          let t = Value.text_of ctx a.(k) in
+          Runtime.reserve ctx ((String.length t / 8) + 1);
+          Runtime.pay_bytes ctx (String.length t);
+          t
+      in
+      let ts = Array.to_list (Array.map text template) in
+      try Text (String.concat "" ts) with Out_of_memory | Invalid_argument _ -> raise (Value.Limit { what = "memory"; at = ctx.site })
+    in
+    let v = native_value st e (own_native "text of parts" (Array.length args) run) args in
+    pieces := [ `T 0 ];
+    vals := [ v ];
+    holes := 0
+  in
+  Array.iter
+    (function
+      | Lit t -> pieces := `L t :: !pieces
+      | Hole x ->
+        if !holes > 0 && not (sure x) then flush ();
+        let v = match expr st x with v, Ir.Kval -> v | v -> box st v in
+        pieces := `H (List.length !vals) :: !pieces;
+        vals := v :: !vals;
+        incr holes)
+    parts;
+  if List.length !vals > 64 then raise No;
+  (match !pieces, !vals with [ `T 0 ], [ _ ] -> () | _ -> flush ());
+  List.hd !vals, Ir.Kval
+
+(* A literal of a list of values, as the interpreter's: its cells evaluated row by row, as values stored, then the list
+   made of them column by column through OCaml ([Arrays.of_vals]), which gives it the store of its values. *)
+and list_of st (e : expr) rows =
+  let r = Array.length rows in
+  let cols = if r = 0 then 0 else Array.length rows.(0) in
+  if Array.exists (fun row -> Array.length row <> cols) rows || r * cols > 64 then raise No;
+  let cells = Array.make (r * cols) (Ir.Int 0) in
+  Array.iteri (fun i row -> Array.iteri (fun j x -> cells.((j * r) + i) <- stored st x) row) rows;
+  native st e (own_native "list" (r * cols) (fun _ a -> Arrays.of_vals r cols a)) cells
+
+(* dict.Get, dict.Has or dict.GetOr of a key written in the code: the map's value there through an inline cache, as a
+   field ([Ir.Keyed]), which also holds that keys made whole lack the key; a miss calls the native's work through OCaml
+   ([Dict.get], its error naming the native), which fills the cache. Its value is shared, as the native gives it. *)
+and cached_key st (e : expr) name key x other =
+  let c = const st (Text (Printf.sprintf "\000key %s" key)) in
+  let k = Text key in
+  let h = Trie.hash k in
+  let run ctx (a : t array) =
+    let m = a.(Array.length a - 1) in
+    let found = Dict.get ctx name k m in
+    (match m with
+     | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+       let j = Trie.index keys (Trie.nvals vals) h k in
+       if j >= 0 && (match vals with V _ -> true | _ -> false) then !ic_write c (Dict { keys; vals = I [| j |]; d_owned = false })
+       else if j < 0 && Trie.is_whole keys then !ic_write c (Dict { keys; vals = I [| -1 |]; d_owned = false })
+     | _ -> ());
+    match name, found with
+    | "Has", f -> Value.of_bool (Option.is_some f)
+    | _, Some v -> Value.share v
+    | "GetOr", None -> a.(0)
+    | _, None -> Missing
+  in
+  let cr = reg st Kval in
+  emit st (Value (cr, c));
+  let r = reg st Kval and hit = block st and absent = block st and slow = block st and join = block st and test = block st in
+  emit st (Keyed (r, x, cr));
+  let base = facts st st.cur in
+  close st (Branch (Eq, Kint, Reg r, Word 3, slow, test));
+  carry st base test;
+  st.cur <- test;
+  close st (Branch (Eq, Kint, Reg r, Word 9, absent, hit));
+  carry st base hit;
+  st.cur <- hit;
+  if name = "Has" then emit st (Move (r, Word 5)) else emit st (Share (Reg r));
+  goto st join;
+  carry st base absent;
+  st.cur <- absent;
+  emit st (Move (r, match name, other with "Has", _ -> Ir.Word 7 | "GetOr", Some d -> d | _ -> Word 1));
+  goto st join;
+  carry st base slow;
+  st.cur <- slow;
+  let args = match other with Some d -> [| d; x |] | None -> [| x |] in
+  emit st (Move (r, native_value st e (own_native ("slow " ^ name) (Array.length args) run) args));
+  goto st join;
+  carry st base join;
+  (* Its type, as inference found it from the native's, as [native] takes it. *)
+  match ty st e with
+  | TI -> fresh st Kint (fun q -> Num (q, Reg r, Only_int, site st e.pos))
+  | TF -> fresh st Kfloat (fun q -> Num (q, Reg r, Number, site st e.pos))
+  | _ -> Ir.Reg r, Ir.Kval
 
 (* A field the code may read: not a small field of a struct of another package, the interpreter's error. *)
 and visible st (shape : shape) name =
@@ -1124,6 +1289,24 @@ and value_block st (b : block) =
   for j = 0 to n - 2 do stmt st b.(j) done;
   expr st b.(n - 1)
 
+(* The arguments of a call of a native, as the interpreter places them (Compile's native_args): a named one at its
+   parameter, a gap [Undef], which the native reads as absent; evaluated in that order, as the interpreter evaluates
+   them. *)
+and placed st (n : native) (call : call) =
+  let at i (a : arg) =
+    match a.aname with
+    | None -> i
+    | Some name -> (match Array.find_index (String.equal name) n.params with Some k -> k | None -> raise No)
+  in
+  let places = Array.mapi (fun i a -> at i a, a.value) call.args in
+  let size = Array.fold_left (fun acc (k, _) -> max acc (k + 1)) 0 places in
+  if size < n.min_args || size > n.max_args || size > 64 then raise No;
+  Array.init size (fun k ->
+      (* A parameter named twice takes the last, as the interpreter's, which evaluates only that one. *)
+      match List.find_opt (fun (j, _) -> j = k) (List.rev (Array.to_list places)) with
+      | Some (_, x) -> box st (expr st x)
+      | None -> Ir.Word 3)
+
 and args_of (call : call) n =
   if Array.length call.args <> n || Array.exists (fun (a : arg) -> a.aname <> None) call.args then raise No;
   Array.map (fun (a : arg) -> a.value) call.args
@@ -1132,10 +1315,11 @@ and call_expr st e (call : call) =
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match st.w.modules.(m).cells.(k) with
-     | Native { nname = ("Div" | "Mod") as name; _ } ->
+     | Native ({ nname = ("Div" | "Mod") as name; _ } as n) ->
        let a = args_of call 2 in
        let x = expr st a.(0) and y = expr st a.(1) in
-       if snd x <> Kint || snd y <> Kint then raise No;
+       (* Of values, the native's, through OCaml. *)
+       if snd x <> Kint || snd y <> Kint then (if bridgeable st.w m n then native st e n [| box st x; box st y |] else raise No) else
        let r = fresh st Kint (fun r -> Op ((if name = "Div" then Div else Mod), r, fst x, fst y, site st e.pos)) in
        (* The floor modulo by a positive constant d is in 0..d - 1. *)
        proves st r (match name, y with "Mod", (Ir.Int d, _) when d > 0 -> Some (0, d - 1) | _ -> None);
@@ -1206,18 +1390,43 @@ and call_expr st e (call : call) =
        let acc = ref (x.cell 0) in
        for j = 1 to x.vn - 1 do acc := select st (if name = "Max" then Ir.Gt else Lt) (x.cell j) !acc done;
        !acc, Kfloat
-     | Native { nname = ("Max" | "Min") as name; _ } when Array.length call.args = 2 && not (Array.exists (fun (a : arg) -> is_vec st a.value) call.args) ->
-       (* Two numbers of one kind: the second when it is better, else the first. *)
+     | Native ({ nname = ("Max" | "Min") as name; _ } as n) when Array.length call.args = 2 && not (Array.exists (fun (a : arg) -> is_vec st a.value) call.args) ->
+       (* Two numbers of one kind: the second when it is better, else the first. Other values: the native's. *)
        let a = args_of call 2 in
        let x = expr st a.(0) in
        let y = expr st a.(1) in
        (match snd x, snd y with
         | (Ir.Kfloat | Kint), k when k = snd x -> select st ~kind:k (if name = "Max" then Ir.Gt else Lt) (fst y) (fst x), k
+        | _ when bridgeable st.w m n -> native st e n [| box st x; box st y |]
         | _ -> raise No)
-     | Native n when bridgeable st.w m n ->
-       let a = args_of call (Array.length call.args) in
-       if Array.length a < n.min_args || Array.length a > n.max_args then raise No;
-       native st e n (Array.map (fun x -> box st (expr st x)) a)
+     (* A key written in the code, of a map: through an inline cache, as a field. *)
+     | Native ({ nname = ("Get" | "Has" | "GetOr") as name; _ } as n)
+       when st.w.modules.(m).mname = "std/dict" && bridgeable st.w m n
+            && (match call.args with
+                | [| { aname = None; value = { e = Ltext _; _ } }; _ |] -> name <> "GetOr"
+                | [| { aname = None; value = { e = Ltext _; _ } }; { aname = None; _ }; { aname = None; _ } |] -> name = "GetOr"
+                | _ -> false) ->
+       let key = (match call.args.(0).value.e with Ltext t -> t | _ -> raise No) in
+       let other = if name = "GetOr" then Some (box st (expr st call.args.(1).value)) else None in
+       let x = box st (expr st call.args.(Array.length call.args - 1).value) in
+       cached_key st e name key x other
+     (* The bytes of a text, in machine code; anything else, the native's. *)
+     | Native ({ nname = "ByteLength"; _ } as n)
+       when st.w.modules.(m).mname = "std/text" && bridgeable st.w m n
+            && (match call.args with [| { aname = None; _ } |] -> true | _ -> false) ->
+       let x = box st (expr st call.args.(0).value) in
+       let r = reg st Kint and slow = block st and join = block st in
+       emit st (Bytes_of (r, x));
+       let base = facts st st.cur in
+       close st (Branch (Eq, Kint, Reg r, Int (-1), slow, join));
+       carry st base slow;
+       st.cur <- slow;
+       let v, at = native_site st e (own_native "slow ByteLength" 1 (fun ctx a -> n.run ctx a)) [| x |] in
+       emit st (Num (r, v, Only_int, at));
+       goto st join;
+       carry st base join;
+       Ir.Reg r, Ir.Kint
+     | Native n when bridgeable st.w m n -> native st e n (placed st n call)
      | Native { nname; _ } -> no (Printf.sprintf "the native %s.%s" st.w.modules.(m).mname nname)
      | Fun _ when made_here st e <> None -> record st e
      | Fun { proto; env = [||] } ->
@@ -1232,14 +1441,33 @@ and call_expr st e (call : call) =
           version, it is a call, as the interpreter's. *)
        if call.self_tail && v == st.ver then raise No;
        if v.state = 0 then Infer.run st.w v;
-       if v.state <> 2 then raise No;
-       (* A default of a number only, which the callee's register then holds. *)
-       Array.iteri (fun j t -> if t == TBot && v.tv.(j) != TI && v.tv.(j) != TF then raise No) sg;
+       (* A call that machine code can't make itself goes through OCaml, the interpreter's call, of a function given each
+          argument by its place. *)
+       let through () =
+         if Array.exists (fun (a : arg) -> a.aname <> None) call.args then raise No;
+         let g = reg st Kval in
+         emit st (Value (g, const st st.w.modules.(m).cells.(k)));
+         call_through st e (Ir.Reg g) (Array.map (fun (a : arg) -> a.value) call.args)
+       in
+       (* A callee that loops over a variable of a module that the code of a file changes: called from machine code,
+          through OCaml or nested, it would hold the machine's stack while the other fibers, which change it, wait or
+          run inside its call, and see it unchanged, which the interpreter's call doesn't. It stays the interpreter's
+          call, whose own loop lets them in at its checkpoints. *)
+       let callee = Cache.ready proto.func in
+       let body = Lazy.force callee.body in
+       let found = ref false in
+       if nest body > 0 || callee.has_self_tail then
+         Array.iter (walk (fun (x : expr) -> (match x.e with Var { b = Cell { stable = false; _ }; _ } -> found := true | _ -> ()); not !found)) body;
+       if !found then raise No;
+       if v.state <> 2 then through () else
        let numbers = Array.for_all (fun t -> t == TI || t == TF || t == TBot) sg && gives_number v in
+       (* A default of a number only, which the callee's register then holds. *)
+       if Array.exists (fun t -> t == TBot) (Array.mapi (fun j t -> if t == TBot && v.tv.(j) != TI && v.tv.(j) != TF then TBot else TA) sg)
+       then through () else
        let inlined = st.inl = [] && inlinable ~any:true v && not (own st v) in
        (* Values in or out: inlined, its body made here, or called when it lowers, with the versions it calls; else the
-          call stays the interpreter's, as a statement it can't make. *)
-       if List.memq v !starved || not (numbers || inlined || in_unit st v || !dry st.w v) then raise No;
+          call through OCaml. *)
+       if List.memq v !starved || not (numbers || inlined || in_unit st v || !dry st.w v) then through () else
        (* In the order of the parameters, as the interpreter's. A value for a parameter that the callee keeps, as one it
           gives back, is marked shared when it is read elsewhere, as the interpreter's call shares it: two names then
           hold it, and a write through one copies it first. *)
@@ -1309,6 +1537,18 @@ and frame_of_struct st pos (proto : proto) sname sfields =
    statement goes back to the interpreter, which would call it again; the room reserved before is checked again after it,
    as after a call. *)
 and native st e (n : native) args =
+  let r, at = native_site st e n args in
+  (* Its type, as inference found it from the native's: a number there is the interpreter's number too. *)
+  match ty st e with
+  | TI -> fresh st Kint (fun q -> Num (q, r, Only_int, at))
+  | TF -> fresh st Kfloat (fun q -> Num (q, r, Number, at))
+  | _ -> r, Kval
+
+(* Its value, as the native gives it. *)
+and native_value st e (n : native) args = fst (native_site st e n args)
+
+(* And the site of the call. *)
+and native_site st e (n : native) args =
   let ns = st.unit.natives in
   let rec find k = if k = Vec.length ns then (Vec.add_last ns n; k) else if Vec.get ns k == n then k else find (k + 1) in
   let k = find 0 and at = site st e.pos in
@@ -1321,25 +1561,28 @@ and native st e (n : native) args =
      emit st (Ir.Recheck (q, -1));
      st.dyn.rechecks <- q :: st.dyn.rechecks
    | None -> ());
-  (* Its type, as inference found it from the native's: a number there is the interpreter's number too. *)
-  match ty st e with
-  | TI -> fresh st Kint (fun q -> Num (q, fst r, Only_int, at))
-  | TF -> fresh st Kfloat (fun q -> Num (q, fst r, Number, at))
-  | _ -> r
+  fst r, at
 
 (* A call of a function held in a value: a bet on the functions the interpreter saw this call reach, the last first, each
    tested in turn and called as a direct call is; any other goes back to the interpreter. This is the polymorphic inline
    cache of Hölzle, Chambers and Ungar (ECOOP 1991), its entries filled by the interpreter's type feedback. *)
 and call_value st e (call : call) f =
   let seen = match List.assoc_opt e.id st.ver.seen with Some l -> !l | None -> [] in
+  (* Where nothing can go back to the interpreter, as in a version as a whole, a call that none of the bets takes goes
+     through OCaml, the interpreter's call of the value. *)
+  let through = st.dyn.bail = None in
+  if (seen = [] || List.length seen > Compile.seen_most) && through then
+    call_through st e f (args_of call (Array.length call.args))
+  else begin
   if seen = [] || List.length seen > Compile.seen_most then raise No;
   let n = Array.length call.args in
   let vals = Array.map (expr st) (args_of call n) in
   let targets = List.filter_map (fun p -> target st p vals) seen in
   if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
     prerr_endline (Printf.sprintf "jit: call %d reached %d functions, %d taken" e.id (List.length seen) (List.length targets));
+  if targets = [] && through then call_values st e f (args_of call n) vals else begin
   if targets = [] then raise No;
-  let k = match targets with (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret | _ -> Ir.Kval in
+  let k = match targets with (_, (v : version)) :: rest when (not through) && List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret | _ -> Ir.Kval in
   let r = reg st k and join = block st in
   let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked and showed = ref false in
   let callable = st.dyn.callable in
@@ -1365,17 +1608,37 @@ and call_value st e (call : call) f =
        st.cur <- next)
     targets;
   (* No test passed: no step of a callee ran on the way here, so the statement goes back with its fuel as it is, which
-     needs no copy at its start; after the join, each call may have stepped. *)
+     needs no copy at its start; after the join, each call may have stepped. Or, where nothing goes back, the call
+     through OCaml. *)
   st.dyn.bail <- before;
   st.dyn.callable <- callable;
   st.dyn.dirty <- clean;
   st.dyn.ticked <- calm;
-  close st (Bail (bail st));
+  if through then begin
+    emit st (Move (r, fst (call_values ~typed:false st e f (args_of call n) vals)));
+    close st (Jump join)
+  end
+  else close st (Bail (bail st));
   st.dyn.ticked <- true;
   st.cur <- join;
   (* A function that drew: nothing after the call may send the statement back. *)
   if !showed then shows st;
   Ir.Reg r, k
+  end
+  end
+
+(* A call of the value [f] through OCaml, as the interpreter calls a value it meets: [Compile.call_back], above the
+   frame of the call, its site named; each argument evaluated in order and stored, as the interpreter gives it. *)
+and call_through st e f (args : expr array) =
+  call_values st e f args (Array.map (expr st) args)
+
+(* [typed]: its value as inference types the call, as a native's. *)
+and call_values ?(typed = true) st e f (args : expr array) vals =
+  let xs = Array.mapi (fun j x -> stored_x st args.(j) x) vals in
+  let n = Array.length xs in
+  if n > 63 then raise No;
+  let g = own_native "call" (n + 1) (fun ctx a -> Compile.call_back ctx a.(0) (Array.sub a 1 n)) in
+  if typed then native st e g (Array.append [| f |] xs) else (native_value st e g (Array.append [| f |] xs), Ir.Kval)
 
 (* A call of a compiled version, native code to native code. When the callee's body starts with a test of its
    parameters that gives one of them or a constant at once, as fib's [n < 2] gives n, that test and that result are made
@@ -1383,6 +1646,20 @@ and call_value st e (call : call) f =
    is made when the test fails, or when the frame or the fuel of the callee's step is short, which it then handles. *)
 and native_call st e (v : version) given =
   st.ncalls <- st.ncalls + 1;
+  (* Each argument of the kind of its parameter: a number boxed for one of no type, which the version of no types that
+     --no-spec calls takes, as the interpreter's call gives it; an integer made a float for a Float. *)
+  let given =
+    Array.mapi
+      (fun j ->
+         Option.map (fun x ->
+             let k = match x with Ir.Reg q -> Vec.get st.kinds q | Int _ -> Ir.Kint | Float _ -> Kfloat | Word _ -> Kval in
+             match ret_kind v.tv.(j), k with
+             | w, k when w = k -> x
+             | Ir.Kval, k -> box st (x, k)
+             | Kfloat, Kint -> to_float st (x, Kint)
+             | _ -> raise No))
+      given
+  in
   let back = back st in
   (* A parameter the call leaves out gets any number of its kind: the callee makes its default after its step. *)
   let args = Array.mapi (fun j -> function Some x -> x | None -> if v.tv.(j) == TF then Ir.Float 0. else Int 0) given in
@@ -1511,6 +1788,9 @@ and cond st (e : expr) yes no =
     let op = match op with Lt -> Ir.Lt | Le -> Le | Gt -> Gt | Ge -> Ge | Eq -> Eq | _ -> Ne in
     let x = expr st a in
     let y = expr st b in
+    (* A version as a whole has no frame to guess a value's number from: the test of two values. *)
+    if st.ctx = None && (snd x = Ir.Kval || snd y = Kval) then value_test st e op x y yes no
+    else
     (* Integers against floats exactly, as the interpreter: a value beside a float is a number that is a float exactly. *)
     let x, y =
       match snd x, snd y with
@@ -1576,6 +1856,89 @@ and cond st (e : expr) yes no =
        close st (match k with Some k -> Bail k | None -> Not_bool (x, site st e.pos))
      | _ -> raise No)
   | _ -> raise No
+
+(* Arithmetic of two values, as the interpreter's (Compile's add_a and the others): two Ints in machine code, checked as
+   the interpreter checks them, else through OCaml ([Arith]), whose error names this site. *)
+and value_arith st (e : expr) op x y =
+  let x = box st x and y = box st y in
+  let f = match op with Add -> Arith.add | Sub -> Arith.sub | _ -> Arith.mul in
+  let r = reg st Kval and both = block st and ints = block st and slow = block st and join = block st in
+  let floats = block st and fboth = block st and fl = block st in
+  let base = facts st st.cur in
+  let tag v = fst (fresh st Kint (fun r -> Tag (r, v))) in
+  let tx = tag x in
+  close st (Branch (Eq, Kint, tx, Int 0, both, floats));
+  carry st base both;
+  st.cur <- both;
+  close st (Branch (Eq, Kint, tag y, Int 0, ints, slow));
+  (* Two Floats, as add_a's: the operation of doubles, boxed. *)
+  carry st base floats;
+  st.cur <- floats;
+  close st (Branch (Eq, Kint, tx, Int 1, fboth, slow));
+  carry st base fboth;
+  st.cur <- fboth;
+  close st (Branch (Eq, Kint, tag y, Int 1, fl, slow));
+  carry st base fl;
+  st.cur <- fl;
+  let u = fresh st Kfloat (fun r -> Float_in (r, x)) and w = fresh st Kfloat (fun r -> Float_in (r, y)) in
+  let o = match op with Add -> Ir.Fadd | Sub -> Fsub | _ -> Fmul in
+  let n = fresh st Kfloat (fun r -> Op (o, r, fst u, fst w, -1)) in
+  emit st (Move (r, box st n));
+  goto st join;
+  carry st base ints;
+  st.cur <- ints;
+  let u = fresh st Kint (fun r -> Int_of (r, x)) and w = fresh st Kint (fun r -> Int_of (r, y)) in
+  let o = match op with Add -> Ir.Add | Sub -> Sub | _ -> Mul in
+  let n = fresh st Kint (fun r -> Op (o, r, fst u, fst w, site st e.pos)) in
+  emit st (Move (r, box st n));
+  goto st join;
+  carry st base slow;
+  st.cur <- slow;
+  emit st (Move (r, native_value st e (own_native "slow arithmetic" 2 (fun ctx a -> f ctx a.(0) a.(1))) [| x; y |]));
+  goto st join;
+  carry st base join;
+  Ir.Reg r, Ir.Kval
+
+(* A test of two values, as the interpreter's (Compile's eq_b and the others): made in machine code when it can tell
+   ([Ir.Test]), else through OCaml, the interpreter's test there, whose error, a test of lists, names this site. *)
+and value_test st (e : expr) op x y yes no =
+  let x = box st x and y = box st y in
+  let f = match op with Ir.Eq -> Arith.eq | Ne -> Arith.ne | Lt -> Arith.lt | Le -> Arith.le | Gt -> Arith.gt | Ge -> Arith.ge in
+  let ci (u : int) w = match op with Ir.Eq -> u = w | Ne -> u <> w | Lt -> u < w | Le -> u <= w | Gt -> u > w | Ge -> u >= w in
+  let cf (u : float) w = match op with Ir.Eq -> u = w | Ne -> u <> w | Lt -> u < w | Le -> u <= w | Gt -> u > w | Ge -> u >= w in
+  let run ctx (a : t array) =
+    Value.of_bool
+      (match a.(0), a.(1) with
+       | Int u, Int w -> ci u w
+       | Float u, Float w -> cf u w
+       | p, q ->
+         (match f ctx p q with
+          | True -> true
+          | False -> false
+          | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v))))
+  in
+  let r = reg st Kval and slow = block st and decided = block st and floats = block st and fl = block st and other = block st in
+  let base = facts st st.cur in
+  (* Two Floats, as eq_b's and the others': their doubles compared. *)
+  let tag v = fst (fresh st Kint (fun r -> Tag (r, v))) in
+  close st (Branch (Eq, Kint, tag x, Int 1, floats, other));
+  carry st base floats;
+  st.cur <- floats;
+  close st (Branch (Eq, Kint, tag y, Int 1, fl, other));
+  carry st base fl;
+  st.cur <- fl;
+  let u = fresh st Kfloat (fun r -> Float_in (r, x)) and w = fresh st Kfloat (fun r -> Float_in (r, y)) in
+  close st (Branch (op, Kfloat, fst u, fst w, yes, no));
+  carry st base other;
+  st.cur <- other;
+  emit st (Test (r, op, x, y));
+  close st (Branch (Eq, Kint, Reg r, Word 3, slow, decided));
+  carry st base slow;
+  st.cur <- slow;
+  emit st (Move (r, native_value st e (own_native "slow test" 2 run) [| x; y |]));
+  goto st decided;
+  carry st base decided;
+  close st (Branch (Eq, Kint, Reg r, Word 5, yes, no))
 
 (* The test of a small function whose body is one, as isFinite(x) = value.IsNumber(x) and x - x == 0.0, taken in
    place: its body, when the call gives each parameter by its place. *)
@@ -2759,18 +3122,28 @@ let rec func st name =
      A self tail call gives every argument: it comes back after them. One kept as an array of floats, read from its
      slot, stays interpreted. *)
   let omitted = List.filter (fun j -> ver.sg.(j) == TBot) (List.init (Array.length f.params) Fun.id) in
+  (* The version of no types, which a call of any arguments takes, computes a default of each parameter whose slot the
+     call left without a value, [Undef], as the interpreter's (Compile.compile_version): in their order with the others. *)
+  let generic = (match ver.owner.generic with Some g -> g == ver | None -> false) && st.index = 0 in
+  let unset = List.filter (fun j -> generic && ver.sg.(j) != TBot && f.params.(j).default <> None) (List.init (Array.length f.params) Fun.id) in
   (* The point after the frame's step, at its body when no default is made: where the room of the body is checked too. *)
   let at_body = ref (-1) in
-  if omitted = [] then at_body := tick st body (entry_step st st.inl ver)
+  if omitted = [] && unset = [] then at_body := tick st body (entry_step st st.inl ver)
   else begin
     ignore (tick st (block st) (entry_step st st.inl ver));
     List.iter
       (fun j ->
          match f.params.(j).default with
-         | Some d when st.regs.(j) >= 0 -> emit st (Move (var st j, convert st (Vec.get st.kinds (var st j)) (expr st d)))
-         | Some _ when st.arrays.(j) < 0 -> ()
+         | Some d when List.mem j unset && st.regs.(j) >= 0 && Vec.get st.kinds st.regs.(j) = Ir.Kval ->
+           let make = block st and next = block st in
+           close st (Branch (Eq, Kint, Reg st.regs.(j), Word 3, make, next));
+           st.cur <- make;
+           emit st (Move (st.regs.(j), stored_x st d (expr st d)));
+           goto st next
+         | Some d when st.regs.(j) >= 0 && not (List.mem j unset) -> emit st (Move (var st j, convert st (Vec.get st.kinds (var st j)) (expr st d)))
+         | Some _ when st.arrays.(j) < 0 && not (List.mem j unset) -> ()
          | _ -> raise No)
-      omitted;
+      (List.filter (fun j -> List.mem j omitted || List.mem j unset) (List.init (Array.length f.params) Fun.id));
     goto st body
   end;
   (* The outermost frame of a version as a whole has room for what its body makes, outside its loops, checked at the
@@ -2786,6 +3159,8 @@ let rec func st name =
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)
   let params = List.filter_map (fun j -> if st.regs.(j) >= 0 then Some (var_of j) else None) (List.init (Array.length f.params) Fun.id) in
+  (* A closure's captured values, read from their slots at the entry, as parameters. *)
+  let params = params @ List.filter_map (fun (_, j) -> if st.regs.(j) >= 0 && caught st j then Some (var_of j) else None) (Array.to_list f.captures) in
   let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some (var_of i) else None) (List.init f.nvars Fun.id) in
   finish st name ~params ~vars
 
@@ -2944,7 +3319,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
   let f = Cache.ready ver.owner.func in
   if ver.state <> 2 then raise No;
   if not region then begin
-    if Array.length f.captures > 0 then no "a closure";
+    (* A closure called from machine code would need its captured values from the function value: not yet. *)
+    if Array.length f.captures > 0 && index > 0 then no "a closure";
     if ver.ret == TBot then no "no result";
     Option.iter no (hopeless w (Lazy.force f.body));
     (* A whole function in native code skips the checks of its parameters' and result's types. *)
@@ -2955,7 +3331,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
   let np = Array.length f.params in
   let named = match scope with Some e -> locals ~cold [] e | None -> [] in
   let written = match scope with Some e -> (try Some (assigned ~sets:false ~cold [] e) with Unknown -> None) | None -> None in
-  let plain i = (f.cell_of = [||] || f.cell_of.(i) < 0) && not f.maybe_undef.(i) in
+  let plain i = (f.cell_of = [||] || f.cell_of.(i) < 0) && ((not f.maybe_undef.(i)) || ((not region) && index = 0 && captured f i)) in
   let crossing = match scope with Some e -> carried ~cold e | None -> [] in
   let spec = Array.make f.nvars false in
   (* A variable the loop assigns that holds a small array of floats now, of one or two dimensions: kept in slots. *)
@@ -3121,12 +3497,12 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
    function of the unit counts as 4, as the interpreter's costs that. CESIA_JIT=always makes every unit, for tests. *)
 let bridge_ops = 24
 
-let work (f : Ir.func) =
+let work natives (f : Ir.func) =
   Array.fold_left
     (fun (w, n) (b : Ir.block) ->
        List.fold_left
          (fun (w, n) -> function
-            | Ir.Native _ -> w, n + 1
+            | Ir.Native (_, k, _, _) -> if slow_path (Vec.get natives k) then w, n else w, n + 1
             | Call _ -> w + 4, n
             | Move _ | Incr _ | Bump _ | Tick _ | Steps _ | Burn | Frame _ | Enter _ | Enter_or_bail _ | Keep _ | Reserve _
             | Recheck _ | Share _ | Value _ | Len _ | Dim _ ->
@@ -3157,8 +3533,8 @@ let rec lower_unit ?(calls_show = false) ?ctx ?scope ?values ?cold (w : world) (
       no "a native beside an array read in place"
   with
   | () when Vec.length u.natives > 0 && not calls_show ->
-    let ops, natives = List.fold_left (fun (w, n) ((f : Ir.func), _) -> let a, b = work f in w + a, n + b) (0, 0) (Vec.to_list out) in
-    if ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
+    let ops, natives = List.fold_left (fun (w, n) ((f : Ir.func), _) -> let a, b = work u.natives f in w + a, n + b) (0, 0) (Vec.to_list out) in
+    if natives > 0 && ops < natives * bridge_ops && !Tier.mode <> Tier.always then begin
       why := Printf.sprintf "%d operations for %d calls of natives" ops natives;
       None
     end
@@ -3191,17 +3567,26 @@ let dry_most = 16
 let dry_refused : (world option * version list) ref = ref (None, [])
 let dry_most_kept = 256
 
+(* The versions whose dry lowering is under way. One met again through those it calls, as two versions of a function
+   that call each other (betaQuantile(a, b, t, up) of std/stats calls betaQuantile(b, a, t, 0.0), the version of the
+   other order of types), passes here: the lowering under way checks it, as the caller's unit then holds it and lowers
+   it there. Lowering it again in a unit of its own met the other again, and so on, until memory was gone. *)
+let dry_active : version list ref = ref []
+
 let () =
   dry :=
     fun w v ->
       (match fst !dry_refused with Some x when x == w -> () | _ -> dry_refused := (Some w, []));
       if List.memq v (snd !dry_refused) then false
+      else if List.memq v !dry_active then true
       else begin
         let u = { versions = Vec.create (); moving = Vec.create (); whole = false; table = Vec.create (); natives = Vec.create (); calls_show = false } in
         Vec.add_last u.versions v;
         Vec.add_last u.versions v;
         let rec go i = i >= Vec.length u.versions || (i <= dry_most && (ignore (func (start w u i (Vec.get u.versions i)) "d"); go (i + 1))) in
-        let ok = try go 1 with No | Unseen | Respec _ | Cold _ -> false in
+        let active = !dry_active in
+        dry_active := v :: active;
+        let ok = Fun.protect ~finally:(fun () -> dry_active := active) (fun () -> try go 1 with No | Unseen | Respec _ | Cold _ -> false) in
         if not ok then dry_refused := (Some w, v :: List.filteri (fun i _ -> i < dry_most_kept - 1) (snd !dry_refused));
         ok
       end

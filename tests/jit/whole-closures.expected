@@ -1,0 +1,53 @@
+late off:
+603840
+6769500
+3000
+whole-closures.ce:46:20: "late" has no value yet.
+  46 |   g = () -> sum(1, late, 1)
+     |                    ^
+  Give it a value before reading it.
+  in <anonymous> (whole-closures.ce:46)
+late default:
+603840
+6769500
+3000
+whole-closures.ce:46:20: "late" has no value yet.
+  46 |   g = () -> sum(1, late, 1)
+     |                    ^
+  Give it a value before reading it.
+  in <anonymous> (whole-closures.ce:46)
+late always:
+603840
+6769500
+3000
+whole-closures.ce:46:20: "late" has no value yet.
+  46 |   g = () -> sum(1, late, 1)
+     |                    ^
+  Give it a value before reading it.
+  in <anonymous> (whole-closures.ce:46)
+error off:
+603840
+6769500
+3000
+whole-closures.ce:52:13: This dictionary has no key: the text "N".
+  52 |   r -> sum(r.N, k, 1)
+     |             ^
+  in <anonymous> (whole-closures.ce:52)
+error default:
+603840
+6769500
+3000
+whole-closures.ce:52:13: This dictionary has no key: the text "N".
+  52 |   r -> sum(r.N, k, 1)
+     |             ^
+  in <anonymous> (whole-closures.ce:52)
+error always:
+603840
+6769500
+3000
+whole-closures.ce:52:13: This dictionary has no key: the text "N".
+  52 |   r -> sum(r.N, k, 1)
+     |             ^
+  in <anonymous> (whole-closures.ce:52)
+machine code runs closures
+exit 0

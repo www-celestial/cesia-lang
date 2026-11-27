@@ -1,0 +1,76 @@
+use std/io
+use std/list
+use std/math
+use std/sys
+use std/text
+
+(* Closures whose frames machine code makes: captured values read at their entry as parameters, a capture changed after
+   the closure was made (the closure keeps the value it captured), the frame that made it gone, a closure that a native
+   calls back (list.Map), deep recursion through closures, a variable captured before it had a value, and an error in a
+   compiled closure, with the interpreter's message and trace. *)
+defn sum(n, base, k)
+  s = 0
+  for i in 1..n
+    s = s + i * k + base
+  end
+  s
+end
+
+defn adder(k)
+  base = k * 10
+  n -> sum(n, base, k)
+end
+
+defn counter(start)
+  n = start
+  f = x -> sum(x, n, 1)
+  n = n + 100
+  f
+end
+
+defn mk(s)
+  t = text.Repeat(2, s)
+  x -> text.ByteLength(t) + sum(x, 0, 1)
+end
+
+defn scale(xs, k)
+  list.Map(x -> sum(x, k, 1), xs)
+end
+
+defn deep(d, k)
+  f = x -> if x <= 0 k else deep(x - 1, k + 1) end
+  f(d)
+end
+
+defn early()
+  g = () -> sum(1, late, 1)
+  late = 41
+  g
+end
+
+defn failing(k)
+  r -> sum(r.N, k, 1)
+end
+
+add5 = adder(5)
+c = counter(1)
+m = mk("ab")
+total = 0
+for i in 1..3000
+  total = total + add5(math.Mod(i, 7)) + c(math.Mod(i, 5)) + m(math.Mod(i, 3))
+end
+io.Print(total)
+acc = 0
+for i in 1..1500
+  acc = acc + list.Sum(scale([1, 2, 3], i))
+end
+io.Print(acc)
+io.Print(deep(3000, 0))
+g = failing(2)
+for i in 1..1500
+  g({N: 3})
+end
+if sys.Args[1] == "late"
+  early()()
+end
+g({M: 3})
