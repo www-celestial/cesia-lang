@@ -215,10 +215,10 @@ defn Server(t, method, route, headers = [], attributes = {})
   end
   traceId = if value.IsSome(parent) parent.TraceId else ids(32) end
   sampled = t.Traces and (if value.IsSome(parent) parent.Sampled else chosen(traceId, t.Sample) end)
-  attrs = dict.Merge({"http.request.method": method, "http.route": route}, attributes)
+  (* the attributes join at End, when the span is kept: a request not sampled pays for none of them *)
   span = {TraceId: traceId, SpanId: ids(16), Parent: if value.IsSome(parent) parent.SpanId else "" end,
     State: if value.IsSome(parent) kept(http.HeaderValue("tracestate", headers)) else "" end, Name: "$method $route", Kind: 2,
-    Start: sys.Now(), Attributes: attrs, Links: links, Events: [], Rec: sampled, Root: true, Up: missing, T: t}
+    Start: sys.Now(), Attributes: attributes, Method: method, Route: route, Links: links, Events: [], Rec: sampled, Root: true, Up: missing, T: t}
   _ = setContext(if sampled span else "00-$traceId-$(span.SpanId)-00" end)
   span
 end
@@ -252,7 +252,8 @@ end
 defn End(span, failed = false, message = "", attributes = {}, error = missing, name = missing)
   (** Ends a span of Server or Begin: the fiber's context is the one before it again, and the span joins the queue when
       its trace is sampled, or when always keeps it. failed marks it an error, with message; error, an exception that
-      was raised in it, becomes its event "exception" (its exception.message). attributes join its own; name, when
+      was raised in it, becomes its event "exception" (its exception.message). attributes join its own: a map, or a
+      function that gives it, called only when the span is kept, so that a span not sampled makes none; name, when
       given, replaces its name, for a server that knows the route of a request once it answered it. *)
   if not value.IsDict(span)
     return missing
@@ -270,8 +271,13 @@ defn End(span, failed = false, message = "", attributes = {}, error = missing, n
   end
   span.Up = missing
   span.T = missing
-  if value.Len(attributes) > 0
-    span.Attributes = dict.Merge(span.Attributes, attributes)
+  more = if value.IsFunction(attributes) attributes() else attributes end
+  if dict.Has("Method", span)
+    more = dict.Merge(dict.Merge({"http.request.method": span.Method, "http.route": span.Route}, span.Attributes), more)
+    span = dict.Drop("Method", dict.Drop("Route", span))
+    span.Attributes = more
+  else if value.Len(more) > 0
+    span.Attributes = dict.Merge(span.Attributes, more)
   end
   span.Status = if failed 2 else 0 end
   span.Message = message
@@ -287,13 +293,18 @@ defn engineSpan(name, start, seconds, got)
   if dict.Has(name, quiet) or not value.IsDict(up)
     return missing
   end
-  parts = text.Split(".", name)
+  named = fiber.Recall(name, 0, made)
+  if value.IsMissing(named)
+    parts = text.Split(".", name)
+    named = {Name: text.Join(" ", parts), Attributes: if dict.Has(parts[1], databases) {"db.system.name": parts[1], "db.operation.name": parts[2]} else {"code.function.name": name} end}
+    fiber.Remember(name, named, 1e18, made)
+  end
   failed = result.IsErr(got)
-  attrs = if dict.Has(parts[1], databases) {"db.system.name": parts[1], "db.operation.name": parts[2]} else {"code.function.name": name} end
+  attrs = named.Attributes
   if failed and value.IsDict(got.Error) and value.IsSome(dict.Get("Code", got.Error))
     attrs["error.type"] = value.Text(got.Error.Code)
   end
-  fiber.Send({TraceId: up.TraceId, SpanId: ids(16), Parent: up.SpanId, State: up.State, Name: text.Join(" ", parts), Kind: 3, Start: start,
+  fiber.Send({TraceId: up.TraceId, SpanId: ids(16), Parent: up.SpanId, State: up.State, Name: named.Name, Kind: 3, Start: start,
     End: start + seconds, Attributes: attrs, Links: [], Events: [], Status: if failed 2 else 0 end, Message: ""}, up.T.Queue)
 end
 
@@ -392,12 +403,15 @@ defn gathering(t)
   spans = []
   logs = []
   next = sys.Now() + t.Every
+  fiber.Spawn(() -> ticking(t))
   while true
-    got = fiber.Receive(t.Queue, timeout = list.Max([0, next - sys.Now()]))
+    got = fiber.Receive(t.Queue)
     flush = missing
     if result.IsOk(got)
       v = got.Value
-      if dict.Has("Flush", v)
+      if v == "tick"
+        flush = missing
+      else if dict.Has("Flush", v)
         flush = v.Flush
       else if value.Len(spans) + value.Len(logs) >= t.Most
         count(t, "Dropped", 1)
@@ -444,6 +458,15 @@ defn watched(t, spans, logs)
   put(false, t.Busy)
   _ = fiber.Receive(t.Ended, timeout = 0)
   fiber.Send(true, t.Ended)   (* for a flush that waits for it *)
+end
+
+defn ticking(t)
+  (** The beat of a tracer's queue: a tick every few seconds, for its fiber to send what waits; a receive that waits
+      for ever costs less than one with a timeout at each span. *)
+  while true
+    sys.Sleep(t.Every)
+    fiber.Send("tick", t.Queue)
+  end
 end
 
 defn shipped(t, spans, logs)
@@ -570,7 +593,20 @@ defn pbAttribute(k, v)
 end
 
 defn pbAttributes(number, attrs)
-  (** The attributes of a message, each a field of this number. *)
+  (** The attributes of a message, each a field of this number: the whole block from the table when the same map came
+      before, as the spans of one route do. *)
+  id = "$number\t$(json.Text(attrs))"
+  got = fiber.Recall(id, 0, made)
+  if value.IsSome(got)
+    return got
+  end
+  out = attributesOf(number, attrs)
+  fiber.Remember(id, out, 1e18, made)
+  out
+end
+
+defn attributesOf(number, attrs)
+  (** The attributes of a message, made. *)
   parts = []
   for p in dict.Pairs(attrs)
     if value.IsSome(p.Value)
@@ -672,7 +708,17 @@ defn jsValue(v)
   end
 end
 
-jsAttributes(attrs) = [{key: p.Key, value: jsValue(p.Value)} for p in dict.Pairs(attrs) if value.IsSome(p.Value)]
+defn jsAttributes(attrs)
+  (** The attributes of OTLP/JSON, from the table when the same map came before. *)
+  id = "j\t$(json.Text(attrs))"
+  got = fiber.Recall(id, 0, made)
+  if value.IsSome(got)
+    return got
+  end
+  out = [{key: p.Key, value: jsValue(p.Value)} for p in dict.Pairs(attrs) if value.IsSome(p.Value)]
+  fiber.Remember(id, out, 1e18, made)
+  out
+end
 jsResource(res) = {attributes: jsAttributes(res)}
 
 defn jsSpan(s)
