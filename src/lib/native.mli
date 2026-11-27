@@ -45,6 +45,9 @@ val flag_arg : ctx -> string -> t array -> int -> bool
 (** The type of the result of a native that says nothing of it, any value: never a number, as [Infer] knows. *)
 val any : ty array -> ty
 
+(** The tests of std/value by native (value.IsText...), which the interpreter makes inline in a condition. *)
+val tests : (t * (t -> bool)) list ref
+
 (** A native: name, minimum and maximum argument count, code. [ret]: the type of its result, by those of its arguments,
     [any] without it. [result]: it gives an Ok or an Err. *)
 val nat :

@@ -235,21 +235,39 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
 (* Three stacks of [cap] entries. Under 4,096 they are left to the full checkpoints: OCaml's count of the heap walks its
    pools, and a server's fibers, which each grow their stacks at a request, paid a tenth of their time for it. From 4,096,
    they count as a big allocation does, since the heap's count sees them only at the next cycle. *)
+(* A fiber that grows takes first the stacks of one that ended: std/http answers each request in a fiber of its own, which
+   grew four times from 8 entries (800 words, a dozen calls of C). A few of them, of 4,096 entries at most. *)
+let spares = ref []
+
 let[@inline never] grow ctx need =
-  let cap = max need (2 * ctx.cap) in
+  let cap = Int.max need (2 * ctx.cap) in
   if cap > base_mask then limit "memory" ctx.site;
   if ctx.w.limits.memory_words <> max_int && cap >= 4096 then begin
     ctx.w.big_words <- ctx.w.big_words + (3 * cap);
     check_memory ctx (3 * cap) ctx.cap
   end;
-  let v = Array.make cap Undef and f = Float.Array.make cap 0. and i = Array.make cap 0 in
+  let v, f, i =
+    match !spares with
+    | ((v, _, _) as s) :: rest when ctx.fiber && Array.length v >= cap -> spares := rest; s
+    | _ -> Array.make cap Undef, Float.Array.make cap 0., Array.make cap 0
+  in
   Array.blit ctx.v 0 v 0 ctx.cap;
   Float.Array.blit ctx.f 0 f 0 ctx.cap;
   Array.blit ctx.i 0 i 0 ctx.cap;
   ctx.v <- v;
   ctx.f <- f;
   ctx.i <- i;
-  ctx.cap <- cap
+  ctx.cap <- Array.length v
+
+let spare ctx =
+  if ctx.fiber && ctx.cap > 8 && ctx.cap <= 4096 && List.compare_length_with !spares 8 < 0 then begin
+    Array.fill ctx.v 0 ctx.cap Undef;
+    spares := (ctx.v, ctx.f, ctx.i) :: !spares;
+    ctx.v <- [||];
+    ctx.f <- Float.Array.create 0;
+    ctx.i <- [||];
+    ctx.cap <- 0
+  end
 
 let backtrace ?(above = 0) ctx at =
   let w = ctx.w in
@@ -301,12 +319,13 @@ let cells ctx rows cols =
   then limit "memory" ctx.site;
   rows * cols
 
-(* Before allocating n words. The heap is looked at once each time the words reserved pass a quarter of the limit. *)
+(* Before allocating n words. The heap is looked at once each time the words reserved pass a quarter of the limit. Below
+   the first quarter, no division: two of them and a polymorphic max took a quarter of a text of parts. *)
 let reserve ctx n =
-  let w = ctx.w and quarter = max 1 (ctx.w.limits.memory_words / 4) in
+  let w = ctx.w and quarter = Int.max 1 (ctx.w.limits.memory_words lsr 2) in
   if w.limits.memory_words <> max_int then begin
     w.big_words <- w.big_words + n;
-    if w.big_words / quarter > (w.big_words - n) / quarter then check_memory ctx n (site_top ctx)
+    if w.big_words >= quarter && w.big_words / quarter > (w.big_words - n) / quarter then check_memory ctx n (site_top ctx)
   end
 
 let pay ctx n = charge ctx ((n / 16) + 1)
