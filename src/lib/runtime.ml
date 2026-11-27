@@ -301,12 +301,13 @@ let cells ctx rows cols =
   then limit "memory" ctx.site;
   rows * cols
 
-(* Before allocating n words. The heap is looked at once each time the words reserved pass a quarter of the limit. *)
+(* Before allocating n words. The heap is looked at once each time the words reserved pass a quarter of the limit. Below
+   the first quarter, no division: two of them and a polymorphic max took a quarter of a text of parts. *)
 let reserve ctx n =
-  let w = ctx.w and quarter = max 1 (ctx.w.limits.memory_words / 4) in
+  let w = ctx.w and quarter = Int.max 1 (ctx.w.limits.memory_words lsr 2) in
   if w.limits.memory_words <> max_int then begin
     w.big_words <- w.big_words + n;
-    if w.big_words / quarter > (w.big_words - n) / quarter then check_memory ctx n (site_top ctx)
+    if w.big_words >= quarter && w.big_words / quarter > (w.big_words - n) / quarter then check_memory ctx n (site_top ctx)
   end
 
 let pay ctx n = charge ctx ((n / 16) + 1)
