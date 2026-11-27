@@ -8,6 +8,12 @@
 #   flood N       the client's first datagram (its Initial) sent again from N new sockets, as from N addresses
 #   spoof         the client's last short-header datagram sent again from a new socket, and the bytes the server sent
 #                 to that socket within a second
+#   rebind        the relay goes on from a new port, as a NAT that gives the client another address: {"port": the new
+#                 one}
+#   dcids         the destination connection ids of the server's short headers, in the order first seen, in hex
+#   mark          the client's datagrams are recorded from now on (a flight to replay)
+#   replay        those datagrams sent again from a new socket, as an attacker who saw them would, and the bytes the
+#                 server answered within a second
 import json, select, socket, sys, time
 
 listen, server = int(sys.argv[1]), ("127.0.0.1", int(sys.argv[2]))
@@ -21,9 +27,16 @@ dropping = False
 stats = {"client": 0, "server": 0, "types": [], "scids": []}
 first = None
 last_short = None
+recording = None
+dcids = []
+cid_len = None
 
 def server_packet(d):
     stats["server"] += len(d)
+    if d and not d[0] & 0x80 and cid_len and len(d) > 1 + cid_len:
+        dcid = d[1:1 + cid_len].hex()
+        if dcid not in dcids:
+            dcids.append(dcid)
     if d and d[0] & 0x80 and len(d) > 6:
         stats["types"].append(d[0])
         dcid_len = d[5]
@@ -48,6 +61,13 @@ while True:
             stats["client"] += len(d)
             if first is None:
                 first = d
+                if d and d[0] & 0x80 and len(d) > 6:
+                    # The client's own connection id: the source id of its first long header, which the server's short
+                    # headers carry as their destination.
+                    at = 6 + d[5]
+                    cid_len = d[at]
+            if recording is not None:
+                recording.append(d)
             if d and not d[0] & 0x80:
                 last_short = d
             back.send(d)
@@ -90,6 +110,30 @@ while True:
                     for s in socks:
                         s.close()
                 answer({"sent": sent, "answered": got})
+            elif line[0] == "rebind":
+                back.close()
+                back = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                back.connect(server)
+                answer({"port": back.getsockname()[1]})
+            elif line[0] == "dcids":
+                answer(dcids)
+            elif line[0] == "mark":
+                recording = []
+                answer("ok")
+            elif line[0] == "replay":
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sent = 0
+                for d in recording or []:
+                    s.sendto(d, server)
+                    sent += len(d)
+                got = 0
+                until = time.time() + 1.0
+                while time.time() < until:
+                    rs, _, _ = select.select([s], [], [], 0.05)
+                    if rs:
+                        got += len(s.recv(65536))
+                s.close()
+                answer({"datagrams": len(recording or []), "sent": sent, "answered": got})
             elif line[0] == "spoof":
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.sendto(last_short, server)
