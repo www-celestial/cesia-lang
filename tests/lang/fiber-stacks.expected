@@ -1,0 +1,61 @@
+[496, 528, 561, 595, 630, 666, 703, 741, 780, 820, 861, 903]
+fiber-stacks.ce:16:24: Index 3 is outside this array of 1 elements.
+  16 | boom(n) = if n == 0 [1][3] else 1 + boom(n - 1) end
+     |                        ^
+  in boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  ... and 18 more
+fiber-stacks.ce:16:24: Index 3 is outside this array of 1 elements.
+  16 | boom(n) = if n == 0 [1][3] else 1 + boom(n - 1) end
+     |                        ^
+  in boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  ... and 19 more
+fiber-stacks.ce:16:24: Index 3 is outside this array of 1 elements.
+  16 | boom(n) = if n == 0 [1][3] else 1 + boom(n - 1) end
+     |                        ^
+  in boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  ... and 20 more
+fiber-stacks.ce:16:24: Index 3 is outside this array of 1 elements.
+  16 | boom(n) = if n == 0 [1][3] else 1 + boom(n - 1) end
+     |                        ^
+  in boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  called from boom (fiber-stacks.ce:16)
+  ... and 21 more
+[true, true, true, true]
+cancelled
+[["f1", 1, 2, 3, 4], ["f2", 1, 2, 3, 4, 5], ["f3", 1, 2, 3, 4, 5, 6], ["f4", 1, 2, 3, 4, 5, 6, 7], ["f5", 1, 2, 3, 4, 5, 6, 7, 8], ["f6", 1, 2, 3, 4, 5, 6, 7, 8, 9], ["f7", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ["f8", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], ["f9", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], ["f10", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], ["f11", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], ["f12", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]]
+exit 0
