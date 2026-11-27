@@ -174,4 +174,6 @@ let otel_natives =
     "setContext", Native.nat "setContext" 1 1 (fun ctx a -> let before = ctx.local in ctx.local <- a.(0); before);
     "onLog", hook "onLog" log_hook; "onEngine", hook "onEngine" engine_hook;
     (* n random digits of hexadecimal, for the ids of traces and spans: a draw of std/random's costs ten times more *)
-    "ids", Native.nat "ids" 1 1 (fun ctx a -> let r = Lazy.force rng and n = (match a.(0) with Int n -> n | _ -> 32) in Text (String.init (max 0 (min n 64)) (fun _ -> "0123456789abcdef".[Random.State.int r 16]))) ]
+    "ids", Native.nat "ids" 1 1 (fun ctx a -> let r = Lazy.force rng and n = (match a.(0) with Int n -> n | _ -> 32) in Text (String.init (max 0 (min n 64)) (fun _ -> "0123456789abcdef".[Random.State.int r 16])));
+    (* the bytes of an id in hexadecimal, as protobuf sends it: encode.Unhex, in Cesia, takes 30 times longer *)
+    "bin", Native.nat "bin" 1 1 (fun ctx a -> let h = Native.text_arg ctx "bin" a.(0) in Text (String.init (String.length h / 2) (fun i -> Char.chr (int_of_string ("0x" ^ String.sub h (2 * i) 2))))) ]

@@ -14,7 +14,6 @@
       Header() --> missing *)
 use std/c
 use std/dict
-use std/encode
 use std/fiber
 use std/http
 use std/json
@@ -151,7 +150,7 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
   t = {Service: service, Endpoint: base, Protocol: protocol, Zip: zip, Headers: headers, Sample: sample, Errors: "errors" in always,
     Slow: if "slow" in always slow else missing end, Trust: trust, Traces: "traces" in signals, Metrics: "metrics" in signals,
     Logs: "logs" in signals, Most: queue, Batch: batch, Every: every, MetricsEvery: metricsEvery, Timeout: timeout,
-    Queue: fiber.Channel(), Busy: cell(false), Counts: cell({Spans: 0, Logs: 0, Dropped: 0, Exports: 0, Failed: 0, Bytes: 0}),
+    Queue: fiber.Channel(), Busy: cell(false), Ended: fiber.Channel(size = 1), Counts: cell({Spans: 0, Logs: 0, Dropped: 0, Exports: 0, Failed: 0, Bytes: 0}),
     Send: send, Started: sys.Now(), Resource: res, Pb: pbResource(res), Js: jsResource(res)}
   fiber.Spawn(() -> gathering(t))
   if t.Metrics
@@ -411,7 +410,7 @@ defn gathering(t)
     if value.IsSome(flush)
       (* everything now, after the export in flight: the fiber waits, and what comes meanwhile waits in the channel *)
       while peek(t.Busy)
-        sys.Sleep(0.01)
+        _ = fiber.Receive(t.Ended, timeout = t.Timeout * 6)
       end
       while value.Len(spans) + value.Len(logs) > 0
         some = list.Take(t.Batch, spans)
@@ -443,6 +442,8 @@ defn watched(t, spans, logs)
     count(t, "Failed", 1)
   end
   put(false, t.Busy)
+  _ = fiber.Receive(t.Ended, timeout = 0)
+  fiber.Send(true, t.Ended)   (* for a flush that waits for it *)
 end
 
 defn shipped(t, spans, logs)
@@ -510,10 +511,12 @@ random() = hexNumber(ids(12)) / 281474976710656   (* A float from 0 to 1, drawn.
 (* Protobuf, as OTLP's .proto files of opentelemetry-proto 1.x lay it out: each field its number and wire type, the
    messages written from the inside out, each after its length. *)
 
+small = [text.FromBytes([k]) for k in 0..127]   (* The varints of one byte, made once. *)
+
 defn varint(n)
   (** A number of protobuf, 7 bits a byte, the lowest first. *)
   if n < 128
-    return text.FromBytes([n])
+    return small[n + 1]
   end
   out = []
   while n >= 128
@@ -550,22 +553,56 @@ defn pbValue(v)
   end
 end
 
-pbAttributes(number, attrs) = text.Join("", [bytesOf(number, "$(bytesOf(1, p.Key))$(bytesOf(2, pbValue(p.Value)))") for p in dict.Pairs(attrs) if value.IsSome(p.Value)])
+(* The attributes made before, each pair as its KeyValue: most come again at each span (a method, a route, a status, a
+   database), and a table hands them back for a lookup; its size bounds it. *)
+made = fiber.Table(4096)
+
+defn pbAttribute(k, v)
+  (** A KeyValue of protobuf, from the table when it was made before. *)
+  id = if value.IsText(v) "$k\t$v" else "$k\t$(value.Text(v))\t$(if value.IsInt(v) "i" else if value.IsBool(v) "b" else "f" end)" end
+  got = fiber.Recall(id, 0, made)
+  if value.IsSome(got)
+    return got
+  end
+  out = "$(bytesOf(1, k))$(bytesOf(2, pbValue(v)))"
+  fiber.Remember(id, out, 1e18, made)
+  out
+end
+
+defn pbAttributes(number, attrs)
+  (** The attributes of a message, each a field of this number. *)
+  parts = []
+  for p in dict.Pairs(attrs)
+    if value.IsSome(p.Value)
+      kv = pbAttribute(p.Key, p.Value)
+      parts = list.Append(kv, list.Append(varint(text.ByteLength(kv)), list.Append(key(number, 2), parts)))
+    end
+  end
+  text.Join("", parts)
+end
 
 pbResource(res) = pbAttributes(1, res)
 scope = "$(bytesOf(1, "cesia"))"                                 (* The instrumentation scope: Cesia's std/otel. *)
-unhex(h) = encode.Unhex(h)!
+unhex(h) = bin(h)                                             (* The bytes of an id in hexadecimal. *)
+k1 = key(1, 2)
+k2 = key(2, 2)
+k5 = key(5, 2)
+k6 = key(6, 0)
+k7 = key(7, 1)
+k8 = key(8, 1)
+n16 = varint(16)
+n8 = varint(8)
 
 defn pbSpan(s)
   (** A Span of OTLP. *)
-  parts = [bytesOf(1, unhex(s.TraceId)), bytesOf(2, unhex(s.SpanId))]
+  parts = [k1, n16, unhex(s.TraceId), k2, n8, unhex(s.SpanId)]
   if s.State != ""
     parts = list.Append(bytesOf(3, s.State), parts)
   end
   if s.Parent != ""
     parts = list.Append(bytesOf(4, unhex(s.Parent)), parts)
   end
-  parts = list.Concat(parts, [bytesOf(5, s.Name), "$(key(6, 0))$(varint(s.Kind))", fixed64(7, s.Start), fixed64(8, s.End), pbAttributes(9, s.Attributes)])
+  parts = list.Concat(parts, [k5, varint(text.ByteLength(s.Name)), s.Name, k6, varint(s.Kind), k7, nanos(s.Start), k8, nanos(s.End), pbAttributes(9, s.Attributes)])
   for e in s.Events
     parts = list.Append(bytesOf(11, "$(fixed64(1, e.At))$(bytesOf(2, e.Name))$(pbAttributes(3, e.Attributes))"), parts)
   end
@@ -578,7 +615,7 @@ defn pbSpan(s)
   text.Join("", parts)
 end
 
-pbTraces(t, spans) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", [bytesOf(2, pbSpan(s)) for s in spans]))"))")
+pbTraces(t, spans) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", list.Flatten([[k2, varint(text.ByteLength(x)), x] for x in [pbSpan(s) for s in spans]])))"))")
 
 severities = {info: 9, warn: 13, error: 17}
 
@@ -696,7 +733,8 @@ defn Families(prometheus)
       count of each bucket alone (Prometheus counts each with those below it). A counter loses its _total, as
       OpenTelemetry names it.
 
-        Families("# TYPE hits_total counter\nhits_total{page=\"/\"} 3\n")[1].Points[1].Value --> 3 *)
+        Families("# TYPE hits_total counter\nhits_total{page=\"/\"} 3\n")[1].Points[1].Value --> 3
+        Families("# TYPE hits_total counter\nhits_total{route=\"GET /a b\"} 4\n")[1].Points[1].Labels.route --> "GET /a b" *)
   out = []
   f = missing
   for line in text.Lines(prometheus)
@@ -719,7 +757,8 @@ end
 
 defn sample(f, line)
   (** A line of a family read into it: a counter's value, or a part of a histogram's series. *)
-  space = text.ByteFind(" ", 1, line)
+  close = text.ByteFind("} ", 1, line)
+  space = if value.IsSome(close) close + 1 else text.ByteFind(" ", 1, line) end
   head = text.ByteSlice(1, space - 1, line)
   number = text.Number(text.ByteSlice(space + 1, text.ByteLength(line), line))
   brace = text.ByteFind("{", 1, head)
