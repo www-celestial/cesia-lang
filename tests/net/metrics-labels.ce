@@ -1,0 +1,18 @@
+(* metrics.Add and Observe keep the series of their last calls by the same texts and the same labels: a map whose value
+   changed in place, another literal of the same values, another value, no labels and another kind each find theirs. *)
+use std/io
+use std/metrics
+l = {route: "a", status: 200}
+for k in 1..3
+  metrics.Add("hits_total", labels = l)
+end
+l.status = 404
+metrics.Add("hits_total", labels = l)
+metrics.Add("hits_total", labels = {route: "a", status: 200})
+metrics.Add("hits_total", 2, labels = {route: "b", status: 200})
+metrics.Add("hits_total")
+metrics.Add("hits_total")
+metrics.Observe("took_seconds", 0.2, labels = l)
+metrics.Observe("took_seconds", 0.3, labels = l)
+io.Print(metrics.Text())
+metrics.Observe("hits_total", 1.0)
