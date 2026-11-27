@@ -1,0 +1,30 @@
+(* The Cesia server of bench/http3: the same app over HTTPS (HTTP/1.1, TCP) and HTTP/3 (QUIC, UDP) on one port number.
+   / answers 5 bytes, /bytes/N N bytes (a download), as the servers of the giants beside it do.
+     cesia run --allow ffi=ssl,ffi=crypto,net serve.ce CERT KEY PORT [h3 = 1 | 0] *)
+use std/http
+use std/http3
+use std/quic
+use std/tls
+use std/sys
+use std/text
+use std/result
+use std/value
+use std/math
+
+block = text.Repeat(65536, "x")
+
+defn bytes(r)
+  n = text.Number(r.Params.n)
+  whole = text.Repeat(math.Div(n, 65536), block)
+  http.Plain("$whole$(text.Repeat(n - text.ByteLength(whole), "x"))")
+end
+
+defn main()
+  api = tls.Open()?
+  port = text.Number(sys.Args[3])
+  h3 = if value.Len(sys.Args) < 4 or sys.Args[4] == "1" http3.Server(sys.Args[1], sys.Args[2], quic.Open()?, port = port, host = "0.0.0.0")? else missing end
+  app = http.App() then http.Get("/", r -> {Status: 200, Body: "Cesia"}) then http.Get("/bytes/:n", bytes)
+  http.Serve(app, port = port, host = "0.0.0.0", wrap = tls.Server(sys.Args[1], sys.Args[2], api)?, http3 = h3, timeout = 300)
+end
+
+main()!
