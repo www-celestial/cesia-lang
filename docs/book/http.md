@@ -309,6 +309,65 @@ requests a second without them, 44,000 to 49,000 with [http.Logger], and 50,000 
 2026-11-07. Under `--workers`, each worker counts its own requests, and a scrape reads the
 counts of the worker that answers it; their log lines don't cut each other.
 
+### OpenTelemetry
+
+[std/otel] sends what a server does to a collector of [OpenTelemetry](https://opentelemetry.io/), by its protocol, OTLP
+over HTTP, in protobuf (the default, a compact binary form) or JSON: **traces**, the story of each request, a *span*
+for its whole and one for each call it makes inside, each with its start, its length and its *attributes*;
+**metrics**, those of [std/metrics] read back, one source of numbers for Prometheus and for OTLP; **logs**, each line of
+[std/log] with the trace it was written in. Any collector that takes OTLP shows them: Jaeger, Grafana Tempo, the
+OpenTelemetry Collector, and the services of Datadog, Honeycomb or Elastic.
+
+[otel.Start] gives a tracer; [otel.Server] opens the span of a request, named by its method and its route (its pattern,
+never its path, which would make a name for each request), and reads the `traceparent` header of the W3C that a
+caller sends; [otel.Begin] opens a span inside the current one, [otel.End] ends either. Here the collector is a
+function of the program (`send`), to see what leaves:
+
+```cesia
+use std/json
+use std/otel
+use std/result
+keep(path, body, headers) = result.Ok({Status: 200, Headers: []})
+t = otel.Start(service = "shop", protocol = "json", send = keep)!
+defn stock(r)
+  span = otel.Server(t, r.Method, "/stock", r.Headers)
+  inner = otel.Begin("count the cakes")
+  otel.End(inner)
+  otel.End(span, attributes = {"http.response.status_code": 200})
+  http.Json({Cakes: 12})
+end
+http.Handler(http.App() then http.Get("/stock", stock))({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
+otel.Flush(t)
+otel.Counts(t).Spans -->
+```
+
+The span of the fiber is its **context**: a fiber it spawns starts in it, a line of [std/log] written in it carries its
+`trace_id` and `span_id`, [otel.Headers] gives the `traceparent` an outgoing request carries to go on with the trace,
+and each call of a native engine made in it, as Cepheus's `cepheus.Get`, is a span by itself (`db.system.name`
+cepheus). A `traceparent` from outside is anybody's: by default (`trust = "restart"`) [otel.Server] starts a new trace
+that *links* to it, so that nobody outside chooses the trace nor its sampling; `trust = "trust"` goes on with it, for a
+service behind another of its own.
+
+`sample` is the share of traces kept (1, all); a trace not sampled makes no span, only carries its ids on, which costs
+2.7 µs a request; `always` keeps all the same the span of a request that failed, or that took more than `slow`
+seconds. The spans wait in a queue that never makes a request wait: past `queue` (2,048) they are dropped and
+counted in `otel_dropped_total`; a fiber sends them by batches every `every` seconds, and tries a collector that is busy
+or gone again with a pause drawn at random under a bound that doubles (full jitter), or its `Retry-After`, five times.
+A metric of [std/metrics] holds 2,000 series at most, the others counted in one, `otel_metric_overflow="true"`, as
+OpenTelemetry advises: a label made of what a client sends, as a method, can't fill the memory.
+
+A sampled span costs about 15 µs from its start to the collector, in protobuf as in JSON; protobuf sends 2.4 times fewer
+bytes, about 210 a span of a request and 140 a span inside it, JSON 500 and 360. `compression = "gzip"` (zlib, with the
+permission `ffi=z`) cuts them again, for a collector across a network. Centauri traces every request this way with one
+setting, `APP_OTEL=on`, and its pages' clicks with them ([Centauri's Telemetry](https://github.com/www-celestial/centauri/blob/main/docs/book/telemetry.md)).
+
+```go
+// Go: go.opentelemetry.io/otel, its SDK, its exporter of OTLP over HTTP and otelhttp, wired at the start
+tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
+otel.SetTracerProvider(tp)
+http.Handle("/stock", otelhttp.NewHandler(http.HandlerFunc(stock), "GET /stock"))
+```
+
 ### Serving and asking in one program
 
 The block below serves the shop on a port and asks it with the client, [http.Fetch], in one program. [fiber.Spawn] runs the server beside the

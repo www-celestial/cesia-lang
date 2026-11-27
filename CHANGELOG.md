@@ -2,6 +2,27 @@
 
 ## 1.3.0
 
+### OpenTelemetry
+
+- `std/otel`: a server's traces, metrics and logs sent to a collector of OpenTelemetry by OTLP over HTTP, protobuf
+  (written by hand from opentelemetry-proto 1.x, checked by `protoc --decode`) or JSON, gzip by zlib (`ffi=z`).
+  `otel.Start`, `otel.Server` (the span of a request, named by its route; the W3C `traceparent` read, restarted with a
+  link by default or trusted), `otel.Begin`, `otel.End`, `otel.Header`, `otel.Headers`, `otel.Current`,
+  `otel.Parse`, `otel.Span` and `otel.Log` (what was made elsewhere, as a browser's), `otel.Counts`, `otel.Flush`,
+  `otel.Families` (std/metrics read back: one source of numbers for Prometheus and OTLP). Parent-based sampling by
+  the trace id; a request not sampled makes no span (2.7 µs), its failure or slowness kept alone (`always`); a bounded
+  queue that never makes a request wait, drops counted in `otel_dropped_total`; retries with full jitter and
+  `Retry-After`. Nothing changes for a program that doesn't start it.
+- The span open in a fiber is its context: a fiber it spawns starts in it; a line of `std/log` written in it carries
+  `trace_id` and `span_id`; each call of a native engine (Cepheus) made in a sampled trace is a span.
+- `std/metrics` holds 2,000 series a metric at most, the others counted in one, `otel_metric_overflow="true"`, as
+  OpenTelemetry's SDKs do: `http.Metrics` counted every method a client made up, each a series.
+- `std/live`: an action gets the `traceparent` of the page's click (`s.Trace`), and its value may give the page the
+  server's trace in its reply (`live.Traced`).
+- A page in WebAssembly hears its program's errors as the event `cesia-error` of its window, their place in the `.ce`
+  and their calls with them, for its telemetry.
+- The book: [OpenTelemetry](docs/book/http.md#opentelemetry), in the chapter on the web.
+
 ### HTTP/3, QUIC and WebTransport
 
 - `std/quic`: QUIC (RFC 9000) through OpenSSL 3.6 or later, reached by `std/c` as `std/tls` reaches TLS: `quic.Server`,

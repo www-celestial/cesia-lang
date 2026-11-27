@@ -319,6 +319,72 @@ minimale répondait à 57 000 à 60 000 requêtes par seconde sans eux, 44 000 �
 scrape (la lecture des compteurs par Prometheus) lit les comptes du worker qui lui répond ; leurs lignes de log ne se
 coupent pas les unes les autres.
 
+### OpenTelemetry
+
+[std/otel] envoie ce que fait un serveur à un *collector* d'[OpenTelemetry](https://opentelemetry.io/) (le programme
+qui reçoit ces données, puis les garde ou les fait suivre ; OpenTelemetry est le standard ouvert de ces données), par
+son protocole, OTLP sur HTTP, en protobuf (le défaut, une forme binaire compacte) ou en JSON : les **traces**,
+l'histoire de chaque requête, un *span* pour son tout et un pour chaque appel qu'elle fait à l'intérieur, chacun avec
+son début, sa durée et ses *attributes* (ses attributs : ce qu'il concernait) ; les **métriques**, celles de
+[std/metrics] relues, une seule source de nombres pour Prometheus et pour OTLP ; les **logs**, chaque ligne de
+[std/log] avec la trace dans laquelle elle a été écrite. Tout collector qui prend l'OTLP les montre : Jaeger, Grafana
+Tempo, l'OpenTelemetry Collector, et les services de Datadog, Honeycomb ou Elastic.
+
+[otel.Start] donne un tracer (ce qui crée les spans) ; [otel.Server] ouvre le span d'une requête, nommé par sa méthode
+et sa route (son motif, jamais son chemin, qui ferait un nom par requête), et lit le header `traceparent` du W3C (la
+ligne d'en-tête qui porte les numéros de la trace) qu'envoie un appelant ; [otel.Begin] ouvre un span à l'intérieur du
+span en cours, [otel.End] termine l'un ou l'autre. Ici, le collector est une fonction du programme (`send`), pour voir
+ce qui part :
+
+```cesia
+use std/json
+use std/otel
+use std/result
+keep(path, body, headers) = result.Ok({Status: 200, Headers: []})
+t = otel.Start(service = "shop", protocol = "json", send = keep)!
+defn stock(r)
+  span = otel.Server(t, r.Method, "/stock", r.Headers)
+  inner = otel.Begin("count the cakes")
+  otel.End(inner)
+  otel.End(span, attributes = {"http.response.status_code": 200})
+  http.Json({Cakes: 12})
+end
+http.Handler(http.App() then http.Get("/stock", stock))({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
+otel.Flush(t)
+otel.Counts(t).Spans -->
+```
+
+Le span de la fiber est son **contexte** : une fiber qu'elle lance commence dedans, une ligne de [std/log] écrite
+dedans porte son `trace_id` et son `span_id`, [otel.Headers] donne le `traceparent` qu'une requête sortante porte pour
+continuer la trace, et chaque appel d'un moteur natif fait dedans, comme le `cepheus.Get` de Cepheus, est un span à lui
+seul (`db.system.name` cepheus). Un `traceparent` venu du dehors est celui de n'importe qui : par défaut
+(`trust = "restart"`), [otel.Server] commence une nouvelle trace qui a un *link* (un lien) vers lui, pour que personne
+au dehors ne choisisse la trace ni son *sampling* (l'échantillonnage : le tri qui ne garde qu'une part des traces) ;
+`trust = "trust"` continue avec lui, pour un service placé derrière un autre service à soi.
+
+`sample` est la part des traces gardées (1 : toutes) ; une trace non gardée ne crée aucun span, elle fait seulement
+suivre ses ids, ce qui coûte 2,7 µs par requête ; `always` garde quand même le span d'une requête qui a échoué, ou qui
+a pris plus de `slow` secondes. Les spans attendent dans une file qui ne fait jamais attendre une requête : au-delà de
+`queue` (2 048), ils sont jetés et comptés dans `otel_dropped_total` ; une fiber les envoie par *batches* (des lots)
+toutes les `every` secondes, et réessaie un collector occupé ou parti après une pause tirée au hasard sous une borne
+qui double (le *full jitter*), ou après son `Retry-After`, cinq fois. Une métrique de [std/metrics] tient au plus
+2 000 séries, les autres comptées dans une seule, `otel_metric_overflow="true"`, comme le conseille OpenTelemetry : un
+label (une étiquette qui découpe une métrique en séries, comme `method`) fait de ce qu'envoie un client, comme une
+méthode, ne peut pas remplir la mémoire.
+
+Un span gardé coûte environ 15 µs de son début au collector, en protobuf comme en JSON ; protobuf envoie 2,4 fois moins
+d'octets, environ 210 pour le span d'une requête et 140 pour un span à l'intérieur, JSON 500 et 360.
+`compression = "gzip"` (zlib, avec la permission `ffi=z`) les réduit encore, pour un collector de l'autre côté d'un
+réseau. Centauri trace chaque requête de cette façon avec un seul réglage, `APP_OTEL=on`, et les clics de ses pages
+avec elles ([la Télémétrie de Centauri](https://github.com/www-celestial/centauri/blob/main/docs/book/telemetry.md)).
+
+```go
+// Go: go.opentelemetry.io/otel, its SDK, its exporter of OTLP over HTTP and otelhttp, wired at the start
+tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp), sdktrace.WithResource(res))
+otel.SetTracerProvider(tp)
+http.Handle("/stock", otelhttp.NewHandler(http.HandlerFunc(stock), "GET /stock"))
+```
+
 ### Servir et interroger dans un seul programme
 
 Le bloc ci-dessous sert la boutique sur un port et l'interroge avec le client, [http.Fetch], dans un seul programme.
