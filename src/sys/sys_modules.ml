@@ -1,10 +1,18 @@
 external ram : unit -> int = "cesia_ram"
+external rss : unit -> int = "cesia_rss"
 
 open Cesia
 open Types
 
 (* sqlite3: the names and arities here, the code in the plugin cesia_sqlite.cmxs, loaded at the first call of one of them so
    that start-up never pays for it. Each native finds its code once. *)
+(* sys.Usage: the CPU this process used, user and system, in seconds, and the memory it holds in RAM now. *)
+let usage_keys = Trie.names [| "Cpu"; "Memory" |]
+
+let usage _ _ =
+  let t = Unix.times () and m = rss () in
+  Trie.record usage_keys [| Float (t.Unix.tms_utime +. t.Unix.tms_stime); (if m > 0 then Int m else Missing) |]
+
 let sqlite3 = ref []
 let sqlite_loader = ref (fun () -> Error "no plugin in this program")
 let sqlite_keys = Trie.names [| "Kind"; "Code"; "Message" |]
@@ -141,6 +149,7 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
   let sys =
     Fs.natives @ Proc.natives poll @ Term.input input
     @ [ "Now", Native.nat "Now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));
+        "Usage", Native.nat "Usage" 0 0 usage;
         "Sleep",
         Native.nat "Sleep" 1 1 (fun ctx a ->
             Poll.sleep poll ctx (Float.min max_sleep (Proc.seconds ctx "Sleep" a.(0)));
