@@ -2,6 +2,26 @@
 
 let stop text = prerr_endline ("cesia: " ^ text); exit 2
 
+(* The modules that a JavaScript module imports from its own folder, as import('./more.js') or import { f } from
+   './more.js': their names, a path of one part that ends in .js. *)
+let imported src =
+  let n = String.length src in
+  let rec blank i = if i > 0 && String.contains " \t\r\n" src.[i - 1] then blank (i - 1) else i in
+  let after i word = let l = String.length word in i >= l && String.sub src (i - l) l = word in
+  let rec go i acc =
+    if i + 3 > n then List.rev acc
+    else if (src.[i] = '\'' || src.[i] = '"') && src.[i + 1] = '.' && src.[i + 2] = '/' then
+      match String.index_from_opt src (i + 1) src.[i] with
+      | None -> List.rev acc
+      | Some j ->
+        let name = String.sub src (i + 3) (j - i - 3) and b = blank i in
+        let one = Filename.check_suffix name ".js" && not (String.contains name '/' || String.contains name '\\') in
+        let named = after b "import(" || after b "import" || after b "from" in
+        go (j + 1) (if one && named && not (List.mem name acc) then name :: acc else acc)
+    else go (i + 1) acc
+  in
+  go 0 []
+
 (* Loads a program as cesia run does, but runs none of it: each file of the packages it uses is seen as it would run,
    then the file itself. *)
 let build (ctx : Types.ctx) path =
@@ -67,14 +87,21 @@ let build (ctx : Types.ctx) path =
   let listed = "[" ^ String.concat ", " (List.map (fun (_, base) -> Aot.json_text ("./" ^ base)) scripts) ^ "]" in
   let js = fill "@SCRIPTS@" listed (fill "@WASM@" (name ^ ".wasm") glue) in
   Out_channel.with_open_bin js_path (fun oc -> Out_channel.output_string oc js);
-  (* The JavaScript modules that js.Call names, beside the program, where its loader imports them. *)
-  List.iter
-    (fun (file, base) ->
-       let src = try In_channel.with_open_bin file In_channel.input_all with Sys_error _ -> stop (Messages.cant_read file) in
-       let dest = Filename.concat (Filename.dirname path) base in
-       if not (Sys.file_exists dest && Package.absolute dest = Package.absolute file) then
-         Out_channel.with_open_bin dest (fun oc -> Out_channel.output_string oc src))
-    scripts
+  (* The JavaScript modules that js.Call names, beside the program, where its loader imports them; and the modules that
+     they import from their own folder, which the page fetches as they import them: a module that one imports only when
+     it needs it, as import('./more.js'), costs nothing to a page that never needs it. *)
+  let rec put seen (file, base) =
+    if List.mem base seen then seen
+    else begin
+      let src = try In_channel.with_open_bin file In_channel.input_all with Sys_error _ -> stop (Messages.cant_read file) in
+      let dest = Filename.concat (Filename.dirname path) base in
+      if not (Sys.file_exists dest && Package.absolute dest = Package.absolute file) then
+        Out_channel.with_open_bin dest (fun oc -> Out_channel.output_string oc src);
+      let beside name = Filename.concat (Filename.dirname file) name, name in
+      List.fold_left put (base :: seen) (List.filter (fun (f, _) -> Sys.file_exists f) (List.map beside (imported src)))
+    end
+  in
+  ignore (List.fold_left put [] scripts)
 
 (* cesia build --target wasm file.ce: file.wasm and its loader file.js beside it; the exit code. *)
 let main = function

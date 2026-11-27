@@ -26,8 +26,8 @@ cesia upgrade --nightly    # a build of main between releases, made by hand
 ```
 
 Une release (une version publiée) contient le binaire et toutes les bibliothèques C dont ses bibliothèques ont besoin, dans
-`~/.cesia/lib/` : OpenBLAS pour BLAS et LAPACK (macOS a les siennes), libsodium, SQLite, et OpenSSL sur macOS et Windows
-(Linux garde celle du système, pour ses correctifs de sécurité). Rien d'autre ne s'installe à la main. Depuis la 1.0, le
+`~/.cesia/lib/` : OpenBLAS pour BLAS et LAPACK (macOS a les siennes), libsodium, SQLite, OpenSSL 3.5, sa version à long
+terme, et sur Linux et macOS ngtcp2, le QUIC de HTTP/3. Rien d'autre ne s'installe à la main. Depuis la 1.0, le
 premier nombre d'une version monte quand un changement peut casser un programme, celui du milieu quand quelque chose est
 ajouté, et le dernier pour une correction. [`CHANGELOG.md`](https://github.com/www-celestial/cesia-lang/blob/main/CHANGELOG.md) dit ce qu'apporte chaque version, et les notes
 d'une release viennent des messages de ses commits.

@@ -8,6 +8,11 @@ let reason = function
   | Unix.EOPNOTSUPP -> Messages.not_supported
   | e -> String.uncapitalize_ascii (Unix.error_message e)
 let stat_keys = Trie.names [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink"; "Mode"; "Owner"; "Group" |]
+
+(* The bytes of the file system that holds a path, from statvfs (GetDiskFreeSpaceEx on Windows): total, used, free to a
+   program that isn't root; a total below 0 when the path can't be read. *)
+external disk : string -> int * int * int = "cesia_disk"
+let disk_keys = Trie.names [| "Total"; "Used"; "Free" |]
 let failed ctx verb target e = io_error ctx.w (Messages.io_failure verb target (reason e)).text
 
 let retry = function
@@ -821,6 +826,13 @@ let natives =
         match copy_tree ctx from dest with
         | () -> Value.ok ctx.w Missing
         | exception Unix.Unix_error (e, at, into) -> failed ctx "copy" (if into = "" then at else at ^ " to " ^ into) e);
+    on_path "Disk" Read "read" 1 (fun _ path _ ->
+        let total, used, free = disk path in
+        if total < 0 then begin
+          ignore (Unix.stat path);
+          raise (Unix.Unix_error (Unix.EIO, "statvfs", path))
+        end;
+        Trie.record disk_keys [| Int total; Int used; Int free |]);
     on_path "Stat" Read "read" 1 (fun _ path _ ->
         let s = Unix.stat path in
         Trie.record stat_keys

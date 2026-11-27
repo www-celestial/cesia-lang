@@ -1,0 +1,18 @@
+(** sys.Usage gives this process's CPU, which grows with its work, and its memory in RAM; sys.Disk the bytes of a file
+    system, as df counts them, and an Err for a path that isn't there. *)
+use std/sys
+use std/io
+use std/result
+use std/value
+
+before = sys.Usage()
+n = 0
+for k in 1..3000000
+  n += k
+end
+after = sys.Usage()
+io.Print("cpu grows", after.Cpu > before.Cpu, after.Cpu < 600)
+io.Print("memory", value.IsMissing(after.Memory) or (after.Memory > 1000000 and after.Memory < 1e13))
+d = sys.Disk(".")
+io.Print("disk", result.IsOk(d) and d.Value.Total > 0 and d.Value.Used > 0 and d.Value.Free >= 0 and d.Value.Used + d.Value.Free <= d.Value.Total)
+io.Print("none", result.IsErr(sys.Disk("none-such-folder")))

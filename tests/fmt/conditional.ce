@@ -25,6 +25,8 @@ end
 (* In the head of an if, an if starts the body; in a body, it is a conditional. *)
 inHead = if true if false 1 else 2 end else 3 end
 inBody = if true 5 if false else 6 end
+(* After an arm whose body is in brackets, the else ends the head: the a if c else b after it takes no end. *)
+afterParens = if false 1 else if false (if true 2 else 3 end) else 5 if true else 6 end
 matched = match 7
   v if v > 4 -> "big"
   else -> "small"
@@ -35,4 +37,4 @@ once = 1 if true
   io.Print("once", once)
 end
 
-io.Print(sign(-2), cut("abc", 2), picked, firstOver([1, 5, 20], 3), inHead, inBody, matched)
+io.Print(sign(-2), cut("abc", 2), picked, firstOver([1, 5, 20], 3), inHead, inBody, afterParens, matched)

@@ -1,5 +1,4 @@
-(* Does this machine's OpenSSL have QUIC with the address of each client (3.6 or later)? tools/test.sh skips tests/quic
-   without it. *)
+(* Has this machine ngtcp2 on OpenSSL 3.5 or later (libngtcp2_crypto_ossl)? tools/test.sh skips tests/quic without it. *)
 use std/quic
 use std/result
 use std/sys

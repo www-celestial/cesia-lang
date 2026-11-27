@@ -25,10 +25,17 @@
 
 ### HTTP/3, QUIC and WebTransport
 
-- `std/quic`: QUIC (RFC 9000) through OpenSSL 3.6 or later, reached by `std/c` as `std/tls` reaches TLS: `quic.Server`,
-  `quic.Serve`, `quic.Dial`, their connections and streams. OpenSSL keeps the UDP socket, the packets and the timers;
-  one fiber drives it, waiting for a datagram or OpenSSL's next timer (three names of `net` that only `std/quic` sees).
-  Retry is on by default (`validate`). Not on Windows yet.
+- `std/quic`: QUIC (RFC 9000) on ngtcp2 1.26, its TLS OpenSSL's own QUIC TLS API (OpenSSL 3.5 or later,
+  `ngtcp2_crypto_ossl`), reached by `std/c` as `std/tls` reaches TLS: `quic.Server`, `quic.Serve`, `quic.Dial`, their
+  connections and streams. ngtcp2 runs the protocol, its losses, its congestion control and its pacing; Cesia keeps the
+  UDP socket (batches of datagrams, the peer's address of each), and one fiber drives each socket and its timers
+  (three names of `net` that only `std/quic` sees). `congestion = "bbr"` (the default), `"cubic"` or `"reno"`; a
+  connection goes on when the client's address changes (migration, the new path validated); 0-RTT on the server and,
+  with `quic.Dial(early = true)`, on the client, each ticket used once; NEW_TOKEN spares a returning client its Retry,
+  which is on by default (`validate`); a stream's `Last(bytes)` writes and ends it in one call, its `Early` says that
+  its bytes came in 0-RTT. Not on Windows yet. Cesia spoke OpenSSL's own QUIC first, whose NewReno grows its window
+  too slowly when acknowledgements come together and which has no migration nor 0-RTT: the same functions, on
+  ngtcp2 now (the book says why, with the numbers).
 - `std/http3`: HTTP/3 (RFC 9114) and QPACK (RFC 9204) without a dynamic table. `http.Serve(..., http3 = http3.Server(...))`
   serves the same routes over QUIC beside TCP, and every response of TCP says so (`Alt-Svc`, RFC 7838);
   `http.Fetch(..., http3 = http3.Client(api))` asks over HTTP/3 the servers that offered it, and over TCP again at once
@@ -43,16 +50,25 @@
 - Over HTTP/3, a route that takes its body in pieces gets it so; `Fetch` reads an early answer (a 413) of a server that
   stopped its upload, and never sends again over TCP a request that may have reached the server and isn't
   idempotent.
-- `425 Too Early` (RFC 8470) for a request a proxy took in TLS's early data that would change something, over
-  HTTP/1.1 and HTTP/3; `http.Reason(425)`.
-- What OpenSSL's QUIC doesn't do yet: connection migration, 0-RTT, datagrams (RFC 9221); said in the book.
-- `bench/http3`: Cesia's HTTP/1.1 and HTTP/3 against quic-go, Caddy, nginx and ngtcp2, on a clean link and on links
-  that `netem` slows and makes lose packets; `stacks.sh` sets each QUIC stack beside OpenSSL's alone. The book says
-  what it found: HTTP/3 brings the slowest small requests of a lossy link sooner (p99 179 ms against 306 over TCP), but
-  a download of 1 MB at 1 % lost takes 4.7 s against 1.8 over TCP, the time of OpenSSL's QUIC alone, whose NewReno
-  grows its window too slowly (ngtcp2's BBR: 0.47 s); through a bottleneck of 20 Mbit/s, as a real path has, 1.9 s
-  against 1.2, what NewReno itself costs against Linux's CUBIC. A request over TCP costs what it cost before, HTTP/3 on
-  or off (21 rounds each, paired).
+- `425 Too Early` (RFC 8470) for a request that came in 0-RTT, or that a proxy took in TLS's early data, and that
+  would change something, over HTTP/1.1 and HTTP/3; a GET is answered at once; `http.Reason(425)`.
+- `std/c`: `c.Symbol(name, lib)`, the address of a library's function, for C that takes a table of them (ngtcp2's
+  callbacks, where its crypto library's functions go and C calls C); `c.Load` reads from a pointer that C gives, as
+  `c.Get` does (the bytes a callback receives); `--allow ffi=ssl` also opens `ngtcp2` and `ngtcp2_crypto_ossl`, the
+  QUIC that `std/quic` runs on that OpenSSL.
+- The releases for Linux carry OpenSSL 3.5.9, as those for macOS and Windows do, and those for Linux and macOS carry
+  ngtcp2 1.26.0 on it; their OpenSSL looks for the system's authorities in `/etc/ssl`, and `std/tls` also reads
+  Fedora's and RHEL's bundle (the release for macOS looked in the folder where it was built). Not yet any QUIC
+  datagram (RFC 9221), UDP GSO nor ECN.
+- `bench/http3`: Cesia's HTTP/1.1 and HTTP/3 against quic-go, Caddy, nginx and ngtcp2's own server, on a clean link
+  and on links that `netem` slows and makes lose packets, each measure pinned to 2 of the machine's cores
+  (`HEAVY_LANES`); `stacks.sh` sets each QUIC stack and congestion control side by side, `startup.sh` measures the
+  start. The book says what it found: a download of 1 MB over 25 ms each way and 1 % lost takes 0.54 s over Cesia's
+  HTTP/3 with BBR, against 4.21 s over the OpenSSL QUIC it spoke first, 1.59 s over quic-go and 2.31 s over Cesia's
+  TCP; through a bottleneck of 20 Mbit/s, 0.82 s against 3.45, 1.77 and 1.84. On a clean link Cesia's HTTP/3 costs
+  more than before: 0.73 times the requests a second of OpenSSL's QUIC by round, its work per packet in Cesia where
+  OpenSSL did it in C; a connection takes 73 KB of memory against 93; `quic.Open` adds 4.7 ms to the start, against
+  2.4. A request over TCP costs what it cost before.
 
 ### When the connection drops
 
@@ -327,6 +343,9 @@
 - `std/js`: `js.Call(module, name, args)` calls a function of a JavaScript module beside the program, the one way out
   of a page; a channel given to it is the one way in, filled by JavaScript. In a page, `std/websocket` is the browser's
   WebSocket, and `regex.Test` its `RegExp`.
+- `cesia build --target wasm` puts beside the program the modules that its JavaScript modules import from their own
+  folder too, as `import('./more.js')`: a page fetches such a module when it imports it, and a page that never does
+  never fetches it (Ceres's font of icons, 32 KB, only in a page that draws an icon).
 - The standard library of a page: dictionaries of keys of numbers and texts, most of `std/text`, `json.Parse` and
   `json.Text`, `list.Sort`, `Max`, `Min` and the others, `std/columns` and `std/matrix` as `std/plot` uses them,
   slices, masks and indexes of two dimensions, `in`: Ceres's pages, `std/plot` in them, run in Chrome and Firefox.

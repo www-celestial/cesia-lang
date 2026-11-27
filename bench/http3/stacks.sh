@@ -11,8 +11,9 @@ in_ns "$profile" "stacks $profile" "$0" "$@"
 rounds=${2:-21}
 out=$RES/stacks-$profile.jsonl
 trap stop_servers EXIT
-for s in cesia bare ngtcp2-reno ngtcp2-cubic ngtcp2-bbr quicgo; do start_server $s; done
 cases=(${CASES:-cesia:h3 bare:h3 bare:get ngtcp2-reno:h3 ngtcp2-cubic:h3 ngtcp2-bbr:h3 quicgo:h3 cesia:h1})
+# The servers of the cases asked, no other.
+for s in $(printf '%s\n' "${cases[@]}" | cut -d: -f1 | sort -u); do start_server $s; done
 for ((r = 1; r <= rounds; r++)); do
   k=0
   for x in $(rotate $((r - 1)) "${cases[@]}"); do

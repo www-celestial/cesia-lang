@@ -1,5 +1,6 @@
-/* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, the size of the RAM, and a command
-   started in a process group of its own, and closing every descriptor from one on. */
+/* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, the size of the RAM, the memory a
+   process holds and the space of a file system, and a command started in a process group of its own, and closing
+   every descriptor from one on. */
 #include <caml/alloc.h>
 #include <caml/bigarray.h>
 #include <caml/memory.h>
@@ -25,9 +26,16 @@ static void *open_library(const char *name) {
   return (void *) LoadLibraryExA(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
 }
 #define find_symbol(lib, name) ((void *) GetProcAddress((HMODULE) (lib), name))
+/* K32GetProcessMemoryInfo, in kernel32 itself since Windows 7: no psapi.lib to link */
+#define PSAPI_VERSION 2
+#include <psapi.h>
 #else
 #include <dlfcn.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
 #define open_library(name) dlopen(name, RTLD_NOW | RTLD_LOCAL)
 #define find_symbol(lib, name) dlsym(lib, name)
 #endif
@@ -61,6 +69,54 @@ value cesia_ram(value unit) {
   long pages = sysconf(_SC_PHYS_PAGES), size = sysconf(_SC_PAGE_SIZE);
   return Val_long(pages > 0 && size > 0 ? (intnat) pages * size : 0);
 #endif
+}
+
+/* The memory of this process that is in RAM now (its resident set) in bytes, or 0 if it can't be known. */
+value cesia_rss(value unit) {
+#if defined(_WIN32)
+  PROCESS_MEMORY_COUNTERS counters;
+  return Val_long(K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) ? (intnat) counters.WorkingSetSize : 0);
+#elif defined(__APPLE__)
+  struct mach_task_basic_info info;
+  mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+  return Val_long(task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &info, &count) == KERN_SUCCESS ? (intnat) info.resident_size : 0);
+#else
+  long pages = 0, resident = 0, size = sysconf(_SC_PAGE_SIZE);
+  FILE *f = fopen("/proc/self/statm", "r");
+  if (f) {
+    if (fscanf(f, "%ld %ld", &pages, &resident) != 2) resident = 0;
+    fclose(f);
+  }
+  return Val_long(resident > 0 && size > 0 ? (intnat) resident * size : 0);
+#endif
+}
+
+/* The bytes of the file system that holds a path: [|total; used; free to a program that isn't root|], or [|-1; 0; 0|]
+   when the path can't be read. Used counts the blocks that root keeps too, as df does. */
+value cesia_disk(value path) {
+  CAMLparam1(path);
+  CAMLlocal1(out);
+  out = caml_alloc_tuple(3);
+  intnat total = -1, used = 0, free = 0;
+#ifdef _WIN32
+  ULARGE_INTEGER avail, all, left;
+  if (GetDiskFreeSpaceExA(String_val(path), &avail, &all, &left)) {
+    total = (intnat) all.QuadPart;
+    used = (intnat) (all.QuadPart - left.QuadPart);
+    free = (intnat) avail.QuadPart;
+  }
+#else
+  struct statvfs s;
+  if (statvfs(String_val(path), &s) == 0) {
+    total = (intnat) s.f_blocks * (intnat) s.f_frsize;
+    used = (intnat) (s.f_blocks - s.f_bfree) * (intnat) s.f_frsize;
+    free = (intnat) s.f_bavail * (intnat) s.f_frsize;
+  }
+#endif
+  Store_field(out, 0, Val_long(total));
+  Store_field(out, 1, Val_long(used));
+  Store_field(out, 2, Val_long(free));
+  CAMLreturn(out);
 }
 
 value cesia_block_address(value block) { return Val_long((intnat) Caml_ba_data_val(block)); }
