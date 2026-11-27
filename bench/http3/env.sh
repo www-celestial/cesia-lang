@@ -47,7 +47,7 @@ start_server() {
   case $name in
     cesia)
       taskset -c "$SERVER_CPUS" "$CESIA" run --allow ffi=ssl,ffi=crypto,net "$HERE/serve.ce" \
-        "$CERTS/cert.pem" "$CERTS/key.pem" "$port" 1 >"$log" 2>&1 &
+        "$CERTS/cert.pem" "$CERTS/key.pem" "$port" 1 "${CESIA_CC:-cubic}" >"$log" 2>&1 &
       ;;
     cesia-noh3)
       h3=0

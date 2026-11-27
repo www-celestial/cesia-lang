@@ -87,10 +87,11 @@ defn loaded()
     SetVerify: fn("SSL_CTX_set_verify", ["ptr", "i32", "ptr"], "void")?,
     AlpnSelect: fn("SSL_CTX_set_alpn_select_cb", ["ptr", "callback", "ptr"], "void")?,
     MaxEarly: fn("SSL_CTX_set_max_early_data", ["ptr", "u32"], "i32")?,
-    Tickets: fn("SSL_CTX_set_num_tickets", ["ptr", "u64"], "i32")?,
+    TicketCount: fn("SSL_CTX_set_num_tickets", ["ptr", "u64"], "i32")?,
     SessionContext: fn("SSL_CTX_set_session_id_context", ["ptr", "text", "u32"], "i32")?,
     SslNew: fn("SSL_new", ["ptr"], "ptr")?,
     SslFree: fn("SSL_free", ["ptr"], "void")?,
+    SetShutdown: fn("SSL_set_shutdown", ["ptr", "i32"], "void")?,
     SetData: fn("SSL_set_ex_data", ["ptr", "i32", "ptr"], "i32")?,
     AcceptState: fn("SSL_set_accept_state", ["ptr"], "void")?,
     ConnectState: fn("SSL_set_connect_state", ["ptr"], "void")?,
@@ -102,6 +103,8 @@ defn loaded()
     VerifyResult: fn("SSL_get_verify_result", ["ptr"], "i64")?,
     RandBytes: fn("RAND_bytes", ["ptr", "i32"], "i32")?,
     ClearErrors: fn("ERR_clear_error", [], "void")?,
+    LastError: fn("ERR_get_error", [], "u64")?,
+    ErrorText: fn("ERR_error_string", ["u64", "ptr"], "text")?,
     (* A lookup of a name may wait for a server of names: it runs off the fibers' thread. *)
     Lookup: c.Fn("BIO_lookup", ["text", "text", "i32", "i32", "i32", "ptr"], "i32", lib, slow = true) then result.MapErr(e -> {Kind: "quic", Message: e.Message})?,
     InfoFamily: fn("BIO_ADDRINFO_family", ["ptr"], "i32")?,
@@ -164,6 +167,23 @@ defn loaded()
     WriteRetry: fn("ngtcp2_crypto_write_retry", ["ptr", "u64", "u32", "ptr", "ptr", "ptr", "ptr", "u64"], "i64")?,
     RetryToken: fn("ngtcp2_crypto_generate_retry_token2", ["ptr", "ptr", "u64", "u32", "ptr", "u32", "ptr", "ptr", "u64"], "i64")?,
     VerifyRetry: fn("ngtcp2_crypto_verify_retry_token2", ["ptr", "ptr", "u64", "ptr", "u64", "u32", "ptr", "u32", "ptr", "u64", "u64"], "i32")?,
+    RegularToken: fn("ngtcp2_crypto_generate_regular_token", ["ptr", "ptr", "u64", "ptr", "u32", "u64"], "i64")?,
+    VerifyRegular: fn("ngtcp2_crypto_verify_regular_token", ["ptr", "u64", "ptr", "u64", "ptr", "u32", "u64", "u64"], "i32")?,
+    SubmitToken: fn("ngtcp2_conn_submit_new_token", ["ptr", "ptr", "u64"], "i32")?,
+    EncodeEarly: fn("ngtcp2_conn_encode_0rtt_transport_params", ["ptr", "ptr", "u64"], "i64")?,
+    DecodeEarly: fn("ngtcp2_conn_decode_and_set_0rtt_transport_params", ["ptr", "ptr", "u64"], "i32")?,
+    EarlyRejected: fn("ngtcp2_conn_tls_early_data_rejected", ["ptr"], "i32")?,
+    TlsHandle: fn("ngtcp2_conn_get_tls_native_handle", ["ptr"], "ptr")?,
+    OsslSsl: fn("ngtcp2_crypto_ossl_ctx_get_ssl", ["ptr"], "ptr")?,
+    EarlyStatus: fn("SSL_get_early_data_status", ["ptr"], "i32")?,
+    GetData: fn("SSL_get_ex_data", ["ptr", "i32"], "ptr")?,
+    NewSessionCallback: fn("SSL_CTX_sess_set_new_cb", ["ptr", "callback"], "void")?,
+    SessionToBytes: fn("i2d_SSL_SESSION", ["ptr", "ptr"], "i32")?,
+    SessionFromBytes: fn("d2i_SSL_SESSION", ["ptr", "ptr", "i64"], "ptr")?,
+    SetSession: fn("SSL_set_session", ["ptr", "ptr"], "i32")?,
+    SessionFree: fn("SSL_SESSION_free", ["ptr"], "void")?,
+    SessionEarly: fn("SSL_SESSION_get_max_early_data", ["ptr"], "u32")?,
+    SessionAlpn: fn("SSL_SESSION_get0_alpn_selected", ["ptr", "ptr", "ptr"], "void")?,
     OsslNew: fn("ngtcp2_crypto_ossl_ctx_new", ["ptr", "ptr"], "i32")?,
     OsslDel: fn("ngtcp2_crypto_ossl_ctx_del", ["ptr"], "void")?,
     ConfigureServer: fn("ngtcp2_crypto_ossl_configure_server_session", ["ptr"], "i32")?,
@@ -174,9 +194,16 @@ defn loaded()
   end
   api.Events = fiber.Channel()
   api.Spare = c.Alloc(32)
+  (* What a client keeps of the servers it met, for its next connections: the address validation tokens they gave
+     (NEW_TOKEN, RFC 9000, section 8.1.3), which spare a Retry, and their TLS tickets with the transport parameters that
+     go with them, for 0-RTT; an hour each, each ticket used once. *)
+  api.Tokens = fiber.Table(1000)
+  api.Tickets = fiber.Table(1000)
   api.Callbacks = callbacks(api, lib)?
   (* The conn_ref of ngtcp2_crypto: how OpenSSL's QUIC TLS finds the connection of an SSL object, kept at offset 8. *)
   api.GetConn = c.Callback(ref -> c.Get("ptr", 8, ref), ["ptr"], "ptr")
+  (* A TLS ticket that a server sent a client, kept as bytes (OpenSSL's own copy is not kept: 0). *)
+  api.Ticket = c.Callback((ssl, session) -> ticket(api, ssl, session), ["ptr", "ptr"], "i32")
   (* The server picks the first protocol of its own list that the client offers (RFC 7301), during the handshake. arg is
      the server's list, its bytes ended by a zero. *)
   chosen(out, outLength, given, givenLength, arg) = if pick(out, outLength, arg, listLength(arg, 0), given, givenLength) == 1 0 else 2 end
@@ -191,8 +218,35 @@ defn told(events, event)
   0
 end
 
-(* The number of the connection whose user_data ngtcp2 gives: a block of its number, then the endpoint's secret. *)
+(* The number of the connection whose user_data ngtcp2 gives: a block of its number, the endpoint's secret, then 1 when
+   a client sent 0-RTT. *)
 idOf(u) = c.Get("u64", 0, u)
+
+defn done(api, conn, u)
+  (** The handshake ended. A client that sent 0-RTT asks OpenSSL whether the server took it, which OpenSSL says only
+      now: if not, ngtcp2 forgets the streams of then, there and before the packets that follow, and the engine sends
+      them again. *)
+  rejected = c.Get("u64", 16, u) == 1 and api.EarlyStatus(api.OsslSsl(api.TlsHandle(conn))) != 2
+  if rejected
+    api.EarlyRejected(conn)
+  end
+  told(api.Events, {K: "ready", Id: idOf(u), Rejected: rejected})
+end
+
+defn ticket(api, ssl, session)
+  (** A ticket of TLS 1.3 that the server sent, as DER bytes, to the engine of its connection. *)
+  n = api.SessionToBytes(session, missing)
+  if n > 0
+    bytes = c.Alloc(n)
+    box = c.Alloc(8)
+    c.Set("ptr", 0, bytes, box)
+    api.SessionToBytes(session, box)
+    told(api.Events, {K: "ticket", Id: c.Get("u64", 16, api.GetData(ssl, 0)), Bytes: c.Load(0, n, bytes), Early: api.SessionEarly(session) > 0})
+    c.Free(box)
+    c.Free(bytes)
+  end
+  0
+end
 
 defn newCid(api, cid, token, n, u)
   (** A new connection ID that ngtcp2 asks for, random, with its stateless reset token (RFC 9000, section 10.3), made
@@ -216,7 +270,7 @@ defn callbacks(api, lib)
   end
   ev = api.Events
   set(at, f, args) = c.Set("ptr", at, c.Callback(f, args, "i32"), table)
-  set(24, (conn, u) -> told(ev, {K: "ready", Id: idOf(u)}), ["ptr", "ptr"])
+  set(24, (conn, u) -> done(api, conn, u), ["ptr", "ptr"])
   set(64, (conn, flags, sid, offset, data, n, u, su) -> told(ev, {K: "data", Id: idOf(u), Sid: sid, Flags: flags, Bytes: if n == 0 "" else c.Load(0, n, data) end}), ["ptr", "u32", "i64", "u64", "ptr", "u64", "ptr", "ptr"])
   set(72, (conn, sid, offset, n, u, su) -> told(ev, {K: "acked", Id: idOf(u), Sid: sid, Upto: offset + n}), ["ptr", "i64", "u64", "u64", "ptr", "ptr"])
   set(80, (conn, sid, u) -> told(ev, {K: "open", Id: idOf(u), Sid: sid}), ["ptr", "i64", "ptr"])
@@ -228,6 +282,7 @@ defn callbacks(api, lib)
   set(144, (conn, cid, u) -> told(ev, {K: "uncid", Id: idOf(u), Cid: c.Load(8, c.Get("u64", 0, cid), cid)}), ["ptr", "ptr", "ptr"])
   set(176, (conn, sid, size, code, u, su) -> told(ev, {K: "reset", Id: idOf(u), Sid: sid}), ["ptr", "i64", "u64", "u64", "ptr", "ptr"])
   set(200, (conn, sid, n, u, su) -> told(ev, {K: "credit", Id: idOf(u), Sid: sid}), ["ptr", "i64", "u64", "ptr", "ptr"])
+  set(224, (conn, token, n, u) -> told(ev, {K: "token", Id: idOf(u), Token: c.Load(0, n, token)}), ["ptr", "ptr", "u64", "ptr"])
   result.Ok(table)
 end
 
@@ -305,7 +360,7 @@ end
     socket may be read; Commands what the fibers of the streams ask; Closed a cell set once the endpoint closes; Secret
     the random bytes of its tokens; Calls the blocks of the calls, one of each, since no fiber switch comes between a call
     and the read of what it wrote. *)
-struct Engine { Api, Bio, Fd, Ctx, Server, Alpn, Secret, Ins, Outs, Wake, Commands, Closed, Validate, Cc, Local, Base, Calls, Serve, Remote }
+struct Engine { Api, Bio, Fd, Ctx, Server, Alpn, Secret, Ins, Outs, Wake, Commands, Closed, Validate, Cc, Local, Base, Calls, Serve, Remote, Origin }
 
 (** What the engine changes as it runs, passed from one of its functions to the next: Conns by number, Streams by
     key(conn, stream), Cids the number of the connection of each connection ID, Timers a heap of (time, connection),
@@ -400,9 +455,9 @@ defn engine(api, fd, ctx, alpn, server, validate, cc, remote)
   api.RandBytes(secret, 32)
   calls = {Pi: c.Alloc(8), Written: c.Alloc(8), Sid: c.Alloc(8), Vec: c.Alloc(16), Hd: c.Alloc(112), Vc: c.Alloc(40),
     Cid1: c.Alloc(32), Cid2: c.Alloc(32), Cid3: c.Alloc(32), Token: c.Alloc(128), Ccerr: c.Alloc(40), Box: c.Alloc(8),
-    Settings: c.Alloc(168), Params: c.Alloc(344), Done: c.Alloc(8), Random: c.Alloc(32), Versions: c.Alloc(8)}
+    Settings: c.Alloc(168), Params: c.Alloc(344), Done: c.Alloc(8), Random: c.Alloc(32), Versions: c.Alloc(8), Early: c.Alloc(256)}
   c.Set("u32", 0, 1, calls.Versions)
-  e = Engine(api, bio, fd, ctx, server, alpn, secret, ins, outs, fiber.Channel(size = 1), fiber.Channel(), cell(false), validate, cc, at, sys.Now() - 1, calls, missing, remote)
+  e = Engine(api, bio, fd, ctx, server, alpn, secret, ins, outs, fiber.Channel(size = 1), fiber.Channel(), cell(false), validate, cc, at, sys.Now() - 1, calls, missing, remote, missing)
   fiber.Spawn(() -> reading(e))
   result.Ok(e)
 end
@@ -487,21 +542,23 @@ end
 
 defn user(e, id)
   (** The user_data of a connection: its number, then the endpoint's secret. *)
-  u = c.Alloc(16)
+  u = c.Alloc(24)
   c.Set("u64", 0, id, u)
   c.Set("ptr", 8, e.Secret, u)
   u
 end
 
-defn tls(e, ssl, ptr)
-  (** The TLS of a connection: OpenSSL's QUIC TLS through ngtcp2_crypto_ossl, and the conn_ref by which it finds ptr. *)
+defn tls(e, ssl, ptr, id)
+  (** The TLS of a connection: OpenSSL's QUIC TLS through ngtcp2_crypto_ossl, and the conn_ref by which it finds ptr,
+      then the connection's number. *)
   api = e.Api
   box = e.Calls.Box
   api.OsslNew(box, ssl)
   octx = c.Get("ptr", 0, box)
-  ref = c.Alloc(16)
+  ref = c.Alloc(24)
   c.Set("ptr", 0, api.GetConn, ref)
   c.Set("ptr", 8, ptr, ref)
+  c.Set("u64", 16, id, ref)
   api.SetData(ssl, 0, ref)
   api.SetTls(ptr, octx)
   {Octx: octx, Ref: ref}
@@ -648,6 +705,9 @@ defn incoming(e, s, k, size)
     end
     retried = true
     validated = true
+  else if tokenSize > 0 and c.Get("u8", 0, c.Get("ptr", 72, hd)) == 54
+    (* A token of NEW_TOKEN that this server gave on an earlier connection, an hour at most: no Retry. *)
+    validated = api.VerifyRegular(c.Get("ptr", 72, hd), tokenSize, e.Secret, 32, remote, rsize, 3600 * second, s.Now) == 0
   end
   if e.Validate and not validated
     return retry(e, s, k, hd, version, remote, rsize)
@@ -662,7 +722,7 @@ defn incoming(e, s, k, size)
   if validated
     c.Set("ptr", 48, c.Get("ptr", 72, hd), st)
     c.Set("u64", 56, tokenSize, st)
-    c.Set("u32", 64, 1, st)
+    c.Set("u32", 64, if retried 1 else 2 end, st)
   end
   tp = params(e)
   c.Store(c.Load(0, 32, odcid), 96, tp)
@@ -681,7 +741,7 @@ defn incoming(e, s, k, size)
   end
   ptr = c.Get("ptr", 0, box)
   ssl = api.SslNew(e.Ctx)
-  made = tls(e, ssl, ptr)
+  made = tls(e, ssl, ptr, id)
   api.ConfigureServer(ssl)
   api.AcceptState(ssl)
   api.EarlyData(ssl, 1)
@@ -769,6 +829,20 @@ defn event(e, s, ev)
     s.Conns[ev.Id] = conn
     s.Hs -= 1
     put(result.Ok(missing), conn.Wait)
+    if e.Server
+      return token(e, s, conn)
+    end
+    return if ev.Rejected again(e, s, ev.Id) else s end
+  end
+  if k == "token"
+    fiber.Remember(e.Origin, ev.Token, sys.Now() + 3600, e.Api.Tokens)
+    return s
+  end
+  if k == "ticket"
+    n = e.Api.EncodeEarly(conn.Ptr, e.Calls.Early, 256)
+    if n > 0
+      fiber.Remember(e.Origin, {Session: ev.Bytes, Params: c.Load(0, n, e.Calls.Early), Early: ev.Early}, sys.Now() + 3600, e.Api.Tickets)
+    end
     return s
   end
   if k == "more"
@@ -818,6 +892,38 @@ defn event(e, s, ev)
     s.Streams[at] = t
     s.Deliver[at] = true
     return if t.Freed discard(e, s, at) else s end
+  end
+  s
+end
+
+defn token(e, s, conn)
+  (** A server gives a client that finished its handshake a token of NEW_TOKEN, made from its secret and the client's
+      address: the client's next connection, within an hour, needs no Retry. *)
+  path = e.Api.PathOf(conn.Ptr)
+  n = e.Api.RegularToken(e.Calls.Token, e.Secret, 32, c.Get("ptr", 16, path), c.Get("u32", 24, path), s.Now)
+  if n > 0
+    e.Api.SubmitToken(conn.Ptr, e.Calls.Token, n)
+    s.Dirty[conn.Id] = true
+  end
+  s
+end
+
+defn again(e, s, id)
+  (** The server didn't take the 0-RTT of a client: ngtcp2 forgot its streams, which are opened again in the order they
+      were, so with the same numbers, and their bytes sent again from the start (they were kept until acknowledged). *)
+  conn = s.Conns[id]
+  for sid in list.Sort([x for x in dict.Keys(conn.Sids) if math.BitAnd(x, 1) == 0])
+    at = key(id, sid)
+    t = s.Streams[at]
+    if not t.Remote
+      box = e.Calls.Sid
+      if math.BitAnd(sid, 2) == 0 e.Api.OpenBidi(conn.Ptr, box, missing) else e.Api.OpenUni(conn.Ptr, box, missing) end
+      t.Sent = 0
+      t.Acked = 0
+      t.FinSent = false
+      s.Streams[at] = t
+      s = ready(s, s.Conns[id], t)
+    end
   end
   s
 end
@@ -1310,8 +1416,12 @@ defn drop(e, s, id)
       s.Cids = dict.Drop(cid, s.Cids)
     end
   end
-  (* OpenSSL's QUIC TLS may still call ngtcp2 as its SSL object is freed: told first that there is none. *)
+  (* OpenSSL's QUIC TLS may still call ngtcp2 as its SSL object is freed: told first that there is none. Its TLS ended
+     as QUIC ends it, with no close_notify (RFC 9001, section 4.8): told so, or SSL_free takes the connection's
+     session out of the server's cache, and with it the ticket of the next 0-RTT (SSL_SENT_SHUTDOWN and
+     SSL_RECEIVED_SHUTDOWN). *)
   api.SetData(conn.Ssl, 0, missing)
+  api.SetShutdown(conn.Ssl, 3)
   api.SslFree(conn.Ssl)
   api.OsslDel(conn.Octx)
   api.ConnDel(conn.Ptr)
@@ -1595,7 +1705,7 @@ defn Server(certificate, key, api, port = 443, host = "127.0.0.1", alpn = ["h3"]
      request sent in early data can't come twice. One ticket a connection, 4096 kept at most. *)
   api.MaxEarly(ctx, 4294967295)
   api.SessionContext(ctx, "cesia", 5)
-  api.Tickets(ctx, 1)
+  api.TicketCount(ctx, 1)
   api.CtxControl(ctx, 42, 4096, missing)
   protocols = wire(alpn)
   api.AlpnSelect(ctx, api.Choose, protocols.Block)
@@ -1641,17 +1751,25 @@ end
 
 Close(server) = close(server.Engine)   (** Stops a listener: Serve returns at its next pass. *)
 
-defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout = 10, peer = missing, congestion = "cubic")
+defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout = 10, peer = missing, congestion = "cubic", early = false)
   (** Connects to a QUIC server and makes the handshake within timeout seconds: an Ok of the connection, as Serve gives
       one to a server, or an Err. The server's certificate is checked as tls.Client checks it, against the system's
       authorities or those of the PEM file ca, and must name host; verify = false takes any, only for tests. peer is
       as http.Fetch takes it: a function of the address found, which may refuse it before any packet is sent.
-      congestion is as Server takes it. It needs OpenSSL and a server, so it has no example here. *)
+      congestion is as Server takes it. A server met before (within an hour, by this program) is reached without a
+      Retry, by the token it gave, and its handshake resumes TLS; with early, when it gave a ticket for 0-RTT, Dial
+      gives the connection at once, before the handshake ends, and the streams' first bytes go with it, in 0-RTT: a
+      server may then refuse a request that changes something (425 Too Early, RFC 8470), and when it takes no 0-RTT
+      at all, the streams' bytes are sent again after the handshake, unseen. Each ticket is used once. It needs
+      OpenSSL and a server, so it has no example here. *)
   ctx = api.CtxNew(api.ClientMethod())
   if value.IsMissing(ctx)
     return failed("OpenSSL made no TLS context.")
   end
   tls13(api, ctx)
+  (* The tickets of the server go to api.Ticket, not to OpenSSL's cache: SSL_SESS_CACHE_CLIENT, NO_INTERNAL_STORE. *)
+  api.CtxControl(ctx, 44, 769, missing)
+  api.NewSessionCallback(ctx, api.Ticket)
   if verify
     if value.IsMissing(ca)
       api.DefaultPaths(ctx)
@@ -1696,6 +1814,8 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
     return made
   end
   e = made.Value
+  origin = "$host:$port"
+  e.Origin = origin
   s = fresh()
   s.Now = clock(e, 0)
   path = c.Alloc(40)
@@ -1708,6 +1828,13 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   dcid = cidBlock(e, e.Calls.Cid1, random(e, 18))
   scid = cidBlock(e, e.Calls.Cid2, random(e, cidLength))
   st = settings(e, s, timeout)
+  token = fiber.Recall(origin, sys.Now(), api.Tokens)
+  if not value.IsMissing(token)
+    c.Store(token, 0, e.Calls.Token)
+    c.Set("ptr", 48, e.Calls.Token, st)
+    c.Set("u64", 56, text.ByteLength(token), st)
+    c.Set("u32", 64, 2, st)
+  end
   box = e.Calls.Box
   rv = api.ClientNew(box, dcid, scid, path, 1, 1, api.Callbacks, 1, st, 1, params(e), missing, u)
   c.Free(path)
@@ -1720,7 +1847,7 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   end
   ptr = c.Get("ptr", 0, box)
   ssl = api.SslNew(ctx)
-  tied = tls(e, ssl, ptr)
+  tied = tls(e, ssl, ptr, 1)
   api.ConfigureClient(ssl)
   api.ConnectState(ssl)
   api.AlpnProtos(ssl, protocols.Block, protocols.Size)
@@ -1729,12 +1856,22 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   if verify
     api.SetHost(ssl, host)
   end
+  resumed = resume(e, ssl, ptr, origin, early)
+  if resumed.Early
+    c.Set("u64", 16, 1, u)
+  end
   s = newConn(e, drain(e, s), ptr, ssl, tied.Octx, u, tied.Ref, nameOf(api, remote))
   s.Next = 2
   s.Dirty[1] = true
   conn = s.Conns[1]
   conn.Alpn = missing
   task = fiber.Spawn(() -> run(e, s))
+  if resumed.Early
+    conn.Alpn = resumed.Alpn
+    handle = connection(e, conn)
+    handle.Close = code -> ending(e, code, conn.Gone, task)
+    return result.Ok(handle)
+  end
   waited = fiber.Receive(conn.Wait, timeout = timeout)
   failure = if result.IsErr(waited) failed("$host:$port gave no QUIC handshake in $timeout seconds.") else if result.IsErr(waited.Value) waited.Value else missing end
   if not value.IsMissing(failure)
@@ -1746,6 +1883,44 @@ defn Dial(host, port, api, alpn = ["h3"], verify = true, ca = missing, timeout =
   handle = connection(e, conn)
   handle.Close = code -> ending(e, code, conn.Gone, task)
   result.Ok(handle)
+end
+
+defn resume(e, ssl, ptr, origin, early)
+  (** The ticket kept for this server, if any, given to OpenSSL to resume its TLS, and taken out: it serves once. With
+      early, and a ticket that allows it, 0-RTT: the server's transport parameters of then bound the first bytes.
+      {Early, Alpn}. *)
+  api = e.Api
+  kept = fiber.Recall(origin, sys.Now(), api.Tickets)
+  if value.IsMissing(kept)
+    return {Early: false, Alpn: missing}
+  end
+  fiber.Forget(origin, api.Tickets)
+  n = text.ByteLength(kept.Session)
+  bytes = c.Alloc(n)
+  c.Store(kept.Session, 0, bytes)
+  box = c.Alloc(8)
+  c.Set("ptr", 0, bytes, box)
+  session = api.SessionFromBytes(missing, box, n)
+  c.Free(box)
+  c.Free(bytes)
+  if value.IsMissing(session)
+    return {Early: false, Alpn: missing}
+  end
+  api.SetSession(ssl, session)
+  e.Api.SessionAlpn(session, e.Calls.Box, e.Calls.Done)
+  size = c.Get("u64", 0, e.Calls.Done)
+  alpn = if size == 0 missing else c.Load(0, size, c.Get("ptr", 0, e.Calls.Box)) end
+  api.SessionFree(session)
+  on = false
+  if early and kept.Early
+    n = text.ByteLength(kept.Params)
+    c.Store(kept.Params, 0, e.Calls.Early)
+    on = api.DecodeEarly(ptr, e.Calls.Early, n) == 0
+    if on
+      api.EarlyData(ssl, 1)
+    end
+  end
+  {Early: on, Alpn: alpn}
 end
 
 defn ending(e, code, gone, task)

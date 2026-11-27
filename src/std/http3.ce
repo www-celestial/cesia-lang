@@ -683,6 +683,11 @@ defn exchange(st, conn, handle, options, sessions)
     return st.Free()
   end
   request = made.Value
+  if dict.GetOr("Early", false, st) and value.Len([h for h in request.Headers if h.Name == "early-data"]) == 0
+    (* Its head came in 0-RTT, before the handshake ended: an attacker may send it again (RFC 8470). It says so as a
+       proxy in front would, so that a request that would change something gets 425 Too Early, on either path. *)
+    request.Headers = list.Append({Name: "early-data", Value: "1"}, request.Headers)
+  end
   (* A route that takes its body in pieces (http.Route's stream) gets it so, as over HTTP/1.1, when it says its length. *)
   most = if value.IsMissing(options.Streams) or request.Method == "CONNECT" missing else options.Streams(request.Path, request.Method) end
   size = if value.IsMissing(most) missing else lengthOf(request.Headers) end
@@ -984,12 +989,12 @@ defn count(state, key, step)
   fiber.Remember(key, (if value.IsMissing(now) 0 else now end) + step, 2, state)
 end
 
-defn Server(certificate, key, api, port = 443, host = "127.0.0.1", validate = true)
+defn Server(certificate, key, api, port = 443, host = "127.0.0.1", validate = true, congestion = "cubic")
   (** What http.Serve takes as http3 to serve HTTP/3 beside TCP: a QUIC listener on UDP port, which may be the TCP port
       of HTTPS, as browsers look for it (Alt-Svc, RFC 7838: Serve tells every response of TCP). certificate, key and
-      validate are as quic.Server takes them, api what quic.Open gave. An Err when OpenSSL has no QUIC server, a file
+      validate are as quic.Server takes them, and congestion, the control of how fast it sends, api what quic.Open gave. An Err when OpenSSL has no QUIC server, a file
       can't be read or the port is taken: Serve then serves TCP alone. It needs OpenSSL, so it has no example here. *)
-  q = quic.Server(certificate, key, api, port = port, host = host, alpn = ["h3"], validate = validate)?
+  q = quic.Server(certificate, key, api, port = port, host = host, alpn = ["h3"], validate = validate, congestion = congestion)?
   result.Ok({Port: q.Port, Quic: q, Serve: (handle, options) -> serve(q, handle, options)})
 end
 
