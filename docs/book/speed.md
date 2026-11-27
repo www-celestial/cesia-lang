@@ -32,7 +32,7 @@ fails.
   their texts of parts, `text.ByteLength`, and the frame of a closure, as
   [How Cesia works](internals.md#versions-as-a-whole-without-a-bet) shows. What machine code can't make there it calls
   through OCaml, so such a function is machine code only when it computes enough between those calls; in a loop, the
-  cached keys and lengths call nothing: `dict.Has` of a key in a loop takes 5 ns a call instead of 56.
+  cached keys and lengths call nothing: `dict.Has` of a key in a loop takes 5 ns a call instead of 54.
 - A variable of a module whose number changes under machine code, as a slider's that [cells.Set] gives in place: read
   from a slot at each run, so the code stays for each new number.
 - `random.Float()`, the step of its generator made in place, the same numbers as the interpreter's in the same order.
@@ -429,41 +429,41 @@ workers don't give one and a half times one process. `HTTP_GATE_SCALE=0.5` halve
 
 Centauri, a framework of Cesia, answers `/hello` with a JSON of one field through its door, its session, its limits,
 its shapes and its log; [std/http] alone answers the same route with nothing around it, as Go's `net/http`, Node's
-`http` and the JDK's `HttpServer` (on a pool of 4 threads) do. Measured on 2026-11-26, `release` profile, each server
+`http` and the JDK's `HttpServer` (on a pool of 4 threads) do. Measured on 2026-11-27, `release` profile, each server
 pinned to 4 cores and the load client (256 kept connections, 4 threads) to the 4 others, 21 measures of 2 s each, the
-order turned at each round, while other work ran on the machine (load 4.8 to 15.2); the CPU is the server's over the
+order turned at each round, while other work ran on the machine (load 3.0 to 5.2); the CPU is the server's over the
 measure, its threads together; the median, then the lowest and the highest:
 
 | Server | Requests a second | Cores | Requests a second per core | 99th percentile | Memory |
 |---|---:|---:|---:|---:|---:|
-| Centauri | 10,318 (5,719–12,537) | 0.95 | 10,930 | 41.1 ms | 55 MB |
-| Centauri, main's binary before | 11,165 (4,627–12,908) | 0.95 | 11,703 | 41.2 ms | 52 MB |
-| `std/http` alone | 24,963 (8,823–30,295) | 0.90 | 27,798 | 22.2 ms | 40 MB |
-| Go, `net/http` | 66,746 (16,971–94,258) | 2.57 | 26,069 | 18.5 ms | 17 MB |
-| Node, `http` | 30,518 (13,682–37,727) | 0.85 | 35,819 | 13.7 ms | 82 MB |
-| Java, `HttpServer` | 24,913 (12,456–29,100) | 1.60 | 15,794 | 45.7 ms | 466 MB |
+| Centauri | 14,009 (12,735–14,770) | 0.95 | 14,702 | 29.2 ms | 51 MB |
+| Centauri, main's binary before | 14,002 (8,205–14,504) | 0.95 | 14,693 | 26.3 ms | 51 MB |
+| `std/http` alone | 32,674 (17,799–34,469) | 0.90 | 36,218 | 15.4 ms | 45 MB |
+| Go, `net/http` | 73,141 (35,722–106,921) | 3.10 | 22,814 | 21.3 ms | 21 MB |
+| Node, `http` | 39,982 (30,086–42,563) | 0.85 | 46,755 | 9.9 ms | 95 MB |
+| Java, `HttpServer` | 32,967 (17,586–34,664) | 1.87 | 17,732 | 42.6 ms | 637 MB |
 
 ```cesia allow=read,write
 servers = ["Centauri", "std/http", "Go", "Node", "Java"]
-perSecond = plot.Bars(servers, [[10318, 24963, 66746, 30518, 24913], [10930, 27798, 26069, 35819, 15794]],
+perSecond = plot.Bars(servers, [[14009, 32674, 73141, 39982, 32967], [14702, 36218, 22814, 46755, 17732]],
   label = ["requests a second", "per core"], color = ["#3a5ad9", "#999999"])
 hello = plot.Of([perSecond], title = "/hello under load: median of 21 measures", x = "server", y = "requests a second",
   size = [640, 360])
 plot.Save(hello, "speed-hello.svg") -->
 ```
 
-The binary before and now answer alike: paired by round, now gave 1.01 times the requests of before (0.56 to 2.69),
-ahead in 12 rounds of 21, and in a second run of 21, 0.98 (0.36 to 1.63), ahead in 9; the units of the request path
+The binary before and now answer alike: paired by round, now gave 1.01 times the requests of before (0.90 to 1.61),
+ahead in 15 rounds of 21, and in a second run of 21, 1.00 (0.76 to 2.33), ahead in 11; the units of the request path
 that lower now stay interpreted, as they make too few operations for their calls through OCaml
-([How Cesia works](internals.md#versions-as-a-whole-without-a-bet)). Java's `HttpServer` failed about 32,700
-requests in each measure, a fifth of what it was sent: it is the JDK's small server, for tools and tests, and Netty or
+([How Cesia works](internals.md#versions-as-a-whole-without-a-bet)). Java's `HttpServer` failed about 51,600
+requests in each measure, more than two fifths of what it was sent: it is the JDK's small server, for tools and tests, and Netty or
 Jetty, not measured here, are what a Java server runs on.
 
-**Where a giant wins, and why.** Per core, Node answers 1.3 times what `std/http` does and 3.3 times Centauri: its
+**Where a giant wins, and why.** Per core, Node answers 1.3 times what `std/http` does and 3.2 times Centauri: its
 parser of HTTP is C, `llhttp`, and V8 compiles the handler; `std/http` parses in OCaml and runs the handler in the
-interpreter. Go answers 2.7 times `std/http`, as its goroutines take the cores by themselves, where this Cesia server is
+interpreter. Go answers 2.2 times `std/http`, as its goroutines take the cores by themselves, where this Cesia server is
 one process on one core: `--workers` gives it more, as [A server under load](#a-server-under-load) measures. A request
-of Centauri takes 2.4 times that of `std/http` alone, for its session, its limits and its log, much of it in natives (a
+of Centauri takes 2.3 times that of `std/http` alone, for its session, its limits and its log, much of it in natives (a
 sampling gives 33% of its time to them and 12% to the collector); the interpreter's own share, 53%, is what machine
 code could take, and only where it calls OCaml less often than it computes.
 

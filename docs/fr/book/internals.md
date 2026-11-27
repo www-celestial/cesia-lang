@@ -1064,7 +1064,11 @@ qu'elle donne :
   une branche que la boucle prend rarement, reste une instruction laissée à l'interpréteur. Une version dont le corps
   appelle une native que le JIT ne fait pas, ou tient un texte fait de morceaux, un `match`, un `?`, un `in`, une
   compréhension ou une fonction littérale, est refusée tout de suite, avant que les versions qu'elle appelle ne soient
-  traduites pour rien.
+  traduites pour rien. Une version rencontrée de nouveau pendant son propre dry lowering, comme deux versions d'une
+  fonction qui s'appellent l'une l'autre (`betaQuantile(a, b, t, up)` de `std/stats` appelle
+  `betaQuantile(b, a, t, 0.0)`, la version de l'autre ordre des types), est vérifiée par la traduction en cours, qui la
+  tient alors : traduite de nouveau dans une unité à elle, elle rencontrait l'autre de nouveau, et ainsi de suite jusqu'à
+  ce que la mémoire soit épuisée (`tests/jit/whole-cycle.ce`).
 
 Le difficile est la mémoire. Le code natif n'appelle OCaml que comme le dit la partie suivante, donc rien d'autre ne
 collecte pendant qu'il tourne : chaque
@@ -1298,6 +1302,36 @@ paramètres. Une variable capturée avant d'avoir une valeur tient `Undef` : un 
 dont la lecture est l'erreur. Une closure appelée depuis le code machine passe encore par OCaml : ses valeurs capturées
 sont dans la valeur de la fonction, qu'une frame imbriquée ne lit pas encore.
 
+**La pile de la machine.** Un appel d'une fonction d'une unité à une autre est une frame sur la pile de la machine, comme
+un appel en C, là où les frames de l'interpréteur sont celles d'OCaml, sur une pile qui grandit. Une récursion assez
+profonde passait la fin de la pile et le processus mourait d'un segmentation fault (un accès hors de la mémoire du
+processus, que le système tue), sur main aussi pour une récursion de nombres : `--limit depth=1e9`, ou 60 000 appels
+sous `ulimit -s 1024`. La glue C (le petit code C entre OCaml et MIR) trouve maintenant l'adresse la plus basse de la
+pile du thread, une fois par thread (`pthread_getattr_np` sous Linux, `pthread_get_stackaddr_np` sous macOS,
+`GetCurrentThreadStackLimits` sous Windows). Une exécution ne commence qu'avec 512 Ko de pile restants, sinon
+l'interpréteur fait l'appel, et ses frames imbriquées prennent la pile jusqu'à 256 Ko au-dessus de la fin, laissés aux
+natives qu'elles appellent. Les appels la regardent toutes les 16 frames : quand la base de l'appelé passe de 32 slots
+celle du dernier regard, le `bstart` de MIR lit le pointeur de pile, comparé au plancher ; entre deux regards, le test de
+la base que chaque appel faisait déjà est tout ce que cela coûte, et une récursion ne regarde à nouveau que là où elle va
+plus profond qu'elle n'est allée. Il le lit sans appel de C, car un appel n'importe où dans une fonction envoie en mémoire
+les valeurs qui vivent à travers lui dans chacune de ses boucles : avec un tel appel, `bench/dyn.ce` prenait 100 ms au
+lieu de 65 et `fib.ce` 79 au lieu de 63. Une frame inlinée, qui ne prend rien de la pile de la machine, ne teste que les
+limites, comme avant. Passé le plancher, une unité de nombres s'arrête, car rien de ce qu'elle a
+fait ne se voit encore, et l'interpréteur fait l'appel depuis son début ; un appel qui peut faire un bail en fait un, et
+l'interpréteur fait son instruction ; une unité qui appelle OCaml, qui ne recommence jamais, fait l'appel à travers
+OCaml, la frame de l'appelé faite comme la fait l'appel de l'interpréteur. Tant que ces frames durent, le code machine
+qui commencerait plus profond est laissé à l'interpréteur. `tests/jit/whole-deep.ce` fait une récursion de 60 000
+appels sous une pile de 1 Mo, dans les trois modes sur chaque chemin, avec les valeurs, l'erreur, la trace et la limite
+de profondeur de l'interpréteur.
+
+**Les fibers.** À un checkpoint les autres fibers prennent leur tour, et l'une d'elles peut donner une autre valeur à une
+variable d'un module, que la boucle de l'interpréteur relit ensuite ; une frame de code machine continuerait avec la
+valeur qu'elle avait lue. Donc un appelé qui boucle sur une variable d'un module que le fichier change n'est pas appelé
+depuis le code machine, imbriqué ou à travers OCaml, mais par l'interpréteur, dont la boucle laisse entrer les autres
+fibers à ses checkpoints ; et une version entière qui boucle en lisant une variable d'un module reste à l'interpréteur,
+ses boucles faites code machine comme loop regions, qui prennent la nouvelle valeur là où elles reviennent
+(`tests/jit/fibers-moved.ce` et `module-vars.ce`, sous `CESIA_JIT=always`).
+
 **Ce que cela change pour Centauri.** Son chemin de requête se compile maintenant : des versions qu'une exécution de
 `bench/micro.ce` rend hot (`CESIA_JIT_SHOW=1`), les closures, les lectures de champ et les calculs de valeurs dans une version entière, les textes faits de morceaux
 et le plus grand ou le plus petit de deux valeurs, 33 refus, ont disparu ; 28 versions se compilent maintenant entières,
@@ -1315,7 +1349,7 @@ le JIT ne fait pas :
 | le plus grand ou le plus petit de deux valeurs qui ne sont pas des nombres | 2 | 0 |
 | compilée entière, ses appels à travers OCaml trop nombreux pour ce qu'elle calcule | 4 | 23 |
 | compilée entière, sans boucle ni appel | 3 | 5 |
-| une instruction que le JIT ne fait pas : `for x in xs` sur une liste, une écriture dans un champ | 5 | 7 |
+| une instruction que le JIT ne fait pas : `for x in xs` sur une liste, une écriture dans un champ | 5 | 6 |
 | une fonction littérale | 4 | 7 |
 | un appel d'une fonction tenue dans un champ, comme `env.Who(req, env)`, qui peut être une méthode | 1 | 4 |
 | un `match` | 4 | 4 |
@@ -1323,11 +1357,12 @@ le JIT ne fait pas :
 | une cellule d'une liste qui n'est pas une variable de sa frame, comme `routes[k]` d'une liste reçue | 2 | 3 |
 | une comprehension (une liste faite par `[f(x) for x in xs]`) | 2 | 3 |
 | un `in` | 2 | 2 |
-| une autre forme : un `if` qui donne une valeur, un appel d'une fonction avec des arguments nommés, une map dans une variable d'un module | 3 | 3 |
+| une autre forme : un `if` qui donne une valeur, un appel d'une fonction avec des arguments nommés, une map dans une variable d'un module, une fonction inlinée dont les résultats sont de deux sortes | 3 | 4 |
 | une native qui attend, de `std/fiber` | 1 | 1 |
 | un `?` | 1 | 1 |
 | une map vide, `{}` | 1 | 1 |
 | une variable qu'une closure partage | 1 | 1 |
+| un appel d'une fonction qui boucle sur une variable d'un module que le fichier change : l'interpréteur le fait, pour que les autres fibers entrent à ses checkpoints | 0 | 1 |
 
 Sous `CESIA_JIT=always`, qui fait chaque unité dès qu'elle devient hot, pour les tests, 37 versions du chemin sont du
 code machine contre 27 : `door`, `SessionKey`, `Json`, `Cookie`, les closures des handlers et celles des shapes parmi
@@ -1335,30 +1370,31 @@ elles. Dans le mode par défaut, aucune : une version qui se compile entière et
 va aussi vite dans l'interpréteur, qui appelle une native pour moins cher
 ([Le code machine qui appelle OCaml](#le-code-machine-qui-appelle-ocaml)).
 
-Donc une requête de Centauri prend le temps qu'elle prenait, mesuré le 2026-11-26, profil `release`, contre le binaire
-de main, en alternance, pendant que d'autres travaux tournaient sur la machine : une requête publique 21,1 µs
-[19,1, 33,0] contre 20,7 [18,8, 34,1], une chose par son id 34,7 [31,3, 39,9] contre 35,9 [31,7, 57,5], une page 132,0
-[119,7, 158,8] contre 134,6 [121,6, 202,8] (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, [la plus
-rapide, la plus lente], charge 4,1 à 5,2) ; son temps est dans les natives qu'elle appelle, dans ses allocations et dans
+Donc une requête de Centauri prend le temps qu'elle prenait, mesuré le 2026-11-27, profil `release`, contre le binaire
+de main, en alternance, pendant que d'autres travaux tournaient sur la machine : une requête publique 19,0 µs
+[17,6, 26,5] contre 18,6 [17,1, 21,0], une chose par son id 32,1 [30,0, 34,8] contre 31,1 [29,8, 38,9], une page 119,1
+[113,2, 186,9] contre 117,3 [112,7, 143,6] (médianes de 21 exécutions de 2 000 requêtes chacune, sans le réseau, [la plus
+rapide, la plus lente], charge 2,6 à 2,9) ; appariées par exécution, 1,02, 1,04 et 1,01 fois le temps d'avant, et 1,02,
+1,00 et 1,00 dans une autre série de 21, le bruit d'un chemin que l'interpréteur fait tourner dans les deux. Son temps est dans les natives qu'elle appelle, dans ses allocations et dans
 le collector : un échantillonnage de `/hello` (un timer de 500 µs de CPU, l'instruction où chaque tick est tombé) donne
 53 % aux closures de l'interpréteur, 33 % aux natives et à la bibliothèque, 12 % au collector et à l'allocation. Là où
 les mêmes appels de natives sont dans une boucle, les clés et les longueurs en cache font la différence (21 exécutions,
-en alternance, charge 3,5 à 5,9) :
+en alternance, charge 3,1 à 3,9) :
 
 | Programme | Avant | Maintenant |
 |---|---:|---:|
-| 10^7 appels de `dict.Has` d'une clé écrite dans le code | 557,5 (522,5–625,4) | 52,4 (50,0–106,1) |
-| 10^7 appels de `text.ByteLength`, 2 opérations par appel | 375,3 (342,8–454,8) | 57,2 (52,3–77,3) |
-| 10^6 tours de 20 opérations de floats et un `dict.Has` | 173,3 (155,9–295,7) | 40,5 (38,0–80,0) |
-| 10^6 tours de 60 opérations de floats et un `dict.Has` | 181,3 (169,2–279,2) | 77,1 (71,7–133,9) |
-| 10^7 appels de `sys.Now` | 409,7 (392,9–514,3) | 418,8 (389,0–481,2) |
-| 10^7 fois `text.ByteLength(text.Slice(2, 4, s))` | 1 630,5 (1 545,5–1 899,4) | 1 645,3 (1 501,5–2 047,5) |
+| 10^7 appels de `dict.Has` d'une clé écrite dans le code | 535,4 (489,6–846,4) | 51,3 (49,1–138,7) |
+| 10^7 appels de `text.ByteLength`, 2 opérations par appel | 347,2 (317,6–431,4) | 55,9 (50,5–96,5) |
+| 10^6 tours de 20 opérations de floats et un `dict.Has` | 156,3 (146,6–195,0) | 38,3 (36,7–233,1) |
+| 10^6 tours de 60 opérations de floats et un `dict.Has` | 168,7 (161,0–322,9) | 73,6 (68,9–120,8) |
+| 10^7 appels de `sys.Now` | 402,8 (374,5–438,4) | 388,5 (370,2–446,4) |
+| 10^7 fois `text.ByteLength(text.Slice(2, 4, s))` | 1 507,4 (1 397,3–2 856,3) | 1 486,6 (1 352,2–1 614,9) |
 
 ```cesia allow=read,write
 use std/plot
 
 loops = ["dict.Has", "ByteLength", "20 ops + Has", "60 ops + Has", "sys.Now"]
-times = plot.Bars(loops, [[557.5, 375.3, 173.3, 181.3, 409.7], [52.4, 57.2, 40.5, 77.1, 418.8]], label = ["before", "now"],
+times = plot.Bars(loops, [[535.4, 347.2, 156.3, 168.7, 402.8], [51.3, 55.9, 38.3, 73.6, 388.5]], label = ["before", "now"],
   color = ["#999999", "#3a5ad9"])
 cached = plot.Of([times], title = "Loops that call natives: median of 21 runs", x = "loop", y = "milliseconds",
   size = [640, 360])

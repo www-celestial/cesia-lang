@@ -947,7 +947,11 @@ it. Now a version is a candidate whatever it gives:
   it calls. A *dry lowering*, made and thrown away, decides it before the call commits its unit to it, so that a call
   that machine code can't make, in a branch the loop rarely takes, stays a statement left to the interpreter. A version
   whose body calls a native the JIT doesn't make, or holds a text made of parts, a `match`, a `?`, an `in`, a
-  comprehension or a function literal, is refused at once, before the versions it calls are lowered for nothing.
+  comprehension or a function literal, is refused at once, before the versions it calls are lowered for nothing. A
+  version met again while its own dry lowering is under way, as two versions of one function that call each other
+  (`betaQuantile(a, b, t, up)` of `std/stats` calls `betaQuantile(b, a, t, 0.0)`, the version of the other order of
+  types), is checked by the lowering under way, which then holds it: lowered again in a unit of its own, it met the
+  other again, and so on until memory was gone (`tests/jit/whole-cycle.ce`).
 
 The hard part is memory. Native code calls OCaml only as the next part says, so nothing else collects while it runs:
 each turn of a loop
@@ -1159,6 +1163,31 @@ variable captured before it had a value holds `Undef`: such a call is the interp
 A closure called from machine code still goes through OCaml: its captured values are in the function value, which a
 nested frame doesn't read yet.
 
+**The machine's stack.** A call from one function of a unit to another is a frame on the machine's stack, as a call in
+C is, where the interpreter's frames are OCaml's, on a stack that grows. A recursion deep enough passed the stack's end
+and the process died of a segmentation fault, on main too for a recursion of numbers: `--limit depth=1e9`, or 60,000
+calls under `ulimit -s 1024`. The C glue now finds the lowest address of the thread's stack, once per thread
+(`pthread_getattr_np` on Linux, `pthread_get_stackaddr_np` on macOS, `GetCurrentThreadStackLimits` on Windows). A run
+starts only with 512 KB of it left, else the interpreter makes the call, and its nested frames take the stack down to
+256 KB above the end, left to the natives they call. Calls look at it every 16 frames: when a callee's base passes the
+last look's by 32 slots, MIR's `bstart` reads the stack pointer, which is compared with the floor; between two looks,
+the test of the base that each call already made is all it costs, and a recursion looks again only where it goes deeper
+than it went. It reads it with no call of C, as a call anywhere in a function sends the values that live across it to
+memory in each of its loops: with one, `bench/dyn.ce` took 100 ms instead of 65 and `fib.ce` 79 instead of 63. An
+inlined frame, which takes none of the machine's stack, tests the limits alone, as before. Past the floor, a unit of numbers stops, as nothing it did shows yet, and the interpreter makes the call
+from its start; a call that can bail bails, and the interpreter makes its statement; a unit that calls OCaml, which
+never starts again, makes the call through OCaml, the callee's frame made as the interpreter's call makes it. While
+those frames last, machine code that would start deeper is left to the interpreter. `tests/jit/whole-deep.ce` recurses
+60,000 calls under a stack of 1 MB, in the three modes on each path, with the interpreter's values, error, trace and
+limit of depth.
+
+**Fibers.** At a checkpoint the other fibers take their turn, and one of them may give a variable of a module another
+value, which the interpreter's loop reads again after; a frame of machine code would go on with the value it had read.
+So a callee that loops over a variable of a module that the file changes is not called from machine code, nested or
+through OCaml, but by the interpreter, whose loop lets the other fibers in at its checkpoints; and a version as a whole
+that loops reading a variable of a module stays the interpreter's, its loops made machine code as regions, which take
+the new value where they come back (`tests/jit/fibers-moved.ce` and `module-vars.ce`, under `CESIA_JIT=always`).
+
 **What it changes for Centauri.** Its request path now lowers: of the versions that a run of `bench/micro.ce` makes hot
 (`CESIA_JIT_SHOW=1`), the closures, the field reads and arithmetic of values in a version as a whole, the texts of parts and the larger or
 smaller of two values, 33 refusals, are gone; 28 versions now lower whole, against 7 before, and the JIT then keeps them interpreted by its measure of what
@@ -1175,7 +1204,7 @@ make:
 | the larger or the smaller of two values that are no numbers | 2 | 0 |
 | lowered whole, its calls through OCaml too many for what it computes | 4 | 23 |
 | lowered whole, with neither a loop nor a call | 3 | 5 |
-| a statement the JIT doesn't make: `for x in xs` over a list, a write into a field | 5 | 7 |
+| a statement the JIT doesn't make: `for x in xs` over a list, a write into a field | 5 | 6 |
 | a function literal | 4 | 7 |
 | a call of a function held in a field, as `env.Who(req, env)`, which may be a method | 1 | 4 |
 | a `match` | 4 | 4 |
@@ -1183,40 +1212,43 @@ make:
 | a cell of a list that is no variable of its frame, as `routes[k]` of a list given | 2 | 3 |
 | a comprehension | 2 | 3 |
 | an `in` | 2 | 2 |
-| another form: an `if` that gives a value, a call with named arguments of a function, a map in a variable of a module | 3 | 3 |
+| another form: an `if` that gives a value, a call with named arguments of a function, a map in a variable of a module, a function inlined whose results are of two kinds | 3 | 4 |
 | a native that waits, of `std/fiber` | 1 | 1 |
 | a `?` | 1 | 1 |
 | an empty map, `{}` | 1 | 1 |
 | a variable that a closure shares | 1 | 1 |
+| a call of a function that loops over a variable of a module that the file changes: the interpreter makes it, so that the other fibers come in at its checkpoints | 0 | 1 |
 
 Under `CESIA_JIT=always`, which makes every unit as it gets hot, for the tests, 37 versions of the path are machine code
 against 27: `door`, `SessionKey`, `Json`, `Cookie`, the handlers' closures and those of the shapes among them. In the
 default mode, none: a version that lowers whole and calls OCaml as often as these do runs as fast in the interpreter,
 which calls a native for less ([Machine code that calls OCaml](#machine-code-that-calls-ocaml)).
 
-So Centauri's request takes the time it took, measured on 2026-11-26, `release` profile, against main's binary,
-alternated, while other work ran on the machine: a public request 21.1 µs [19.1, 33.0] against 20.7 [18.8, 34.1], a
-thing by its id 34.7 [31.3, 39.9] against 35.9 [31.7, 57.5], a page 132.0 [119.7, 158.8] against 134.6 [121.6, 202.8]
-(medians of 21 runs of 2,000 requests each, without the network, [the fastest, the slowest], load 4.1 to 5.2); its time is
+So Centauri's request takes the time it took, measured on 2026-11-27, `release` profile, against main's binary,
+alternated, while other work ran on the machine: a public request 19.0 µs [17.6, 26.5] against 18.6 [17.1, 21.0], a
+thing by its id 32.1 [30.0, 34.8] against 31.1 [29.8, 38.9], a page 119.1 [113.2, 186.9] against 117.3 [112.7, 143.6]
+(medians of 21 runs of 2,000 requests each, without the network, [the fastest, the slowest], load 2.6 to 2.9); paired by
+run, 1.02, 1.04 and 1.01 times the time of before, and 1.02, 1.00 and 1.00 in another series of 21, the noise of a path
+that the interpreter runs in both. Its time is
 in the natives it calls, in its allocations and in the collector: a sampling of `/hello` (a timer of 500 µs of CPU, the
 instruction where each tick fell) gives 53% to the interpreter's closures, 33% to the natives and the library, 12% to
 the collector and the allocation. Where the same calls of natives sit in a loop, the cached keys and lengths make the
-difference (21 runs, alternated, load 3.5 to 5.9):
+difference (21 runs, alternated, load 3.1 to 3.9):
 
 | Program | Before | Now |
 |---|---:|---:|
-| 10^7 calls of `dict.Has` of a key written in the code | 557.5 (522.5–625.4) | 52.4 (50.0–106.1) |
-| 10^7 calls of `text.ByteLength`, 2 operations a call | 375.3 (342.8–454.8) | 57.2 (52.3–77.3) |
-| 10^6 turns of 20 operations of floats and a `dict.Has` | 173.3 (155.9–295.7) | 40.5 (38.0–80.0) |
-| 10^6 turns of 60 operations of floats and a `dict.Has` | 181.3 (169.2–279.2) | 77.1 (71.7–133.9) |
-| 10^7 calls of `sys.Now` | 409.7 (392.9–514.3) | 418.8 (389.0–481.2) |
-| 10^7 times `text.ByteLength(text.Slice(2, 4, s))` | 1,630.5 (1,545.5–1,899.4) | 1,645.3 (1,501.5–2,047.5) |
+| 10^7 calls of `dict.Has` of a key written in the code | 535.4 (489.6–846.4) | 51.3 (49.1–138.7) |
+| 10^7 calls of `text.ByteLength`, 2 operations a call | 347.2 (317.6–431.4) | 55.9 (50.5–96.5) |
+| 10^6 turns of 20 operations of floats and a `dict.Has` | 156.3 (146.6–195.0) | 38.3 (36.7–233.1) |
+| 10^6 turns of 60 operations of floats and a `dict.Has` | 168.7 (161.0–322.9) | 73.6 (68.9–120.8) |
+| 10^7 calls of `sys.Now` | 402.8 (374.5–438.4) | 388.5 (370.2–446.4) |
+| 10^7 times `text.ByteLength(text.Slice(2, 4, s))` | 1,507.4 (1,397.3–2,856.3) | 1,486.6 (1,352.2–1,614.9) |
 
 ```cesia allow=read,write
 use std/plot
 
 loops = ["dict.Has", "ByteLength", "20 ops + Has", "60 ops + Has", "sys.Now"]
-times = plot.Bars(loops, [[557.5, 375.3, 173.3, 181.3, 409.7], [52.4, 57.2, 40.5, 77.1, 418.8]], label = ["before", "now"],
+times = plot.Bars(loops, [[535.4, 347.2, 156.3, 168.7, 402.8], [51.3, 55.9, 38.3, 73.6, 388.5]], label = ["before", "now"],
   color = ["#999999", "#3a5ad9"])
 cached = plot.Of([times], title = "Loops that call natives: median of 21 runs", x = "loop", y = "milliseconds",
   size = [640, 360])
