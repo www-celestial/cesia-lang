@@ -275,6 +275,9 @@
 - `std/js`: `js.Call(module, name, args)` calls a function of a JavaScript module beside the program, the one way out
   of a page; a channel given to it is the one way in, filled by JavaScript. In a page, `std/websocket` is the browser's
   WebSocket, and `regex.Test` its `RegExp`.
+- `cesia build --target wasm` puts beside the program the modules that its JavaScript modules import from their own
+  folder too, as `import('./more.js')`: a page fetches such a module when it imports it, and a page that never does
+  never fetches it (Ceres's font of icons, 32 KB, only in a page that draws an icon).
 - The standard library of a page: dictionaries of keys of numbers and texts, most of `std/text`, `json.Parse` and
   `json.Text`, `list.Sort`, `Max`, `Min` and the others, `std/columns` and `std/matrix` as `std/plot` uses them,
   slices, masks and indexes of two dimensions, `in`: Ceres's pages, `std/plot` in them, run in Chrome and Firefox.

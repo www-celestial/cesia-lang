@@ -62,6 +62,20 @@ for dir in "$@"; do
     fi
   done
 done
+# The modules that a JavaScript module imports from its own folder come beside the program with it, and the loader
+# imports at the start only those that js.Call names: tests/wasm/beside, run in Node.
+if [ $jspi = 1 ]; then
+  cp -r tests/wasm/beside "$tmp/beside"
+  ran=$(cd "$tmp/beside" && "$cesia" build --target wasm page.ce 2>&1 && node page.js 2>&1 < /dev/null; echo "exit $?")
+  if [ "$ran" = "$(printf 'beside later\nexit 0')" ] && [ ! -f "$tmp/beside/unused.js" ] && grep -q 'new Map(\["./glue.js"\]' "$tmp/beside/page.js"; then
+    same=$((same + 1))
+    [ $verbose = 1 ] && echo "same tests/wasm/beside"
+  else
+    differ=$((differ + 1))
+    echo "DIFFER: tests/wasm/beside"
+    echo "$ran" | head -10
+  fi
+fi
 echo "wasm-test: $same same, $loads load errors the same at the build, $differ different, $skipped skipped"
 if [ -s "$tmp/skips" ]; then
   echo "skipped for:"
