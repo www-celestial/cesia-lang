@@ -99,7 +99,7 @@ end
 defn Start(service = "app", version = "", instance = missing, environment = missing, endpoint = "http://127.0.0.1:4318",
   protocol = "protobuf", compression = "none", headers = [], sample = 1.0, always = ["errors", "slow"], slow = 1.0,
   trust = "restart", signals = ["traces", "metrics", "logs"], queue = 2048, batch = 512, every = 5, metricsEvery = 60,
-  timeout = 10, attributes = {}, send = missing)
+  timeout = 10, attributes = {}, send = missing, hooks = true)
   (** Starts sending this process's telemetry to a collector at endpoint, OTLP over HTTP (its /v1/traces, /v1/metrics
       and /v1/logs): an Ok of the tracer, or an Err of what is wrong. protocol "protobuf" or "json"; compression "none"
       or "gzip" (zlib's, which needs the permission ffi=z); headers, a list of {Name, Value}, go with each export, as
@@ -116,7 +116,9 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
       Prometheus reads, one source for both), "logs" (every line of std/log, its trace's ids with it; the "info" lines
       of a request not sampled stay out, its warnings and errors go). queue, the spans and log lines that wait at most;
       batch, the most of one export; every, the seconds between two; timeout, the seconds of each try. send, a
-      function of (path, body, headers) giving an Ok of {Status, Headers}, replaces the HTTP of a test. *)
+      function of (path, body, headers) giving an Ok of {Status, Headers}, replaces the HTTP of a test. hooks false
+      makes a tracer that sends only what it is given (Span, Log), as the spans of browsers under a resource of their
+      own: the process's spans of engines and its lines stay with the tracer that took them. *)
   wrong = []
   if not (protocol in ["protobuf", "json"])
     wrong = list.Append("protocol: protobuf or json, not $protocol.", wrong)
@@ -155,13 +157,39 @@ defn Start(service = "app", version = "", instance = missing, environment = miss
   if t.Metrics
     fiber.Spawn(() -> measuring(t))
   end
-  if t.Traces
+  if t.Traces and hooks
     onEngine((name, start, seconds, got) -> engineSpan(name, start, seconds, got))
   end
-  if t.Logs
+  if t.Logs and hooks
     onLog((level, message, fields) -> logged(t, level, message, fields))
   end
   result.Ok(t)
+end
+
+defn Span(t, name, start, ended, traceId = missing, spanId = missing, parent = "", kind = "client", attributes = {}, links = [], failed = false, message = "")
+  (** A span that began and ended elsewhere, as a browser's, sent with the tracer's: its ids as given when they are ids
+      of W3C (lowercase hexadecimal, not all zeros), else new ones; links, traceparents it links to. Nothing when the
+      tracer sends no traces. Gives its traceparent. *)
+  if not t.Traces
+    return missing
+  end
+  trace = if value.IsText(traceId) and text.ByteLength(traceId) == 32 and isHex(traceId) and traceId != zeros32 traceId else ids(32) end
+  id = if value.IsText(spanId) and text.ByteLength(spanId) == 16 and isHex(spanId) and spanId != zeros16 spanId else ids(16) end
+  fiber.Send({TraceId: trace, SpanId: id, Parent: if value.IsText(parent) and text.ByteLength(parent) == 16 and isHex(parent) parent else "" end, State: "",
+    Name: name, Kind: dict.GetOr(kind, 1, kinds), Start: start, End: ended, Attributes: attributes, Links: [l for l in [Parse(x) for x in links] if value.IsSome(l)],
+    Events: [], Status: if failed 2 else 0 end, Message: message}, t.Queue)
+  "00-$trace-$id-01"
+end
+
+defn Log(t, level, message, fields = {}, traceId = missing, spanId = missing, at = missing)
+  (** A line of log made elsewhere, as a browser's error, sent with the tracer's: level "info", "warn" or "error";
+      traceId and spanId, when valid, put it in that trace. Nothing when the tracer sends no logs. *)
+  if not t.Logs
+    return missing
+  end
+  ok = value.IsText(traceId) and text.ByteLength(traceId) == 32 and isHex(traceId) and value.IsText(spanId) and text.ByteLength(spanId) == 16 and isHex(spanId)
+  fiber.Send({Log: true, At: if value.IsNumber(at) at else sys.Now() end, Level: level, Message: message, Fields: fields,
+    Ids: if ok {TraceId: traceId, SpanId: spanId, Flags: 1} else missing end}, t.Queue)
 end
 
 defn uuid()

@@ -93,8 +93,9 @@ function report (here, depth, kind, calls, m, h, by, fib) {
   let shown = here
   for (let d = depth; site(shown)[3] && d >= 1; d--) if (calls[d] >= 0 && !site(calls[d])[3]) shown = calls[d]
   const t = trace.length <= 20 ? trace : trace.slice(0, 10).concat(['... and ' + (trace.length - 10) + ' more'])
-  const s = site(shown)
-  out(2, encoder.encode(s[0] + decoder.decode(m) + '\n' + s[1] + (by ? '  ' + h + '\n' : '') + t.map(l => '  ' + l + '\n').join('')))
+  const s = site(shown), text = s[0] + decoder.decode(m) + '\n' + s[1] + (by ? '  ' + h + '\n' : '') + t.map(l => '  ' + l + '\n').join('')
+  out(2, encoder.encode(text))
+  if (!node) dispatchEvent(new CustomEvent('cesia-error', { detail: text })) // for the page's telemetry: its place in the .ce, its calls
   if (main !== null && fib !== main) x.ended(fib, textOf(m), textOf(encoder.encode(KINDS[kind])), textOf(encoder.encode(site(here)[4])), site(here)[5])
 }
 
