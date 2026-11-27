@@ -1,0 +1,98 @@
+key off:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:32:5: This dictionary has no key: the text "X".
+  32 |   [p.X, p.Y, sum(p)]
+     |     ^
+  in coords (whole-values.ce:32)
+key default:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:32:5: This dictionary has no key: the text "X".
+  32 |   [p.X, p.Y, sum(p)]
+     |     ^
+  in coords (whole-values.ce:32)
+key always:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:32:5: This dictionary has no key: the text "X".
+  32 |   [p.X, p.Y, sum(p)]
+     |     ^
+  in coords (whole-values.ce:32)
+list off:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:15:13: A condition must be true or false, not an array.
+  15 |   if r.Kind == "user"
+     |             ^
+  in pick (whole-values.ce:15)
+list default:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:15:13: A condition must be true or false, not an array.
+  15 |   if r.Kind == "user"
+     |             ^
+  in pick (whole-values.ce:15)
+list always:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:15:13: A condition must be true or false, not an array.
+  15 |   if r.Kind == "user"
+     |             ^
+  in pick (whole-values.ce:15)
+big off:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:24:66: The integer result of 4611686018427387900 * 2 doesn't fit in 63 bits.
+  24 |   {N: r.Name, L: text.ByteLength(r.Name), P: place(r), S: r.Size * 2 + 1, O: out, T: "$(r.Name)/$(r.Size):$(out)"}
+     |                                                                  ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in pick (whole-values.ce:24)
+big default:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:24:66: The integer result of 4611686018427387900 * 2 doesn't fit in 63 bits.
+  24 |   {N: r.Name, L: text.ByteLength(r.Name), P: place(r), S: r.Size * 2 + 1, O: out, T: "$(r.Name)/$(r.Size):$(out)"}
+     |                                                                  ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in pick (whole-values.ce:24)
+big always:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:24:66: The integer result of 4611686018427387900 * 2 doesn't fit in 63 bits.
+  24 |   {N: r.Name, L: text.ByteLength(r.Name), P: place(r), S: r.Size * 2 + 1, O: out, T: "$(r.Name)/$(r.Size):$(out)"}
+     |                                                                  ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in pick (whole-values.ce:24)
+text off:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:18:13: Can't compare the text "s" >= the number 3.
+  18 |   if r.Size >= 3
+     |             ^
+  in pick (whole-values.ce:18)
+text default:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:18:13: Can't compare the text "s" >= the number 3.
+  18 |   if r.Size >= 3
+     |             ^
+  in pick (whole-values.ce:18)
+text always:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+whole-values.ce:18:13: Can't compare the text "s" >= the number 3.
+  18 |   if r.Size >= 3
+     |             ^
+  in pick (whole-values.ce:18)
+order off:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+noisy 0
+whole-values.ce:45:44: This dictionary has no key: the text "Missing".
+  45 |   "$(r.Name) then $(noisy(r.Size)) then $(r.Missing)"
+     |                                            ^
+  in order (whole-values.ce:45)
+order default:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+noisy 0
+whole-values.ce:45:44: This dictionary has no key: the text "Missing".
+  45 |   "$(r.Name) then $(noisy(r.Size)) then $(r.Missing)"
+     |                                            ^
+  in order (whole-values.ce:45)
+order always:
+[{N: "ana", L: 3, P: ["user", 0, true, [1, 2.5], [[1, 2], [3, 4]]], S: 3, O: 101, T: "ana/1:101"}, {N: "bob", L: 3, P: ["user", 2, true, [1, 2.5], [[1, 2], [3, 4]]], S: 7, O: 11, T: "bob/3:11"}, {N: "cy", L: 2, P: ["k", 2.5, true, [1, 2.5], [[1, 2], [3, 4]]], S: 8.0, O: 110, T: "cy/3.5:110"}, {N: "deep", L: 4, P: ["user", 3, true, [1, 2.5], [[1, 2], [3, 4]]], S: 9, O: 111, T: "deep/4:111"}, [1500, 2, 1502], [1.5, 2.5, 4.0], [2, 0.5, 2.5]]
+noisy 0
+whole-values.ce:45:44: This dictionary has no key: the text "Missing".
+  45 |   "$(r.Name) then $(noisy(r.Size)) then $(r.Missing)"
+     |                                            ^
+  in order (whole-values.ce:45)
+machine code reads fields through caches
+exit 0

@@ -1,0 +1,62 @@
+error off:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:20:7: Upper needs a text, not the number 7.
+  20 |   b = f(r.Text)
+     |       ^
+  in route (whole-calls.ce:20)
+error default:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:20:7: Upper needs a text, not the number 7.
+  20 |   b = f(r.Text)
+     |       ^
+  in route (whole-calls.ce:20)
+error always:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:20:7: Upper needs a text, not the number 7.
+  20 |   b = f(r.Text)
+     |       ^
+  in route (whole-calls.ce:20)
+depth off:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:28:1: Limit "depth" reached.
+  28 | defn deep(n, f)
+     | ^
+  in deep (whole-calls.ce:28)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+depth default:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:28:1: Limit "depth" reached.
+  28 | defn deep(n, f)
+     | ^
+  in deep (whole-calls.ce:28)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+depth always:
+[{A: "other", B: "AB", C: 1500.0013333327408, D: "other-AB-1500.0013333327408", E: 0, F: [1501, 1502], G: "2250.0"}, {A: "zero", B: "c!", C: 0, D: "zero-c!-0", E: 0, F: [1, 2], G: "0.0"}]
+1896
+whole-calls.ce:28:1: Limit "depth" reached.
+  28 | defn deep(n, f)
+     | ^
+  in deep (whole-calls.ce:28)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+  called from deep (whole-calls.ce:32)
+machine code calls through OCaml
+exit 0

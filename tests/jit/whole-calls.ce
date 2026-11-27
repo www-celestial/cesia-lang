@@ -1,0 +1,46 @@
+use std/io
+use std/list
+use std/math
+use std/sys
+use std/text
+
+(* Calls that machine code makes through OCaml, as the interpreter makes them: of a function whose version doesn't lower
+   (a match), of functions in variables that no bet takes (a native, closures), of a native with a named argument and
+   one that calls back (list.Map); an error two frames deep, with the interpreter's trace, and the limit of depth reached
+   through them. *)
+defn kindOf(x)
+  match x
+    0 -> "zero"
+    else -> "other"
+  end
+end
+
+defn route(r, f, g)
+  a = kindOf(r.N)
+  b = f(r.Text)
+  c = g(r.N, 2)
+  d = text.Join(sep(), [a, b, "$c"])
+  {A: a, B: b, C: c, D: d, E: math.Mod(r.N, 3), F: list.Map(x -> x + r.N, [1, 2]), G: text.Decimals(x = r.N * 1.5, n = 1)}
+end
+
+sep() = "-"
+
+defn deep(n, f)
+  if n == 0
+    return f("end")
+  end
+  out = deep(n - 1, f)
+  "$(f(n))$(out)"
+end
+
+up = text.Upper
+total = []
+for i in 1..1500
+  total = [route({N: i, Text: "ab"}, up, math.Hypot), route({N: 0, Text: "c"}, x -> "$(x)!", (a, b) -> a * b)]
+end
+io.Print(total)
+io.Print(text.ByteLength(deep(500, x -> "$x.")))
+if sys.Args[1] == "error"
+  route({N: 1, Text: 7}, up, math.Hypot)
+end
+io.Print(text.ByteLength(deep(100000, x -> "$x.")))

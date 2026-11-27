@@ -1,0 +1,27 @@
+use std/io
+
+(* Two versions of one function that call each other: order(i, 2.5, 1.0) is the version of an Int and a Float, which
+   calls order(2.5, i, 0.0), the version of a Float and an Int; order(2.5, i, -1.0) calls the first back. The JIT's
+   check that a callee lowers, with what it calls, met each of them again in a unit of its own, until memory was gone:
+   std/stats's betaQuantile, under stats.MonteCarlo, made it. The same values in each mode. *)
+defn order(a, b, up)
+  if up > 0.5
+    r = order(b, a, 0.0)
+    return [r[2], r[1], r[2] + r[1]]
+  end
+  if up < -0.5
+    r = order(b, a, 1.0)
+    return [r[1], r[2]]
+  end
+  [a, b]
+end
+
+defn caller(n)
+  out = []
+  for i in 1..n
+    out = [order(i, 2.5, 1.0), order(2.5, i, -1.0)]
+  end
+  out
+end
+
+io.Print(caller(20000))
