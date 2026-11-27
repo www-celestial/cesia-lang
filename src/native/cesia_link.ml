@@ -25,20 +25,23 @@ let own e =
 (* A native as its stub calls it: the count of its arguments checked, and an OCaml exception that leaves it a panic. *)
 let guarded package (name, fewest, most, f) =
   let full = package ^ "." ^ name in
+  let call ctx a = try f ctx a with e when not (own e) -> Runtime.fail ctx User (Messages.native_raised full (Printexc.to_string e)) in
   let run ctx a =
     let n = Array.length a in
     if n < fewest || n > most then
       Runtime.fail ctx Type
         (Messages.arg_count full (if fewest = most then Printf.sprintf "%d arguments" fewest else Printf.sprintf "%d to %d arguments" fewest most) n);
-    let call () = try f ctx a with e when not (own e) -> Runtime.fail ctx User (Messages.native_raised full (Printexc.to_string e)) in
-    match !Cesia_sys.Observe.engine_hook, ctx.local with
-    | Some (w, hook), Dict _ when w == ctx.w ->
-      (* a fiber with a span of std/otel: the call's time and result given to its hook, a span of the engine *)
-      let start = Unix.gettimeofday () in
-      let r = call () in
-      ignore (Compile.call_back ctx hook [| Text full; Float start; Float (Unix.gettimeofday () -. start); r |]);
-      r
-    | _ -> call ()
+    match !Cesia_sys.Observe.engine_hook with
+    | None -> call ctx a
+    | Some (w, hook) ->
+      (match ctx.local with
+       | Dict _ when w == ctx.w ->
+         (* a fiber with a span of std/otel: the call's time and result given to its hook, a span of the engine *)
+         let start = Unix.gettimeofday () in
+         let r = call ctx a in
+         ignore (Compile.call_back ctx hook [| Text full; Float start; Float (Unix.gettimeofday () -. start); r |]);
+         r
+       | _ -> call ctx a)
   in
   name, run
 
