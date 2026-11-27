@@ -1,0 +1,36 @@
+-- a request and its call, in JSON
+{"time":T,"level":"info","message":"read","trace_id":I,"span_id":I,"Id":7}
+an outgoing call carries 00- and its own span: true
+after End, out of any trace: missing
+types: ["application/json"]
+call kind 3 parent the server span
+GET /notes/:id kind 2 parent none
+route: ["/notes/:id"] status: ["200"]
+the line's trace is the request's: true its span: true body: read
+-- a traceparent from the internet
+restart: a new trace true that links to it 00f067aa0ba902b7
+trust: the same trace 4bf92f3577b34da6a3ce929d0e0e4736 child of 00f067aa0ba902b7 state vendor=x
+a malformed one is ignored: links 0
+-- protobuf
+type: application/x-protobuf holds the span's name: true its message: true its event: true bytes: 403
+-- not sampled: nothing of it leaves
+it still carries its trace, not sampled: 00
+no child is made: missing
+{"time":T,"level":"info","message":"an info line of it","trace_id":I,"span_id":I}
+{"time":T,"level":"warn","message":"a warning of it","trace_id":I,"span_id":I}
+spans: 0 lines: ["a warning of it"]
+-- not sampled, but failed or slow: its server span alone
+["GET /broken", "GET /slow"]
+-- the collector asks to wait: tried again
+bodies: 3 {Spans: 1, Logs: 0, Dropped: 0, Exports: 3, Failed: 0, Bytes: 741}
+-- a queue past its size drops, and counts
+40 dropped, in otel_dropped_total too: true
+-- a dead collector never slows a request
+2,000 requests in less than a second: true
+none sent: 0
+-- labels made from requests: 2,000 series a metric at most
+2001 series, the last: methods_total{otel_metric_overflow="true"} 500
+-- std/metrics read back as OTLP has it
+histogram 11 bounds; [{Job: "a", Count: 2, Buckets: 2}, {Job: "b", Count: 1, Buckets: 1}]
+a counter loses its _total: otel_dropped
+exit 0

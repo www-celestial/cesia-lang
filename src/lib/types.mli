@@ -193,6 +193,7 @@ and ctx = {
   mutable cancelled : bool;  (** fiber.Cancel asked it to stop: it does at its next wait, or now if it is waiting *)
   mutable wake : unit -> bool;  (** while a spawned fiber is parked, what queues it again; fiber.Cancel calls it *)
   w : world;
+  mutable local : t;  (** std/otel's context of the fiber: its span, a traceparent, or missing; a fiber spawned inherits it *)
 }
 
 and site = {

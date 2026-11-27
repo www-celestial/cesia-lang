@@ -230,7 +230,8 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     parks = 0;
     cancelled = false;
     wake = (fun () -> false);
-    w }
+    w;
+    local = Missing }
 
 (* Three stacks of [cap] entries. Under 4,096 they are left to the full checkpoints: OCaml's count of the heap walks its
    pools, and a server's fibers, which each grow their stacks at a request, paid a tenth of their time for it. From 4,096,

@@ -161,6 +161,7 @@ let spawn (ctx : ctx) g =
   s.next_id <- id + 1;
   let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true ~id w in
   fiber.site <- ctx.site;
+  fiber.local <- ctx.local;
   let task = { result = None; waiters = []; cx = Some fiber } in
   Queue.add (fun () -> start fiber (body task fiber g)) s.ready;
   Handle { kind = "task"; id; task = Some (Job task) }

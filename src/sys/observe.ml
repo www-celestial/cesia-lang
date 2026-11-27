@@ -18,8 +18,20 @@ let stamp now =
   let ms = int_of_float ((now -. Float.of_int whole) *. 1000.) in
   Printf.sprintf "%s%03dZ" !upto (min ms 999)
 
-(* One line on the standard output, which keeps its order with io.Print: {"time", "level", "message"}, then the fields of
-   a struct or a dictionary. *)
+(* std/otel's hooks, each for the world that set it: a function given each line of std/log, and one given each call of a
+   native engine (Cepheus) made by a fiber whose context is a span. *)
+let log_hook = ref None and engine_hook = ref None
+
+(* The ids of the fiber's context as a line writes them: those of a span of std/otel, or of a traceparent. *)
+let ids ctx =
+  let pick name = match Dict.get ctx "log" (Text name) ctx.local with Some (Text t) -> t | _ -> "" in
+  match ctx.local with
+  | Dict _ -> Printf.sprintf ",\"trace_id\":\"%s\",\"span_id\":\"%s\"" (pick "TraceId") (pick "SpanId")
+  | Text t when String.length t = 55 -> Printf.sprintf ",\"trace_id\":\"%s\",\"span_id\":\"%s\"" (String.sub t 3 32) (String.sub t 36 16)
+  | _ -> ""
+
+(* One line on the standard output, which keeps its order with io.Print: {"time", "level", "message"}, then the ids of
+   the fiber's trace, then the fields of a struct or a dictionary. *)
 let line level ctx (a : t array) =
   let w = ctx.w in
   let message = Native.text_arg ctx level a.(0) in
@@ -30,9 +42,10 @@ let line level ctx (a : t array) =
       if String.length s <= 2 then "" else "," ^ String.sub s 1 (String.length s - 2)
     | v -> Runtime.fail ctx Type (Messages.log_fields (Value.describe v))
   in
-  Printf.bprintf w.out "{\"time\":\"%s\",\"level\":\"%s\",\"message\":%s%s}\n" (stamp (Unix.gettimeofday ())) level
-    (Json.text ctx (Text message)) fields;
+  Printf.bprintf w.out "{\"time\":\"%s\",\"level\":\"%s\",\"message\":%s%s%s}\n" (stamp (Unix.gettimeofday ())) level
+    (Json.text ctx (Text message)) (ids ctx) fields;
   if Buffer.length w.out > 65536 then Runtime.flush_out w;
+  (match !log_hook with Some (hw, hook) when hw == w -> ignore (Compile.call_back ctx hook [| Text level; Text message; (if Array.length a > 1 then a.(1) else Missing) |]) | _ -> ());
   Missing
 
 let log_natives =
@@ -92,6 +105,9 @@ let natives () =
         f
     in
     let key = labels ctx (if Array.length a > 2 then a.(2) else Undef) in
+    (* OpenTelemetry's limit of series a metric: past 2,000, the others count in one, so that labels made from requests
+       never fill the memory *)
+    let key = if Hashtbl.length f.series >= 2000 && not (Hashtbl.mem f.series key) then "otel_metric_overflow=\"true\"" else key in
     match Hashtbl.find_opt f.series key with
     | Some s -> s
     | None ->
@@ -147,3 +163,15 @@ let natives () =
   [ "Add", Native.nat ~params:[| "name"; "n"; "labels" |] "Add" 1 3 add;
     "Observe", Native.nat ~params:[| "name"; "value"; "labels" |] "Observe" 2 3 observe;
     "Text", Native.nat "Text" 0 0 text ]
+
+(* std/otel's own natives, private to it: the context of the fiber, and its hooks. *)
+let hook name r = Native.nat name 1 1 (fun ctx a -> r := (match a.(0) with Fun _ | Native _ -> Some (ctx.w, a.(0)) | _ -> None); Missing)
+
+let rng = lazy (Random.State.make_self_init ())
+
+let otel_natives =
+  [ "context", Native.nat "context" 0 0 (fun ctx _ -> ctx.local);
+    "setContext", Native.nat "setContext" 1 1 (fun ctx a -> let before = ctx.local in ctx.local <- a.(0); before);
+    "onLog", hook "onLog" log_hook; "onEngine", hook "onEngine" engine_hook;
+    (* n random digits of hexadecimal, for the ids of traces and spans: a draw of std/random's costs ten times more *)
+    "ids", Native.nat "ids" 1 1 (fun ctx a -> let r = Lazy.force rng and n = (match a.(0) with Int n -> n | _ -> 32) in Text (String.init (max 0 (min n 64)) (fun _ -> "0123456789abcdef".[Random.State.int r 16]))) ]

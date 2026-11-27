@@ -1,0 +1,188 @@
+(** std/otel against a collector of the test, on the network: the spans of a server's requests and their parents, a
+    traceparent from outside restarted with a link or trusted, the lines of std/log with their trace, the metrics of
+    std/metrics read back, OTLP in JSON and in protobuf; then what must not happen: data of a request not sampled, a
+    queue past its size, a dead collector that slows a request, a collector that asks to wait, and series without end. *)
+use std/dict
+use std/fiber
+use std/http
+use std/io
+use std/json
+use std/list
+use std/log
+use std/metrics
+use std/net
+use std/otel
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* The collector: each body it takes, with its path and its type, on a channel; status gives the answer of each. *)
+bodies = fiber.Channel()
+answers = fiber.Channel()
+defn take(r)
+  fiber.Send({Path: r.Path, Type: http.HeaderValue("content-type", r.Headers), Body: r.Body}, bodies)
+  status = fiber.Receive(answers, timeout = 0)
+  if result.IsOk(status) {Status: status.Value, Body: "", Headers: [{Name: "retry-after", Value: "0"}]} else {Status: 200, Body: "{}", Headers: []} end
+end
+collector = net.Listen(0)!
+fiber.Spawn(() -> http.Serve(http.App() then http.Post("/v1/traces", take) then http.Post("/v1/logs", take) then http.Post("/v1/metrics", take), listener = collector))
+endpoint = "http://127.0.0.1:$(net.Port(collector))"
+
+defn drained()
+  (** The bodies the collector took so far. *)
+  out = []
+  while true
+    got = fiber.Receive(bodies, timeout = 0.2)
+    if result.IsErr(got)
+      return out
+    end
+    out = list.Append(got.Value, out)
+  end
+end
+
+defn spansOf(bs)
+  (** The spans of the bodies of /v1/traces, in JSON. *)
+  out = []
+  for b in bs
+    if b.Path == "/v1/traces"
+      for rs in json.Parse(b.Body)!.resourceSpans
+        for sc in rs.scopeSpans
+          out = list.Concat(out, sc.spans)
+        end
+      end
+    end
+  end
+  out
+end
+
+defn logsOf(bs)
+  (** The records of the bodies of /v1/logs, in JSON. *)
+  out = []
+  for b in bs
+    if b.Path == "/v1/logs"
+      for rl in json.Parse(b.Body)!.resourceLogs
+        for sc in rl.scopeLogs
+          out = list.Concat(out, sc.logRecords)
+        end
+      end
+    end
+  end
+  out
+end
+
+io.Print("-- a request and its call, in JSON")
+t = otel.Start(service = "notes", version = "1.2", protocol = "json", endpoint = endpoint, signals = ["traces", "logs"])!
+s = otel.Server(t, "GET", "/notes/:id", [], attributes = {"url.scheme": "http"})
+log.Info("read", {Id: 7})
+c = otel.Begin("call", kind = "client")
+io.Print("an outgoing call carries", text.ByteSlice(1, 3, otel.Header()), "and its own span:", otel.Header() == "00-$(s.TraceId)-$(c.SpanId)-01")
+otel.End(c)
+otel.End(s, attributes = {"http.response.status_code": 200})
+io.Print("after End, out of any trace:", otel.Header())
+otel.Flush(t)
+bs = drained()
+io.Print("types:", list.Unique([b.Type for b in bs]))
+spans = spansOf(bs)
+for x in spans
+  io.Print(x.name, "kind", x.kind, "parent", if dict.Has("parentSpanId", x) (if x.parentSpanId == s.SpanId "the server span" else "?" end) else "none" end)
+end
+server = list.First([x for x in spans if x.kind == 2])
+io.Print("route:", [a.value.stringValue for a in server.attributes if a.key == "http.route"], "status:", [a.value.intValue for a in server.attributes if a.key == "http.response.status_code"])
+line = logsOf(bs)[1]
+io.Print("the line's trace is the request's:", line.traceId == s.TraceId, "its span:", line.spanId == s.SpanId, "body:", line.body.stringValue)
+
+io.Print("-- a traceparent from the internet")
+given = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+s = otel.Server(t, "GET", "/", [{Name: "traceparent", Value: given}])
+otel.End(s)
+s2 = otel.Server(otel.Start(protocol = "json", endpoint = endpoint, trust = "trust", signals = ["traces"])!, "GET", "/", [{Name: "traceparent", Value: given}, {Name: "tracestate", Value: "vendor=x"}])
+io.Print("restart: a new trace", s.TraceId != "4bf92f3577b34da6a3ce929d0e0e4736", "that links to it", s.Links[1].SpanId)
+io.Print("trust: the same trace", s2.TraceId, "child of", s2.Parent, "state", s2.State)
+otel.End(s2)
+bad = otel.Server(t, "GET", "/", [{Name: "traceparent", Value: "00-00000000000000000000000000000000-00f067aa0ba902b7-01"}])
+io.Print("a malformed one is ignored: links", value.Len(bad.Links))
+otel.End(bad)
+_ = drained()
+
+io.Print("-- protobuf")
+p = otel.Start(service = "notes", endpoint = endpoint, signals = ["traces"])!
+s = otel.Server(p, "POST", "/notes", [])
+otel.End(s, failed = true, message = "the database is gone", error = "connect: refused")
+otel.Flush(p)
+b = drained()[1]
+io.Print("type:", b.Type, "holds the span's name:", text.Contains("POST /notes", b.Body), "its message:", text.Contains("the database is gone", b.Body),
+  "its event:", text.Contains("exception", b.Body), "bytes:", text.ByteLength(b.Body))
+
+io.Print("-- not sampled: nothing of it leaves")
+q = otel.Start(protocol = "json", endpoint = endpoint, sample = 0, always = [], signals = ["traces", "logs"])!
+s = otel.Server(q, "GET", "/quiet", [])
+io.Print("it still carries its trace, not sampled:", text.ByteSlice(54, 55, otel.Header()))
+c = otel.Begin("call")
+io.Print("no child is made:", c)
+log.Info("an info line of it")
+log.Warn("a warning of it")
+otel.End(c)
+otel.End(s)
+otel.Flush(q)
+bs = drained()
+io.Print("spans:", value.Len(spansOf(bs)), "lines:", [l.body.stringValue for l in logsOf(bs)])
+
+io.Print("-- not sampled, but failed or slow: its server span alone")
+e = otel.Start(protocol = "json", endpoint = endpoint, sample = 0, slow = 0.05, signals = ["traces"])!
+s = otel.Server(e, "GET", "/broken", [])
+c = otel.Begin("call")
+otel.End(c)
+otel.End(s, failed = true)
+s = otel.Server(e, "GET", "/slow", [])
+sys.Sleep(0.08)
+otel.End(s)
+s = otel.Server(e, "GET", "/fine", [])
+otel.End(s)
+otel.Flush(e)
+io.Print([x.name for x in spansOf(drained())])
+
+io.Print("-- the collector asks to wait: tried again")
+r = otel.Start(protocol = "json", endpoint = endpoint, signals = ["traces"])!
+fiber.Send(503, answers)
+fiber.Send(429, answers)
+s = otel.Server(r, "GET", "/again", [])
+otel.End(s)
+otel.Flush(r)
+io.Print("bodies:", value.Len(drained()), otel.Counts(r))
+
+io.Print("-- a queue past its size drops, and counts")
+d = otel.Start(protocol = "json", endpoint = endpoint, queue = 10, every = 3600, signals = ["traces"])!
+for k in 1..50
+  otel.End(otel.Server(d, "GET", "/many", []))
+end
+sys.Sleep(0.05)
+io.Print(otel.Counts(d).Dropped, "dropped, in otel_dropped_total too:", text.Contains("otel_dropped_total 40", metrics.Text()))
+_ = drained()
+
+io.Print("-- a dead collector never slows a request")
+silent = net.Listen(0)!   (* it takes connections and never answers: a collector gone without a word *)
+port = net.Port(silent)
+g = otel.Start(protocol = "json", endpoint = "http://127.0.0.1:$port", every = 0.01, timeout = 1, signals = ["traces"])!
+start = sys.Now()
+for k in 1..2000
+  otel.End(otel.Server(g, "GET", "/gone", []))
+end
+io.Print("2,000 requests in less than a second:", sys.Now() - start < 1)
+sys.Sleep(0.1)
+io.Print("none sent:", otel.Counts(g).Spans)
+
+io.Print("-- labels made from requests: 2,000 series a metric at most")
+for k in 1..2500
+  metrics.Add("methods_total", labels = {method: "M$k"})
+end
+lines = [l for l in text.Lines(metrics.Text()) if text.StartsWith("methods_total", l)]
+io.Print(value.Len(lines), "series, the last:", lines[value.Len(lines)])
+
+io.Print("-- std/metrics read back as OTLP has it")
+metrics.Observe("work_seconds", 0.02, labels = {job: "a"})
+metrics.Observe("work_seconds", 3, labels = {job: "a"})
+metrics.Observe("work_seconds", 0.2, labels = {job: "b"})
+f = list.First([x for x in otel.Families(metrics.Text()) if x.Name == "work_seconds"])
+io.Print(f.Kind, value.Len(f.Bounds), "bounds;", [{Job: pt.Labels.job, Count: pt.Count, Buckets: list.Sum(pt.Buckets)} for pt in f.Points])
+io.Print("a counter loses its _total:", list.First([x.Name for x in otel.Families(metrics.Text()) if x.Kind == "counter"]))

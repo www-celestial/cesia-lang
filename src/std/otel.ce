@@ -1,0 +1,781 @@
+(** OpenTelemetry for a server: its traces, its metrics and its logs sent to a collector by OTLP over HTTP, in protobuf or
+    in JSON, as the SDKs of Go, Java and Python send them, with nothing to install. A trace is the story of one request:
+    a span for the whole of it, of kind server, and one for each call it makes, to a database or another service, each
+    the child of the one it was made in; the W3C's traceparent header carries a trace from a browser to a server and on.
+    Start begins and gives a tracer; Server opens the span of a request, Begin and End the others; Header gives what an
+    outgoing request carries. The span open in a fiber is its context: a fiber it spawns starts in it, a line of std/log
+    written in it carries its trace_id and span_id, and each call of a native engine (Cepheus) made in it is a span.
+
+    The spans wait in a queue of the tracer that never makes a request wait: past its size they are dropped and counted
+    in otel_dropped_total; a fiber sends them by batches, tries again with a pause that doubles when the collector is
+    busy or gone, and gives up after five tries, counted too. A program that never calls Start pays nothing.
+
+      Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01").Sampled --> true
+      Header() --> missing *)
+use std/c
+use std/dict
+use std/encode
+use std/fiber
+use std/http
+use std/json
+use std/list
+use std/math
+use std/metrics
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* The kinds of a span, as OTLP numbers them. *)
+kinds = {internal: 1, server: 2, client: 3, producer: 4, consumer: 5}
+
+(* The engines whose calls are those of a database: their spans carry db.system.name and db.operation.name. *)
+databases = {cepheus: true, sqlite3: true}
+
+(* The calls of an engine that make no span: they read nothing and wait for nothing. *)
+quiet = {"cepheus.kind": true, "cepheus.variables": true, "cepheus.feed": true}
+
+zeros32 = "00000000000000000000000000000000"
+zeros16 = "0000000000000000"
+
+isHex(s) = value.IsMissing(text.ByteFindAny("0123456789abcdef", 1, s, not = true))
+
+defn hexNumber(s)
+  (** A number written in lowercase hexadecimal. *)
+  n = 0
+  for b in text.Bytes(s)
+    n = n * 16 + (if b >= 97 b - 87 else b - 48 end)
+  end
+  n
+end
+
+defn Parse(header)
+  (** The parts of a traceparent header (W3C Trace Context): {TraceId, SpanId, Sampled}, or missing when it is none:
+      the version 00, or a later one read the same way but never ff, and ids in lowercase hexadecimal that are not all
+      zeros, as the recommendation asks.
+
+        Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00").SpanId --> "00f067aa0ba902b7"
+        Parse("00-00000000000000000000000000000000-00f067aa0ba902b7-01") --> missing
+        Parse("ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01") --> missing
+        Parse("not a header") --> missing *)
+  if not value.IsText(header)
+    return missing
+  end
+  n = text.ByteLength(header)
+  version = text.ByteSlice(1, 2, header)
+  if n < 55 or version == "ff" or not isHex(version) or (version == "00" and n != 55) or (n > 55 and text.ByteSlice(56, 56, header) != "-")
+    return missing
+  end
+  if text.ByteSlice(3, 3, header) != "-" or text.ByteSlice(36, 36, header) != "-" or text.ByteSlice(53, 53, header) != "-"
+    return missing
+  end
+  trace = text.ByteSlice(4, 35, header)
+  span = text.ByteSlice(37, 52, header)
+  flags = text.ByteSlice(54, 55, header)
+  if not isHex(trace) or not isHex(span) or not isHex(flags) or trace == zeros32 or span == zeros16
+    return missing
+  end
+  {TraceId: trace, SpanId: span, Sampled: math.Mod(hexNumber(flags), 2) == 1}
+end
+
+defn kept(state)
+  (** A tracestate header that may go on: 512 bytes and 32 members at most, as the recommendation lets a vendor cut
+      it, else none. *)
+  if not value.IsText(state) or text.ByteLength(state) > 512 or value.Len(text.Split(",", state)) > 32 "" else state end
+end
+
+defn chosen(traceId, ratio)
+  (** Is a new trace sampled: its id's last 56 bits, a number drawn at random, under ratio of 2^56, as OpenTelemetry's
+      TraceIdRatioBased decides; every service that samples by the same ratio takes the same traces. *)
+  if ratio >= 1
+    return true
+  end
+  if ratio <= 0
+    return false
+  end
+  hexNumber(text.ByteSlice(19, 32, traceId)) < ratio * 72057594037927936
+end
+
+defn Start(service = "app", version = "", instance = missing, environment = missing, endpoint = "http://127.0.0.1:4318",
+  protocol = "protobuf", compression = "none", headers = [], sample = 1.0, always = ["errors", "slow"], slow = 1.0,
+  trust = "restart", signals = ["traces", "metrics", "logs"], queue = 2048, batch = 512, every = 5, metricsEvery = 60,
+  timeout = 10, attributes = {}, send = missing)
+  (** Starts sending this process's telemetry to a collector at endpoint, OTLP over HTTP (its /v1/traces, /v1/metrics
+      and /v1/logs): an Ok of the tracer, or an Err of what is wrong. protocol "protobuf" or "json"; compression "none"
+      or "gzip" (zlib's, which needs the permission ffi=z); headers, a list of {Name, Value}, go with each export, as
+      the key of a vendor. The resource of every span names service, its version, the instance (a random id of this
+      process unless given) and environment, with attributes.
+
+      sample, from 0 to 1, is the share of new traces kept; a request whose caller sampled it or not follows it
+      (parent-based). always keeps the server span of a request not sampled when it failed ("errors", a status of 500
+      or more) or took more than slow seconds ("slow"): its span alone, since none of its children was made. trust
+      "restart" starts a new trace at each request that comes with a traceparent, with a link to it (a header from the
+      internet is anybody's), "trust" goes on with it, for a service behind another of its own.
+
+      signals, the ones sent: "traces", "metrics" (std/metrics's, read every metricsEvery seconds: the numbers
+      Prometheus reads, one source for both), "logs" (every line of std/log, its trace's ids with it; the "info" lines
+      of a request not sampled stay out, its warnings and errors go). queue, the spans and log lines that wait at most;
+      batch, the most of one export; every, the seconds between two; timeout, the seconds of each try. send, a
+      function of (path, body, headers) giving an Ok of {Status, Headers}, replaces the HTTP of a test. *)
+  wrong = []
+  if not (protocol in ["protobuf", "json"])
+    wrong = list.Append("protocol: protobuf or json, not $protocol.", wrong)
+  end
+  if not (compression in ["none", "gzip"])
+    wrong = list.Append("compression: none or gzip, not $compression.", wrong)
+  end
+  if not (trust in ["restart", "trust"])
+    wrong = list.Append("trust: restart or trust, not $trust.", wrong)
+  end
+  if not value.IsNumber(sample) or sample < 0 or sample > 1
+    wrong = list.Append("sample: a number from 0 to 1.", wrong)
+  end
+  if value.IsMissing(send) and result.IsErr(http.ParseUrl("$endpoint/v1/traces"))
+    wrong = list.Append("endpoint: an http:// or https:// address, not $endpoint.", wrong)
+  end
+  if value.Len(wrong) > 0
+    return result.Err({Kind: "otel", Message: text.Join(" ", wrong)})
+  end
+  zip = missing
+  if compression == "gzip"
+    zip = zlib()?
+  end
+  base = if text.EndsWith("/", endpoint) text.ByteSlice(1, text.ByteLength(endpoint) - 1, endpoint) else endpoint end
+  res = dict.Merge({"service.name": service, "service.version": version, "service.instance.id": if value.IsMissing(instance) uuid() else instance end,
+    "telemetry.sdk.name": "cesia", "telemetry.sdk.language": "cesia"}, attributes)
+  if value.IsSome(environment)
+    res["deployment.environment.name"] = environment
+  end
+  t = {Service: service, Endpoint: base, Protocol: protocol, Zip: zip, Headers: headers, Sample: sample, Errors: "errors" in always,
+    Slow: if "slow" in always slow else missing end, Trust: trust, Traces: "traces" in signals, Metrics: "metrics" in signals,
+    Logs: "logs" in signals, Most: queue, Batch: batch, Every: every, MetricsEvery: metricsEvery, Timeout: timeout,
+    Queue: fiber.Channel(), Busy: cell(false), Counts: cell({Spans: 0, Logs: 0, Dropped: 0, Exports: 0, Failed: 0, Bytes: 0}),
+    Send: send, Started: sys.Now(), Resource: res, Pb: pbResource(res), Js: jsResource(res)}
+  fiber.Spawn(() -> gathering(t))
+  if t.Metrics
+    fiber.Spawn(() -> measuring(t))
+  end
+  if t.Traces
+    onEngine((name, start, seconds, got) -> engineSpan(name, start, seconds, got))
+  end
+  if t.Logs
+    onLog((level, message, fields) -> logged(t, level, message, fields))
+  end
+  result.Ok(t)
+end
+
+defn uuid()
+  (** A random UUID of version 4, as OpenTelemetry advises for service.instance.id. *)
+  h = ids(32)
+  "$(text.ByteSlice(1, 8, h))-$(text.ByteSlice(9, 12, h))-4$(text.ByteSlice(14, 16, h))-a$(text.ByteSlice(18, 20, h))-$(text.ByteSlice(21, 32, h))"
+end
+
+defn Server(t, method, route, headers = [], attributes = {})
+  (** Opens the span of a request a server takes, named by its method and its route, the pattern that took it, as
+      "GET /notes/:id": never its path, whose ids and words would make one name for each request. It is the fiber's
+      context until End, the parent of every span of the request. headers, the request's, may hold a traceparent: with
+      trust "restart" it starts a new trace that links to it, with "trust" the span is its child and keeps its sampling.
+      Gives the span, to End with the status. *)
+  given = Parse(http.HeaderValue("traceparent", headers))
+  parent = missing
+  links = []
+  if value.IsSome(given)
+    if t.Trust == "trust"
+      parent = given
+    else
+      links = [given]
+    end
+  end
+  traceId = if value.IsSome(parent) parent.TraceId else ids(32) end
+  sampled = t.Traces and (if value.IsSome(parent) parent.Sampled else chosen(traceId, t.Sample) end)
+  attrs = dict.Merge({"http.request.method": method, "http.route": route}, attributes)
+  span = {TraceId: traceId, SpanId: ids(16), Parent: if value.IsSome(parent) parent.SpanId else "" end,
+    State: if value.IsSome(parent) kept(http.HeaderValue("tracestate", headers)) else "" end, Name: "$method $route", Kind: 2,
+    Start: sys.Now(), Attributes: attrs, Links: links, Events: [], Rec: sampled, Up: missing, T: t}
+  _ = setContext(if sampled span else "00-$traceId-$(span.SpanId)-00" end)
+  span
+end
+
+defn Begin(name, kind = "internal", attributes = {})
+  (** Opens a span in the span of the fiber's context, its child, of kind "internal", "client" (a call to another
+      service), "producer" or "consumer" (a message sent, or taken): the fiber's context until End. missing when the
+      fiber is in no sampled trace: End then does nothing, and nothing was made. *)
+  up = context()
+  if not value.IsDict(up)
+    return missing
+  end
+  span = {TraceId: up.TraceId, SpanId: ids(16), Parent: up.SpanId, State: up.State, Name: name, Kind: dict.GetOr(kind, 1, kinds), Start: sys.Now(),
+    Attributes: attributes, Links: [], Events: [], Rec: true, Up: up, T: up.T}
+  _ = setContext(span)
+  span
+end
+
+defn End(span, failed = false, message = "", attributes = {}, error = missing)
+  (** Ends a span of Server or Begin: the fiber's context is the one before it again, and the span joins the queue when
+      its trace is sampled, or when always keeps it. failed marks it an error, with message; error, an exception that
+      was raised in it, becomes its event "exception" (its exception.message). attributes join its own. *)
+  if not value.IsDict(span)
+    return missing
+  end
+  t = span.T
+  _ = setContext(span.Up)
+  now = sys.Now()
+  keep = span.Rec or (t.Traces and span.Kind == 2 and ((failed and t.Errors) or (value.IsSome(t.Slow) and now - span.Start > t.Slow)))
+  if not keep
+    return missing
+  end
+  span.End = now
+  span.Up = missing
+  span.T = missing
+  if value.Len(attributes) > 0
+    span.Attributes = dict.Merge(span.Attributes, attributes)
+  end
+  span.Status = if failed 2 else 0 end
+  span.Message = message
+  if value.IsSome(error)
+    span.Events = list.Append({Name: "exception", At: now, Attributes: {"exception.message": value.Text(error)}}, span.Events)
+  end
+  fiber.Send(span, t.Queue)
+end
+
+defn engineSpan(name, start, seconds, got)
+  (** The span of a call of a native engine that a fiber in a sampled trace made: what onEngine calls. *)
+  up = context()
+  if dict.Has(name, quiet) or not value.IsDict(up)
+    return missing
+  end
+  parts = text.Split(".", name)
+  failed = result.IsErr(got)
+  attrs = if dict.Has(parts[1], databases) {"db.system.name": parts[1], "db.operation.name": parts[2]} else {"code.function.name": name} end
+  if failed and value.IsDict(got.Error) and value.IsSome(dict.Get("Code", got.Error))
+    attrs["error.type"] = value.Text(got.Error.Code)
+  end
+  fiber.Send({TraceId: up.TraceId, SpanId: ids(16), Parent: up.SpanId, State: up.State, Name: text.Join(" ", parts), Kind: 3, Start: start,
+    End: start + seconds, Attributes: attrs, Links: [], Events: [], Status: if failed 2 else 0 end, Message: ""}, up.T.Queue)
+end
+
+defn logged(t, level, message, fields)
+  (** A line of std/log, as a record of OTLP: what onLog calls. A line of a request not sampled leaves only when it is a
+      warning or an error. *)
+  up = context()
+  if value.IsText(up) and level == "info"
+    return missing
+  end
+  trace = if value.IsDict(up) {TraceId: up.TraceId, SpanId: up.SpanId, Flags: 1} else if value.IsText(up) {TraceId: text.ByteSlice(4, 35, up), SpanId: text.ByteSlice(37, 52, up), Flags: 0} else missing end
+  fiber.Send({Log: true, At: sys.Now(), Level: level, Message: message, Fields: fields, Ids: trace}, t.Queue)
+end
+
+defn Header()
+  (** The traceparent an outgoing request of this fiber carries: its span's, or missing out of any trace.
+
+        Header() --> missing *)
+  up = context()
+  if value.IsDict(up) "00-$(up.TraceId)-$(up.SpanId)-01" else if value.IsText(up) up else missing end
+end
+
+defn Headers(headers = [])
+  (** A list of headers with traceparent, and tracestate when there is one, added for the fiber's trace: what an
+      outgoing request carries to go on with it. The same list out of any trace.
+
+        Headers([{Name: "accept", Value: "*/*"}]) --> [{Name: "accept", Value: "*/*"}] *)
+  h = Header()
+  if value.IsMissing(h)
+    return headers
+  end
+  up = context()
+  out = list.Append({Name: "traceparent", Value: h}, headers)
+  if value.IsDict(up) and up.State != "" list.Append({Name: "tracestate", Value: up.State}, out) else out end
+end
+
+defn Current()
+  (** The trace and the span of the fiber's context, {TraceId, SpanId, Sampled}, or missing out of any trace: for a
+      log or an answer that names them. *)
+  up = context()
+  if value.IsDict(up) {TraceId: up.TraceId, SpanId: up.SpanId, Sampled: true}
+  else if value.IsText(up) {TraceId: text.ByteSlice(4, 35, up), SpanId: text.ByteSlice(37, 52, up), Sampled: false}
+  else missing end
+end
+
+defn Counts(t)
+  (** What the tracer did since it started: {Spans, Logs, Dropped, Exports, Failed, Bytes}, the spans and lines sent, those
+      dropped (a full queue, or a batch the collector never took), the exports made and failed, and the bytes sent. *)
+  peek(t.Counts)
+end
+
+defn Flush(t, timeout = 30)
+  (** Sends what waits now, spans, lines and metrics, and waits until it is sent or failed, at most timeout seconds: what a
+      server does as it stops, and a test before it looks. *)
+  done = fiber.Channel(size = 1)
+  fiber.Send({Flush: done}, t.Queue)
+  _ = fiber.Receive(done, timeout = timeout)
+  if t.Metrics
+    _ = sendMetrics(t)
+  end
+  missing
+end
+
+(* A cell: a channel of size 1 that always holds a value, which one fiber changes and the others read. *)
+defn cell(v)
+  ch = fiber.Channel(size = 1)
+  fiber.Send(v, ch)
+  ch
+end
+
+defn peek(ch)
+  v = fiber.Receive(ch, timeout = 0).Value
+  fiber.Send(v, ch)
+  v
+end
+
+defn put(v, ch)
+  _ = fiber.Receive(ch, timeout = 0)
+  fiber.Send(v, ch)
+end
+
+defn count(t, field, n)
+  (** One of the tracer's counts grown by n, and otel_dropped_total with it when it is a drop. *)
+  now = peek(t.Counts)
+  now[field] = now[field] + n
+  put(now, t.Counts)
+  if field == "Dropped"
+    metrics.Add("otel_dropped_total", n = n)
+  end
+end
+
+defn gathering(t)
+  (** The fiber of a tracer's queue: takes what the spans and lines send, keeps queue of them at most (the others
+      dropped and counted, never waited for), and hands a batch to a fiber that sends it, every few seconds or once
+      batch wait, one export at a time. *)
+  spans = []
+  logs = []
+  next = sys.Now() + t.Every
+  while true
+    got = fiber.Receive(t.Queue, timeout = list.Max([0, next - sys.Now()]))
+    flush = missing
+    if result.IsOk(got)
+      v = got.Value
+      if dict.Has("Flush", v)
+        flush = v.Flush
+      else if value.Len(spans) + value.Len(logs) >= t.Most
+        count(t, "Dropped", 1)
+      else if dict.Has("Log", v)
+        logs = list.Append(v, logs)
+      else
+        spans = list.Append(v, spans)
+      end
+    end
+    if value.IsSome(flush)
+      (* everything now, after the export in flight: the fiber waits, and what comes meanwhile waits in the channel *)
+      while peek(t.Busy)
+        sys.Sleep(0.01)
+      end
+      while value.Len(spans) + value.Len(logs) > 0
+        some = list.Take(t.Batch, spans)
+        lines = list.Take(t.Batch, logs)
+        spans = list.Skip(value.Len(some), spans)
+        logs = list.Skip(value.Len(lines), logs)
+        put(true, t.Busy)
+        watched(t, some, lines)
+      end
+      fiber.Send(true, flush)
+    else if (sys.Now() >= next or value.Len(spans) >= t.Batch or value.Len(logs) >= t.Batch) and not peek(t.Busy) and value.Len(spans) + value.Len(logs) > 0
+      some = list.Take(t.Batch, spans)
+      lines = list.Take(t.Batch, logs)
+      spans = list.Skip(value.Len(some), spans)
+      logs = list.Skip(value.Len(lines), logs)
+      put(true, t.Busy)
+      fiber.Spawn(() -> watched(t, some, lines))
+    end
+    if sys.Now() >= next
+      next = sys.Now() + t.Every
+    end
+  end
+end
+
+defn watched(t, spans, logs)
+  (** An export in a fiber of its own: a panic in it drops its batch, counted, and the next export goes on. *)
+  if result.IsErr(fiber.Wait(fiber.Spawn(() -> shipped(t, spans, logs))))
+    count(t, "Dropped", value.Len(spans) + value.Len(logs))
+    count(t, "Failed", 1)
+  end
+  put(false, t.Busy)
+end
+
+defn shipped(t, spans, logs)
+  (** One export of a batch: its spans to /v1/traces, its lines to /v1/logs. *)
+  if value.Len(spans) > 0
+    sent = post(t, "/v1/traces", if t.Protocol == "json" json.Text(jsTraces(t, spans)) else pbTraces(t, spans) end)
+    count(t, if sent "Spans" else "Dropped" end, value.Len(spans))
+  end
+  if value.Len(logs) > 0
+    sent = post(t, "/v1/logs", if t.Protocol == "json" json.Text(jsLogs(t, logs)) else pbLogs(t, logs) end)
+    count(t, if sent "Logs" else "Dropped" end, value.Len(logs))
+  end
+end
+
+defn measuring(t)
+  (** The fiber that sends std/metrics every metricsEvery seconds. *)
+  while true
+    sys.Sleep(t.MetricsEvery)
+    _ = sendMetrics(t)
+  end
+end
+
+defn sendMetrics(t)
+  (** std/metrics now, sent to /v1/metrics: true when the collector took it. *)
+  families = Families(metrics.Text())
+  if value.Len(families) == 0
+    return true
+  end
+  post(t, "/v1/metrics", if t.Protocol == "json" json.Text(jsMetrics(t, families)) else pbMetrics(t, families) end)
+end
+
+defn post(t, path, body)
+  (** A body sent to the collector: true once it took it. A 429, 502, 503 or 504, or no answer, is tried again after a
+      pause drawn at random under a bound that doubles from a second (full jitter), or the Retry-After it asks, five
+      tries at most; another status is final. *)
+  headers = list.Concat([{Name: "content-type", Value: if t.Protocol == "json" "application/json" else "application/x-protobuf" end}], t.Headers)
+  if value.IsSome(t.Zip)
+    body = gzip(body, t.Zip)
+    headers = list.Append({Name: "content-encoding", Value: "gzip"}, headers)
+  end
+  count(t, "Bytes", text.ByteLength(body))
+  for attempt in 1..5
+    got = if value.IsSome(t.Send) t.Send(path, body, headers) else http.Fetch("$(t.Endpoint)$path", method = "POST", body = body, headers = headers, timeout = t.Timeout, maxBody = 65536) end
+    status = if result.IsOk(got) got.Value.Status else 0 end
+    count(t, "Exports", 1)
+    if status >= 200 and status < 300
+      return true
+    end
+    if result.IsOk(got) and not (status in [429, 502, 503, 504])
+      count(t, "Failed", 1)
+      return false
+    end
+    if attempt < 5
+      after = if result.IsOk(got) http.HeaderValue("retry-after", got.Value.Headers) else missing end
+      asked = if value.IsText(after) text.Number(text.Trim(after)) else missing end
+      sys.Sleep(if value.IsNumber(asked) list.Min([60, list.Max([0, asked])]) else random() * math.BitShift(1, attempt - 1) end)
+    end
+  end
+  count(t, "Failed", 1)
+  false
+end
+
+random() = hexNumber(ids(12)) / 281474976710656   (* A float from 0 to 1, drawn. *)
+
+(* Protobuf, as OTLP's .proto files of opentelemetry-proto 1.x lay it out: each field its number and wire type, the
+   messages written from the inside out, each after its length. *)
+
+defn varint(n)
+  (** A number of protobuf, 7 bits a byte, the lowest first. *)
+  if n < 128
+    return text.FromBytes([n])
+  end
+  out = []
+  while n >= 128
+    out = list.Append(math.Mod(n, 128) + 128, out)
+    n = math.Div(n, 128)
+  end
+  text.FromBytes(list.Append(n, out))
+end
+
+key(number, wire) = varint(number * 8 + wire)                 (* The key of a field: its number and its wire type. *)
+bytesOf(number, s) = "$(key(number, 2))$(varint(text.ByteLength(s)))$s"   (* A field of bytes, a text or a message. *)
+fixed64(number, seconds) = "$(key(number, 1))$(nanos(seconds))"            (* A time as OTLP's fixed64 nanoseconds. *)
+
+defn nanos(seconds)
+  (** A time in seconds as 8 bytes of nanoseconds, to the microsecond, which sys.Now holds. *)
+  ns = math.Div(math.Floor(seconds * 1000000 + 0.5), 1) * 1000
+  text.FromNumbers("u32", [math.Mod(ns, 4294967296), math.Div(ns, 4294967296)])
+end
+
+defn pbValue(v)
+  (** An AnyValue: a text, a bool, a whole number (a negative one as a float), a float, or a list. *)
+  if value.IsText(v)
+    bytesOf(1, v)
+  else if value.IsBool(v)
+    "$(key(2, 0))$(varint(if v 1 else 0 end))"
+  else if value.IsInt(v) and v >= 0
+    "$(key(3, 0))$(varint(v))"
+  else if value.IsNumber(v)
+    "$(key(4, 1))$(text.FromNumbers("f64", [v]))"
+  else if value.IsArray(v)
+    bytesOf(5, text.Join("", [bytesOf(1, pbValue(x)) for x in v]))
+  else
+    bytesOf(1, value.Text(v))
+  end
+end
+
+pbAttributes(number, attrs) = text.Join("", [bytesOf(number, "$(bytesOf(1, p.Key))$(bytesOf(2, pbValue(p.Value)))") for p in dict.Pairs(attrs) if value.IsSome(p.Value)])
+
+pbResource(res) = pbAttributes(1, res)
+scope = "$(bytesOf(1, "cesia"))"                                 (* The instrumentation scope: Cesia's std/otel. *)
+unhex(h) = encode.Unhex(h)!
+
+defn pbSpan(s)
+  (** A Span of OTLP. *)
+  parts = [bytesOf(1, unhex(s.TraceId)), bytesOf(2, unhex(s.SpanId))]
+  if s.State != ""
+    parts = list.Append(bytesOf(3, s.State), parts)
+  end
+  if s.Parent != ""
+    parts = list.Append(bytesOf(4, unhex(s.Parent)), parts)
+  end
+  parts = list.Concat(parts, [bytesOf(5, s.Name), "$(key(6, 0))$(varint(s.Kind))", fixed64(7, s.Start), fixed64(8, s.End), pbAttributes(9, s.Attributes)])
+  for e in s.Events
+    parts = list.Append(bytesOf(11, "$(fixed64(1, e.At))$(bytesOf(2, e.Name))$(pbAttributes(3, e.Attributes))"), parts)
+  end
+  for l in s.Links
+    parts = list.Append(bytesOf(13, "$(bytesOf(1, unhex(l.TraceId)))$(bytesOf(2, unhex(l.SpanId)))$(key(6, 5))$(text.FromNumbers("u32", [if l.Sampled 769 else 768 end]))"), parts)
+  end
+  if s.Status != 0 or s.Message != ""
+    parts = list.Append(bytesOf(15, "$(if s.Message == "" "" else bytesOf(2, s.Message) end)$(key(3, 0))$(varint(s.Status))"), parts)
+  end
+  text.Join("", parts)
+end
+
+pbTraces(t, spans) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", [bytesOf(2, pbSpan(s)) for s in spans]))"))")
+
+severities = {info: 9, warn: 13, error: 17}
+
+defn pbLog(r)
+  (** A LogRecord of OTLP: its time, its severity, its message as body, its fields as attributes, its trace. *)
+  parts = [fixed64(1, r.At), fixed64(11, r.At), "$(key(2, 0))$(varint(dict.GetOr(r.Level, 9, severities)))", bytesOf(3, r.Level), bytesOf(5, pbValue(r.Message))]
+  if value.IsDict(r.Fields)
+    parts = list.Append(pbAttributes(6, r.Fields), parts)
+  end
+  if value.IsSome(r.Ids)
+    parts = list.Concat(parts, ["$(key(8, 5))$(text.FromNumbers("u32", [r.Ids.Flags]))", bytesOf(9, unhex(r.Ids.TraceId)), bytesOf(10, unhex(r.Ids.SpanId))])
+  end
+  text.Join("", parts)
+end
+
+pbLogs(t, logs) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", [bytesOf(2, pbLog(r)) for r in logs]))"))")
+
+defn pbMetric(t, f, now)
+  (** A Metric of OTLP from a family of Families: a counter as a cumulative monotonic Sum, a histogram as a cumulative
+      Histogram of explicit bounds. *)
+  points = []
+  for p in f.Points
+    head = "$(pbAttributes(if f.Kind == "histogram" 9 else 7 end, p.Labels))$(fixed64(2, t.Started))$(fixed64(3, now))"
+    if f.Kind == "histogram"
+      points = list.Append(bytesOf(1, "$head$(key(4, 1))$(text.FromNumbers("u32", [p.Count, 0]))$(key(5, 1))$(text.FromNumbers("f64", [p.Sum]))$(bytesOf(6, text.FromNumbers("u32", list.Flatten([[k, 0] for k in p.Buckets]))))$(bytesOf(7, text.FromNumbers("f64", f.Bounds)))"), points)
+    else
+      points = list.Append(bytesOf(1, "$head$(key(4, 1))$(text.FromNumbers("f64", [p.Value]))"), points)
+    end
+  end
+  body = text.Join("", points)
+  "$(bytesOf(1, f.Name))$(if f.Kind == "histogram" bytesOf(9, "$body$(key(2, 0))$(varint(2))") else bytesOf(7, "$body$(key(2, 0))$(varint(2))$(key(3, 0))$(varint(1))") end)"
+end
+
+pbMetrics(t, families) = bytesOf(1, "$(bytesOf(1, t.Pb))$(bytesOf(2, "$(bytesOf(1, scope))$(text.Join("", [bytesOf(2, pbMetric(t, f, sys.Now())) for f in families]))"))")
+
+(* JSON, as OTLP/JSON writes it: names in lowerCamelCase, ids in hexadecimal, kinds as numbers, 64-bit numbers as texts. *)
+
+nanoText(seconds) = "$(math.Div(math.Floor(seconds * 1000000 + 0.5), 1))000"      (* A time as nanoseconds in a text. *)
+
+defn jsValue(v)
+  (** An AnyValue of OTLP/JSON. *)
+  if value.IsText(v)
+    {stringValue: v}
+  else if value.IsBool(v)
+    {boolValue: v}
+  else if value.IsInt(v)
+    {intValue: "$v"}
+  else if value.IsNumber(v)
+    {doubleValue: v}
+  else if value.IsArray(v)
+    {arrayValue: {values: [jsValue(x) for x in v]}}
+  else
+    {stringValue: value.Text(v)}
+  end
+end
+
+jsAttributes(attrs) = [{key: p.Key, value: jsValue(p.Value)} for p in dict.Pairs(attrs) if value.IsSome(p.Value)]
+jsResource(res) = {attributes: jsAttributes(res)}
+
+defn jsSpan(s)
+  (** A Span of OTLP/JSON. *)
+  out = {traceId: s.TraceId, spanId: s.SpanId, name: s.Name, kind: s.Kind, startTimeUnixNano: nanoText(s.Start), endTimeUnixNano: nanoText(s.End),
+    attributes: jsAttributes(s.Attributes)}
+  if s.Parent != ""
+    out.parentSpanId = s.Parent
+  end
+  if s.State != ""
+    out.traceState = s.State
+  end
+  if value.Len(s.Events) > 0
+    out.events = [{timeUnixNano: nanoText(e.At), name: e.Name, attributes: jsAttributes(e.Attributes)} for e in s.Events]
+  end
+  if value.Len(s.Links) > 0
+    out.links = [{traceId: l.TraceId, spanId: l.SpanId, flags: if l.Sampled 1 else 0 end} for l in s.Links]
+  end
+  if s.Status != 0 or s.Message != ""
+    out.status = {code: s.Status, message: s.Message}
+  end
+  out
+end
+
+jsTraces(t, spans) = {resourceSpans: [{resource: t.Js, scopeSpans: [{scope: {name: "cesia"}, spans: [jsSpan(s) for s in spans]}]}]}
+
+defn jsLog(r)
+  (** A LogRecord of OTLP/JSON. *)
+  out = {timeUnixNano: nanoText(r.At), observedTimeUnixNano: nanoText(r.At), severityNumber: dict.GetOr(r.Level, 9, severities), severityText: r.Level,
+    body: jsValue(r.Message), attributes: if value.IsDict(r.Fields) jsAttributes(r.Fields) else [] end}
+  if value.IsSome(r.Ids)
+    out.traceId = r.Ids.TraceId
+    out.spanId = r.Ids.SpanId
+    out.flags = r.Ids.Flags
+  end
+  out
+end
+
+jsLogs(t, logs) = {resourceLogs: [{resource: t.Js, scopeLogs: [{scope: {name: "cesia"}, logRecords: [jsLog(r) for r in logs]}]}]}
+
+defn jsMetric(t, f, now)
+  (** A Metric of OTLP/JSON. *)
+  start = nanoText(t.Started)
+  at = nanoText(now)
+  if f.Kind == "histogram"
+    return {name: f.Name, histogram: {aggregationTemporality: 2, dataPoints: [{attributes: jsAttributes(p.Labels), startTimeUnixNano: start, timeUnixNano: at,
+      count: "$(p.Count)", sum: p.Sum, bucketCounts: ["$k" for k in p.Buckets], explicitBounds: f.Bounds} for p in f.Points]}}
+  end
+  {name: f.Name, sum: {aggregationTemporality: 2, isMonotonic: true, dataPoints: [{attributes: jsAttributes(p.Labels), startTimeUnixNano: start, timeUnixNano: at,
+    asDouble: p.Value} for p in f.Points]}}
+end
+
+jsMetrics(t, families) = {resourceMetrics: [{resource: t.Js, scopeMetrics: [{scope: {name: "cesia"}, metrics: [jsMetric(t, f, sys.Now()) for f in families]}]}]}
+
+defn Families(prometheus)
+  (** The metrics of a text of Prometheus, as metrics.Text writes it, read back as OTLP has them: a list of {Name, Kind,
+      Bounds, Points}, Kind "counter" or "histogram", each point {Labels, Value} or {Labels, Count, Sum, Buckets}, the
+      count of each bucket alone (Prometheus counts each with those below it). A counter loses its _total, as
+      OpenTelemetry names it.
+
+        Families("# TYPE hits_total counter\nhits_total{page=\"/\"} 3\n")[1].Points[1].Value --> 3 *)
+  out = []
+  f = missing
+  for line in text.Lines(prometheus)
+    if text.StartsWith("# TYPE ", line)
+      if value.IsSome(f)
+        out = list.Append(closed(f), out)
+      end
+      words = text.Split(" ", line)
+      f = {Prom: words[3], Name: if words[4] == "counter" and text.EndsWith("_total", words[3]) text.ByteSlice(1, text.ByteLength(words[3]) - 6, words[3]) else words[3] end,
+        Kind: words[4], Bounds: [], Points: [], Open: dict.Dict()}
+    else if value.IsSome(f) and line != ""
+      f = sample(f, line)
+    end
+  end
+  if value.IsSome(f)
+    out = list.Append(closed(f), out)
+  end
+  out
+end
+
+defn sample(f, line)
+  (** A line of a family read into it: a counter's value, or a part of a histogram's series. *)
+  space = text.ByteFind(" ", 1, line)
+  head = text.ByteSlice(1, space - 1, line)
+  number = text.Number(text.ByteSlice(space + 1, text.ByteLength(line), line))
+  brace = text.ByteFind("{", 1, head)
+  name = if value.IsMissing(brace) head else text.ByteSlice(1, brace - 1, head) end
+  labels = if value.IsMissing(brace) [] else labelsOf(text.ByteSlice(brace + 1, text.ByteLength(head) - 1, head)) end
+  if f.Kind != "histogram"
+    f.Points = list.Append({Labels: dict.Dict([{Key: l[1], Value: l[2]} for l in labels]), Value: number}, f.Points)
+    return f
+  end
+  le = list.First([l[2] for l in labels if l[1] == "le"])
+  rest = [l for l in labels if l[1] != "le"]
+  id = json.Text(rest)
+  p = dict.GetOr(id, {Labels: dict.Dict([{Key: l[1], Value: l[2]} for l in rest]), Cumulative: [], Count: 0, Sum: 0}, f.Open)
+  if name == "$(f.Prom)_bucket" and le != "+Inf"
+    p.Cumulative = list.Append(number, p.Cumulative)
+    if value.Len(p.Cumulative) > value.Len(f.Bounds)
+      f.Bounds = list.Append(text.Number(le), f.Bounds)
+    end
+  else if name == "$(f.Prom)_count"
+    p.Count = number
+  else if name == "$(f.Prom)_sum"
+    p.Sum = number
+  end
+  open = f.Open
+  open[id] = p
+  f.Open = open
+  f
+end
+
+defn closed(f)
+  (** A family whose lines are all read: the points of a histogram made, each bucket's own count. *)
+  if f.Kind == "histogram"
+    pts = []
+    for p in dict.Values(f.Open)
+      below = 0
+      own = []
+      for k in p.Cumulative
+        own = list.Append(k - below, own)
+        below = k
+      end
+      pts = list.Append({Labels: p.Labels, Count: p.Count, Sum: p.Sum, Buckets: list.Append(p.Count - below, own)}, pts)
+    end
+    f.Points = pts
+  end
+  {Name: f.Name, Kind: f.Kind, Bounds: f.Bounds, Points: f.Points}
+end
+
+defn labelsOf(s)
+  (** The labels of a series, a="1",b="x \" y", as pairs [name, value]. *)
+  out = []
+  at = 1
+  n = text.ByteLength(s)
+  while at <= n
+    eq = text.ByteFind("=", at, s)
+    name = text.ByteSlice(at, eq - 1, s)
+    k = eq + 2
+    v = []
+    while k <= n and text.ByteSlice(k, k, s) != "\""
+      ch = text.ByteSlice(k, k, s)
+      if ch == "\\" and k < n
+        k += 1
+        ch = if text.ByteSlice(k, k, s) == "n" "\n" else text.ByteSlice(k, k, s) end
+      end
+      v = list.Append(ch, v)
+      k += 1
+    end
+    out = list.Append([name, text.Join("", v)], out)
+    at = k + 2
+  end
+  out
+end
+
+(* gzip, as RFC 1952 frames it: zlib's compress2 makes a stream of zlib, whose two bytes of head and four of tail (an
+   Adler-32) are taken away, then gzip's head of ten bytes, and its tail, a CRC-32 and the length, both of zlib too. *)
+
+defn zlib()
+  (** The functions of zlib that gzip calls: an Ok, or an Err when zlib can't be opened (it needs ffi=z). *)
+  lib = c.Open("z", version = 1)
+  if result.IsErr(lib)
+    return result.Err({Kind: "otel", Message: "compression gzip needs zlib and the permission ffi=z: $(lib.Error.Message)"})
+  end
+  result.Ok({Compress: c.Fn("compress2", ["ptr", "ptr", "ptr", "u64", "i32"], "i32", lib.Value)?, Bound: c.Fn("compressBound", ["u64"], "u64", lib.Value)?,
+    Crc: c.Fn("crc32", ["u64", "ptr", "u32"], "u64", lib.Value)?})
+end
+
+defn gzip(body, z)
+  (** A body compressed as gzip, at zlib's level 6. *)
+  n = text.ByteLength(body)
+  most = z.Bound(n)
+  src = c.Alloc(list.Max([1, n]))
+  dst = c.Alloc(most)
+  size = c.Alloc(8)
+  c.Store(body, 0, src)
+  c.Set("u64", 0, most, size)
+  _ = z.Compress(dst, size, src, n, 6)
+  made = c.Get("u64", 0, size)
+  crc = z.Crc(0, src, n)
+  raw = c.Load(2, made - 6, dst)
+  c.Free(src)
+  c.Free(dst)
+  c.Free(size)
+  "$(text.FromBytes([31, 139, 8, 0, 0, 0, 0, 0, 0, 255]))$raw$(text.FromNumbers("u32", [crc, math.Mod(n, 4294967296)]))"
+end

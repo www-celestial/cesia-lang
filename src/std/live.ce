@@ -45,8 +45,9 @@ defn Route(pattern, screen, a, actions = {}, resume = 120, buffer = 1048576, sam
       isn't an Err, goes back to the page, which then drops the effect it showed; an Err undoes it. Each screen's
       actions run one after the other, in the order the page asked for them; s.Key is then the action's key, which the
       page made when the action was asked and sends again with it after a break (missing from an older page), for the
-      app to run it once (an Idempotency-Key), and s.Base what the page saw before it asked, for the app to refuse a
-      change of a thing that changed meanwhile. A page of another origin than the app's gets a 403, as http.SameOrigin
+      app to run it once (an Idempotency-Key), s.Base what the page saw before it asked, for the app to refuse a
+      change of a thing that changed meanwhile, and s.Trace the traceparent the page sent with it (W3C Trace Context),
+      the trace of its click, which the action's value may answer with its own (Traced). A page of another origin than the app's gets a 403, as http.SameOrigin
       decides, so that no other site opens a screen with the cookies of its visitor.
 
       A page that says {Hello: 2} gets a screen that outlives a break: kept resume seconds (0: never) while its frames
@@ -309,7 +310,8 @@ defn doing(sc, o)
     end
     p = got.Value.Value
     tellScreen({Kind: "acting"}, sc)
-    s = {Request: peek(sc.Request), Ended: sc.Ended, Key: if value.IsText(dict.Get("Key", p)) p.Key else missing end, Base: dict.Get("Base", p)}
+    s = {Request: peek(sc.Request), Ended: sc.Ended, Key: if value.IsText(dict.Get("Key", p)) p.Key else missing end, Base: dict.Get("Base", p),
+      Trace: if value.IsText(dict.Get("Trace", p)) and text.ByteLength(p.Trace) <= 64 p.Trace else missing end}
     other = value.IsText(sc.Who) and value.IsText(dict.Get("Who", p)) and p.Who != sc.Who
     reply = if other json.Text({Ack: p.Id, Err: {Kind: "live", Status: 403, Message: "This action was asked by another account: it is not sent."}}) else acting(s, o.Actions, p.Act, p.Id, dict.Get("Args", p)) end
     tellScreen({Kind: "ack", Text: reply}, sc)
@@ -342,11 +344,29 @@ defn acting(s, actions, name, id, args)
   json.Text({Ack: id, Err: refused("The action $name failed.")})
 end
 
-replied(id, v) = json.Text(match v
-  result.Ok(x) -> {Ack: id, Ok: x}
-  result.Err(e) -> {Ack: id, Err: e}
-  else -> {Ack: id, Ok: v}
-end)   (* The reply to an action, as JSON. *)
+defn replied(id, v)
+  (** The reply to an action, as JSON, with the trace of the request that made it when the action gave it (Traced). *)
+  trace = missing
+  if value.IsDict(v) and dict.Has("LiveTraced", v)
+    trace = v.Trace
+    v = v.Value
+  end
+  out = match v
+    result.Ok(x) -> {Ack: id, Ok: x}
+    result.Err(e) -> {Ack: id, Err: e}
+    else -> {Ack: id, Ok: v}
+  end
+  if value.IsText(trace)
+    out.Trace = trace
+  end
+  json.Text(out)
+end
+
+(** The value of an action, an Ok, an Err or any other, with the traceparent of the request that served it (std/otel's
+    Header): the page gets it in its reply, beside the value, and links its own span of the action to that trace.
+
+      Traced(result.Ok(7), "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01").Trace --> "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" *)
+Traced(v, trace) = {LiveTraced: true, Value: v, Trace: trace}
 
 now() = math.Div(math.Round(sys.Now() * 1000000), 1)   (* The time, in whole microseconds since 1970: a float would take long to print. *)
 number(g) = if value.IsInt(g) g else json.Text(g) end   (* A group as JSON. *)

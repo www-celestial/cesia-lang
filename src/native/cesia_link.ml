@@ -30,7 +30,15 @@ let guarded package (name, fewest, most, f) =
     if n < fewest || n > most then
       Runtime.fail ctx Type
         (Messages.arg_count full (if fewest = most then Printf.sprintf "%d arguments" fewest else Printf.sprintf "%d to %d arguments" fewest most) n);
-    try f ctx a with e when not (own e) -> Runtime.fail ctx User (Messages.native_raised full (Printexc.to_string e))
+    let call () = try f ctx a with e when not (own e) -> Runtime.fail ctx User (Messages.native_raised full (Printexc.to_string e)) in
+    match !Cesia_sys.Observe.engine_hook, ctx.local with
+    | Some (w, hook), Dict _ when w == ctx.w ->
+      (* a fiber with a span of std/otel: the call's time and result given to its hook, a span of the engine *)
+      let start = Unix.gettimeofday () in
+      let r = call () in
+      ignore (Compile.call_back ctx hook [| Text full; Float start; Float (Unix.gettimeofday () -. start); r |]);
+      r
+    | _ -> call ()
   in
   name, run
 
