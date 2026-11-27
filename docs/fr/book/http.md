@@ -302,7 +302,11 @@ log.Info("order placed", {Order: 7, Total: 12.5})
 [http.Logger] écrit une de ces lignes pour chaque requête, avec sa méthode, son chemin, son statut et les millisecondes
 qu'elle a prises. [std/metrics] compte : [metrics.Add] ajoute à un compteur, [metrics.Observe] range une valeur, comme les
 secondes qu'a prises une requête, dans un histogramme, et [metrics.Text] les donne toutes dans le format texte que lit
-Prometheus, pour une route du programme. [http.Metrics] compte chaque requête par méthode et par statut, avec sa durée :
+Prometheus, pour une route du programme. [http.Metrics] compte chaque requête par méthode et par statut, avec sa durée ;
+la méthode est celle de [http.KnownMethod], l'une des dix que connaissent les conventions sémantiques (*semantic
+conventions*, les noms communs) d'OpenTelemetry (GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH, QUERY) ou
+`_OTHER`, pour que les mots qu'invente un client ne fassent pas chacun une série (une suite de nombres d'un même jeu de
+labels, les étiquettes qui découpent une métrique, comme `method`) :
 
 ```cesia
 use std/metrics
@@ -312,7 +316,10 @@ http.Handler(counted)({Method: "GET", Path: "/stock", Query: "", Headers: [], Bo
 text.Contains("http_requests_total{method=\"GET\",status=\"200\"} 1", metrics.Text()) -->
 ```
 
-Rien n'est écrit dans le log ni compté sauf si le programme le demande. Une ligne de log coûte environ 5 microsecondes et
+Une métrique garde toutes les séries que font ses labels, autant qu'en fait le programme : [metrics.Limit] en borne une
+à un nombre de séries, au-delà duquel un nouveau jeu de labels compte dans une série de plus,
+`otel_metric_overflow="true"`, comme le font les SDK d'OpenTelemetry. Rien n'est écrit dans le log ni compté sauf si le
+programme le demande. Une ligne de log coûte environ 5 microsecondes et
 un comptage environ 3, ce que voit un serveur qui répond en 17 : sur un cœur, à 100 connexions gardées ouvertes, une route
 minimale répondait à 57 000 à 60 000 requêtes par seconde sans eux, 44 000 à 49 000 avec [http.Logger], et 50 000 à
 53 000 avec [http.Metrics], mesuré le 2026-11-07. Avec `--workers`, chaque worker compte ses propres requêtes, et un
@@ -368,10 +375,9 @@ a pris plus de `slow` secondes. Les spans attendent dans une file qui ne fait ja
 `queue` (2 048), ils sont jetés et comptés dans `otel_dropped_total` ; une fiber les envoie par *batches* (des lots)
 toutes les `every` secondes, et réessaie un collector occupé ou parti après une pause tirée au hasard sous une borne
 qui double (le *full jitter*), ou après son `Retry-After`, cinq fois. Ils attendent déjà encodés, tels qu'ils partiront :
-une file pleine de 2 048 spans prend 1,2 Mo en protobuf, 2,3 en JSON. Une métrique de [std/metrics] tient au plus
-2 000 séries, les autres comptées dans une seule, `otel_metric_overflow="true"`, comme le conseille OpenTelemetry : un
-label (une étiquette qui découpe une métrique en séries, comme `method`) fait de ce qu'envoie un client, comme une
-méthode, ne peut pas remplir la mémoire.
+une file pleine de 2 048 spans prend 1,2 Mo en protobuf, 2,3 en JSON. Une méthode que les conventions ne connaissent
+pas est `_OTHER` dans un span aussi, son nom dit `HTTP` à sa place, et celle qu'a envoyée le client est gardée dans
+`http.request.method_original`.
 
 Un span gardé coûte environ 15 µs de son début au collector, en protobuf comme en JSON ; protobuf envoie 2,4 fois moins
 d'octets, environ 210 pour le span d'une requête et 140 pour un span à l'intérieur, JSON 500 et 360.

@@ -1,7 +1,8 @@
 (** std/otel against a collector of the test, on the network: the spans of a server's requests and their parents, a
     traceparent from outside restarted with a link or trusted, the lines of std/log with their trace, the metrics of
     std/metrics read back, OTLP in JSON and in protobuf; then what must not happen: data of a request not sampled, a
-    queue past its size, a dead collector that slows a request, a collector that asks to wait, and series without end. *)
+    queue past its size, a dead collector that slows a request, a collector that asks to wait, and series without end
+    from a client's words. *)
 use std/dict
 use std/fiber
 use std/http
@@ -105,6 +106,14 @@ io.Print("a malformed one is ignored: links", value.Len(bad.Links))
 otel.End(bad)
 _ = drained()
 
+io.Print("-- a method made up by a client: _OTHER, the one sent kept aside")
+m = otel.Server(t, "BREW", "", [])
+io.Print("named", m.Name)
+otel.End(m)
+otel.Flush(t)
+x = list.First([y for y in spansOf(drained()) if y.name == "HTTP"])
+io.Print(x.name, ["$(a.key)=$(a.value.stringValue)" for a in x.attributes if text.StartsWith("http.request", a.key)])
+
 io.Print("-- protobuf")
 p = otel.Start(service = "notes", endpoint = endpoint, signals = ["traces"])!
 s = otel.Server(p, "POST", "/notes", [])
@@ -172,12 +181,30 @@ io.Print("2,000 requests in less than a second:", sys.Now() - start < 1)
 sys.Sleep(0.1)
 io.Print("none sent:", otel.Counts(g).Spans)
 
-io.Print("-- labels made from requests: 2,000 series a metric at most")
-for k in 1..2500
-  metrics.Add("methods_total", labels = {method: "M$k"})
+io.Print("-- a program's own series: all kept, unless it sets a limit")
+for k in 1..3000
+  metrics.Add("orders_total", labels = {shop: "S$k"})
 end
-lines = [l for l in text.Lines(metrics.Text()) if text.StartsWith("methods_total", l)]
+lines = [l for l in text.Lines(metrics.Text()) if text.StartsWith("orders_total", l)]
 io.Print(value.Len(lines), "series, the last:", lines[value.Len(lines)])
+metrics.Limit("pages_total", 100)
+for k in 1..250
+  metrics.Add("pages_total", labels = {page: "/p$k"})
+end
+lines = [l for l in text.Lines(metrics.Text()) if text.StartsWith("pages_total", l)]
+io.Print(value.Len(lines), "series with metrics.Limit 100, the last:", lines[value.Len(lines)])
+
+io.Print("-- methods made up by clients: bounded where they are counted")
+counted = http.Handler(http.App() then http.Get("/", r -> http.Plain("hi")) then http.Wrap(http.Metrics))
+for k in 1..2500
+  _ = counted({Method: "M$k", Path: "/", Query: "", Headers: [], Body: ""})
+end
+_ = counted({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""})
+for l in text.Lines(metrics.Text())
+  if text.StartsWith("http_requests_total", l)
+    io.Print(l)
+  end
+end
 
 io.Print("-- std/metrics read back as OTLP has it")
 metrics.Observe("work_seconds", 0.02, labels = {job: "a"})

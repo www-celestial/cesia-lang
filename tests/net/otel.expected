@@ -11,6 +11,9 @@ the line's trace is the request's: true its span: true body: read
 restart: a new trace true that links to it 00f067aa0ba902b7
 trust: the same trace 4bf92f3577b34da6a3ce929d0e0e4736 child of 00f067aa0ba902b7 state vendor=x
 a malformed one is ignored: links 0
+-- a method made up by a client: _OTHER, the one sent kept aside
+named HTTP
+HTTP ["http.request.method=_OTHER", "http.request.method_original=BREW"]
 -- protobuf
 type: application/x-protobuf holds the span's name: true its message: true its event: true bytes: 403
 -- not sampled: nothing of it leaves
@@ -28,8 +31,12 @@ bodies: 3 {Spans: 1, Logs: 0, Dropped: 0, Exports: 3, Failed: 0, Bytes: 741}
 -- a dead collector never slows a request
 2,000 requests in less than a second: true
 none sent: 0
--- labels made from requests: 2,000 series a metric at most
-2001 series, the last: methods_total{otel_metric_overflow="true"} 500
+-- a program's own series: all kept, unless it sets a limit
+3000 series, the last: orders_total{shop="S3000"} 1
+101 series with metrics.Limit 100, the last: pages_total{otel_metric_overflow="true"} 150
+-- methods made up by clients: bounded where they are counted
+http_requests_total{method="_OTHER",status="405"} 2500
+http_requests_total{method="GET",status="200"} 1
 -- std/metrics read back as OTLP has it
 histogram 11 bounds; [{Job: "a", Count: 2, Buckets: 2}, {Job: "b", Count: 1, Buckets: 1}]
 a counter loses its _total: otel_dropped

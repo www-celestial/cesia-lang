@@ -15,8 +15,11 @@
   `Retry-After`. Nothing changes for a program that doesn't start it.
 - The span open in a fiber is its context: a fiber it spawns starts in it; a line of `std/log` written in it carries
   `trace_id` and `span_id`; each call of a native engine (Cepheus) made in a sampled trace is a span.
-- `std/metrics` holds 2,000 series a metric at most, the others counted in one, `otel_metric_overflow="true"`, as
-  OpenTelemetry's SDKs do: `http.Metrics` counted every method a client made up, each a series.
+- `http.Metrics` counts a method that OpenTelemetry's semantic conventions don't know as `_OTHER`
+  (`http.KnownMethod`): it counted every method a client made up, each a series; a span's method is bounded the same
+  way, the one sent kept in `http.request.method_original`. `metrics.Limit(name, series)` holds a metric to that many
+  series, the others counted in one, `otel_metric_overflow="true"`, as OpenTelemetry's SDKs can; a metric has no limit
+  unless the program sets one.
 - `std/live`: an action gets the `traceparent` of the page's click (`s.Trace`), and its value may give the page the
   server's trace in its reply (`live.Traced`).
 - A page in WebAssembly hears its program's errors as the event `cesia-error` of its window, their place in the `.ce`

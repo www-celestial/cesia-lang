@@ -60,7 +60,7 @@ type series =
   | Count of float ref
   | Spread of { counts : int array; mutable sum : float; mutable n : int }
 
-type family = { kind : string; series : (string, series) Hashtbl.t; mutable order : string list }
+type family = { kind : string; series : (string, series) Hashtbl.t; mutable order : string list; mutable most : int }
 
 let valid first rest s =
   s <> "" && first s.[0] && String.for_all rest s
@@ -89,7 +89,7 @@ let labels ctx (v : t) =
   String.concat "," (List.map one pairs)
 
 let natives () =
-  let families : (string, family) Hashtbl.t = Hashtbl.create 16 and order = ref [] in
+  let families : (string, family) Hashtbl.t = Hashtbl.create 16 and order = ref [] and limits = Hashtbl.create 4 in
   let series ctx kind (a : t array) make =
     let name = Native.text_arg ctx "metrics" a.(0) in
     if not (valid (fun c -> letter c || c = ':') (fun c -> letter c || digit c || c = ':') name) then
@@ -99,15 +99,14 @@ let natives () =
       | Some f when f.kind = kind -> f
       | Some f -> Runtime.fail ctx Type (Messages.metric_kind name f.kind)
       | None ->
-        let f = { kind; series = Hashtbl.create 4; order = [] } in
+        let f = { kind; series = Hashtbl.create 4; order = []; most = Option.value (Hashtbl.find_opt limits name) ~default:max_int } in
         Hashtbl.replace families name f;
         order := name :: !order;
         f
     in
     let key = labels ctx (if Array.length a > 2 then a.(2) else Undef) in
-    (* OpenTelemetry's limit of series a metric: past 2,000, the others count in one, so that labels made from requests
-       never fill the memory *)
-    let key = if Hashtbl.length f.series >= 2000 && not (Hashtbl.mem f.series key) then "otel_metric_overflow=\"true\"" else key in
+    (* past the limit that metrics.Limit set, the other series count in one, as OpenTelemetry's SDKs do *)
+    let key = if Hashtbl.length f.series >= f.most && not (Hashtbl.mem f.series key) then "otel_metric_overflow=\"true\"" else key in
     match Hashtbl.find_opt f.series key with
     | Some s -> s
     | None ->
@@ -138,6 +137,13 @@ let natives () =
      | Count _ -> ());
     Missing
   in
+  let limit ctx (a : t array) =
+    let name = Native.text_arg ctx "metrics.Limit" a.(0) in
+    let n = match a.(1) with Int n when n >= 0 -> n | v -> Runtime.fail ctx Type (Messages.need_count "metrics.Limit" (Value.describe v)) in
+    Hashtbl.replace limits name n;
+    Option.iter (fun f -> f.most <- n) (Hashtbl.find_opt families name);
+    Missing
+  in
   let text _ _ =
     let b = Buffer.create 1024 in
     let number x = if Float.is_integer x && Float.abs x < 1e15 then Printf.sprintf "%.0f" x else Value.float_text x in
@@ -162,6 +168,7 @@ let natives () =
   in
   [ "Add", Native.nat ~params:[| "name"; "n"; "labels" |] "Add" 1 3 add;
     "Observe", Native.nat ~params:[| "name"; "value"; "labels" |] "Observe" 2 3 observe;
+    "Limit", Native.nat ~params:[| "name"; "series" |] "Limit" 2 2 limit;
     "Text", Native.nat "Text" 0 0 text ]
 
 (* std/otel's own natives, private to it: the context of the fiber, and its hooks. *)

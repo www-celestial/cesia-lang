@@ -1754,6 +1754,18 @@ use std/test
       metrics.Observe("job_seconds", 0.3)
       text.Contains("job_seconds_bucket{le=\"0.5\"} 1", metrics.Text()) --> true *)
 
+(** metrics.Limit(name, series)
+    Holds the metric of this name to that many series at most, as OpenTelemetry's SDKs can: past them, a new set of
+    labels counts in one series more, otel_metric_overflow="true". A metric has no limit unless the program sets one;
+    a label whose values come from outside (a client's words) is better bounded where it is made, as http.Metrics
+    bounds the method.
+
+      metrics.Limit("pages_total", 2)
+      metrics.Add("pages_total", labels = {page: "/a"})
+      metrics.Add("pages_total", labels = {page: "/b"})
+      metrics.Add("pages_total", labels = {page: "/c"})
+      text.Contains("pages_total{otel_metric_overflow=\"true\"} 1", metrics.Text()) --> true *)
+
 (** metrics.Text()
     The counters and histograms of this program in the text format of Prometheus, for a route that it scrapes:
     http.Get("/metrics", r -> http.Plain(metrics.Text())).

@@ -5,7 +5,7 @@ open Cesia
 (** [log.Info], [log.Warn] and [log.Error]. *)
 val log_natives : (string * Types.t) list
 
-(** [metrics.Add], [metrics.Observe] and [metrics.Text], with their own counts: one set for each program. *)
+(** [metrics.Add], [metrics.Observe], [metrics.Limit] and [metrics.Text], with their own counts: one set for each program. *)
 val natives : unit -> (string * Types.t) list
 
 (** std/otel's hooks: [Some (world, f)] once its [onLog] or [onEngine] set them. *)

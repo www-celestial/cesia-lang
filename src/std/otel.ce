@@ -202,7 +202,13 @@ defn Server(t, method, route, headers = [], attributes = {})
       "GET /notes/:id": never its path, whose ids and words would make one name for each request. It is the fiber's
       context until End, the parent of every span of the request. headers, the request's, may hold a traceparent: with
       trust "restart" it starts a new trace that links to it, with "trust" the span is its child and keeps its sampling.
-      Gives the span, to End with the status. *)
+      A method that OpenTelemetry's conventions don't know is "_OTHER" (http.KnownMethod), the one sent kept in
+      http.request.method_original, and the span's name says "HTTP" for it. Gives the span, to End with the status. *)
+  known = http.KnownMethod(method)
+  if known != method
+    attributes = dict.Merge(attributes, {"http.request.method_original": method})
+    method = "HTTP"
+  end
   given = Parse(http.HeaderValue("traceparent", headers))
   parent = missing
   links = []
@@ -217,8 +223,8 @@ defn Server(t, method, route, headers = [], attributes = {})
   sampled = t.Traces and (if value.IsSome(parent) parent.Sampled else chosen(traceId, t.Sample) end)
   (* the attributes join at End, when the span is kept: a request not sampled pays for none of them *)
   span = {TraceId: traceId, SpanId: ids(16), Parent: if value.IsSome(parent) parent.SpanId else "" end,
-    State: if value.IsSome(parent) kept(http.HeaderValue("tracestate", headers)) else "" end, Name: "$method $route", Kind: 2,
-    Start: sys.Now(), Attributes: attributes, Method: method, Route: route, Links: links, Events: [], Rec: sampled, Root: true, Up: missing, T: t}
+    State: if value.IsSome(parent) kept(http.HeaderValue("tracestate", headers)) else "" end, Name: if route == "" method else "$method $route" end, Kind: 2,
+    Start: sys.Now(), Attributes: attributes, Method: known, Route: route, Links: links, Events: [], Rec: sampled, Root: true, Up: missing, T: t}
   _ = setContext(if sampled span else "00-$traceId-$(span.SpanId)-00" end)
   span
 end

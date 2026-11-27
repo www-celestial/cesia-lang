@@ -293,7 +293,9 @@ log.Info("order placed", {Order: 7, Total: 12.5})
 [http.Logger] writes one of these lines for each request, with its method, its path, its status and the milliseconds it
 took. [std/metrics] counts: [metrics.Add] adds to a counter, [metrics.Observe] puts a value, as the seconds a request
 took, in a histogram, and [metrics.Text] gives them all in the text format that Prometheus reads, for a route of the
-program. [http.Metrics] counts each request by method and status, with its time:
+program. [http.Metrics] counts each request by method and status, with its time; the method is that of
+[http.KnownMethod], one of the ten that OpenTelemetry's semantic conventions know (GET, HEAD, POST, PUT, DELETE,
+CONNECT, OPTIONS, TRACE, PATCH, QUERY) or `_OTHER`, so that the words a client makes up can't make a series each:
 
 ```cesia
 use std/metrics
@@ -303,7 +305,9 @@ http.Handler(counted)({Method: "GET", Path: "/stock", Query: "", Headers: [], Bo
 text.Contains("http_requests_total{method=\"GET\",status=\"200\"} 1", metrics.Text()) -->
 ```
 
-Nothing is logged or counted unless the program asks. A line of the log costs about 5 microseconds and a count about 3,
+A metric keeps every series its labels make, as many as the program makes: [metrics.Limit] holds one to a number of
+them, past which a new set of labels counts in one series more, `otel_metric_overflow="true"`, as OpenTelemetry's SDKs
+do. Nothing is logged or counted unless the program asks. A line of the log costs about 5 microseconds and a count about 3,
 which a server that answers in 17 sees: on one core, at 100 kept connections, a tiny route answered 57,000 to 60,000
 requests a second without them, 44,000 to 49,000 with [http.Logger], and 50,000 to 53,000 with [http.Metrics], measured on
 2026-11-07. Under `--workers`, each worker counts its own requests, and a scrape reads the
@@ -353,8 +357,9 @@ service behind another of its own.
 seconds. The spans wait in a queue that never makes a request wait: past `queue` (2,048) they are dropped and
 counted in `otel_dropped_total`; a fiber sends them by batches every `every` seconds, and tries a collector that is busy
 or gone again with a pause drawn at random under a bound that doubles (full jitter), or its `Retry-After`, five times.
-They wait encoded as they will leave: a queue full of 2,048 spans takes 1.2 MB in protobuf, 2.3 in JSON. A metric of [std/metrics] holds 2,000 series at most, the others counted in one, `otel_metric_overflow="true"`, as
-OpenTelemetry advises: a label made of what a client sends, as a method, can't fill the memory.
+They wait encoded as they will leave: a queue full of 2,048 spans takes 1.2 MB in protobuf, 2.3 in JSON. A method that
+the conventions don't know is `_OTHER` in a span too, its name says `HTTP` for it, and the one sent is kept in
+`http.request.method_original`.
 
 A sampled span costs about 15 µs from its start to the collector, in protobuf as in JSON; protobuf sends 2.4 times fewer
 bytes, about 210 a span of a request and 140 a span inside it, JSON 500 and 360. `compression = "gzip"` (zlib, with the
