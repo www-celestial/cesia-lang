@@ -357,7 +357,9 @@ service behind another of its own.
 seconds. The spans wait in a queue that never makes a request wait: past `queue` (2,048) they are dropped and
 counted in `otel_dropped_total`; a fiber sends them by batches every `every` seconds, and tries a collector that is busy
 or gone again with a pause drawn at random under a bound that doubles (full jitter), or its `Retry-After`, five times.
-They wait encoded as they will leave: a queue full of 2,048 spans takes 1.2 MB in protobuf, 2.3 in JSON. A method that
+They wait encoded as they will leave: a queue full of 2,048 spans takes 1.2 MB in protobuf, 2.3 in JSON. The exports
+go on one connection kept open to the collector ([http.Kept]); an `https` endpoint takes `secure = tls.Client(api)`, as
+[http.Fetch] does. A method that
 the conventions don't know is `_OTHER` in a span too, its name says `HTTP` for it, and the one sent is kept in
 `http.request.method_original`.
 
@@ -901,6 +903,25 @@ use std/result
 mine(address) = if address == "127.0.0.1" or address == "::1" result.Err({Kind: "http", Message: "This address is of this machine."}) else result.Ok(missing) end
 http.Fetch("http://localhost:8080/", peer = mine)   (* Err: This address is of this machine. *)
 ```
+
+A program that asks the same server again and again, as a client of an API or of a collector, keeps its connection
+open with `keep`, a place that [http.Kept] makes: after a response, the connection waits there for the next request
+of the same `keep` to the same server, as the clients of Go and Java keep theirs (HTTP/1.1's persistent connections),
+and no request pays a new TCP connection, nor, over https, a new TLS handshake. Two connections a server wait at most,
+each `idle` seconds (30) at most; one that the server closed meanwhile is opened again, its request sent again, since
+nothing of it was answered. Fibers may share a `keep`: each request has a connection of its own. Without `keep`, each
+`Fetch` opens its connection and closes it.
+
+```cesia norun
+keep = http.Kept()
+for page in 1..10
+  http.Fetch("https://api.example/items?page=$page", secure = tls.Client(api), keep = keep)?   (* one connection, one handshake *)
+end
+```
+
+Against a connection each, a `POST` of 2 KiB to a server of the same machine took 87 µs of CPU instead of 131 over
+http, and 142 instead of 1,399 over https; over https, 2,350 bytes on the wire instead of 6,328 (21 rounds of 500
+requests alternated, each side pinned to one physical core, p < 0.001; measured on 2026-11-27).
 
 ### https
 

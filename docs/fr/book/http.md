@@ -375,7 +375,9 @@ a pris plus de `slow` secondes. Les spans attendent dans une file qui ne fait ja
 `queue` (2 048), ils sont jetés et comptés dans `otel_dropped_total` ; une fiber les envoie par *batches* (des lots)
 toutes les `every` secondes, et réessaie un collector occupé ou parti après une pause tirée au hasard sous une borne
 qui double (le *full jitter*), ou après son `Retry-After`, cinq fois. Ils attendent déjà encodés, tels qu'ils partiront :
-une file pleine de 2 048 spans prend 1,2 Mo en protobuf, 2,3 en JSON. Une méthode que les conventions ne connaissent
+une file pleine de 2 048 spans prend 1,2 Mo en protobuf, 2,3 en JSON. Les exports passent par une connexion gardée
+ouverte vers le collector ([http.Kept]) ; un endpoint en `https` prend `secure = tls.Client(api)`, comme
+[http.Fetch]. Une méthode que les conventions ne connaissent
 pas est `_OTHER` dans un span aussi, son nom dit `HTTP` à sa place, et celle qu'a envoyée le client est gardée dans
 `http.request.method_original`.
 
@@ -961,6 +963,26 @@ use std/result
 mine(address) = if address == "127.0.0.1" or address == "::1" result.Err({Kind: "http", Message: "This address is of this machine."}) else result.Ok(missing) end
 http.Fetch("http://localhost:8080/", peer = mine)   (* Err: This address is of this machine. *)
 ```
+
+Un programme qui interroge le même serveur encore et encore, comme le client d'une API ou d'un collector, garde sa
+connexion ouverte avec `keep`, un endroit que fait [http.Kept] : après une réponse, la connexion y attend la requête
+suivante du même `keep` vers le même serveur, comme les clients de Go et de Java gardent les leurs (les connexions
+persistantes de HTTP/1.1), et aucune requête ne paie une nouvelle connexion TCP, ni, en https, une nouvelle poignée de
+main TLS (*handshake*). Deux connexions par serveur y attendent au plus, chacune `idle` secondes (30) au plus ; une que
+le serveur a fermée entre-temps est rouverte, et sa requête renvoyée, puisque rien n'en avait reçu de réponse. Des
+fibers peuvent partager un `keep` : chaque requête a sa propre connexion. Sans `keep`, chaque `Fetch` ouvre sa
+connexion et la ferme.
+
+```cesia norun
+keep = http.Kept()
+for page in 1..10
+  http.Fetch("https://api.example/items?page=$page", secure = tls.Client(api), keep = keep)?   (* une connexion, une poignée de main *)
+end
+```
+
+Face à une connexion par requête, un `POST` de 2 Kio vers un serveur de la même machine a pris 87 µs de CPU au lieu de
+131 en http, et 142 au lieu de 1 399 en https ; en https, 2 350 octets sur le réseau au lieu de 6 328 (21 tours de 500
+requêtes en alternance, chaque côté fixé sur un cœur physique, p < 0,001 ; mesuré le 2026-11-27).
 
 ### https
 

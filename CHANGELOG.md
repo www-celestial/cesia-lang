@@ -20,6 +20,12 @@
   way, the one sent kept in `http.request.method_original`. `metrics.Limit(name, series)` holds a metric to that many
   series, the others counted in one, `otel_metric_overflow="true"`, as OpenTelemetry's SDKs can; a metric has no limit
   unless the program sets one.
+- `http.Fetch(keep = http.Kept())` keeps its connection open for the next request to the same server, as the clients
+  of Go and Java do: no TCP connection nor TLS handshake each request (a `POST` of 2 KiB: 131 -> 87 µs of CPU over
+  http, 1,399 -> 142 over https, 6,328 -> 2,350 bytes); two a server at most, closed after `idle` seconds; one that the
+  server closed meanwhile is opened again, and its request sent again. `std/otel` exports on one, and takes
+  `secure = tls.Client(api)` for an https collector, which failed every export before. `http.Fetch` reads the response
+  to a `HEAD` without the body its content-length names: it was an Err, "cut short".
 - `std/live`: an action gets the `traceparent` of the page's click (`s.Trace`), and its value may give the page the
   server's trace in its reply (`live.Traced`).
 - A page in WebAssembly hears its program's errors as the event `cesia-error` of its window, their place in the `.ce`
