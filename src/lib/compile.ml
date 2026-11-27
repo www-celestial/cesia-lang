@@ -1944,6 +1944,9 @@ and cb c (e : expr) : ctx -> bool =
      | (TI | TF), (TI | TF) -> compare_m c op a b
      | _ -> compare_b c e op a b)
   | Lbool x -> fun _ -> x
+  | Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args = [| { aname = None; value = x } |]; _ }
+    when List.mem_assq c.w.modules.(m).cells.(k) !Native.tests ->
+    let test = List.assq c.w.modules.(m).cells.(k) !Native.tests and x = cv c x in fun ctx -> test (x ctx)
   | _ ->
     let v = cv c e and s = site c e.pos in
     fun ctx -> truth s ctx (v ctx)

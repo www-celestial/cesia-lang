@@ -176,7 +176,8 @@ let reshape ctx (a : t array) =
      | v -> v)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
-let is_ name test = name, nat name 1 1 (fun _ a -> Value.of_bool (test a.(0)))
+let tests = ref []
+let is_ name test = let n = nat name 1 1 (fun _ a -> Value.of_bool (test a.(0))) in tests := (n, test) :: !tests; name, n
 
 let rec abs_value ctx v =
   match v with
